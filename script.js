@@ -332,6 +332,62 @@ function renderWeeklyCalendar() {
     });
     calendar.appendChild(dateRow);
 }
+// Document Upload and Viewer Variables
+const documentUpload = document.getElementById("document-upload");
+const documentViewer = document.getElementById("document-viewer");
+const viewDocumentButton = document.getElementById("view-document");
+const clearDocumentButton = document.getElementById("clear-document");
+
+// Handle File Upload and Display
+documentUpload.addEventListener("change", () => {
+    const file = documentUpload.files[0];
+
+    if (!file) {
+        documentViewer.innerHTML = "<p>No document uploaded</p>";
+        viewDocumentButton.style.display = "none";
+        return;
+    }
+
+    // Supported file handling
+    const fileType = file.type;
+    const reader = new FileReader();
+
+    // Handle PDF Files
+    if (fileType === "application/pdf") {
+        reader.onload = function (e) {
+            documentViewer.innerHTML = `
+                <embed src="${e.target.result}" type="application/pdf" width="100%" height="300px">
+            `;
+        };
+        reader.readAsDataURL(file);
+        viewDocumentButton.style.display = "inline-block"; // Show the View Document button
+    }
+    // Handle Text Files
+    else if (fileType === "text/plain") {
+        reader.onload = function (e) {
+            documentViewer.innerHTML = `<pre>${e.target.result}</pre>`;
+        };
+        reader.readAsText(file);
+        viewDocumentButton.style.display = "inline-block"; // Show the View Document button
+    }
+    // Handle Unsupported Files
+    else {
+        documentViewer.innerHTML = "<p>Unsupported file format. Please upload a PDF or TXT file.</p>";
+        viewDocumentButton.style.display = "none"; // Hide the View Document button
+    }
+});
+
+// Handle View Document Button
+viewDocumentButton.addEventListener("click", () => {
+    alert("The document is now visible in the viewer!");
+});
+
+// Handle Clear Document Button
+clearDocumentButton.addEventListener("click", () => {
+    documentViewer.innerHTML = "<p>No document uploaded</p>";
+    documentUpload.value = ""; // Clear the file input field
+    viewDocumentButton.style.display = "none"; // Hide the View Document button
+});
 
 // Initialize Weekly Calendar on Page Load
 window.onload = function () {
