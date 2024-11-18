@@ -70,6 +70,7 @@ function deleteRow(event) {
     localStorage.setItem("timetable", JSON.stringify(timetableData));
 }
 
+
 // Render Notes
 function renderNotes() {
     notesList.innerHTML = ""; // Clear existing notes
