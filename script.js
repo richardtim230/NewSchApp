@@ -17,21 +17,15 @@ function renderTimetable() {
     timetableData.forEach((row, index) => {
         const tableRow = document.createElement("tr");
         tableRow.innerHTML = `
-            <td contenteditable="true">${row.# || ""}</td>
+            <td contenteditable="true">${row.courseCode || ""}</td>
+            <td contenteditable="true">${row.title || ""}</td>
             <td contenteditable="true">${row.day || ""}</td>
-            <td contenteditable="true">${row.course || ""}</td>
             <td contenteditable="true">${row.time || ""}</td>
             <td contenteditable="true">${row.venue || ""}</td>
             <td><button class="delete-row" data-index="${index}">Delete</button></td>
         `;
         timetable.appendChild(tableRow);
     });
-
-    // Attach delete functionality
-    document.querySelectorAll(".delete-row").forEach((btn) =>
-        btn.addEventListener("click", deleteRow)
-    );
-}
 
 // Save Timetable to Local Storage
 saveButton.addEventListener("click", () => {
