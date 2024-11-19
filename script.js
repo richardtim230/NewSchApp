@@ -442,6 +442,80 @@ clearDocumentButton.addEventListener("click", () => {
     viewDocumentButton.style.display = "none"; // Hide the View Document button
 });
 
+// Render Notes with Edit Functionality
+function renderNotes() {
+    notesList.innerHTML = ""; // Clear existing notes
+
+    // Loop through all saved notes
+    notesData.forEach((note, index) => {
+        const noteDiv = document.createElement("div");
+        noteDiv.classList.add("note-card");
+
+        // Note Content
+        const noteContent = document.createElement("pre");
+        noteContent.textContent = note.content;
+
+        // Edit Button
+        const editButton = document.createElement("button");
+        editButton.textContent = "Edit";
+        editButton.classList.add("edit-note");
+
+        // Delete Button
+        const deleteButton = document.createElement("button");
+        deleteButton.textContent = "Delete";
+        deleteButton.classList.add("delete-note");
+
+        // Append Content and Buttons
+        noteDiv.appendChild(noteContent);
+        noteDiv.appendChild(editButton);
+        noteDiv.appendChild(deleteButton);
+
+        // Edit Note Functionality
+        editButton.addEventListener("click", () => {
+            // Switch to editable mode
+            const editArea = document.createElement("textarea");
+            editArea.classList.add("edit-area");
+            editArea.value = note.content;
+
+            // Save and Cancel Buttons
+            const saveButton = document.createElement("button");
+            saveButton.textContent = "Save";
+            saveButton.classList.add("save-edit");
+
+            const cancelButton = document.createElement("button");
+            cancelButton.textContent = "Cancel";
+            cancelButton.classList.add("cancel-edit");
+
+            // Replace Note Content with Edit Area
+            noteDiv.innerHTML = ""; // Clear current note
+            noteDiv.appendChild(editArea);
+            noteDiv.appendChild(saveButton);
+            noteDiv.appendChild(cancelButton);
+
+            // Save Changes
+            saveButton.addEventListener("click", () => {
+                notesData[index].content = editArea.value; // Update note content
+                localStorage.setItem("notes", JSON.stringify(notesData)); // Save to storage
+                renderNotes(); // Re-render notes
+            });
+
+            // Cancel Edit
+            cancelButton.addEventListener("click", () => {
+                renderNotes(); // Re-render notes without saving changes
+            });
+        });
+
+        // Delete Note Functionality
+        deleteButton.addEventListener("click", () => {
+            notesData.splice(index, 1); // Remove note from data
+            localStorage.setItem("notes", JSON.stringify(notesData)); // Update local storage
+            renderNotes(); // Re-render notes
+        });
+
+        notesList.appendChild(noteDiv); // Add note card to list
+    });
+}
+
 // Initialize Weekly Calendar on Page Load
 window.onload = function () {
     showWelcomePopup(); // Show motivational popup
@@ -450,3 +524,4 @@ window.onload = function () {
     renderNotes(); // Render notes
     renderWeeklyCalendar(); // Render calendar
 };
+
