@@ -89,27 +89,40 @@ function deleteRow(event) {
 }
 
 
-// Render Notes
+// Render Notes with Proper Arrangement
 function renderNotes() {
     notesList.innerHTML = ""; // Clear existing notes
+
+    // Loop through all saved notes
     notesData.forEach((note, index) => {
         const noteDiv = document.createElement("div");
         noteDiv.classList.add("note-card");
-        noteDiv.innerHTML = `
-            <pre>${note.content}</pre>
-            <button class="delete-note" data-index="${index}">Delete</button>
-        `;
 
-        // Attach delete functionality
-        noteDiv.querySelector(".delete-note").addEventListener("click", () => {
-            notesData.splice(index, 1);
-            renderNotes();
-            localStorage.setItem("notes", JSON.stringify(notesData));
+        // Create a pre element for the note content
+        const noteContent = document.createElement("pre");
+        noteContent.textContent = note.content; // Preserve the original text structure
+
+        // Create a delete button
+        const deleteButton = document.createElement("button");
+        deleteButton.textContent = "Delete";
+        deleteButton.setAttribute("data-index", index);
+
+        // Add delete functionality
+        deleteButton.addEventListener("click", () => {
+            notesData.splice(index, 1); // Remove the note from data
+            renderNotes(); // Re-render notes
+            localStorage.setItem("notes", JSON.stringify(notesData)); // Update local storage
         });
 
+        // Append the content and button to the note card
+        noteDiv.appendChild(noteContent);
+        noteDiv.appendChild(deleteButton);
+
+        // Add the note card to the list
         notesList.appendChild(noteDiv);
     });
 }
+
 
 // Add Note
 addNoteBtn.addEventListener("click", () => {
