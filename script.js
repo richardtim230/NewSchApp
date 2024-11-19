@@ -17,15 +17,39 @@ function renderTimetable() {
     timetableData.forEach((row, index) => {
         const tableRow = document.createElement("tr");
         tableRow.innerHTML = `
-            <td contenteditable="true">${row.courseCode || ""}</td>
-            <td contenteditable="true">${row.title || ""}</td>
+            <td contenteditable="true">${row.# || ""}</td>
             <td contenteditable="true">${row.day || ""}</td>
+            <td contenteditable="true">${row.course || ""}</td>
             <td contenteditable="true">${row.time || ""}</td>
             <td contenteditable="true">${row.venue || ""}</td>
             <td><button class="delete-row" data-index="${index}">Delete</button></td>
         `;
         timetable.appendChild(tableRow);
     });
+
+    // Attach delete functionality
+    document.querySelectorAll(".delete-row").forEach((btn) =>
+        btn.addEventListener("click", deleteRow)
+    );
+}
+
+// Save Timetable to Local Storage
+saveButton.addEventListener("click", () => {
+    const rows = Array.from(timetable.querySelectorAll("tr"));
+    timetableData = rows.map((row) => {
+        const cells = row.querySelectorAll("td");
+        return {
+            courseCode: cells[0].textContent.trim(),
+            title: cells[1].textContent.trim(),
+            day: cells[2].textContent.trim(),
+            time: cells[3].textContent.trim(),
+            venue: cells[4].textContent.trim(),
+        };
+    });
+    localStorage.setItem("timetable", JSON.stringify(timetableData));
+    alert("Timetable saved!");
+});
+
 
     // Attach delete functionality
     document.querySelectorAll(".delete-row").forEach((btn) =>
