@@ -89,6 +89,28 @@ function deleteRow(event) {
 }
 
 
+// Render Notes
+function renderNotes() {
+    notesList.innerHTML = ""; // Clear existing notes
+    notesData.forEach((note, index) => {
+        const noteDiv = document.createElement("div");
+        noteDiv.classList.add("note-card");
+        noteDiv.innerHTML = `
+            <pre>${note.content}</pre>
+            <button class="delete-note" data-index="${index}">Delete</button>
+        `;
+
+        // Attach delete functionality
+        noteDiv.querySelector(".delete-note").addEventListener("click", () => {
+            notesData.splice(index, 1);
+            renderNotes();
+            localStorage.setItem("notes", JSON.stringify(notesData));
+        });
+
+        notesList.appendChild(noteDiv);
+    });
+}
+
 // Render Notes with Proper Arrangement
 function renderNotes() {
     notesList.innerHTML = ""; // Clear existing notes
