@@ -1,11 +1,85 @@
 // Variables
-const timetable = document.querySelector("#timetable tbody");
-const addRowBtn = document.getElementById("add-row");
-const saveButton = document.getElementById("save-button");
+const editorContent = document.getElementById("editor-content");
+const mediaUpload = document.getElementById("media-upload");
+const saveRichNoteButton = document.getElementById("save-rich-note");
 const notesList = document.getElementById("notes-list");
-const addNoteBtn = document.getElementById("add-note");
-const clearNotesBtn = document.getElementById("clear-notes");
-const newNoteContent = document.getElementById("new-note-content");
+
+let notesData = JSON.parse(localStorage.getItem("richNotes")) || [];
+
+// Format Text Function
+function formatText(command) {
+    document.execCommand(command, false, null);
+}
+
+// Upload Media
+function uploadMedia() {
+    const file = mediaUpload.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        const img = document.createElement("img");
+        img.src = e.target.result;
+        img.style.maxWidth = "100%";
+        editorContent.appendChild(img);
+    };
+    reader.readAsDataURL(file);
+}
+
+// Save Note
+saveRichNoteButton.addEventListener("click", () => {
+    const content = editorContent.innerHTML.trim();
+    if (!content) {
+        alert("Please write something before saving!");
+        return;
+    }
+
+    notesData.push({ content });
+    localStorage.setItem("richNotes", JSON.stringify(notesData));
+    renderNotes();
+    editorContent.innerHTML = ""; // Clear editor after saving
+});
+
+// Render Notes
+function renderNotes() {
+    notesList.innerHTML = ""; // Clear existing notes
+
+    notesData.forEach((note, index) => {
+        const noteDiv = document.createElement("div");
+        noteDiv.classList.add("note-card");
+
+        // Display note content
+        const noteContent = document.createElement("div");
+        noteContent.innerHTML = note.content;
+
+        // Edit Button
+        const editButton = document.createElement("button");
+        editButton.textContent = "Edit";
+        editButton.addEventListener("click", () => {
+            editorContent.innerHTML = note.content;
+            notesData.splice(index, 1); // Remove note for editing
+            renderNotes();
+        });
+
+        // Delete Button
+        const deleteButton = document.createElement("button");
+        deleteButton.textContent = "Delete";
+        deleteButton.addEventListener("click", () => {
+            notesData.splice(index, 1); // Remove note
+            localStorage.setItem("richNotes", JSON.stringify(notesData));
+            renderNotes();
+        });
+
+        // Append content and buttons to note card
+        noteDiv.appendChild(noteContent);
+        noteDiv.appendChild(editButton);
+        noteDiv.appendChild(deleteButton);
+        notesList.appendChild(noteDiv);
+    });
+}
+
+// Initial Rendering of Notes
+renderNotes();
 
 // Local Storage Data
 let timetableData = JSON.parse(localStorage.getItem("timetable")) || [];
