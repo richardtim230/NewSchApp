@@ -524,3 +524,116 @@ window.onload = function () {
     renderNotes(); // Render notes
     renderWeeklyCalendar(); // Render calendar
 };
+
+// Weekly Calendar JavaScript
+const today = new Date();
+const dayOfWeek = today.getDay(); // Sunday = 0, Monday = 1, etc.
+const dateString = today.toDateString(); // Current date as a readable string
+
+// Generate Dates for the Week
+const weekDates = [];
+const currentDayIndex = today.getDay();
+
+// Calculate the exact dates for the week (Sunday to Saturday)
+for (let i = 0; i < 7; i++) {
+    const weekDate = new Date(today);
+    weekDate.setDate(today.getDate() - currentDayIndex + i);
+    weekDates.push(weekDate);
+}
+
+// Populate the Calendar Cells with Dates (Only the Day Numbers)
+const calendarCells = document.querySelectorAll('#calendar-table td');
+weekDates.forEach((date, index) => {
+    const day = date.getDate(); // Get only the day number
+    calendarCells[index].textContent = day; // Add day number to the cell
+
+    if (index === dayOfWeek) {
+        calendarCells[index].classList.add('current-day'); // Highlight the current day
+    }
+});
+
+// Display the Current Date Separately (With Month and Year)
+const currentDateDisplay = document.getElementById('current-date-display');
+currentDateDisplay.textContent = `Today is: ${dateString}`;
+
+// Class Schedule JavaScript
+const timetable = document.getElementById('lecture-timetable').getElementsByTagName('tbody')[0];
+const addRowBtn = document.getElementById('add-row-btn');
+const editBtn = document.getElementById('edit-btn');
+const saveBtn = document.getElementById('save-btn');
+const clearBtn = document.getElementById('clear-btn');
+
+let rowCount = 0; // To keep track of the number of rows
+let isEditable = false; // To track edit mode
+
+// Function to Add a New Row
+addRowBtn.addEventListener('click', () => {
+    rowCount++;
+    const newRow = timetable.insertRow();
+    newRow.innerHTML = `
+        <td>${rowCount}</td>
+        <td><input type="text" placeholder="Day" disabled></td>
+        <td><input type="text" placeholder="Course" disabled></td>
+        <td><input type="text" placeholder="Time" disabled></td>
+        <td><input type="text" placeholder="Venue" disabled></td>
+        <td><button class="delete-row-btn">Delete</button></td>
+    `;
+
+    // Add Delete Row Functionality
+    const deleteRowBtn = newRow.querySelector('.delete-row-btn');
+    deleteRowBtn.addEventListener('click', () => deleteRow(newRow));
+});
+
+// Function to Enable Edit Mode
+editBtn.addEventListener('click', () => {
+    if (!isEditable) {
+        const confirmEdit = confirm('Are you sure you want to enable edit mode?');
+        if (confirmEdit) {
+            enableEditing();
+            alert('Edit mode enabled. You can now modify the timetable.');
+        }
+    } else {
+        alert('Edit mode is already enabled.');
+    }
+});
+
+// Enable Editing for All Rows
+function enableEditing() {
+    isEditable = true;
+    saveBtn.disabled = false;
+    const inputs = timetable.querySelectorAll('input');
+    inputs.forEach(input => {
+        input.removeAttribute('disabled');
+    });
+}
+
+// Save Changes and Disable Editing
+saveBtn.addEventListener('click', () => {
+    disableEditing();
+    alert('Changes saved successfully!');
+});
+
+// Disable Editing
+function disableEditing() {
+    isEditable = false;
+    saveBtn.disabled = true;
+    const inputs = timetable.querySelectorAll('input');
+    inputs.forEach(input => {
+        input.setAttribute('disabled', 'disabled');
+    });
+}
+
+// Function to Clear All Rows
+clearBtn.addEventListener('click', () => {
+    const confirmClear = confirm('Are you sure you want to clear all rows?');
+    if (confirmClear) {
+        timetable.innerHTML = '';
+        rowCount = 0;
+    }
+});
+
+// Function to Delete a Specific Row
+function deleteRow(row) {
+    row.remove();
+    rowCount--;
+}
