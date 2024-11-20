@@ -695,3 +695,75 @@ function deleteRow(row) {
     row.remove();
     rowCount--;
 }
+
+// Initialize Quill Text Editor
+const quill = new Quill('#editor-container', {
+    theme: 'snow',
+    placeholder: 'Write your note here...',
+    modules: {
+        toolbar: [
+            ['bold', 'italic', 'underline'], // Formatting options
+            [{ 'list': 'ordered' }, { 'list': 'bullet' }], // Lists
+            ['image'], // Image upload
+            ['clean'] // Clear formatting
+        ]
+    }
+});
+
+const saveNoteBtn = document.getElementById("save-note-btn");
+const clearEditorBtn = document.getElementById("clear-editor-btn");
+const notesContainer = document.getElementById("notes-container");
+const notePopup = document.getElementById("note-popup");
+const fullNoteContent = document.getElementById("full-note-content");
+const closePopupBtn = document.getElementById("close-popup-btn");
+
+let notes = []; // Store all notes
+
+// Save Note
+saveNoteBtn.addEventListener("click", () => {
+    const noteHtml = quill.root.innerHTML.trim();
+    if (noteHtml === "<p><br></p>") {
+        alert("Please write something before saving.");
+        return;
+    }
+
+    notes.push(noteHtml);
+    renderNotes();
+    quill.root.innerHTML = ""; // Clear the editor after saving
+});
+
+// Clear Editor
+clearEditorBtn.addEventListener("click", () => {
+    quill.root.innerHTML = "";
+});
+
+// Render Notes
+function renderNotes() {
+    notesContainer.innerHTML = ""; // Clear previous notes
+    notes.forEach((note, index) => {
+        const noteCard = document.createElement("div");
+        noteCard.classList.add("note-card");
+
+        // Display only the first 3 lines
+        const tempDiv = document.createElement("div");
+        tempDiv.innerHTML = note;
+        const preview = tempDiv.textContent.split("\n").slice(0, 3).join("\n");
+        noteCard.innerHTML = `<p>${preview}</p>`;
+
+        // Add Click Event to Open Full Note
+        noteCard.addEventListener("click", () => openNotePopup(note));
+
+        notesContainer.appendChild(noteCard);
+    });
+}
+
+// Open Full-Screen Note Pop-Up
+function openNotePopup(note) {
+    fullNoteContent.innerHTML = note; // Set full note content
+    notePopup.style.display = "flex"; // Show the pop-up
+}
+
+// Close Pop-Up
+closePopupBtn.addEventListener("click", () => {
+    notePopup.style.display = "none"; // Hide the pop-up
+});
