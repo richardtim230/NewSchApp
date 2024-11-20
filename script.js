@@ -514,7 +514,65 @@ function renderNotes() {
 
         notesList.appendChild(noteDiv); // Add note card to list
     });
+const noteInput = document.getElementById("note-input");
+const saveNoteBtn = document.getElementById("save-note-btn");
+const clearNoteBtn = document.getElementById("clear-note-btn");
+const notesContainer = document.getElementById("notes-container");
+const notePopup = document.getElementById("note-popup");
+const popupContent = document.getElementById("popup-content");
+const fullNoteContent = document.getElementById("full-note-content");
+const closePopupBtn = document.getElementById("close-popup-btn");
+
+let notes = []; // Store all notes
+
+// Save Note
+saveNoteBtn.addEventListener("click", () => {
+    const noteText = noteInput.value.trim();
+    if (noteText === "") {
+        alert("Please write something before saving.");
+        return;
+    }
+
+    notes.push(noteText);
+    renderNotes();
+    noteInput.value = ""; // Clear the input field
+});
+
+// Clear Input
+clearNoteBtn.addEventListener("click", () => {
+    noteInput.value = "";
+});
+
+// Render Notes
+function renderNotes() {
+    notesContainer.innerHTML = ""; // Clear previous notes
+    notes.forEach((note, index) => {
+        const noteCard = document.createElement("div");
+        noteCard.classList.add("note-card");
+
+        // Display only the first 3 lines
+        const preview = note.split("\n").slice(0, 3).join("\n");
+        noteCard.innerHTML = `<p>${preview}</p>`;
+
+        // Add Click Event to Open Full Note
+        noteCard.addEventListener("click", () => openNotePopup(note));
+
+        notesContainer.appendChild(noteCard);
+    });
 }
+
+// Open Full-Screen Note Pop-Up
+function openNotePopup(note) {
+    fullNoteContent.textContent = note; // Set full note content
+    notePopup.style.display = "flex"; // Show the pop-up
+}
+
+// Close Pop-Up
+closePopupBtn.addEventListener("click", () => {
+    notePopup.style.display = "none"; // Hide the pop-up
+});
+
+
 
 // Initialize Weekly Calendar on Page Load
 window.onload = function () {
