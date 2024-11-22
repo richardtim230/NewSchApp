@@ -572,45 +572,6 @@ closePopupBtn.addEventListener("click", () => {
     notePopup.style.display = "none"; // Hide the pop-up
 });
 
-// Initialize Weekly Calendar on Page Load
-window.onload = function () {
-    showWelcomePopup(); // Show motivational popup
-    startAutoTimer(); // Start automatic timer
-    renderTimetable(); // Render timetable
-    renderNotes(); // Render notes
-    renderWeeklyCalendar(); // Render calendar
-};
-
-// Weekly Calendar JavaScript
-const today = new Date();
-const dayOfWeek = today.getDay(); // Sunday = 0, Monday = 1, etc.
-const dateString = today.toDateString(); // Current date as a readable string
-
-// Generate Dates for the Week
-const weekDates = [];
-const currentDayIndex = today.getDay();
-
-// Calculate the exact dates for the week (Sunday to Saturday)
-for (let i = 0; i < 7; i++) {
-    const weekDate = new Date(today);
-    weekDate.setDate(today.getDate() - currentDayIndex + i);
-    weekDates.push(weekDate);
-}
-
-// Populate the Calendar Cells with Dates (Only the Day Numbers)
-const calendarCells = document.querySelectorAll('#calendar-table td');
-weekDates.forEach((date, index) => {
-    const day = date.getDate(); // Get only the day number
-    calendarCells[index].textContent = day; // Add day number to the cell
-
-    if (index === dayOfWeek) {
-        calendarCells[index].classList.add('current-day'); // Highlight the current day
-    }
-});
-
-// Display the Current Date Separately (With Month and Year)
-const currentDateDisplay = document.getElementById('current-date-display');
-currentDateDisplay.textContent = `Today is: ${dateString}`;
 
 // Class Schedule JavaScript
 const timetable = document.getElementById('lecture-timetable').getElementsByTagName('tbody')[0];
