@@ -572,8 +572,6 @@ closePopupBtn.addEventListener("click", () => {
     notePopup.style.display = "none"; // Hide the pop-up
 });
 
-
-
 // Initialize Weekly Calendar on Page Load
 window.onload = function () {
     showWelcomePopup(); // Show motivational popup
