@@ -342,49 +342,7 @@ window.onload = function () {
     renderNotes(); // Render Notes
     renderWeeklyCalendar(); // Render Calendar
 };
-function renderWeeklyCalendar() {
-    const calendar = document.getElementById("calendar");
-    const weekDays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    const currentDate = new Date();
-    const currentDay = currentDate.getDay(); // Current day index
-    const todayDate = currentDate.getDate();
 
-    // Clear existing content
-    calendar.innerHTML = "";
-
-    // Create header row for weekdays
-    const headerRow = document.createElement("tr");
-    weekDays.forEach((day, index) => {
-        const th = document.createElement("th");
-        th.textContent = day;
-
-        // Highlight current day
-        if (index === currentDay) {
-            th.classList.add("highlight-day");
-        }
-
-        headerRow.appendChild(th);
-    });
-    calendar.appendChild(headerRow);
-
-    // Create row for dates
-    const dateRow = document.createElement("tr");
-    weekDays.forEach((_, index) => {
-        const td = document.createElement("td");
-        const diff = index - currentDay; // Difference from the current day
-        const date = new Date(currentDate);
-        date.setDate(todayDate + diff); // Calculate the correct date
-        td.textContent = date.getDate();
-
-        // Highlight current date
-        if (index === currentDay) {
-            td.classList.add("highlight-date");
-        }
-
-        dateRow.appendChild(td);
-    });
-    calendar.appendChild(dateRow);
-}
 // Document Upload and Viewer Variables
 const documentUpload = document.getElementById("document-upload");
 const documentViewer = document.getElementById("document-viewer");
