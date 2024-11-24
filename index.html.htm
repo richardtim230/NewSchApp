@@ -57,9 +57,10 @@
 
     th, td {
       border: 1px solid #ddd;
-      padding: 10px;
-      text-align: left;
-      vertical-align: left;
+      padding: 8px;
+      text-align: center;
+      vertical-align: middle;
+      font-size: 0.85rem; /* Reduced text size */
       word-wrap: break-word;
     }
 
@@ -93,6 +94,32 @@
       height: 150px;
     }
 
+    ul {
+      padding: 0;
+      list-style: none;
+    }
+
+    ul li {
+      margin: 10px 0;
+      padding: 10px;
+      background: #f0f4fa;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    #categories {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    #categories button {
+      padding: 8px 15px;
+    }
+
     .popup {
       position: fixed;
       top: 0;
@@ -124,54 +151,28 @@
       margin: 10px 0;
     }
 
-    ul {
-      padding: 0;
-      list-style: none;
+    #calendar {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      grid-gap: 5px;
+      text-align: center;
+      margin-top: 10px;
+      overflow: hidden;
     }
 
-    ul li {
-      margin: 10px 0;
-      padding: 10px;
-      background: #f0f4fa;
+    .day {
+      background: #e7eaf3;
       border: 1px solid #ddd;
+      padding: 8px;
+      font-size: 0.85rem;
       border-radius: 5px;
-      position: relative;
+      word-wrap: break-word;
     }
 
-    ul li button {
-      position: absolute;
-      right: 10px;
-      top: 10px;
-      background: red;
-      border: none;
-      color: white;
-      font-size: 0.8rem;
-      cursor: pointer;
-      border-radius: 5px;
-      padding: 5px;
-    }
-
-    ul li button:hover {
-      background: darkred;
-    }
-
-    .categories {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 10px;
-    }
-
-    .categories button {
+    .day.today {
       background: #0055cc;
       color: white;
-      border: none;
-      padding: 8px 15px;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-
-    .categories button:hover {
-      background: #003b8a;
+      font-weight: bold;
     }
   </style>
 </head>
@@ -228,26 +229,37 @@
     <!-- Notes Section -->
     <div id="notesSection">
       <h3>Notes</h3>
-      <div class="categories" id="categories">
-        <button onclick="selectCategory('Personal')">Personal</button>
-        <button onclick="selectCategory('Work')">Work</button>
-        <button onclick="selectCategory('School')">School</button>
+      <div id="categories">
+        <button onclick="showCategory('Personal')">Personal</button>
+        <button onclick="showCategory('Academic')">Academic</button>
+        <button onclick="showCategory('Miscellaneous')">Miscellaneous</button>
+        <button onclick="addCategory()">Add Category</button>
       </div>
       <div id="noteEditor"></div>
       <input type="file" id="noteMedia" accept="image/*">
       <button onclick="saveNote()">Save Note</button>
     </div>
     <ul id="notesList"></ul>
+
+    <!-- Calendar -->
+    <div id="calendarSection">
+      <h3>Weekly Calendar</h3>
+      <div id="calendar"></div>
+    </div>
   </div>
 
   <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
   <script>
     const quill = new Quill('#noteEditor', { theme: 'snow' });
+    const defaultCategories = ["Personal", "Academic", "Miscellaneous"];
+    let selectedCategory = "Personal";
 
     document.addEventListener('DOMContentLoaded', () => {
       displayWelcomePopup();
       loadSchedule();
-      selectCategory('Personal');
+      loadNotes();
+      loadCalendar();
+      showCategory("Personal");
     });
 
     // Welcome Popup
@@ -262,11 +274,23 @@
       document.getElementById('welcomePopup').style.display = 'none';
     }
 
-    // Schedule
+    // Calendar
+    function loadCalendar() {
+      const calendar = document.getElementById('calendar');
+      const today = new Date();
+      const currentDay = today.getDay();
+      const weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      calendar.innerHTML = weekdays.map((day, index) => `
+        <div class="day ${index === currentDay ? 'today' : ''}">
+          ${day}
+        </div>`).join('');
+    }
+
+    // Class Scheduler
     function loadSchedule() {
       const scheduleBody = document.getElementById('scheduleBody');
       const schedule = JSON.parse(localStorage.getItem('schedule')) || [];
-      scheduleBody.innerHTML = schedule.map(item => `
+      scheduleBody.innerHTML = schedule.map((item, index) => `
         <tr>
           <td>${item.time}</td>
           <td>${item.day === 'Monday' ? item.subject : ''}</td>
@@ -274,6 +298,10 @@
           <td>${item.day === 'Wednesday' ? item.subject : ''}</td>
           <td>${item.day === 'Thursday' ? item.subject : ''}</td>
           <td>${item.day === 'Friday' ? item.subject : ''}</td>
+          <td>
+            <button onclick="editSchedule(${index})">Edit</button>
+            <button onclick="deleteSchedule(${index})">Delete</button>
+          </td>
         </tr>`).join('');
     }
 
@@ -281,61 +309,99 @@
       const time = document.getElementById('timeInput').value;
       const day = document.getElementById('dayInput').value;
       const subject = document.getElementById('subjectInput').value;
+      if (time && day && subject) {
+        const schedule = JSON.parse(localStorage.getItem('schedule')) || [];
+        schedule.push({ time, day, subject });
+        localStorage.setItem('schedule', JSON.stringify(schedule));
+        loadSchedule();
+      }
+    }
+
+    function editSchedule(index) {
       const schedule = JSON.parse(localStorage.getItem('schedule')) || [];
-      schedule.push({ time, day, subject });
+      const entry = schedule[index];
+      document.getElementById('timeInput').value = entry.time;
+      document.getElementById('dayInput').value = entry.day;
+      document.getElementById('subjectInput').value = entry.subject;
+      deleteSchedule(index);
+    }
+
+    function deleteSchedule(index) {
+      const schedule = JSON.parse(localStorage.getItem('schedule')) || [];
+      schedule.splice(index, 1);
       localStorage.setItem('schedule', JSON.stringify(schedule));
-      document.getElementById('timeInput').value = '';
-      document.getElementById('dayInput').value = '';
-      document.getElementById('subjectInput').value = '';
       loadSchedule();
     }
 
     // Notes
-    let currentCategory = 'Personal';
-
-    function selectCategory(category) {
-      currentCategory = category;
-      loadNotes();
-    }
-
     function loadNotes() {
       const notesList = document.getElementById('notesList');
-      const notes = JSON.parse(localStorage.getItem(`notes_${currentCategory}`)) || [];
-      notesList.innerHTML = notes.map((note, index) => `
-        <li>
-          <p>${note.text}</p>
-          <img src="${note.media}" alt="Note Media" style="max-width:100%;">
-          <button onclick="deleteNote(${index})">Delete</button>
-        </li>`).join('');
+      const notes = JSON.parse(localStorage.getItem('notes')) || [];
+      notesList.innerHTML = notes
+        .filter(note => note.category === selectedCategory)
+        .map((note, index) => `
+          <li>
+            <div>
+              <p>${note.text}</p>
+              ${note.media ? `<img src="${note.media}" alt="Note Media" style="max-width:100%;">` : ''}
+            </div>
+            <div>
+              <button onclick="editNote(${index})">Edit</button>
+              <button onclick="deleteNote(${index})">Delete</button>
+            </div>
+          </li>`).join('');
     }
 
     function saveNote() {
       const text = quill.root.innerHTML.trim();
       const mediaInput = document.getElementById('noteMedia').files[0];
+      const notes = JSON.parse(localStorage.getItem('notes')) || [];
       const reader = new FileReader();
-      const notes = JSON.parse(localStorage.getItem(`notes_${currentCategory}`)) || [];
-      if (mediaInput) {
-        reader.onload = () => {
-          notes.push({ text, media: reader.result });
-          localStorage.setItem(`notes_${currentCategory}`, JSON.stringify(notes));
-          quill.root.innerHTML = '';
-          document.getElementById('noteMedia').value = '';
-          loadNotes();
-        };
-        reader.readAsDataURL(mediaInput);
-      } else {
-        notes.push({ text, media: null });
-        localStorage.setItem(`notes_${currentCategory}`, JSON.stringify(notes));
-        quill.root.innerHTML = '';
+      reader.onload = () => {
+        notes.push({ text, media: reader.result, category: selectedCategory });
+        localStorage.setItem('notes', JSON.stringify(notes));
         loadNotes();
+        quill.root.innerHTML = '';
+        document.getElementById('noteMedia').value = '';
+      };
+      if (mediaInput) reader.readAsDataURL(mediaInput);
+      else {
+        notes.push({ text, media: null, category: selectedCategory });
+        localStorage.setItem('notes', JSON.stringify(notes));
+        loadNotes();
+        quill.root.innerHTML = '';
+        document.getElementById('noteMedia').value = '';
       }
     }
 
     function deleteNote(index) {
-      const notes = JSON.parse(localStorage.getItem(`notes_${currentCategory}`)) || [];
+      const notes = JSON.parse(localStorage.getItem('notes')) || [];
       notes.splice(index, 1);
-      localStorage.setItem(`notes_${currentCategory}`, JSON.stringify(notes));
+      localStorage.setItem('notes', JSON.stringify(notes));
       loadNotes();
+    }
+
+    function editNote(index) {
+      const notes = JSON.parse(localStorage.getItem('notes')) || [];
+      const note = notes[index];
+      quill.root.innerHTML = note.text;
+      deleteNote(index);
+    }
+
+    function showCategory(category) {
+      selectedCategory = category;
+      loadNotes();
+    }
+
+    function addCategory() {
+      const category = prompt("Enter new category name:");
+      if (category) {
+        const categories = document.getElementById('categories');
+        const button = document.createElement('button');
+        button.textContent = category;
+        button.onclick = () => showCategory(category);
+        categories.appendChild(button);
+      }
     }
   </script>
 </body>
