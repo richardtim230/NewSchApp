@@ -6,12 +6,14 @@
   <title>Student Support System</title>
   <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
   <style>
+    /* General Styles */
     body {
       font-family: 'Arial', sans-serif;
       margin: 0;
       padding: 0;
       background-color: #f5f7fa;
       color: #333;
+      overflow-x: hidden;
     }
 
     header {
@@ -27,7 +29,7 @@
     }
 
     .container {
-      max-width: 1200px;
+      max-width: 1000px;
       margin: 20px auto;
       padding: 20px;
       background: white;
@@ -39,31 +41,6 @@
       color: #004d99;
       border-bottom: 2px solid #004d99;
       padding-bottom: 5px;
-    }
-
-    .table-wrapper {
-      max-height: 300px;
-      overflow-x: auto;
-      overflow-y: hidden;
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      margin-bottom: 10px;
-    }
-
-    table {
-      border-collapse: collapse;
-      width: 100%;
-    }
-
-    th, td {
-      border: 1px solid #ddd;
-      padding: 10px;
-      text-align: center;
-    }
-
-    th {
-      background-color: #004d99;
-      color: white;
     }
 
     button {
@@ -79,22 +56,66 @@
       background-color: #003366;
     }
 
+    /* Class Scheduler */
+    #schedule {
+      margin-bottom: 20px;
+    }
+
+    .table-wrapper {
+      overflow-x: auto;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      margin-bottom: 10px;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      min-width: 800px; /* Ensures no horizontal overflow */
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 10px;
+      text-align: center;
+      vertical-align: top;
+    }
+
+    th {
+      background-color: #004d99;
+      color: white;
+    }
+
+    /* Notes Section */
     #noteEditor {
       border: 1px solid #ddd;
       margin-bottom: 10px;
       height: 200px;
     }
 
+    ul#notesList {
+      list-style-type: none;
+      padding: 0;
+    }
+
+    ul#notesList li {
+      background: #f5f5f5;
+      margin: 10px 0;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+
+    /* Calendar */
     #calendar {
       display: grid;
       grid-template-columns: repeat(7, 1fr);
       grid-gap: 2px;
-      text-align: center;
       overflow-y: auto;
-      max-height: 250px;
+      max-height: 300px;
       padding: 10px;
       border: 1px solid #ddd;
-      border-radius: 10px;
+      border-radius: 8px;
       background: #fafafa;
     }
 
@@ -103,6 +124,7 @@
       font-size: 0.9rem;
       background: #e3e8f0;
       border: 1px solid #ccc;
+      text-align: center;
     }
 
     .day.today {
@@ -111,6 +133,16 @@
       font-weight: bold;
     }
 
+    /* Timer */
+    .timer {
+      background: #f5f5f5;
+      padding: 10px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+
+    /* Popup */
     .popup {
       position: fixed;
       top: 0;
@@ -118,12 +150,11 @@
       width: 100%;
       height: 100%;
       background: rgba(0, 0, 0, 0.8);
-      display: flex;
+      display: none;
       justify-content: center;
       align-items: center;
       z-index: 9999;
       color: white;
-      display: none;
     }
 
     .popup-content {
@@ -143,14 +174,6 @@
       display: block;
       margin: 10px 0;
     }
-
-    .timer {
-      background: #f5f5f5;
-      padding: 10px;
-      border-radius: 8px;
-      margin-bottom: 10px;
-      text-align: center;
-    }
   </style>
 </head>
 <body>
@@ -160,15 +183,6 @@
   </header>
 
   <div class="container">
-    <!-- Welcome Message -->
-    <div id="welcomeMessage" class="popup">
-      <div class="popup-content">
-        <h3>Welcome to the Student Support System!</h3>
-        <p id="studentName"></p>
-        <button onclick="closePopup()">Close</button>
-      </div>
-    </div>
-
     <!-- Class Scheduler -->
     <div id="schedule">
       <h3>Class Scheduler</h3>
@@ -184,9 +198,7 @@
               <th>Friday</th>
             </tr>
           </thead>
-          <tbody id="timetableBody">
-            <!-- Timetable rows will be dynamically added here -->
-          </tbody>
+          <tbody id="timetableBody"></tbody>
         </table>
       </div>
       <h4>Add Schedule</h4>
@@ -227,7 +239,7 @@
     <!-- Timer Section -->
     <div id="timerSection">
       <div class="timer">
-        Auto Timer: <span id="autoTime">0</span> mins : <span id="autoSeconds">0</span> secs
+        Auto Timer: <span id="autoMinutes">0</span> mins : <span id="autoSeconds">0</span> secs
       </div>
       <div class="timer">
         Manual Timer: <span id="manualMinutes">0</span> mins : <span id="manualSeconds">0</span> secs
@@ -240,97 +252,81 @@
   <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
   <script>
     const quill = new Quill('#noteEditor', { theme: 'snow' });
-    const weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-    // Welcome Popup
     document.addEventListener("DOMContentLoaded", () => {
-      let studentName = localStorage.getItem("studentName");
-      if (!studentName) {
-        studentName = prompt("Enter your full name:");
-        localStorage.setItem("studentName", studentName);
-      }
-      document.getElementById("studentName").textContent = `Welcome, ${studentName}!`;
-      document.getElementById("welcomeMessage").style.display = "flex";
-
       updateCalendar();
       loadTimetable();
       loadNotes();
     });
 
-    function closePopup() {
-      document.getElementById("welcomeMessage").style.display = "none";
-    }
-
-    // Calendar
-    function updateCalendar() {
-      const calendar = document.getElementById("calendar");
-      const today = new Date().getDay();
-      weekdays.forEach((day, index) => {
-        const dayDiv = document.createElement("div");
-        dayDiv.className = "day" + (index === today ? " today" : "");
-        dayDiv.textContent = day;
-        calendar.appendChild(dayDiv);
-      });
-    }
-
     // Timetable
     function loadTimetable() {
-      const timetableBody = document.getElementById("timetableBody");
       const timetable = JSON.parse(localStorage.getItem("timetable")) || [];
-      timetableBody.innerHTML = '';
-      timetable.forEach(({ time, day, activity }, index) => {
-        const row = document.createElement("tr");
-        row.innerHTML = `
-          <td>${time}</td>
-          <td>${day}</td>
-          <td>${activity}</td>
+      const timetableBody = document.getElementById("timetableBody");
+      timetableBody.innerHTML = timetable.map((entry, i) => `
+        <tr>
+          <td>${entry.time}</td>
+          <td>${entry.Monday || ''}</td>
+          <td>${entry.Tuesday || ''}</td>
+          <td>${entry.Wednesday || ''}</td>
+          <td>${entry.Thursday || ''}</td>
+          <td>${entry.Friday || ''}</td>
           <td>
-            <button onclick="editTimetable(${index})">Edit</button>
-            <button onclick="deleteTimetable(${index})">Delete</button>
-          </td>`;
-        timetableBody.appendChild(row);
-      });
+            <button onclick="editTimetable(${i})">Edit</button>
+            <button onclick="deleteTimetable(${i})">Delete</button>
+          </td>
+        </tr>`).join('');
     }
 
     function addTimetableEntry() {
       const time = document.getElementById("timeInput").value;
       const day = document.getElementById("dayInput").value;
       const activity = document.getElementById("activityInput").value;
+
       const timetable = JSON.parse(localStorage.getItem("timetable")) || [];
-      timetable.push({ time, day, activity });
+      const entry = timetable.find(e => e.time === time) || { time };
+      entry[day] = activity;
+
+      if (!timetable.some(e => e.time === time)) timetable.push(entry);
+      localStorage.setItem("timetable", JSON.stringify(timetable));
+      loadTimetable();
+    }
+
+    function deleteTimetable(index) {
+      const timetable = JSON.parse(localStorage.getItem("timetable")) || [];
+      timetable.splice(index, 1);
       localStorage.setItem("timetable", JSON.stringify(timetable));
       loadTimetable();
     }
 
     // Notes
     function loadNotes() {
-      const notesList = document.getElementById("notesList");
       const notes = JSON.parse(localStorage.getItem("notes")) || [];
-      notesList.innerHTML = "";
-      notes.forEach((note, index) => {
-        const noteItem = document.createElement("li");
-        noteItem.innerHTML = `
-          <div>${note.text.slice(0, 100)}</div>
-          <img src="${note.image}" alt="Uploaded Media">
-          <button onclick="showNotePopup(${index})">View</button>
-          <button onclick="deleteNote(${index})">Delete</button>`;
-        notesList.appendChild(noteItem);
-      });
+      const notesList = document.getElementById("notesList");
+      notesList.innerHTML = notes.map((note, i) => `
+        <li>
+          <p>${note.text.slice(0, 50)}</p>
+          ${note.image ? `<img src="${note.image}" alt="Note Image">` : ''}
+          <button onclick="viewNotePopup(${i})">View</button>
+          <button onclick="deleteNote(${i})">Delete</button>
+        </li>`).join('');
     }
 
     function saveNote() {
-      const noteText = quill.root.innerHTML;
-      const notes = JSON.parse(localStorage.getItem("notes")) || [];
+      const text = quill.root.innerHTML;
       const file = document.getElementById("mediaUpload").files[0];
+      const notes = JSON.parse(localStorage.getItem("notes")) || [];
       const reader = new FileReader();
+
       reader.onload = () => {
-        notes.push({ text: noteText, image: reader.result });
+        notes.push({ text, image: reader.result });
         localStorage.setItem("notes", JSON.stringify(notes));
         loadNotes();
       };
+
       if (file) reader.readAsDataURL(file);
       else {
-        notes.push({ text: noteText });
+        notes.push({ text });
         localStorage.setItem("notes", JSON.stringify(notes));
         loadNotes();
       }
@@ -343,13 +339,11 @@
       loadNotes();
     }
 
-    function showNotePopup(index) {
+    function viewNotePopup(index) {
       const notes = JSON.parse(localStorage.getItem("notes")) || [];
       const note = notes[index];
-      const popupContent = document.getElementById("popupNoteContent");
-      popupContent.innerHTML = `
-        <div>${note.text}</div>
-        <img src="${note.image}" alt="Uploaded Media">`;
+      const content = document.getElementById("popupNoteContent");
+      content.innerHTML = `<p>${note.text}</p>` + (note.image ? `<img src="${note.image}">` : '');
       document.getElementById("notePopup").style.display = "flex";
     }
 
@@ -357,33 +351,40 @@
       document.getElementById("notePopup").style.display = "none";
     }
 
+    // Calendar
+    function updateCalendar() {
+      const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+      const todayIndex = new Date().getDay() - 1; // Monday as start
+      const calendar = document.getElementById("calendar");
+      calendar.innerHTML = days.map((day, i) => `<div class="day ${i === todayIndex ? 'today' : ''}">${day}</div>`).join('');
+    }
+
     // Timer
-    let autoTimerMinutes = 0, autoTimerSeconds = 0;
+    let autoSeconds = 0, autoMinutes = 0, manualSeconds = 0, manualMinutes = 0, manualTimer;
     setInterval(() => {
-      autoTimerSeconds++;
-      if (autoTimerSeconds === 60) {
-        autoTimerSeconds = 0;
-        autoTimerMinutes++;
+      autoSeconds++;
+      if (autoSeconds === 60) {
+        autoSeconds = 0;
+        autoMinutes++;
       }
-      document.getElementById("autoTime").textContent = autoTimerMinutes;
-      document.getElementById("autoSeconds").textContent = autoTimerSeconds;
+      document.getElementById("autoSeconds").textContent = autoSeconds;
+      document.getElementById("autoMinutes").textContent = autoMinutes;
     }, 1000);
 
-    let manualTimerMinutes = 0, manualTimerSeconds = 0, manualInterval;
     function startManualTimer() {
-      manualInterval = setInterval(() => {
-        manualTimerSeconds++;
-        if (manualTimerSeconds === 60) {
-          manualTimerSeconds = 0;
-          manualTimerMinutes++;
+      manualTimer = setInterval(() => {
+        manualSeconds++;
+        if (manualSeconds === 60) {
+          manualSeconds = 0;
+          manualMinutes++;
         }
-        document.getElementById("manualMinutes").textContent = manualTimerMinutes;
-        document.getElementById("manualSeconds").textContent = manualTimerSeconds;
+        document.getElementById("manualSeconds").textContent = manualSeconds;
+        document.getElementById("manualMinutes").textContent = manualMinutes;
       }, 1000);
     }
 
     function stopManualTimer() {
-      clearInterval(manualInterval);
+      clearInterval(manualTimer);
     }
   </script>
 </body>
