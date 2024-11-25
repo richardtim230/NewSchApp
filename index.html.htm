@@ -797,6 +797,59 @@ function loadCategories() {
         alert('Incorrect secret code. Please try again.');
       }
   }
+  
+  document.addEventListener('DOMContentLoaded', () => {
+    // Request Notification Permission
+    if (Notification.permission !== 'granted') {
+      Notification.requestPermission();
+    }
+
+    // Start the reminder system
+    startReminderSystem();
+  });
+
+  function startReminderSystem() {
+    setInterval(() => {
+      checkForReminders();
+    }, 60 * 1000); // Check every minute
+  }
+
+  function checkForReminders() {
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes(); // Current time in minutes since midnight
+    const schedule = JSON.parse(localStorage.getItem('schedule')) || [];
+
+    schedule.forEach((classSchedule) => {
+      const [hour, minutePart] = classSchedule.time.split(':');
+      const minutes = parseInt(minutePart.split(' ')[0]);
+      const isPM = classSchedule.time.includes('PM') && hour !== '12';
+      const classTimeInMinutes = (parseInt(hour) + (isPM ? 12 : 0)) * 60 + minutes;
+
+      // Check if the current time is 10 minutes before the class time
+      if (classTimeInMinutes - currentMinutes === 10) {
+        sendNotification(`Reminder: ${getClassDetails(classSchedule)}`);
+      }
+    });
+  }
+
+  function sendNotification(message) {
+    if (Notification.permission === 'granted') {
+      new Notification('Class Reminder', {
+        body: message,
+        icon: 'https://oauife.edu.ng/logo.png', // Example icon
+      });
+    } else {
+      console.warn('Notifications are disabled or permission denied.');
+    }
+  }
+
+  function getClassDetails(classSchedule) {
+    // Combine subject and day for a better notification message
+    const subject = Object.values(classSchedule.days).find((sub) => sub) || 'Unknown Subject';
+    const day = Object.keys(classSchedule.days).find((key) => classSchedule.days[key] === subject) || 'Unknown Day';
+    return `${subject} (${day})`;
+  }
+
   </script>
 </body>
 </html>
