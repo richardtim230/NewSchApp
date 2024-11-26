@@ -224,6 +224,103 @@ h3 {
 
     }
 
+.chat-icon {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: #007bff;
+  color: white;
+  font-size: 24px;
+  padding: 15px;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.chat-container {
+  width: 400px;
+  position: fixed;
+  bottom: 80px;
+  right: 20px;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  display: none;
+  flex-direction: column;
+}
+
+.chat-header {
+  background: #007bff;
+  color: #fff;
+  padding: 15px;
+  text-align: center;
+  position: relative;
+}
+
+.close-chat {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.chat-body {
+  padding: 15px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: #f9f9f9;
+}
+
+.message {
+  margin-bottom: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  max-width: 80%;
+}
+
+.message.user {
+  background: #e0e0ff;
+  align-self: flex-end;
+}
+
+.message.admin {
+  background: #f1f1f1;
+  align-self: flex-start;
+}
+
+.chat-footer {
+  display: flex;
+  padding: 10px;
+  background: #f1f1f1;
+  border-top: 1px solid #e0e0e0;
+}
+
+#live-chat-input {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid #e0e0e0;
+  border-radius: 5px;
+}
+
+#send-button {
+  margin-left: 10px;
+  padding: 10px 15px;
+  border: none;
+  background: #007bff;
+  color: white;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+#send-button:hover {
+  background: #0056b3;
+}
+
 .table-wrapper {
   overflow-x: auto;
   border: 1px solid #ddd;
@@ -384,6 +481,21 @@ s0.parentNode.insertBefore(s1,s0);
         <button onclick="closeWelcomePopup()">Close</button>
       </div>
     </div>
+      <div class="chat-icon" id="chat-icon">💬</div>
+
+  <div class="chat-container" id="chat-container">
+    <header class="chat-header">
+      <h2>Student Help Center</h2>
+      <button class="close-chat" id="close-chat">&times;</button>
+    </header>
+    <div class="chat-body" id="chat-body">
+      <!-- Chat messages will dynamically appear here -->
+    </div>
+    <footer class="chat-footer">
+      <input id="live-chat-input" type="text" placeholder="Ask your question here...">
+      <button id="send-button">Chat</button>
+    </footer>
+  </div>
     
 <button class="navigation-toggle" onclick="toggleNavigation()">☰ Open Menu</button>
 
@@ -1185,7 +1297,112 @@ function loadCategories() {
     const subject = Object.values(classSchedule.days).find((sub) => sub) || 'Unknown Subject';
     const day = Object.keys(classSchedule.days).find((key) => classSchedule.days[key] === subject) || 'Unknown Day';
     return `${subject} (${day})`;
+    }
+    // Predefined Questions and Answers
+const questionsAndAnswers = [
+  {
+    question: "What is this platform about?",
+    answer: "This platform helps students organize schedules, study better, and manage notes effectively.",
+  },
+  {
+    question: "How to upload my class schedule?",
+    answer: "Send your schedule draft to 09155127634 via WhatsApp.",
+  },
+  {
+    question: "How can I organize my notes?",
+    answer: "Use categories for subjects, keep them neat, and review them regularly.",
+  },
+  {
+    question: "How to create a study schedule?",
+    answer: "Prioritize subjects, allocate specific times, and include breaks for better focus.",
+  },
+];
+
+// Elements
+const chatContainer = document.getElementById("chat-container");
+const chatIcon = document.getElementById("chat-icon");
+const closeChatButton = document.getElementById("close-chat");
+const chatBody = document.getElementById("chat-body");
+const liveChatInput = document.getElementById("live-chat-input");
+const sendButton = document.getElementById("send-button");
+
+// Open/close chat
+chatIcon.addEventListener("click", () => {
+  chatContainer.style.display = chatContainer.style.display === "flex" ? "none" : "flex";
+});
+
+closeChatButton.addEventListener("click", () => {
+  chatContainer.style.display = "none";
+});
+
+// Display messages
+const displayMessage = (message, sender) => {
+  const messageDiv = document.createElement("div");
+  messageDiv.className = `message ${sender}`;
+  messageDiv.textContent = message;
+  chatBody.appendChild(messageDiv);
+  chatBody.scrollTop = chatBody.scrollHeight; // Scroll to the latest message
+};
+
+// Fuzzy matching to find predefined answers
+const getPredefinedAnswer = (userInput) => {
+  const threshold = 0.5; // Matching sensitivity
+  let bestMatch = null;
+  let highestScore = 0;
+
+  questionsAndAnswers.forEach((item) => {
+    const similarityScore = stringSimilarity(userInput.toLowerCase(), item.question.toLowerCase());
+    if (similarityScore > highestScore && similarityScore >= threshold) {
+      highestScore = similarityScore;
+      bestMatch = item;
+    }
+  });
+
+  return bestMatch ? bestMatch.answer : null;
+};
+
+// Simple string similarity function
+const stringSimilarity = (str1, str2) => {
+  const commonLength = str1.split("").filter((char) => str2.includes(char)).length;
+  return (2 * commonLength) / (str1.length + str2.length);
+};
+
+// Fetch answer from Wikipedia API as fallback
+const fetchWikipediaAnswer = async (query) => {
+  const url = `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(query)}&limit=1&format=json&origin=*`;
+
+  try {
+    const response = await fetch(url);
+    const data = await response.json();
+    if (data[2] && data[2].length > 0) {
+      return data[2][0]; // First description
+    } else {
+      return "Sorry, I couldn't find relevant information.";
+    }
+  } catch (error) {
+    console.error("Error fetching Wikipedia answer:", error);
+    return "Sorry, something went wrong while fetching an answer.";
   }
+};
+
+// Handle user input
+sendButton.addEventListener("click", async () => {
+  const userMessage = liveChatInput.value.trim();
+  if (userMessage) {
+    displayMessage(userMessage, "user");
+
+    const predefinedAnswer = getPredefinedAnswer(userMessage);
+    if (predefinedAnswer) {
+      displayMessage(predefinedAnswer, "admin");
+    } else {
+      const dynamicAnswer = await fetchWikipediaAnswer(userMessage);
+      displayMessage(dynamicAnswer, "admin");
+    }
+
+    liveChatInput.value = "";
+  }
+});
+
 
   </script>
 </body>
