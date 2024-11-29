@@ -1,7 +1,7 @@
 const CACHE_NAME = 'student-support-system-v1';
 const FILES_TO_CACHE = [
   '/',
-  '/index.html.htm',
+  '/index.html',
   '/style.css',
   '/script.js',
   'https://cdn.quilljs.com/1.3.7/quill.min.js',
