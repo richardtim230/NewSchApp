@@ -1379,51 +1379,25 @@ function toggleBrowser() {
   browser.style.display = browser.style.display === "flex" ? "none" : "flex";
 }
 
-// Load a URL into the iframe, or open in a new tab if unsupported
-function loadURL() {
-  const urlInput = document.getElementById("url-input").value.trim();
-  const browserFrame = document.getElementById("browser-frame");
-
-  if (urlInput) {
-    const proxy = "https://api.allorigins.win/get?url=";
-    const searchEngine = "https://duckduckgo.com/?q=";
-    const isURL = urlInput.match(/^(https?:\/\/|www\.)[^\s]+$/);
-
-    const url = isURL ? (urlInput.startsWith("http") ? urlInput : `https://${urlInput}`) : null;
-
-    if (url) {
-      // Check if the site allows iframe embedding
-      fetch(proxy + encodeURIComponent(url), { method: "HEAD" })
-        .then((response) => {
-          if (response.ok) {
-            browserFrame.src = proxy + encodeURIComponent(url);
-            localStorage.setItem("lastVisited", url);
-          } else {
-            alert("This website cannot be embedded. Opening in a new tab.");
-            window.open(url, "_blank");
-          }
-        })
-        .catch(() => {
-          alert("Failed to load the URL. Opening in a new tab.");
-          window.open(url, "_blank");
-        });
-    } else {
-      // Redirect to search engine if it's not a URL
-      browserFrame.src = searchEngine + encodeURIComponent(urlInput);
-      localStorage.setItem("lastVisited", searchEngine + encodeURIComponent(urlInput));
-    }
-  } else {
-    alert("Please enter a valid URL or search query.");
-  }
-}
-
 // Load the home URL into the iframe
 function goHome() {
   const homeURL = "https://en.wikipedia.org/wiki/Web_browser";
   const proxy = "https://api.allorigins.win/get?url=";
-  document.getElementById("browser-frame").src = proxy + encodeURIComponent(homeURL);
-  document.getElementById("url-input").value = homeURL;
-  localStorage.setItem("lastVisited", homeURL);
+
+  fetch(proxy + encodeURIComponent(homeURL))
+    .then((response) => response.json())
+    .then((data) => {
+      if (data.contents) {
+        const blob = new Blob([data.contents], { type: "text/html" });
+        const blobURL = URL.createObjectURL(blob);
+        document.getElementById("browser-frame").src = blobURL;
+        document.getElementById("url-input").value = homeURL;
+        localStorage.setItem("lastVisited", homeURL);
+      }
+    })
+    .catch(() => {
+      alert("Failed to load the home page.");
+    });
 }
 
 // Restore last visited URL from localStorage on page load
@@ -1432,9 +1406,21 @@ window.onload = function () {
   const proxy = "https://api.allorigins.win/get?url=";
   const initialURL = lastVisited || "https://en.wikipedia.org/wiki/Web_browser";
 
-  document.getElementById("browser-frame").src = proxy + encodeURIComponent(initialURL);
-  document.getElementById("url-input").value = initialURL;
+  fetch(proxy + encodeURIComponent(initialURL))
+    .then((response) => response.json())
+    .then((data) => {
+      if (data.contents) {
+        const blob = new Blob([data.contents], { type: "text/html" });
+        const blobURL = URL.createObjectURL(blob);
+        document.getElementById("browser-frame").src = blobURL;
+        document.getElementById("url-input").value = initialURL;
+      }
+    })
+    .catch(() => {
+      alert("Failed to restore the last visited page.");
+    });
 };
+
 
 
     
