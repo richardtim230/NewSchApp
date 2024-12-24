@@ -348,6 +348,19 @@ ul li {
   pointer-events: none; /* Prevent interaction with elements */
 }
 
+    .welcomePopup-content {
+  background: white;
+  color: #333;
+  padding: 20px;
+  border-radius: 10px;
+  max-width: 600px;
+  width: 90%;
+  text-align: left;
+  overflow-y: auto;
+  max-height: 80%;
+  
+}
+
 .popup-content {
   background: white;
   color: #333;
@@ -360,7 +373,16 @@ ul li {
   overflow-y: auto;
   max-height: 80%;
   flex: 1;
+  z-index: 1;
+  position: relative;
 }
+
+#drawingCanvas {
+  z-index: 2;
+  pointer-events: none; /* Initially disabled until drawing is enabled */
+  border: 1px solid transparent;
+}
+
 
 .popup-footer {
   display: flex;
@@ -530,18 +552,21 @@ ul li {
     </div>
     <ul id="notesList"></ul>
 
-    
+  
 <!-- Note Popup -->
 <div id="notePopup" class="popup">
-  <div class="popup-content">
+  <div class="popup-content" id="popupContent">
     <h3 id="noteTitle"></h3>
-    <div id="noteContent"></div>
+    <div id="noteContent" style="position: relative;"></div>
+    <canvas id="drawingCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none;"></canvas>
     <img id="noteMediaPreview" alt="" style="max-width: 100%; display: none;">
   </div>
   <div class="popup-footer">
     <label for="highlightColor">Highlight Color:</label>
     <input type="color" id="highlightColor" value="#FFFF00">
-    <button onclick="enableHighlighting()">Enable Highlighting</button>
+    <button onclick="enableTextHighlighting()">Enable Text Highlighting</button>
+    <button onclick="enableDrawing()">Enable Freehand Drawing</button>
+    <button onclick="disableDrawing()">Disable Freehand Drawing</button>
     <button onclick="saveHighlightedText()">Save Highlights</button>
     <button id="previousNoteButton" onclick="navigateNote(-1)">Previous</button>
     <button id="nextNoteButton" onclick="navigateNote(1)">Next</button>
@@ -1194,12 +1219,12 @@ function navigateNote(direction) {
     mediaPreview.style.display = 'none';
   }
 }
-function enableHighlighting() {
+function enableTextHighlighting() {
   const highlightColor = document.getElementById('highlightColor').value;
 
   document.getElementById('noteContent').onmouseup = () => {
     const selectedText = window.getSelection();
-    if (!selectedText.rangeCount) return;
+    if (!selectedText.rangeCount || selectedText.toString().trim() === '') return;
 
     const range = selectedText.getRangeAt(0);
     const span = document.createElement('span');
@@ -1209,19 +1234,104 @@ function enableHighlighting() {
     range.deleteContents();
     range.insertNode(span);
 
+    // Clear the selection
     window.getSelection().removeAllRanges();
   };
 }
-function saveHighlightedText() {
-  if (currentEditingNote !== null) {
-    const notes = JSON.parse(localStorage.getItem('notes')) || [];
-    const noteContent = document.getElementById('noteContent').innerHTML; // Save with highlights
-    notes[currentEditingNote].text = noteContent;
-    localStorage.setItem('notes', JSON.stringify(notes));
-    alert('Highlights saved successfully!');
+
+
+let isDrawing = false;
+
+function enableDrawing() {
+  const canvas = document.getElementById('drawingCanvas');
+  const ctx = canvas.getContext('2d');
+  const highlightColor = document.getElementById('highlightColor').value;
+
+  // Enable canvas for drawing
+  canvas.style.display = 'block';
+  canvas.style.pointerEvents = 'auto';
+
+  // Set drawing styles
+  ctx.strokeStyle = highlightColor;
+  ctx.lineWidth = 5;
+  ctx.lineCap = 'round';
+
+  canvas.addEventListener('mousedown', startDrawing);
+  canvas.addEventListener('mousemove', draw);
+  canvas.addEventListener('mouseup', stopDrawing);
+  canvas.addEventListener('mouseleave', stopDrawing);
+
+  function startDrawing(event) {
+    isDrawing = true;
+    ctx.beginPath();
+    ctx.moveTo(event.offsetX, event.offsetY);
+  }
+
+  function draw(event) {
+    if (!isDrawing) return;
+    ctx.lineTo(event.offsetX, event.offsetY);
+    ctx.stroke();
+  }
+
+  function stopDrawing() {
+    isDrawing = false;
+    ctx.closePath();
   }
 }
 
+function disableDrawing() {
+  const canvas = document.getElementById('drawingCanvas');
+  canvas.style.pointerEvents = 'none';
+  alert('Freehand drawing disabled. Highlights are saved on the canvas.');
+}
+
+    
+function saveHighlightedText() {
+  if (currentEditingNote !== null) {
+    const notes = JSON.parse(localStorage.getItem('notes')) || [];
+    const noteContent = document.getElementById('noteContent').innerHTML; // Save text highlights
+
+    // Save the canvas content as an image
+    const canvas = document.getElementById('drawingCanvas');
+    const canvasData = canvas.toDataURL();
+
+    notes[currentEditingNote].text = noteContent;
+    notes[currentEditingNote].drawing = canvasData; // Store the canvas drawing
+    localStorage.setItem('notes', JSON.stringify(notes));
+
+    alert('Highlights and drawings saved successfully!');
+  }
+}
+
+
+function showNotePopup(index) {
+  const notes = JSON.parse(localStorage.getItem('notes')) || [];
+  const note = notes[index];
+  document.getElementById('noteTitle').textContent = note.title;
+  document.getElementById('noteContent').innerHTML = note.text; // Show saved highlights
+
+  const canvas = document.getElementById('drawingCanvas');
+  if (note.drawing) {
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    img.onload = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
+      ctx.drawImage(img, 0, 0); // Restore saved drawing
+    };
+    img.src = note.drawing;
+  }
+
+  const mediaPreview = document.getElementById('noteMediaPreview');
+  if (note.media) {
+    mediaPreview.src = note.media;
+    mediaPreview.style.display = 'block';
+  } else {
+    mediaPreview.style.display = 'none';
+  }
+
+  currentEditingNote = index;
+  document.getElementById('notePopup').style.display = 'flex';
+}
 
 
     
