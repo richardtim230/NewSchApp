@@ -2157,7 +2157,7 @@ imgInput.onchange = function() {
 
 // --- Gemini API Integration (replace API_KEY placeholder) ---
 async function geminiChatApi(messages, imageData = null) {
-  const apiKey = "AIzaSyB6j5eYA2tEjA0u9NhR6hKkfx9UB5dpSm8"; // <<< INSERT YOUR KEY HERE
+  const apiKey = "AIzaSyBz7OlB61faUevy8cinOfTIke4Umrr5mq4"; // <<< INSERT YOUR KEY HERE
   let url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey;
   let payload = {
     contents: [
