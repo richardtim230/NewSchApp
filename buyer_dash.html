@@ -260,188 +260,235 @@
     </section>
   </main>
 
-  <script>
-    // Hamburger menu for mobile
-    document.getElementById('hamburger-btn').addEventListener('click', function() {
-      const menu = document.getElementById('mobile-menu');
-      menu.hidden = !menu.hidden;
-    });
+<script>
 
-    // Demo Data
-    const orders = [
-      {
-        id: 1024, title: "Calculus Textbook (Stewart 8th Ed.)", price: 4000, status: "Delivered",
-        seller: "Tola", date: "2025-09-10", img: "https://images.unsplash.com/photo-1510936111840-6cef99faf2a9?auto=format&fit=crop&w=500&q=80",
-        tracking: "Delivered at SUB pickup point", points: 40
-      },
-      {
-        id: 1025, title: "Samsung Galaxy A12 - 64GB", price: 38000, status: "Awaiting Pickup",
-        seller: "Emeka", date: "2025-09-12", img: "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=500&q=80",
-        tracking: "Ready for pickup at Hall 2", points: 80
-      }
-    ];
-    const wishlist = [
-      {
-        id: 2, title: "Casio FX-991EX Calculator", price: 6500, img: "https://images.unsplash.com/photo-1519125323398-675f0ddb6308?auto=format&fit=crop&w=500&q=80",
-        author: "Blessing (Sciences 200L)", category: "Gadgets"
-      },
-      {
-        id: 3, title: "Anglomoz Hostel Room - 1 Month", price: 12000, img: "https://images.unsplash.com/photo-1507089947368-19c1da9775ae?auto=format&fit=crop&w=500&q=80",
-        author: "Ayo (Law 300L)", category: "Hostel"
-      }
-    ];
-    const messages = [
-      {
-        chatId: 1, with: "Tola (Seller)", preview: "Item ready for pickup at SUB!", unread: 1,
-        messages: [
-          { from: "Tola", text: "Item ready for pickup at SUB!", time: "09:15" },
-          { from: "You", text: "Thanks! Will come today.", time: "09:17" }
-        ]
-      },
-      {
-        chatId: 2, with: "Marketplace Support", preview: "Your payment is being processed.", unread: 0,
-        messages: [
-          { from: "Support", text: "Your payment is being processed.", time: "08:45" }
-        ]
-      }
-    ];
+const BACKEND = "https://examguide.onrender.com";
+function getToken() {
+  return localStorage.token || sessionStorage.token || '';
+}
+function authHeader() {
+  return {
+    'Authorization': 'Bearer ' + getToken(),
+    'Content-Type': 'application/json'
+  };
+}
 
-    // Stats for points badge
-    document.getElementById('point-badge').textContent = orders.reduce((a, b) => a + b.points, 0);
-    document.getElementById('point-badge-mobile').textContent = orders.reduce((a, b) => a + b.points, 0);
-    document.getElementById('rewardTotal').textContent = orders.reduce((a, b) => a + b.points, 0);
+// --- ORDERS ---
+let orders = [];
+async function fetchOrders() {
+ 
+  try {
+    const res = await fetch(BACKEND + "/api/buyer-dashboard/orders", {headers: authHeader()});
+    if (res.ok) {
+      orders = await res.json();
+      renderOrders();
+      updatePoints();
+    } else {
+      document.getElementById('ordersList').innerHTML = `<div class="text-red-500 py-8 text-center">Failed to load orders.</div>`;
+    }
+  } catch {
+    document.getElementById('ordersList').innerHTML = `<div class="text-red-500 py-8 text-center">Failed to load orders.</div>`;
+  }
+}
 
-    // Orders List
-    function renderOrders() {
-      const el = document.getElementById('ordersList');
-      el.innerHTML = "";
-      orders.forEach(order => {
-        el.innerHTML += `
-        <div class="order-card-gradient rounded-2xl shadow p-4 flex flex-col md:flex-row gap-4 items-center border border-yellow-200">
-          <div class="relative w-full md:w-48 flex-shrink-0 flex items-center justify-center">
-            <img src="${order.img}" alt="${order.title}" class="h-32 w-full object-cover rounded-lg shadow" />
-            <span class="absolute top-2 right-2 glassy-gold px-2 py-1 rounded font-bold text-xs text-blue-900 shadow">${order.status}</span>
+function renderOrders() {
+  const el = document.getElementById('ordersList');
+  if (!orders.length) {
+    el.innerHTML = `<div class="text-gray-500 text-center py-8">You have no orders yet.</div>`;
+    return;
+  }
+  el.innerHTML = "";
+  orders.forEach(order => {
+    el.innerHTML += `
+      <div class="order-card-gradient rounded-2xl shadow p-4 flex flex-col md:flex-row gap-4 items-center border border-yellow-200">
+        <div class="relative w-full md:w-48 flex-shrink-0 flex items-center justify-center">
+          <img src="${order.img || order.imageUrl || ''}" alt="${order.title}" class="h-32 w-full object-cover rounded-lg shadow" />
+          <span class="absolute top-2 right-2 glassy-gold px-2 py-1 rounded font-bold text-xs text-blue-900 shadow">${order.status || ''}</span>
+        </div>
+        <div class="flex-1 flex flex-col justify-between py-2">
+          <div>
+            <div class="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs mb-2">${order.seller || ''}</div>
+            <h3 class="font-bold text-lg md:text-xl text-blue-900 mb-1">${order.title || ''}</h3>
+            <div class="text-sm text-gray-700 mb-2">${order.tracking || ''}</div>
           </div>
-          <div class="flex-1 flex flex-col justify-between py-2">
-            <div>
-              <div class="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs mb-2">${order.seller}</div>
-              <h3 class="font-bold text-lg md:text-xl text-blue-900 mb-1">${order.title}</h3>
-              <div class="text-sm text-gray-700 mb-2">${order.tracking}</div>
-            </div>
-            <div class="flex items-center justify-between mt-2">
-              <span class="text-xl font-bold text-yellow-600">₦${order.price.toLocaleString()}</span>
-              <a href="#" class="text-yellow-600 font-semibold text-sm hover:underline">Order Details</a>
-            </div>
+          <div class="flex items-center justify-between mt-2">
+            <span class="text-xl font-bold text-yellow-600">₦${(order.price || 0).toLocaleString()}</span>
+            <a href="#" class="text-yellow-600 font-semibold text-sm hover:underline">Order Details</a>
           </div>
         </div>
-        `;
-      });
-    }
-    renderOrders();
+      </div>
+    `;
+  });
+}
 
-    // Wishlist List
-    function renderWishlist() {
-      const el = document.getElementById('wishlistList');
-      el.innerHTML = "";
-      wishlist.forEach(item => {
-        el.innerHTML += `
-        <div class="wishlist-card-gradient rounded-2xl shadow p-4 flex flex-col md:flex-row gap-4 items-center border border-blue-200">
-          <div class="relative w-full md:w-48 flex-shrink-0 flex items-center justify-center">
-            <img src="${item.img}" alt="${item.title}" class="h-32 w-full object-cover rounded-lg shadow" />
-            <button class="absolute top-2 right-2 wishlist-heart rounded-full p-2 focus:outline-none" aria-label="Remove from wishlist">
-              <svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z"></path>
-              </svg>
-            </button>
+// --- WISHLIST ---
+let wishlist = [];
+async function fetchWishlist() {
+  try {
+    // Replace with real endpoint if exists, e.g. /api/buyer-dashboard/wishlist
+    const res = await fetch(BACKEND + "/api/buyer-dashboard/wishlist", {headers: authHeader()});
+    if (res.ok) {
+      wishlist = await res.json();
+      renderWishlist();
+    } else {
+      document.getElementById('wishlistList').innerHTML = `<div class="text-red-500 py-8 text-center">Failed to load wishlist.</div>`;
+    }
+  } catch {
+    document.getElementById('wishlistList').innerHTML = `<div class="text-red-500 py-8 text-center">Failed to load wishlist.</div>`;
+  }
+}
+
+function renderWishlist() {
+  const el = document.getElementById('wishlistList');
+  if (!wishlist.length) {
+    el.innerHTML = `<div class="text-gray-500 text-center py-8">Your wishlist is empty.</div>`;
+    return;
+  }
+  el.innerHTML = "";
+  wishlist.forEach(item => {
+    el.innerHTML += `
+      <div class="wishlist-card-gradient rounded-2xl shadow p-4 flex flex-col md:flex-row gap-4 items-center border border-blue-200">
+        <div class="relative w-full md:w-48 flex-shrink-0 flex items-center justify-center">
+          <img src="${item.img || item.imageUrl || ''}" alt="${item.title}" class="h-32 w-full object-cover rounded-lg shadow" />
+          <button class="absolute top-2 right-2 wishlist-heart rounded-full p-2 focus:outline-none" aria-label="Remove from wishlist" onclick="removeFromWishlist('${item._id || item.id}')">
+            <svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z"></path>
+            </svg>
+          </button>
+        </div>
+        <div class="flex-1 flex flex-col justify-between py-2">
+          <div>
+            <span class="inline-block bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs mb-2">${item.category || ''}</span>
+            <h3 class="font-bold text-lg md:text-xl text-blue-900 mb-1">${item.title || ''}</h3>
+            <div class="text-sm text-gray-700 mb-2">${item.author || ''}</div>
           </div>
-          <div class="flex-1 flex flex-col justify-between py-2">
-            <div>
-              <span class="inline-block bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs mb-2">${item.category}</span>
-              <h3 class="font-bold text-lg md:text-xl text-blue-900 mb-1">${item.title}</h3>
-              <div class="text-sm text-gray-700 mb-2">${item.author}</div>
-            </div>
-            <div class="flex items-center justify-between mt-2">
-              <span class="text-xl font-bold text-blue-900">₦${item.price.toLocaleString()}</span>
-              <a href="#" class="bg-yellow-400 text-blue-900 font-bold px-4 py-2 rounded-full shadow hover:bg-yellow-500 transition">Add To Cart</a>
-            </div>
+          <div class="flex items-center justify-between mt-2">
+            <span class="text-xl font-bold text-blue-900">₦${(item.price || 0).toLocaleString()}</span>
+            <a href="#" class="bg-yellow-400 text-blue-900 font-bold px-4 py-2 rounded-full shadow hover:bg-yellow-500 transition">Add To Cart</a>
           </div>
         </div>
-        `;
-      });
-    }
-    renderWishlist();
+      </div>
+    `;
+  });
+}
 
-    // Tab switching
-    document.querySelectorAll('[data-tab]').forEach(btn => {
-      btn.addEventListener('click', function() {
-        document.querySelectorAll('[data-tab]').forEach(b => b.classList.remove('tab-btn-active'));
-        this.classList.add('tab-btn-active');
-        document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
-        document.getElementById('tab-' + this.dataset.tab).classList.remove('hidden');
-      });
-    });
-
-    // Messages/Chats
-    let currentChatId = null;
-    function renderChats() {
-      const chatList = document.getElementById('chatList');
-      chatList.innerHTML = "";
-      messages.forEach(chat => {
-        chatList.innerHTML += `
-          <li>
-            <button onclick="openChat(${chat.chatId})" class="w-full text-left p-2 rounded ${currentChatId === chat.chatId ? 'bg-yellow-100 text-blue-900' : 'hover:bg-yellow-50'}">
-              <div class="flex items-center gap-2">
-                <span class="font-bold">${chat.with}</span>
-                ${chat.unread ? `<span class="ml-auto bg-blue-900 text-yellow-400 px-2 rounded-full text-xs">${chat.unread}</span>` : ''}
-              </div>
-              <div class="text-xs text-gray-500">${chat.preview}</div>
-            </button>
-          </li>
-        `;
-      });
-      if(currentChatId) openChat(currentChatId);
-      else openChat(messages[0].chatId);
+// Remove from wishlist (backend)
+async function removeFromWishlist(id) {
+  try {
+    const res = await fetch(BACKEND + "/api/buyer-dashboard/wishlist/" + id, { method: "DELETE", headers: authHeader() });
+    if (res.ok) {
+      wishlist = wishlist.filter(i => (i._id || i.id) !== id);
+      renderWishlist();
     }
-    window.openChat = function openChat(id) {
-      currentChatId = id;
-      renderChats();
-      const chat = messages.find(c=>c.chatId===id);
-      document.getElementById('chatHeader').textContent = chat.with;
-      const chatBox = document.getElementById('chatBox');
-      chatBox.innerHTML = "";
-      chat.messages.forEach(msg => {
-        chatBox.innerHTML += `
-          <div class="mb-1 flex ${msg.from === "You" ? "justify-end" : "justify-start"}">
-            <span class="inline-block px-3 py-1 rounded-xl ${msg.from === "You" ? "bg-yellow-400 text-blue-900" : "bg-blue-900 text-yellow-400"}">${msg.text}</span>
-            <span class="text-xs text-gray-400 ml-2">${msg.time}</span>
+  } catch {
+    alert("Could not remove from wishlist.");
+  }
+}
+
+// --- POINTS/REWARDS ---
+function updatePoints() {
+  const pts = orders.reduce((a, b) => a + (b.points || 0), 0);
+  document.getElementById('point-badge').textContent = pts;
+  document.getElementById('point-badge-mobile').textContent = pts;
+  document.getElementById('rewardTotal').textContent = pts;
+}
+
+// --- MESSAGES (demo for now, can be wired to backend if endpoint exists) ---
+let messages = [
+  {
+    chatId: 1, with: "Tola (Seller)", preview: "Item ready for pickup at SUB!", unread: 1,
+    messages: [
+      { from: "Tola", text: "Item ready for pickup at SUB!", time: "09:15" },
+      { from: "You", text: "Thanks! Will come today.", time: "09:17" }
+    ]
+  },
+  {
+    chatId: 2, with: "Marketplace Support", preview: "Your payment is being processed.", unread: 0,
+    messages: [
+      { from: "Support", text: "Your payment is being processed.", time: "08:45" }
+    ]
+  }
+];
+let currentChatId = null;
+function renderChats() {
+  const chatList = document.getElementById('chatList');
+  chatList.innerHTML = "";
+  messages.forEach(chat => {
+    chatList.innerHTML += `
+      <li>
+        <button onclick="openChat(${chat.chatId})" class="w-full text-left p-2 rounded ${currentChatId === chat.chatId ? 'bg-yellow-100 text-blue-900' : 'hover:bg-yellow-50'}">
+          <div class="flex items-center gap-2">
+            <span class="font-bold">${chat.with}</span>
+            ${chat.unread ? `<span class="ml-auto bg-blue-900 text-yellow-400 px-2 rounded-full text-xs">${chat.unread}</span>` : ''}
           </div>
-        `;
-      });
-      chatBox.scrollTop = chatBox.scrollHeight;
-    }
-    renderChats();
-    document.getElementById('chatSendForm').addEventListener('submit', function(e){
-      e.preventDefault();
-      const chat = messages.find(c=>c.chatId===currentChatId);
-      const input = document.getElementById('chatMsgInput');
-      if(input.value.trim()){
-        chat.messages.push({from:"You",text:input.value,time:"Now"});
-        input.value = "";
-        openChat(currentChatId);
-      }
-    });
+          <div class="text-xs text-gray-500">${chat.preview}</div>
+        </button>
+      </li>
+    `;
+  });
+  if(currentChatId) openChat(currentChatId);
+  else if(messages.length) openChat(messages[0].chatId);
+}
+window.openChat = function openChat(id) {
+  currentChatId = id;
+  renderChats();
+  const chat = messages.find(c=>c.chatId===id);
+  document.getElementById('chatHeader').textContent = chat.with;
+  const chatBox = document.getElementById('chatBox');
+  chatBox.innerHTML = "";
+  chat.messages.forEach(msg => {
+    chatBox.innerHTML += `
+      <div class="mb-1 flex ${msg.from === "You" ? "justify-end" : "justify-start"}">
+        <span class="inline-block px-3 py-1 rounded-xl ${msg.from === "You" ? "bg-yellow-400 text-blue-900" : "bg-blue-900 text-yellow-400"}">${msg.text}</span>
+        <span class="text-xs text-gray-400 ml-2">${msg.time}</span>
+      </div>
+    `;
+  });
+  chatBox.scrollTop = chatBox.scrollHeight;
+}
+document.getElementById('chatSendForm').addEventListener('submit', function(e){
+  e.preventDefault();
+  const chat = messages.find(c=>c.chatId===currentChatId);
+  const input = document.getElementById('chatMsgInput');
+  if(input.value.trim()){
+    chat.messages.push({from:"You",text:input.value,time:"Now"});
+    input.value = "";
+    openChat(currentChatId);
+  }
+});
 
-    // Help form
-    document.getElementById('helpForm').addEventListener('submit', function(e){
-      e.preventDefault();
-      const helpInput = document.getElementById('helpInput');
-      if (helpInput.value.trim()) {
-        const box = document.querySelector('#tab-help .h-32');
-        box.innerHTML += `<div class="mb-1"><span class="font-semibold text-blue-900">You:</span> ${helpInput.value}</div>`;
-        box.scrollTop = box.scrollHeight;
-        helpInput.value = "";
-      }
-    });
-  </script>
+// Tab switching
+document.querySelectorAll('[data-tab]').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('[data-tab]').forEach(b => b.classList.remove('tab-btn-active'));
+    this.classList.add('tab-btn-active');
+    document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
+    document.getElementById('tab-' + this.dataset.tab).classList.remove('hidden');
+  });
+});
+
+// Hamburger menu
+document.getElementById('hamburger-btn').addEventListener('click', function() {
+  const menu = document.getElementById('mobile-menu');
+  menu.hidden = !menu.hidden;
+});
+
+// Help form
+document.getElementById('helpForm').addEventListener('submit', function(e){
+  e.preventDefault();
+  const helpInput = document.getElementById('helpInput');
+  if (helpInput.value.trim()) {
+    const box = document.querySelector('#tab-help .h-32');
+    box.innerHTML += `<div class="mb-1"><span class="font-semibold text-blue-900">You:</span> ${helpInput.value}</div>`;
+    box.scrollTop = box.scrollHeight;
+    helpInput.value = "";
+  }
+});
+
+// --- On load ---
+fetchOrders();
+fetchWishlist();
+renderChats();
+</script>
 </body>
 </html>
