@@ -112,19 +112,19 @@
       <a href="#features" class="inline-block bg-yellow-500/90 text-blue-900 font-bold px-8 py-3 rounded-full shadow-lg hover:bg-yellow-400 transition">See What’s Inside</a>
       <div class="mt-12 grid grid-cols-2 md:grid-cols-4 gap-6 w-full max-w-2xl mx-auto">
         <div class="glass rounded-xl p-6 flex flex-col items-center border-t-4 border-yellow-500">
-          <span class="text-3xl font-bold text-yellow-500 counter" data-count="8000">0</span>
+          <span class="text-3xl font-bold text-yellow-500 counter" id="total-users" data-count="0">0</span>
           <span class="text-white mt-2">Active Students</span>
         </div>
         <div class="glass rounded-xl p-6 flex flex-col items-center border-t-4 border-blue-900">
-          <span class="text-3xl font-bold text-blue-100 counter" data-count="150">0</span>
+          <span class="text-3xl font-bold text-blue-100 counter" id="total-tests" data-count="0">0</span>
           <span class="text-white mt-2">Weekly Mock Tests</span>
         </div>
         <div class="glass rounded-xl p-6 flex flex-col items-center border-t-4 border-yellow-500">
-          <span class="text-3xl font-bold text-yellow-500 counter" data-count="40000">0</span>
+          <span class="text-3xl font-bold text-yellow-500 counter" id="total-questions" data-count="0">0</span>
           <span class="text-white mt-2">Questions Practiced</span>
         </div>
         <div class="glass rounded-xl p-6 flex flex-col items-center border-t-4 border-blue-900">
-          <span class="text-3xl font-bold text-blue-100 counter" data-count="1200">0</span>
+          <span class="text-3xl font-bold text-blue-100 counter" id="total-marketplace" data-count="0">0</span>
           <span class="text-white mt-2">Marketplace Deals</span>
         </div>
       </div>
@@ -392,10 +392,9 @@
     typeWriter();
 
     // Animated Stats Counter
-    function animateCounter(el) {
-      const target = +el.getAttribute('data-count');
+    function animateCounter(el, target) {
       let count = 0;
-      const step = Math.ceil(target / 80);
+      const step = Math.ceil(target / 80) || 1;
       function update() {
         count += step;
         if (count > target) count = target;
@@ -404,12 +403,68 @@
       }
       update();
     }
+
+    // ---- Fetch Stats from Backend and Animate ----
+    async function fetchAndAnimateStats() {
+      try {
+        const backend = "https://examguide.onrender.com";
+
+        // Fetch total users
+        const usersRes = await fetch(backend + '/api/users/count');
+        const usersData = await usersRes.json();
+        if (usersData.count !== undefined) {
+          animateCounter(document.getElementById('total-users'), usersData.count);
+        }
+
+        // Fetch total tests (assuming posts = tests for now, else use your mock tests endpoint)
+        const testsRes = await fetch(backend + '/api/posts/count');
+        const testsData = await testsRes.json();
+        if (testsData.count !== undefined) {
+          animateCounter(document.getElementById('total-tests'), testsData.count);
+        }
+
+        // Fetch total questionsets, and sum up questions
+        let totalQuestions = 0;
+        try {
+          const qRes = await fetch(backend + '/api/questionsets');
+          const qSets = await qRes.json();
+          if (Array.isArray(qSets)) {
+            totalQuestions = qSets.reduce((sum, set) =>
+              sum + (set.questions && Array.isArray(set.questions) ? set.questions.length : 0), 0
+            );
+          }
+        } catch(e) {
+          // fallback: 0
+        }
+        animateCounter(document.getElementById('total-questions'), totalQuestions);
+
+        // Fetch total marketplace items
+        try {
+          const marketRes = await fetch(backend + '/api/listings/count');
+          const marketData = await marketRes.json();
+          if (marketData.count !== undefined) {
+            animateCounter(document.getElementById('total-marketplace'), marketData.count);
+          }
+        } catch(e) {
+          animateCounter(document.getElementById('total-marketplace'), 0);
+        }
+
+      } catch (err) {
+        // fallback: no animation, default values
+      }
+    }
+
+    // On DOMContentLoaded, fetch stats and animate
+    document.addEventListener('DOMContentLoaded', fetchAndAnimateStats);
+
+    // Animate fallback for all counters (if not animated by API)
     window.addEventListener('scroll', function onScroll() {
       document.querySelectorAll('.counter').forEach((el) => {
         const rect = el.getBoundingClientRect();
         if (rect.top < window.innerHeight && !el._animated) {
           el._animated = true;
-          animateCounter(el);
+          const target = +(el.getAttribute('data-count') || "0");
+          animateCounter(el, target);
         }
       });
     }, { passive: true });
@@ -417,7 +472,8 @@
       const rect = el.getBoundingClientRect();
       if (rect.top < window.innerHeight && !el._animated) {
         el._animated = true;
-        animateCounter(el);
+        const target = +(el.getAttribute('data-count') || "0");
+        animateCounter(el, target);
       }
     });
 
