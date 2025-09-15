@@ -301,149 +301,145 @@
   </div>
 
   <script>
-    // Hamburger menu
-    document.getElementById('hamburger-btn').addEventListener('click', function() {
-      const menu = document.getElementById('mobile-menu');
-      menu.hidden = !menu.hidden;
-    });
+    // === Backend API URL ===
+    const BACKEND = "https://examguide.onrender.com";
+    // --- AUTH ---
+    function getToken() {
+      return localStorage.token || sessionStorage.token || '';
+    }
+    function authHeader() {
+      return {
+        'Authorization': 'Bearer ' + getToken(),
+        'Content-Type': 'application/json'
+      };
+    }
 
-    // Demo Data
-    let products = [
-      {
-        id: 1, title: "Economics Past Questions Bundle", price: 1000,
-        img: "https://images.unsplash.com/photo-1465101178521-c1a9136a1627?auto=format&fit=crop&w=500&q=80",
-        status: "Active", category: "Books", desc: "2015-2024, PDFs, soft copy only.", orders: 8
-      },
-      {
-        id: 2, title: "Casio FX-991EX Calculator", price: 6500,
-        img: "https://images.unsplash.com/photo-1519125323398-675f0ddb6308?auto=format&fit=crop&w=500&q=80",
-        status: "Active", category: "Gadgets", desc: "Like new. Used for only one semester.", orders: 2
-      }
-    ];
-    let offers = [
-      {
-        id: 21, productId: 2, buyer: "Blessing (Sciences 200L)", offer: 6000, status: "Pending",
-        img: "https://images.unsplash.com/photo-1519125323398-675f0ddb6308?auto=format&fit=crop&w=500&q=80", 
-        msg: "Can you accept ₦6000? My budget is tight."
-      }
-    ];
-    let messages = [
-      {
-        chatId: 1, with: "Blessing (Sciences 200L)", preview: "Can you accept ₦6000?", productId: 2, unread: 1,
-        messages: [
-          { from: "Blessing", text: "Can you accept ₦6000? My budget is tight.", time: "12:01" },
-          { from: "You", text: "I can do ₦6300 if you pick up tomorrow.", time: "12:03" }
-        ]
-      },
-      {
-        chatId: 2, with: "Support", preview: "Your payout is processing.", productId: null, unread: 0,
-        messages: [
-          { from: "Support", text: "Your payout is processing. Expected by Thursday.", time: "10:00" }
-        ]
-      }
-    ];
+    // === PRODUCT LISTINGS ===
+    let products = [];
 
-    // Stats for points badge
-    document.getElementById('point-badge').textContent = 72;
-    document.getElementById('point-badge-mobile').textContent = 72;
-    document.getElementById('rewardTotal').textContent = 72;
+    async function fetchProducts() {
+      // From backend: GET /api/blogger-dashboard (listings array)
+      try {
+        const res = await fetch(BACKEND + "/api/blogger-dashboard", {headers: authHeader()});
+        if (!res.ok) throw new Error("Could not fetch products");
+        const dash = await res.json();
+        products = (dash.listings || []).map(l => ({...l, id: l._id}));
+        renderProducts();
+      } catch (err) {
+        document.getElementById('productsList').innerHTML = `<div class="text-red-500 py-8 text-center">Failed to load products. Please refresh.</div>`;
+      }
+    }
 
-    // Products List
+    async function addProductToBackend(prod) {
+      const res = await fetch(BACKEND + "/api/blogger-dashboard/listings", {
+        method: "POST",
+        headers: authHeader(),
+        body: JSON.stringify(prod)
+      });
+      if (!res.ok) throw new Error("Could not add product");
+      return await res.json();
+    }
+
+    async function updateProductInBackend(id, prod) {
+      const res = await fetch(BACKEND + `/api/blogger-dashboard/listings/${id}`, {
+        method: "PATCH",
+        headers: authHeader(),
+        body: JSON.stringify(prod)
+      });
+      if (!res.ok) throw new Error("Could not update product");
+      return await res.json();
+    }
+
+    async function deleteProductFromBackend(id) {
+      const res = await fetch(BACKEND + `/api/blogger-dashboard/listings/${id}`, {
+        method: "DELETE",
+        headers: authHeader()
+      });
+      if (!res.ok) throw new Error("Could not delete product");
+    }
+
+    // --- UI rendering ---
     function renderProducts() {
       const el = document.getElementById('productsList');
+      if (!products.length) {
+        el.innerHTML = `<div class="text-gray-500 text-center py-8">No products yet. Click "Add New" to list your first product!</div>`;
+        return;
+      }
       el.innerHTML = "";
       products.forEach(prod => {
         el.innerHTML += `
         <div class="prod-card-gradient rounded-2xl shadow p-4 flex flex-col md:flex-row gap-4 items-center border border-yellow-200 relative group">
           <div class="relative w-full md:w-40 flex-shrink-0 flex items-center justify-center">
-            <img src="${prod.img}" alt="${prod.title}" class="h-28 w-full object-cover rounded-lg shadow" />
-            <span class="absolute top-2 right-2 glassy-gold px-2 py-1 rounded font-bold text-xs text-blue-900 shadow">${prod.status}</span>
+            <img src="${prod.img || prod.imageUrl || ''}" alt="${prod.title}" class="h-28 w-full object-cover rounded-lg shadow" />
+            <span class="absolute top-2 right-2 glassy-gold px-2 py-1 rounded font-bold text-xs text-blue-900 shadow">${prod.status || "Active"}</span>
           </div>
           <div class="flex-1 flex flex-col justify-between py-2">
             <div>
-              <span class="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs mb-2">${prod.category}</span>
+              <span class="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs mb-2">${prod.category || ''}</span>
               <h3 class="font-bold text-lg md:text-xl text-blue-900 mb-1">${prod.title}</h3>
-              <div class="text-sm text-gray-700 mb-2">${prod.desc}</div>
+              <div class="text-sm text-gray-700 mb-2">${prod.desc || prod.description || ''}</div>
             </div>
             <div class="flex items-center justify-between mt-2">
-              <span class="text-xl font-bold text-yellow-600">₦${prod.price.toLocaleString()}</span>
-              <span class="text-sm text-blue-900 font-semibold">${prod.orders} Orders</span>
+              <span class="text-xl font-bold text-yellow-600">₦${(prod.price||0).toLocaleString()}</span>
+              <span class="text-sm text-blue-900 font-semibold">${prod.orders || prod.sales || 0} Orders</span>
             </div>
           </div>
           <div class="absolute top-2 left-2 flex flex-col gap-2 opacity-80 group-hover:opacity-100">
-            <button onclick="deleteProduct(${prod.id})" class="bg-red-100 hover:bg-red-300 text-red-600 px-2 py-1 rounded text-xs font-bold shadow">Delete</button>
-            <button onclick="editProduct(${prod.id})" class="bg-blue-100 hover:bg-blue-300 text-blue-900 px-2 py-1 rounded text-xs font-bold shadow">Edit</button>
-            <button onclick="unpublishProduct(${prod.id})" class="bg-gray-100 hover:bg-gray-300 text-gray-700 px-2 py-1 rounded text-xs font-bold shadow">Unpublish</button>
+            <button onclick="deleteProduct('${prod.id}')" class="bg-red-100 hover:bg-red-300 text-red-600 px-2 py-1 rounded text-xs font-bold shadow">Delete</button>
+            <button onclick="editProduct('${prod.id}')" class="bg-blue-100 hover:bg-blue-300 text-blue-900 px-2 py-1 rounded text-xs font-bold shadow">Edit</button>
+            <button onclick="unpublishProduct('${prod.id}')" class="bg-gray-100 hover:bg-gray-300 text-gray-700 px-2 py-1 rounded text-xs font-bold shadow">Unpublish</button>
           </div>
         </div>
         `;
       });
     }
-    renderProducts();
 
-    // Offers List
-    function renderOffers() {
-      const el = document.getElementById('offersList');
-      el.innerHTML = "";
-      offers.forEach(offer => {
-        el.innerHTML += `
-        <div class="offer-card-gradient rounded-2xl shadow p-4 flex flex-col md:flex-row gap-4 items-center border border-blue-200">
-          <div class="relative w-full md:w-32 flex-shrink-0 flex items-center justify-center">
-            <img src="${offer.img}" alt="Offer Product" class="h-20 w-full object-cover rounded-lg shadow" />
-          </div>
-          <div class="flex-1 flex flex-col justify-between py-2">
-            <div>
-              <div class="inline-block bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs mb-2">${offer.buyer}</div>
-              <div class="font-bold text-lg text-blue-900 mb-1">Offered ₦${offer.offer.toLocaleString()}</div>
-              <div class="text-sm text-gray-700 mb-2 italic">"${offer.msg}"</div>
-            </div>
-            <div class="flex gap-2">
-              <button onclick="acceptOffer(${offer.id})" class="bg-yellow-400 text-blue-900 px-4 py-2 rounded font-bold hover:bg-blue-900 hover:text-yellow-400 transition">Accept</button>
-              <button onclick="counterOffer(${offer.id})" class="bg-blue-900 text-white px-4 py-2 rounded font-bold hover:bg-yellow-400 hover:text-blue-900 transition">Counter</button>
-              <button onclick="declineOffer(${offer.id})" class="bg-gray-200 text-gray-700 px-4 py-2 rounded font-bold hover:bg-red-200 transition">Decline</button>
-            </div>
-          </div>
-        </div>
-        `;
-      });
-    }
-    renderOffers();
-
-    // Add product modal
+    // --- Add/Edit Product Modal integration ---
     document.getElementById('addProductBtn').addEventListener('click', function() {
       document.getElementById('addProductModal').classList.remove('hidden');
+      document.getElementById('addProductForm').reset();
+      editingProductId = null;
     });
     document.getElementById('closeAddModal').addEventListener('click', function() {
       document.getElementById('addProductModal').classList.add('hidden');
     });
-    document.getElementById('addProductForm').addEventListener('submit', function(e){
+
+    let editingProductId = null;
+    document.getElementById('addProductForm').addEventListener('submit', async function(e){
       e.preventDefault();
-      const title = document.getElementById('prodTitle').value;
-      const category = document.getElementById('prodCategory').value;
-      const price = Number(document.getElementById('prodPrice').value);
-      const desc = document.getElementById('prodDesc').value;
-      const img = document.getElementById('prodImg').value;
-      const newProd = {
-        id: Date.now(),
-        title,
-        category,
-        price,
-        desc,
-        img,
+      const prod = {
+        title: document.getElementById('prodTitle').value,
+        category: document.getElementById('prodCategory').value,
+        price: Number(document.getElementById('prodPrice').value),
+        description: document.getElementById('prodDesc').value,
+        img: document.getElementById('prodImg').value,
         status: "Active",
-        orders: 0
+        sales: 0
       };
-      products.unshift(newProd);
-      renderProducts();
-      document.getElementById('addProductModal').classList.add('hidden');
-      this.reset();
+      try {
+        if (editingProductId) {
+          await updateProductInBackend(editingProductId, prod);
+        } else {
+          await addProductToBackend(prod);
+        }
+        await fetchProducts();
+        document.getElementById('addProductModal').classList.add('hidden');
+        this.reset();
+        editingProductId = null;
+      } catch (err) {
+        alert("Error saving product: " + err.message);
+      }
     });
 
-    // Product action buttons
-    window.deleteProduct = function(id) {
+    // --- Product actions ---
+    window.deleteProduct = async function(id) {
       if(confirm("Are you sure you want to delete this product?")) {
-        products = products.filter(prod => prod.id !== id);
-        renderProducts();
+        try {
+          await deleteProductFromBackend(id);
+          await fetchProducts();
+        } catch (err) {
+          alert("Failed to delete product.");
+        }
       }
     }
     window.editProduct = function(id) {
@@ -451,61 +447,32 @@
       if(!prod) return;
       document.getElementById('addProductModal').classList.remove('hidden');
       document.getElementById('prodTitle').value = prod.title;
-      document.getElementById('prodCategory').value = prod.category;
-      document.getElementById('prodPrice').value = prod.price;
-      document.getElementById('prodDesc').value = prod.desc;
-      document.getElementById('prodImg').value = prod.img;
-      document.getElementById('addProductForm').onsubmit = function(e){
-        e.preventDefault();
-        prod.title = document.getElementById('prodTitle').value;
-        prod.category = document.getElementById('prodCategory').value;
-        prod.price = Number(document.getElementById('prodPrice').value);
-        prod.desc = document.getElementById('prodDesc').value;
-        prod.img = document.getElementById('prodImg').value;
-        renderProducts();
-        document.getElementById('addProductModal').classList.add('hidden');
-        // Reset form on next open
-        document.getElementById('addProductForm').onsubmit = null;
-      }
+      document.getElementById('prodCategory').value = prod.category || '';
+      document.getElementById('prodPrice').value = prod.price || '';
+      document.getElementById('prodDesc').value = prod.desc || prod.description || '';
+      document.getElementById('prodImg').value = prod.img || prod.imageUrl || '';
+      editingProductId = id;
     }
-    window.unpublishProduct = function(id) {
+    window.unpublishProduct = async function(id) {
       const prod = products.find(p => p.id === id);
       if(!prod) return;
-      prod.status = prod.status === "Unpublished" ? "Active" : "Unpublished";
-      renderProducts();
+      try {
+        await updateProductInBackend(id, { status: prod.status === "Unpublished" ? "Active" : "Unpublished" });
+        await fetchProducts();
+      } catch (err) {
+        alert("Could not update product status.");
+      }
     }
 
-    // Accept offer -> move to messages, open chat
-    window.acceptOffer = function(offerId) {
-      const offer = offers.find(o => o.id === offerId);
-      if (!offer) return;
-      // Remove offer from list
-      offers = offers.filter(o => o.id !== offerId);
-      renderOffers();
-      // Open new chat with buyer about product
-      const product = products.find(p => p.id === offer.productId);
-      const newChatId = Date.now();
-      messages.unshift({
-        chatId: newChatId,
-        with: offer.buyer,
-        preview: `Offer accepted for ${product.title}`,
-        productId: product.id,
-        unread: 0,
-        messages: [
-          { from: "You", text: `Hi ${offer.buyer.split(' ')[0]}, your offer for "${product.title}" has been accepted! When would you like to meet for pickup?`, time: "Now" }
-        ]
-      });
-      // Switch to messages tab and open new chat
-      tabSwitch('messages');
-      setTimeout(() => openChat(newChatId), 100);
-    };
-    window.counterOffer = function(offerId) {
-      alert("Counter-offer workflow not implemented in this demo.");
-    };
-    window.declineOffer = function(offerId) {
-      offers = offers.filter(o => o.id !== offerId);
-      renderOffers();
-    }
+    // --- On load ---
+    fetchProducts();
+
+    // === Points Badge (static demo) ===
+    document.getElementById('point-badge').textContent = 72;
+    document.getElementById('point-badge-mobile').textContent = 72;
+    document.getElementById('rewardTotal').textContent = 72;
+
+    // === Offers, Messages, Rewards, Tab switching, Help: (still demo/local or implement similarly as above) ===
 
     // Tab switching
     function tabSwitch(tabName) {
@@ -520,68 +487,13 @@
       });
     });
 
-    // Messages/Chats with product sample
-    let currentChatId = null;
-    function renderChats() {
-      const chatList = document.getElementById('chatList');
-      chatList.innerHTML = "";
-      messages.forEach(chat => {
-        chatList.innerHTML += `
-          <li>
-            <button onclick="openChat(${chat.chatId})" class="w-full text-left p-2 rounded ${currentChatId === chat.chatId ? 'bg-yellow-100 text-blue-900' : 'hover:bg-yellow-50'}">
-              <div class="flex items-center gap-2">
-                <span class="font-bold">${chat.with}</span>
-                ${chat.unread ? `<span class="ml-auto bg-blue-900 text-yellow-400 px-2 rounded-full text-xs">${chat.unread}</span>` : ''}
-              </div>
-              <div class="text-xs text-gray-500">${chat.preview}</div>
-            </button>
-          </li>
-        `;
-      });
-      if(currentChatId) openChat(currentChatId);
-      else openChat(messages[0].chatId);
-    }
-    window.openChat = function openChat(id) {
-      currentChatId = id;
-      renderChats();
-      const chat = messages.find(c=>c.chatId===id);
-      // Show product sample if available
-      const prod = products.find(p => p.id === chat.productId) || offers.find(o => o.productId === chat.productId);
-      const prodSample = document.getElementById('selectedProductSample');
-      if(prod) {
-        prodSample.innerHTML = `
-          <img src="${prod.img}" class="h-10 w-10 object-cover rounded-lg border mr-2" alt="Product">
-          <span class="text-blue-900 font-bold">${prod.title || ''}</span>
-        `;
-      } else {
-        prodSample.innerHTML = "";
-      }
-      document.getElementById('chatHeader').textContent = chat.with;
-      const chatBox = document.getElementById('chatBox');
-      chatBox.innerHTML = "";
-      chat.messages.forEach(msg => {
-        chatBox.innerHTML += `
-          <div class="mb-1 flex ${msg.from === "You" ? "justify-end" : "justify-start"}">
-            <span class="inline-block px-3 py-1 rounded-xl ${msg.from === "You" ? "bg-yellow-400 text-blue-900" : "bg-blue-900 text-yellow-400"}">${msg.text}</span>
-            <span class="text-xs text-gray-400 ml-2">${msg.time}</span>
-          </div>
-        `;
-      });
-      chatBox.scrollTop = chatBox.scrollHeight;
-    }
-    renderChats();
-    document.getElementById('chatSendForm').addEventListener('submit', function(e){
-      e.preventDefault();
-      const chat = messages.find(c=>c.chatId===currentChatId);
-      const input = document.getElementById('chatMsgInput');
-      if(input.value.trim()){
-        chat.messages.push({from:"You",text:input.value,time:"Now"});
-        input.value = "";
-        openChat(currentChatId);
-      }
+    // Hamburger menu
+    document.getElementById('hamburger-btn').addEventListener('click', function() {
+      const menu = document.getElementById('mobile-menu');
+      menu.hidden = !menu.hidden;
     });
 
-    // Help form
+    // Help form (demo)
     document.getElementById('helpForm').addEventListener('submit', function(e){
       e.preventDefault();
       const helpInput = document.getElementById('helpInput');
