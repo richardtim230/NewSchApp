@@ -8,33 +8,51 @@
   <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.2.1/flowbite.min.css" rel="stylesheet"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.2.1/flowbite.min.js"></script>
   <style>
-    .prose img { border-radius: 0.5rem; }
+    .prose img { border-radius: 0.5rem; width: 100% !important; height: auto !important; object-fit: contain !important; }
     .prose { max-width: 100%; }
-    body { background-color: #f9fafb; }
-    .comment-bubble { background: #f9fafb; border-radius: 0.8em; padding: 1em; }
-    .comment-author { font-weight: 600; }
+    body { background-color: #f9fafb; padding-top: 74px !important; padding-bottom: 90px !important; }
+    .comment-bubble {
+      background: #fffdfa;
+      border-radius: 0.8em;
+      padding: 1em 1.2em;
+      margin-bottom: 1.5em;
+      box-shadow: 0 1px 5px 0 rgb(0 0 0 / 7%);
+      border: 1px solid #f3e8ff;
+      transition: box-shadow 0.2s;
+      position: relative;
+    }
+    .comment-bubble:hover {
+      box-shadow: 0 4px 20px 0 rgb(190 180 255 / 13%);
+    }
+    .comment-author { font-weight: 600; color: #263159; }
     .comment-date { color: #9ca3af; font-size: 0.92em; }
+    .comment-actions { margin-top: 0.4em; display: flex; gap: 1.2em; align-items: center; }
+    .like-btn, .reply-btn {
+      cursor: pointer;
+      transition: color 0.2s, background 0.2s;
+      color: #b49b2d;
+      border: none;
+      background: none;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25em;
+      font-size: 0.97em;
+    }
+    .like-btn.liked { color: #facc15; }
+    .reply-btn.active { color: #263159; }
+    .replies-container { margin-left: 1.5em; border-left: 2px solid #facc15; padding-left: 1em; margin-top: 1em; }
+    .reply-form { background: #f9fafb; border-radius: 0.5em; padding: 0.9em 1em 0.7em 1em; border: 1px solid #e0e7ff; margin-top: 0.6em; }
+    .reply-form input, .reply-form textarea { margin-bottom: 0.7em; }
+    .sticky-header { position: fixed; z-index: 50; top: 0; left: 0; width: 100%; }
+    .sticky-footer { position: fixed; z-index: 50; bottom: 0; left: 0; width: 100%; }
+    @media (max-width: 640px) {
+      .replies-container { margin-left: 0.7em; padding-left: 0.5em; }
+      body { padding-top: 64px !important; padding-bottom: 94px !important; }
+    }
     .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     .line-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-    /* Sticky header/footer fix */
-    .sticky-header { position: fixed; top: 0; left: 0; right: 0; z-index: 50; }
-    .sticky-footer { position: fixed; bottom: 0; left: 0; right: 0; z-index: 50; }
-    .content-with-sticky { padding-top: 64px; padding-bottom: 72px; } /* header/footer heights */
-    /* Comments section styling */
-    .comment-actions { display: flex; gap: 1em; align-items: center; margin-top: 0.5em; }
-    .reply-form { margin-top: 0.4em; margin-bottom: 0.8em; }
-    .reply-bubble { margin-left: 2em; border-left: 2px solid #fee08a; background: #fffbe6; }
-    .like-btn, .reply-btn {
-      background: none; border: none; color: #f59e42; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 0.3em;
-    }
-    .like-btn.liked { color: #ea580c; }
-    .reply-btn { color: #2563eb; }
-    .comment-bubble { transition: box-shadow .15s; }
-    .comment-bubble:hover { box-shadow: 0 2px 8px 0 #eab30833; }
-    .comment-bubble .reply-bubble { box-shadow: none; }
-    @media (max-width: 768px) {
-      .content-with-sticky { padding-top: 60px; padding-bottom: 90px; }
-    }
+    .related-img { width: 100% !important; object-fit: contain !important; aspect-ratio: 2.7/1 !important; height: 135px !important; }
   </style>
 </head>
 <body class="text-gray-900 bg-gray-50">
@@ -69,7 +87,7 @@
     </div>
   </div>
 
-  <main class="max-w-3xl mx-auto px-4 py-8 content-with-sticky">
+  <main class="max-w-3xl mx-auto px-4 py-8">
     <!-- Blog Main Content -->
     <article id="blogContent" class="bg-white rounded-2xl shadow p-6 mb-12 min-h-[320px] flex flex-col items-stretch">
       <div id="blogLoading" class="flex justify-center items-center py-24">
@@ -113,6 +131,7 @@
     const API_BASE = "https://examguide.onrender.com/api";
     const DASHBOARD_API = API_BASE + "/blogger-dashboard";
 
+    // Hamburger menu
     document.getElementById('hamburger-btn').addEventListener('click', function() {
       document.getElementById('mobile-menu').classList.remove('hidden');
       document.body.style.overflow = 'hidden';
@@ -147,8 +166,20 @@
       }
     }
 
+    // --- Backend: Like a post
+    async function likePost(postId) {
+      const res = await fetch(`${DASHBOARD_API}/like/${postId}`, { method: "PATCH" });
+      return res.ok ? (await res.json()).likes : null;
+    }
+
+    // --- Backend: Like a comment
+    async function likeComment(postId, commentId) {
+      const res = await fetch(`${DASHBOARD_API}/like-comment/${postId}/${commentId}`, { method: "PATCH" });
+      return res.ok ? (await res.json()).likes : null;
+    }
+
     // --- Add a comment or reply to backend
-    async function addCommentToBackend(postId, userId, name, text, parentId) {
+    async function addCommentToBackend(postId, userId, name, text, parentId=null) {
       try {
         const res = await fetch(`${DASHBOARD_API}/add-comment/${postId}`, {
           method: "POST",
@@ -162,32 +193,12 @@
       }
     }
 
-    // --- Like post
-    async function likePost(postId) {
-      try {
-        const res = await fetch(`${DASHBOARD_API}/like/${postId}`, { method: "PATCH" });
-        if (!res.ok) return null;
-        return await res.json();
-      } catch {
-        return null;
-      }
-    }
-
-    // --- Like comment
-    async function likeComment(postId, commentId) {
-      try {
-        const res = await fetch(`${DASHBOARD_API}/like-comment/${postId}/${commentId}`, { method: "PATCH" });
-        if (!res.ok) return null;
-        return await res.json();
-      } catch {
-        return null;
-      }
-    }
-
     // --- Main: fetch and render the selected post
-    let allPosts = [];
+    let allPostsCache = [];
     let mainPost = null;
     let postId = null;
+    let category = null;
+
     (async function(){
       postId = getPostIdFromURL();
       if (!postId) {
@@ -197,14 +208,14 @@
 
       // Fetch all posts
       try {
-        allPosts = await fetchAllPosts();
+        allPostsCache = await fetchAllPosts();
       } catch {
         document.getElementById('blogContent').innerHTML = `<div class="text-center text-gray-500 py-20">Could not load posts.</div>`;
         return;
       }
 
       // Find the main post
-      mainPost = allPosts.find(p => p._id === postId);
+      mainPost = allPostsCache.find(p => p._id === postId);
       if (!mainPost) {
         document.getElementById('blogContent').innerHTML = `<div class="text-center text-gray-500 py-20">Blog post not found.</div>`;
         return;
@@ -214,7 +225,7 @@
       const author = mainPost.authorName || "Anonymous";
       const date = mainPost.date ? new Date(mainPost.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : "";
       const image = mainPost.imageUrl || "https://images.unsplash.com/photo-1503676382389-4809596d5290?auto=format&fit=crop&w=800&q=80";
-      const category = mainPost.category || "General";
+      category = mainPost.category || "General";
       const views = mainPost.views ?? 0;
       const likes = mainPost.likes ?? 0;
       const comments = Array.isArray(mainPost.comments) ? mainPost.comments : [];
@@ -222,10 +233,14 @@
       const title = mainPost.title || "";
       const authorId = mainPost.authorId || mainPost.user;
 
-      // Render main post with featured image full height
+      // --- Render main post
       document.getElementById('blogContent').innerHTML = `
-        <div class="w-full mb-4 rounded-lg overflow-hidden shadow" style="max-width: 100%;">
-          <img src="${image}" alt="${title}" class="w-full h-80 object-cover object-center" style="display:block;"/>
+        <div class="relative">
+          <img src="${image}" alt="${title}" class="w-full h-64 object-contain rounded-lg mb-4 shadow" style="object-fit:contain !important;"/>
+          <button id="likePostBtn" class="absolute top-3 right-4 bg-white/90 rounded-full border border-yellow-200 px-3 py-1 flex items-center gap-1 font-semibold like-btn transition hover:bg-yellow-50 ${localStorage.getItem('liked_post_'+postId) ? 'liked' : ''}">
+            <svg class="w-5 h-5 ${localStorage.getItem('liked_post_'+postId) ? 'text-yellow-400' : 'text-yellow-500'}" fill="currentColor" viewBox="0 0 20 20"><path d="M3.172 5.172A4 4 0 0 1 9.999 6.586a4 4 0 1 1 6.828-1.414c1.562 1.563 1.562 4.095 0 5.657l-6.657 6.657a1 1 0 0 1-1.414 0l-6.657-6.657c-1.562-1.562-1.562-4.094 0-5.657z"/></svg>
+            <span id="likePostCount">${likes}</span>
+          </button>
         </div>
         <h1 class="text-3xl font-extrabold text-blue-900 mb-2">${title}</h1>
         <div class="flex flex-wrap gap-2 text-sm text-gray-500 mb-2">
@@ -233,30 +248,28 @@
           <span>${author}</span>
           <span>• ${date}</span>
         </div>
-        <div class="flex gap-4 text-xs text-gray-400 mb-6 items-center">
+        <div class="flex gap-4 text-xs text-gray-400 mb-6">
           <span>👁️ ${views} reads</span>
-          <span id="post-likes"><button class="like-btn" id="like-post-btn" aria-label="Like post"><span id="like-post-icon">⭐</span> <span id="like-post-count">${likes}</span> likes</button></span>
+          <span>⭐ <span id="likePostCount2">${likes}</span> likes</span>
           <span>💬 ${comments.length} comments</span>
         </div>
         <div class="prose prose-lg max-w-none text-gray-900 mb-6">${content}</div>
         <div class="border-t pt-5 text-green-700 font-bold text-center">You earned 2 points for reading!</div>
       `;
 
-      // Like post button event
-      document.getElementById("like-post-btn").addEventListener("click", async function(e) {
-        e.preventDefault();
-        if (localStorage.getItem(`liked-post-${postId}`)) return; // Prevent multiple likes
-        const result = await likePost(postId);
-        if (result && result.success) {
-          document.getElementById("like-post-count").textContent = result.likes;
-          localStorage.setItem(`liked-post-${postId}`, "1");
-          this.classList.add("liked");
+      // Like post button
+      document.getElementById('likePostBtn').addEventListener('click', async function() {
+        if (localStorage.getItem('liked_post_' + postId)) return;
+        this.disabled = true;
+        const newLikes = await likePost(postId);
+        if (newLikes !== null) {
+          localStorage.setItem('liked_post_' + postId, '1');
+          document.getElementById('likePostBtn').classList.add('liked');
+          document.getElementById('likePostCount').textContent = newLikes;
+          document.getElementById('likePostCount2').textContent = newLikes;
         }
+        this.disabled = false;
       });
-      // Mark as liked if user already liked
-      if (localStorage.getItem(`liked-post-${postId}`)) {
-        document.getElementById("like-post-btn").classList.add("liked");
-      }
 
       // --- Author card
       if (authorId) {
@@ -281,11 +294,14 @@
         const name = document.getElementById("commentName").value.trim() || "Anonymous";
         const text = document.getElementById("commentText").value.trim();
         if (!text) return;
+
+        // Save to backend
         const userId = null;
-        const ok = await addCommentToBackend(postId, userId, name, text, null);
+        const ok = await addCommentToBackend(postId, userId, name, text);
         if (ok) {
-          allPosts = await fetchAllPosts();
-          mainPost = allPosts.find(p => p._id === postId);
+          // Reload comments
+          allPostsCache = await fetchAllPosts();
+          mainPost = allPostsCache.find(p => p._id === postId);
           renderComments(mainPost && Array.isArray(mainPost.comments) ? mainPost.comments : []);
           this.reset();
         } else {
@@ -294,9 +310,9 @@
       };
 
       // --- Related posts (same category, exclude main post). Fallback: recent other posts.
-      let related = allPosts.filter(p => p._id !== postId && (p.category === category));
+      let related = allPostsCache.filter(p => p._id !== postId && (p.category === category));
       if (related.length < 2) {
-        related = allPosts.filter(p => p._id !== postId).slice(0, 4);
+        related = allPostsCache.filter(p => p._id !== postId).slice(0, 4);
       } else {
         related = related.slice(0, 4);
       }
@@ -308,10 +324,8 @@
       } else {
         relatedGrid.innerHTML = related.map(blog => `
           <a href="blog-details.html?id=${blog._id}" class="block bg-white rounded-xl shadow hover:shadow-xl overflow-hidden transition group">
-            <div class="w-full overflow-hidden" style="max-width: 100%;">
-              <img src="${blog.imageUrl || "https://images.unsplash.com/photo-1503676382389-4809596d5290?auto=format&fit=crop&w=400&q=80"}"
-                alt="${blog.title}" class="h-36 w-full object-cover object-center group-hover:scale-105 transition" style="display:block;"/>
-            </div>
+            <img src="${blog.imageUrl || "https://images.unsplash.com/photo-1503676382389-4809596d5290?auto=format&fit=crop&w=400&q=80"}"
+                 alt="${blog.title}" class="related-img group-hover:scale-105 transition" />
             <div class="p-4">
               <h3 class="font-bold text-blue-900 text-lg mb-1 line-clamp-2">${blog.title}</h3>
               <div class="flex items-center text-yellow-500 text-base font-bold mb-1">${blog.category || "General"}</div>
@@ -328,7 +342,7 @@
       }
     })();
 
-    // --- Render comments utility with like and reply
+    // --- Render comments utility (supports nested replies, likes, reply button, styled)
     function renderComments(comments) {
       const list = document.getElementById("commentsList");
       if (!Array.isArray(comments) || comments.length === 0) {
@@ -337,94 +351,106 @@
       }
       // Sort by most recent
       comments = [...comments].sort((a, b) => new Date(b.date) - new Date(a.date));
-      list.innerHTML = comments.map(comment => renderCommentHTML(comment, 0)).join('');
-      // Add like and reply event listeners for all comments/replies
-      addCommentEvents();
+      list.innerHTML = comments.filter(c => !c.parentId).map(c => renderCommentHTML(c, comments)).join('');
+      attachCommentActionListeners();
     }
 
-    // Recursive HTML renderer for comments with replies
-    function renderCommentHTML(comment, depth) {
-      if (!comment) return "";
-      const date = comment.date ? new Date(comment.date).toLocaleString() : '';
-      const likeKey = `liked-comment-${postId}-${comment._id}`;
-      const liked = localStorage.getItem(likeKey) ? "liked" : "";
-      let html = `
-        <div class="comment-bubble${depth > 0 ? ' reply-bubble' : ''}" data-comment-id="${comment._id}">
+    // Render one comment (recursively with replies)
+    function renderCommentHTML(comment, allComments) {
+      const cid = comment._id || '';
+      const likedKey = 'liked_comment_' + cid;
+      const liked = localStorage.getItem(likedKey);
+      // Replies (recursive)
+      let repliesHTML = '';
+      if (Array.isArray(comment.replies) && comment.replies.length > 0) {
+        // Use replies array (backend nested)
+        repliesHTML = `<div class="replies-container">${comment.replies.sort((a,b)=>new Date(a.date)-new Date(b.date)).map(r => renderCommentHTML(r, allComments)).join('')}</div>`;
+      } else if (Array.isArray(allComments)) {
+        // For legacy: find direct children
+        const children = allComments.filter(r => r.parentId === cid);
+        if (children.length) {
+          repliesHTML = `<div class="replies-container">${children.sort((a,b)=>new Date(a.date)-new Date(b.date)).map(r => renderCommentHTML(r, allComments)).join('')}</div>`;
+        }
+      }
+      // Main comment
+      return `
+        <div class="comment-bubble" data-comment-id="${cid}">
           <div>
             <span class="comment-author">${comment.name || 'Anonymous'}</span>
-            <span class="comment-date ml-2">${date}</span>
+            <span class="comment-date ml-2">${comment.date ? new Date(comment.date).toLocaleString() : ''}</span>
           </div>
-          <div class="mt-1 mb-1">${comment.text}</div>
+          <div class="mt-1 text-gray-800">${comment.text}</div>
           <div class="comment-actions">
-            <button class="like-btn ${liked}" data-like-comment-id="${comment._id}" aria-label="Like comment">
-              <span>👍</span> <span class="like-count">${comment.likes || 0}</span>
+            <button class="like-btn ${liked ? 'liked' : ''}" data-comment-id="${cid}">
+              <svg class="w-4 h-4 mr-1 ${liked ? 'text-yellow-400' : 'text-yellow-500'}" fill="currentColor" viewBox="0 0 20 20"><path d="M3.172 5.172A4 4 0 0 1 9.999 6.586a4 4 0 1 1 6.828-1.414c1.562 1.563 1.562 4.095 0 5.657l-6.657 6.657a1 1 0 0 1-1.414 0l-6.657-6.657c-1.562-1.562-1.562-4.094 0-5.657z"/></svg>
+              <span class="like-count">${comment.likes || 0}</span>
             </button>
-            <button class="reply-btn" data-reply-comment-id="${comment._id}">Reply</button>
+            <button class="reply-btn" data-comment-id="${cid}">Reply</button>
           </div>
-          <form class="reply-form hidden" data-reply-form-for="${comment._id}">
-            <input type="text" class="reply-name px-2 py-1 border rounded text-sm w-1/4 mb-1" placeholder="Your name" />
-            <input type="text" class="reply-text px-2 py-1 border rounded text-sm flex-1 mb-1" placeholder="Write a reply..." required />
-            <button type="submit" class="bg-yellow-400 text-blue-900 py-1 px-4 rounded text-sm font-bold hover:bg-blue-900 hover:text-yellow-400 transition">Reply</button>
-          </form>
-          ${Array.isArray(comment.replies) && comment.replies.length ? 
-            comment.replies.sort((a,b) => new Date(b.date)-new Date(a.date)).map(r => renderCommentHTML(r, depth+1)).join('') : ''}
+          <div class="reply-form-container"></div>
+          ${repliesHTML}
         </div>
       `;
-      return html;
     }
 
-    // Setup like/reply events for all comments/replies
-    function addCommentEvents() {
-      // Like comment
-      document.querySelectorAll('.like-btn[data-like-comment-id]').forEach(btn => {
-        const commentId = btn.getAttribute('data-like-comment-id');
-        const likeKey = `liked-comment-${postId}-${commentId}`;
+    // Attach like/reply button listeners and reply form logic
+    function attachCommentActionListeners() {
+      // Like buttons
+      document.querySelectorAll('.like-btn[data-comment-id]').forEach(btn => {
         btn.onclick = async function(e) {
           e.preventDefault();
-          if (localStorage.getItem(likeKey)) return;
-          const result = await likeComment(postId, commentId);
-          if (result && result.success) {
-            btn.querySelector('.like-count').textContent = result.likes;
-            btn.classList.add("liked");
-            localStorage.setItem(likeKey, "1");
+          const commentId = this.getAttribute('data-comment-id');
+          if (!commentId || localStorage.getItem('liked_comment_' + commentId)) return;
+          this.disabled = true;
+          const likeCountSpan = this.querySelector('.like-count');
+          const newLikes = await likeComment(postId, commentId);
+          if (newLikes !== null) {
+            localStorage.setItem('liked_comment_' + commentId, '1');
+            this.classList.add('liked');
+            likeCountSpan.textContent = newLikes;
           }
-        };
+          this.disabled = false;
+        }
       });
-      // Reply button: toggle reply form
-      document.querySelectorAll('.reply-btn[data-reply-comment-id]').forEach(btn => {
-        const commentId = btn.getAttribute('data-reply-comment-id');
+
+      // Reply buttons
+      document.querySelectorAll('.reply-btn[data-comment-id]').forEach(btn => {
         btn.onclick = function(e) {
           e.preventDefault();
-          document.querySelectorAll(`form.reply-form`).forEach(f => f.classList.add('hidden'));
-          const form = document.querySelector(`form[data-reply-form-for="${commentId}"]`);
-          if (form) form.classList.remove('hidden');
-        };
-      });
-      // Reply form submit
-      document.querySelectorAll('form.reply-form').forEach(form => {
-        form.onsubmit = async function(e) {
-          e.preventDefault();
-          const commentId = form.getAttribute('data-reply-form-for');
-          const name = form.querySelector('.reply-name').value.trim() || "Anonymous";
-          const text = form.querySelector('.reply-text').value.trim();
-          if (!text) return;
-          const ok = await addCommentToBackend(postId, null, name, text, commentId);
-          if (ok) {
-            // Refetch and rerender
-            allPosts = await fetchAllPosts();
-            mainPost = allPosts.find(p => p._id === postId);
-            renderComments(mainPost && Array.isArray(mainPost.comments) ? mainPost.comments : []);
-          } else {
-            alert("Failed to add reply. Please try again.");
-          }
-        };
-      });
-      // Hide reply forms on click elsewhere
-      document.body.addEventListener("click", function(e){
-        if (!e.target.classList.contains("reply-btn")) {
-          document.querySelectorAll(`form.reply-form`).forEach(f => f.classList.add('hidden'));
+          const commentId = this.getAttribute('data-comment-id');
+          // Remove other open reply forms
+          document.querySelectorAll('.reply-form-container').forEach(f => f.innerHTML = '');
+          // Insert reply form
+          const parentBubble = this.closest('.comment-bubble');
+          const container = parentBubble.querySelector('.reply-form-container');
+          container.innerHTML = `
+            <form class="reply-form" data-parent-id="${commentId}">
+              <input type="text" name="name" placeholder="Your name" class="w-full px-2 py-1 mb-1 border rounded focus:ring-2 focus:ring-yellow-400" required />
+              <textarea name="text" rows="2" placeholder="Write a reply..." class="w-full px-2 py-1 border rounded focus:ring-2 focus:ring-yellow-400" required></textarea>
+              <div class="flex items-center gap-2">
+                <button type="submit" class="bg-yellow-500 text-blue-900 px-4 py-1 rounded font-bold hover:bg-blue-900 hover:text-yellow-400 transition">Reply</button>
+                <button type="button" class="cancel-reply-btn text-xs text-gray-500 hover:underline">Cancel</button>
+              </div>
+            </form>
+          `;
+          // Attach submit/cancel
+          container.querySelector('form').onsubmit = async function(ev) {
+            ev.preventDefault();
+            const name = this.name.value.trim() || "Anonymous";
+            const text = this.text.value.trim();
+            if (!text) return;
+            const ok = await addCommentToBackend(postId, null, name, text, commentId);
+            if (ok) {
+              allPostsCache = await fetchAllPosts();
+              mainPost = allPostsCache.find(p => p._id === postId);
+              renderComments(mainPost && Array.isArray(mainPost.comments) ? mainPost.comments : []);
+            }
+          };
+          container.querySelector('.cancel-reply-btn').onclick = function() {
+            container.innerHTML = '';
+          };
         }
-      }, {capture: true});
+      });
     }
   </script>
 </body>
