@@ -376,6 +376,107 @@
         `).join('');
       }
     })();
+// --- Auth check
+function getUserToken() {
+  return localStorage.token || sessionStorage.token || null;
+}
+
+function getUserFromToken() {
+  const token = getUserToken();
+  if (!token) return null;
+  try {
+    // Basic JWT decode (no validation)
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+// --- Show register/login banner if not logged in
+function showAuthBanner() {
+  if (document.getElementById('auth-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'auth-banner';
+  banner.className = "fixed inset-x-0 top-0 bg-yellow-200 text-blue-900 text-center py-4 z-50 font-bold shadow";
+  banner.innerHTML = `
+    You must <a href="mock.html" class="underline text-blue-900">register</a> or <a href="mock.html" class="underline text-blue-900">log in</a> to earn credit points for reading blog posts!
+    <button onclick="this.parentElement.remove()" class="ml-4 px-2 py-1 bg-yellow-400 rounded">Dismiss</button>
+  `;
+  document.body.appendChild(banner);
+}
+
+// --- Activity monitoring and reward logic
+function monitorAndRewardReading(postId) {
+  const user = getUserFromToken();
+  if (!user) {
+    showAuthBanner();
+    return;
+  }
+
+  // Prevent double-reward
+  if (localStorage.getItem("rewarded_blog_" + postId)) return;
+
+  let timeSpent = 0;
+  let interval = null;
+  let scrolled = false;
+
+  // Timer: accumulate seconds spent on this page
+  function startTimer() {
+    interval = setInterval(() => {
+      timeSpent++;
+      // console.log('Reading seconds:', timeSpent);
+      checkReward();
+    }, 1000);
+  }
+
+  // Scroll: check if user has seen at least 80% of the page
+  function checkScroll() {
+    const scrollPosition = window.scrollY + window.innerHeight;
+    const docHeight = document.documentElement.scrollHeight;
+    if (scrollPosition / docHeight > 0.8) {
+      scrolled = true;
+      checkReward();
+    }
+  }
+
+  // Check if both conditions met, then award points
+  function checkReward() {
+    if (timeSpent >= 120 && scrolled) { // e.g. 2 minutes + 80% scrolled
+      clearInterval(interval);
+      awardReadingPoints(postId, user.id);
+    }
+  }
+
+  window.addEventListener('scroll', checkScroll);
+  startTimer();
+}
+
+// --- API call to award points
+async function awardReadingPoints(postId, userId) {
+  try {
+    const res = await fetch("https://examguide.onrender.com/api/blogger-dashboard/award-points", {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + getUserToken(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ postId })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      localStorage.setItem("rewarded_blog_" + postId, "1");
+      // Show positive feedback
+      alert("Congratulations! You earned 5 points for reading this blog post.");
+      // Optionally, update UI to reflect points/disable reward again
+    } else if (data.error) {
+      alert(data.error);
+    }
+  } catch (e) {
+    alert("Error awarding points!");
+  }
+}
+
 
     // --- Render comments utility (supports nested replies, likes, reply button, styled)
     function renderComments(comments) {
@@ -487,6 +588,13 @@
         }
       });
     }
+
+    // --- On page load, after you know postId:
+document.addEventListener("DOMContentLoaded", () => {
+  // ...your other logic...
+  const postId = getPostIdFromURL();
+  monitorAndRewardReading(postId);
+});
   </script>
 </body>
 </html>
