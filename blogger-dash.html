@@ -142,6 +142,18 @@
             <input type="text" id="postTitle" placeholder="Write your article title here" class="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-indigo-200" required />
           </div>
           <div>
+            <label class="block font-medium mb-1">Category</label>
+            <select id="postCategory" class="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-indigo-200" required>
+              <option value="">Select a category</option>
+              <option value="Campus Life">Campus Life</option>
+              <option value="Academics">Academics</option>
+              <option value="Tips & Hacks">Tips & Hacks</option>
+              <option value="Opportunities">Opportunities</option>
+              <option value="Events">Events</option>
+              <option value="General">General</option>
+            </select>
+          </div>
+          <div>
             <label class="block font-medium mb-1">Article content</label>
             <div id="editor" class="bg-white rounded border"></div>
           </div>
@@ -257,17 +269,26 @@
     const BACKEND = "https://examguide.onrender.com";
     function getToken() { return localStorage.token || sessionStorage.token || ''; }
     function authHeader() { return { 'Authorization': 'Bearer ' + getToken() }; }
+
+    // LOGOUT AND REDIRECT
+    function forceLogout() {
+      localStorage.removeItem('token');
+      sessionStorage.removeItem('token');
+      window.location = "login.html";
+    }
+
     let posts = [];
     let quill, quillInitialized = false, editingPostId = null;
     let uploadedImages = [];
 
     function showPostsLoading() {
-      document.getElementById('myPostsList').innerHTML = `<div class="flex items-center justify-center py-12"><svg class="animate-spin h-8 w-8 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg><span class="ml-3 text-indigo-700 font-semibold">Loading posts...</span></div>`;
+      document.getElementById('myPostsList').innerHTML = `<div class="flex items-center justify-center py-12"><svg class="animate-spin h-8 w-8 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg></div>`;
     }
 
     async function fetchProfile() {
       try {
         const res = await fetch(BACKEND + "/api/users/me", { headers: { ...authHeader(), "Content-Type": "application/json" } });
+        if (res.status === 401 || res.status === 403) return forceLogout();
         if (!res.ok) return;
         const d = await res.json();
         document.getElementById("profileName").value = d.user.fullname || "";
@@ -277,13 +298,15 @@
         document.getElementById("notifyEmail").checked = !!d.user.notifyEmail;
         document.getElementById("notifySMS").checked = !!d.user.notifySMS;
         document.getElementById("notifyPush").checked = !!d.user.notifyPush;
-      } catch {}
+      } catch {
+        forceLogout();
+      }
     }
 
     async function saveProfile(e) {
       e.preventDefault();
       try {
-        await fetch(BACKEND + "/api/users/me", {
+        const res = await fetch(BACKEND + "/api/users/me", {
           method: "PATCH",
           headers: { ...authHeader(), "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -295,13 +318,17 @@
             notifyPush: document.getElementById("notifyPush").checked
           })
         });
-      } catch {}
+        if (res.status === 401 || res.status === 403) return forceLogout();
+      } catch {
+        forceLogout();
+      }
     }
 
     async function fetchPosts() {
       showPostsLoading();
       try {
         const res = await fetch(BACKEND + "/api/blogger-dashboard/myposts", { headers: authHeader() });
+        if (res.status === 401 || res.status === 403) return forceLogout();
         if (!res.ok) throw new Error("Failed to fetch posts.");
         posts = await res.json();
         renderMyPosts();
@@ -399,6 +426,7 @@
 
     function clearEditor() {
       document.getElementById('postTitle').value = "";
+      document.getElementById('postCategory').value = "";
       if (quill) quill.setContents([{ insert: '\n' }]);
       editingPostId = null;
       uploadedImages = [];
@@ -406,121 +434,124 @@
       document.getElementById("imagePreview").innerHTML = "";
     }
 
-    
-
-  // UTIL: Convert file to base64 string
-  function fileToBase64(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result); // reader.result is a data URL
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  }
-
-  // Image preview and limit (now base64)
-  document.getElementById("imageUpload").addEventListener("change", async function(evt) {
-    const files = Array.from(evt.target.files);
-    if (files.length > 3) {
-      alert("You can upload a maximum of 3 images per post.");
-      evt.target.value = "";
-      return;
+    // UTIL: Convert file to base64 string
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result); // reader.result is a data URL
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
     }
-    let html = "";
-    uploadedImages = [];
-    for (const file of files) {
-      if (file.size > 5*1024*1024) {
-        alert("Each image must be less than 5MB.");
+
+    // Image preview and limit (now base64)
+    document.getElementById("imageUpload").addEventListener("change", async function(evt) {
+      const files = Array.from(evt.target.files);
+      if (files.length > 3) {
+        alert("You can upload a maximum of 3 images per post.");
         evt.target.value = "";
-        html = "";
-        uploadedImages = [];
         return;
       }
-      const base64 = await fileToBase64(file);
-      html += `<img src="${base64}" class="w-14 h-14 rounded border object-cover" title="${file.name}">`;
-      uploadedImages.push(base64); // push base64 string
-    }
-    document.getElementById("imagePreview").innerHTML = html;
-  });
+      let html = "";
+      uploadedImages = [];
+      for (const file of files) {
+        if (file.size > 5*1024*1024) {
+          alert("Each image must be less than 5MB.");
+          evt.target.value = "";
+          html = "";
+          uploadedImages = [];
+          return;
+        }
+        const base64 = await fileToBase64(file);
+        html += `<img src="${base64}" class="w-14 h-14 rounded border object-cover" title="${file.name}">`;
+        uploadedImages.push(base64); // push base64 string
+      }
+      document.getElementById("imagePreview").innerHTML = html;
+    });
 
-  // SAVE DRAFT AND PUBLISH: Send base64
-  document.getElementById('postEditorForm').onsubmit = async function(e){
-    e.preventDefault();
-    const title = document.getElementById('postTitle').value;
-    const content = quill.root.innerHTML;
-    const saveBtn = document.getElementById('saveDraftBtn');
-    const draftSpinner = document.getElementById('draftSpinner');
-    saveBtn.disabled = true;
-    draftSpinner.classList.remove('hidden');
-    try {
-      let body = {
-        title,
-        content,
-        status: "Draft",
-        images: uploadedImages // array of base64 strings
-      };
-      let method = editingPostId ? "PUT" : "POST";
-      let url = editingPostId
-        ? `${BACKEND}/api/blogger-dashboard/posts/${editingPostId}`
-        : `${BACKEND}/api/blogger-dashboard/posts`;
-      const res = await fetch(url, {
-        method,
-        headers: {
-          'Authorization': 'Bearer ' + getToken(),
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body)
-      });
-      if (!res.ok) throw new Error(editingPostId ? "Could not update post." : "Could not create post.");
-      await fetchPosts();
-      tabSwitch('myposts');
-      clearEditor();
-    } catch (err) {
-      alert("There was an error saving your post.");
-    } finally {
-      saveBtn.disabled = false;
-      draftSpinner.classList.add('hidden');
-    }
-  };
+    // SAVE DRAFT AND PUBLISH: Send base64
+    document.getElementById('postEditorForm').onsubmit = async function(e){
+      e.preventDefault();
+      const title = document.getElementById('postTitle').value;
+      const category = document.getElementById('postCategory').value;
+      const content = quill.root.innerHTML;
+      const saveBtn = document.getElementById('saveDraftBtn');
+      const draftSpinner = document.getElementById('draftSpinner');
+      saveBtn.disabled = true;
+      draftSpinner.classList.remove('hidden');
+      try {
+        let body = {
+          title,
+          category,
+          content,
+          status: "Draft",
+          images: uploadedImages // array of base64 strings
+        };
+        let method = editingPostId ? "PUT" : "POST";
+        let url = editingPostId
+          ? `${BACKEND}/api/blogger-dashboard/posts/${editingPostId}`
+          : `${BACKEND}/api/blogger-dashboard/posts`;
+        const res = await fetch(url, {
+          method,
+          headers: {
+            'Authorization': 'Bearer ' + getToken(),
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(body)
+        });
+        if (res.status === 401 || res.status === 403) return forceLogout();
+        if (!res.ok) throw new Error(editingPostId ? "Could not update post." : "Could not create post.");
+        await fetchPosts();
+        tabSwitch('myposts');
+        clearEditor();
+      } catch (err) {
+        alert("There was an error saving your post.");
+      } finally {
+        saveBtn.disabled = false;
+        draftSpinner.classList.add('hidden');
+      }
+    };
 
-  document.getElementById('publishBtn').onclick = async function() {
-    const publishBtn = this;
-    const publishSpinner = document.getElementById('publishSpinner');
-    publishBtn.disabled = true;
-    publishSpinner.classList.remove('hidden');
-    const title = document.getElementById('postTitle').value;
-    const content = quill.root.innerHTML;
-    try {
-      let body = {
-        title,
-        content,
-        status: "Published",
-        images: uploadedImages // array of base64
-      };
-      let method = editingPostId ? "PUT" : "POST";
-      let url = editingPostId
-        ? `${BACKEND}/api/blogger-dashboard/posts/${editingPostId}`
-        : `${BACKEND}/api/blogger-dashboard/posts`;
-      const res = await fetch(url, {
-        method,
-        headers: {
-          'Authorization': 'Bearer ' + getToken(),
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body)
-      });
-      if (!res.ok) throw new Error("Publish failed.");
-      await fetchPosts();
-      tabSwitch('myposts');
-      clearEditor();
-    } catch (err) {
-      alert("There was an error publishing your post.");
-    } finally {
-      publishBtn.disabled = false;
-      publishSpinner.classList.add('hidden');
-    }
-  };
-
+    document.getElementById('publishBtn').onclick = async function() {
+      const publishBtn = this;
+      const publishSpinner = document.getElementById('publishSpinner');
+      publishBtn.disabled = true;
+      publishSpinner.classList.remove('hidden');
+      const title = document.getElementById('postTitle').value;
+      const category = document.getElementById('postCategory').value;
+      const content = quill.root.innerHTML;
+      try {
+        let body = {
+          title,
+          category,
+          content,
+          status: "Published",
+          images: uploadedImages // array of base64
+        };
+        let method = editingPostId ? "PUT" : "POST";
+        let url = editingPostId
+          ? `${BACKEND}/api/blogger-dashboard/posts/${editingPostId}`
+          : `${BACKEND}/api/blogger-dashboard/posts`;
+        const res = await fetch(url, {
+          method,
+          headers: {
+            'Authorization': 'Bearer ' + getToken(),
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(body)
+        });
+        if (res.status === 401 || res.status === 403) return forceLogout();
+        if (!res.ok) throw new Error("Publish failed.");
+        await fetchPosts();
+        tabSwitch('myposts');
+        clearEditor();
+      } catch (err) {
+        alert("There was an error publishing your post.");
+      } finally {
+        publishBtn.disabled = false;
+        publishSpinner.classList.add('hidden');
+      }
+    };
 
     window.editPost = function(id) {
       const post = posts.find(p => p._id === id);
@@ -528,6 +559,7 @@
       tabSwitch('editor');
       setTimeout(() => {
         document.getElementById('postTitle').value = post.title;
+        document.getElementById('postCategory').value = post.category || "";
         if (quill) quill.setContents(quill.clipboard.convert(post.content));
         editingPostId = id;
         if (Array.isArray(post.images) && post.images.length) {
@@ -549,6 +581,7 @@
           method: 'DELETE',
           headers: authHeader()
         });
+        if (res.status === 401 || res.status === 403) return forceLogout();
         if (!res.ok) throw new Error("Delete failed.");
         await fetchPosts();
       } catch (err) {}
@@ -581,7 +614,7 @@
       let html = '';
       if (uploadedImages.length) {
         uploadedImages.forEach(img => {
-          html += `<img src="${URL.createObjectURL(img)}" class="w-24 h-24 object-cover rounded border" />`;
+          html += `<img src="${img}" class="w-24 h-24 object-cover rounded border" />`;
         });
       }
       document.getElementById('previewModalTitle').innerText = title;
@@ -598,9 +631,10 @@
     async function fetchMessages() {
       try {
         const res = await fetch(BACKEND + "/api/blogger-dashboard/messages", { headers: authHeader() });
+        if (res.status === 401 || res.status === 403) return forceLogout();
         if (!res.ok) throw new Error("Failed to fetch messages");
         const data = await res.json();
-        document.getElementById('messagesList').innerHTML = data.map(msg => `<div class="flex items-center gap-2"><img src="https://ui-avatars.com/api/?name=${encodeURIComponent(msg.from||'User')}&background=FFCE45&color=263159&rounded=true" class="h-8 w-8 rounded-full border border-yellow-400" alt=""><span class="font-bold text-blue-900">${msg.from}:</span><span class="text-gray-700">${msg.msg}</span><span class="ml-auto text-xs text-gray-400">${msg.date ? new Date(msg.date).toLocaleString() : ""}</span></div>`).join('');
+        document.getElementById('messagesList').innerHTML = data.map(msg => `<div class="flex items-center gap-2"><img src="https://ui-avatars.com/api/?name=${encodeURIComponent(msg.from||'User')}&background=FFCE45&color=263159&rounded=true" class="h-8 w-8 rounded-full border" alt="User"><span class="font-semibold text-blue-900">${msg.from||"User"}</span><span class="text-gray-700">${msg.msg}</span><span class="text-xs text-gray-400 ml-auto">${msg.date ? new Date(msg.date).toLocaleString() : ""}</span></div>`).join('');
       } catch { document.getElementById('messagesList').innerHTML = ""; }
     }
 
@@ -609,11 +643,12 @@
       const msgText = document.getElementById('msgText').value;
       if (!msgText.trim()) return;
       try {
-        await fetch(BACKEND + "/api/blogger-dashboard/messages", {
+        const res = await fetch(BACKEND + "/api/blogger-dashboard/messages", {
           method: "POST",
           headers: { ...authHeader(), "Content-Type": "application/json" },
           body: JSON.stringify({ msg: msgText, date: new Date().toISOString(), from: document.getElementById("profileName").value || "Me" })
         });
+        if (res.status === 401 || res.status === 403) return forceLogout();
         fetchMessages();
         this.reset();
       } catch {}
