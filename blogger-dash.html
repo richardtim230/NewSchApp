@@ -406,119 +406,121 @@
       document.getElementById("imagePreview").innerHTML = "";
     }
 
-    // Image preview and limit
-    document.getElementById("imageUpload").addEventListener("change", function(evt) {
-      const files = Array.from(evt.target.files);
-      if (files.length > 3) {
-        alert("You can upload a maximum of 3 images per post.");
+    
+
+  // UTIL: Convert file to base64 string
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result); // reader.result is a data URL
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Image preview and limit (now base64)
+  document.getElementById("imageUpload").addEventListener("change", async function(evt) {
+    const files = Array.from(evt.target.files);
+    if (files.length > 3) {
+      alert("You can upload a maximum of 3 images per post.");
+      evt.target.value = "";
+      return;
+    }
+    let html = "";
+    uploadedImages = [];
+    for (const file of files) {
+      if (file.size > 5*1024*1024) {
+        alert("Each image must be less than 5MB.");
         evt.target.value = "";
+        html = "";
+        uploadedImages = [];
         return;
       }
-      let html = "";
-      uploadedImages = [];
-      files.forEach((file, idx) => {
-        if (file.size > 5*1024*1024) {
-          alert("Each image must be less than 5MB.");
-          evt.target.value = "";
-          html = "";
-          uploadedImages = [];
-          return;
-        }
-        const url = URL.createObjectURL(file);
-        html += `<img src="${url}" class="w-14 h-14 rounded border object-cover" title="${file.name}">`;
-        uploadedImages.push(file);
+      const base64 = await fileToBase64(file);
+      html += `<img src="${base64}" class="w-14 h-14 rounded border object-cover" title="${file.name}">`;
+      uploadedImages.push(base64); // push base64 string
+    }
+    document.getElementById("imagePreview").innerHTML = html;
+  });
+
+  // SAVE DRAFT AND PUBLISH: Send base64
+  document.getElementById('postEditorForm').onsubmit = async function(e){
+    e.preventDefault();
+    const title = document.getElementById('postTitle').value;
+    const content = quill.root.innerHTML;
+    const saveBtn = document.getElementById('saveDraftBtn');
+    const draftSpinner = document.getElementById('draftSpinner');
+    saveBtn.disabled = true;
+    draftSpinner.classList.remove('hidden');
+    try {
+      let body = {
+        title,
+        content,
+        status: "Draft",
+        images: uploadedImages // array of base64 strings
+      };
+      let method = editingPostId ? "PUT" : "POST";
+      let url = editingPostId
+        ? `${BACKEND}/api/blogger-dashboard/posts/${editingPostId}`
+        : `${BACKEND}/api/blogger-dashboard/posts`;
+      const res = await fetch(url, {
+        method,
+        headers: {
+          'Authorization': 'Bearer ' + getToken(),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
       });
-      document.getElementById("imagePreview").innerHTML = html;
-    });
+      if (!res.ok) throw new Error(editingPostId ? "Could not update post." : "Could not create post.");
+      await fetchPosts();
+      tabSwitch('myposts');
+      clearEditor();
+    } catch (err) {
+      alert("There was an error saving your post.");
+    } finally {
+      saveBtn.disabled = false;
+      draftSpinner.classList.add('hidden');
+    }
+  };
 
-    document.getElementById('postEditorForm').onsubmit = async function(e){
-      e.preventDefault();
-      const title = document.getElementById('postTitle').value;
-      const content = quill.root.innerHTML;
-      const saveBtn = document.getElementById('saveDraftBtn');
-      const draftSpinner = document.getElementById('draftSpinner');
-      saveBtn.disabled = true;
-      draftSpinner.classList.remove('hidden');
-      try {
-        let formData = new FormData();
-        formData.append("title", title);
-        formData.append("content", content);
-        formData.append("status", "Draft");
-        if (uploadedImages && uploadedImages.length) {
-          uploadedImages.forEach((img, idx) => {
-            formData.append("images", img);
-          });
-        }
-        if(editingPostId) {
-          const res = await fetch(`${BACKEND}/api/blogger-dashboard/posts/${editingPostId}`, {
-            method: 'PUT',
-            headers: { 'Authorization': 'Bearer ' + getToken() },
-            body: formData
-          });
-          if (!res.ok) throw new Error("Could not update post.");
-          await fetchPosts();
-        } else {
-          const res = await fetch(`${BACKEND}/api/blogger-dashboard/posts`, {
-            method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + getToken() },
-            body: formData
-          });
-          if (!res.ok) throw new Error("Could not create post.");
-          await fetchPosts();
-        }
-        tabSwitch('myposts');
-        clearEditor();
-      } catch (err) {
-        alert("There was an error saving your post.");
-      } finally {
-        saveBtn.disabled = false;
-        draftSpinner.classList.add('hidden');
-      }
-    };
+  document.getElementById('publishBtn').onclick = async function() {
+    const publishBtn = this;
+    const publishSpinner = document.getElementById('publishSpinner');
+    publishBtn.disabled = true;
+    publishSpinner.classList.remove('hidden');
+    const title = document.getElementById('postTitle').value;
+    const content = quill.root.innerHTML;
+    try {
+      let body = {
+        title,
+        content,
+        status: "Published",
+        images: uploadedImages // array of base64
+      };
+      let method = editingPostId ? "PUT" : "POST";
+      let url = editingPostId
+        ? `${BACKEND}/api/blogger-dashboard/posts/${editingPostId}`
+        : `${BACKEND}/api/blogger-dashboard/posts`;
+      const res = await fetch(url, {
+        method,
+        headers: {
+          'Authorization': 'Bearer ' + getToken(),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) throw new Error("Publish failed.");
+      await fetchPosts();
+      tabSwitch('myposts');
+      clearEditor();
+    } catch (err) {
+      alert("There was an error publishing your post.");
+    } finally {
+      publishBtn.disabled = false;
+      publishSpinner.classList.add('hidden');
+    }
+  };
 
-    document.getElementById('publishBtn').onclick = async function() {
-      const publishBtn = this;
-      const publishSpinner = document.getElementById('publishSpinner');
-      publishBtn.disabled = true;
-      publishSpinner.classList.remove('hidden');
-      const title = document.getElementById('postTitle').value;
-      const content = quill.root.innerHTML;
-      try {
-        let formData = new FormData();
-        formData.append("title", title);
-        formData.append("content", content);
-        formData.append("status", "Published");
-        if (uploadedImages && uploadedImages.length) {
-          uploadedImages.forEach((img, idx) => {
-            formData.append("images", img);
-          });
-        }
-        if(editingPostId) {
-          const res = await fetch(`${BACKEND}/api/blogger-dashboard/posts/${editingPostId}`, {
-            method: 'PUT',
-            headers: { 'Authorization': 'Bearer ' + getToken() },
-            body: formData
-          });
-          if (!res.ok) throw new Error("Publish failed.");
-          await fetchPosts();
-        } else {
-          const res = await fetch(`${BACKEND}/api/blogger-dashboard/posts`, {
-            method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + getToken() },
-            body: formData
-          });
-          if (!res.ok) throw new Error("Publish failed.");
-          await fetchPosts();
-        }
-        tabSwitch('myposts');
-        clearEditor();
-      } catch (err) {
-        alert("There was an error publishing your post.");
-      } finally {
-        publishBtn.disabled = false;
-        publishSpinner.classList.add('hidden');
-      }
-    };
 
     window.editPost = function(id) {
       const post = posts.find(p => p._id === id);
