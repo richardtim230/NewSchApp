@@ -16,20 +16,12 @@
     .comment-date { color: #9ca3af; font-size: 0.92em; }
     .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     .line-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-    /* Hide the main image from inside the content on main page */
-    #mainContent .prose img.featured-content-img { display: none !important; }
-    /* Sticky/fixed header and footer for mobile */
-    @media (max-width: 768px) {
-      .sticky-header { position: fixed; top: 0; left: 0; width: 100%; z-index: 50; }
-      .sticky-footer { position: fixed; bottom: 0; left: 0; width: 100%; z-index: 50; }
-      body { padding-top: 68px; padding-bottom: 80px; }
-    }
   </style>
 </head>
 <body class="text-gray-900 bg-gray-50">
 
-  <!-- Navbar with Hamburger (Sticky on mobile) -->
-  <nav class="w-full bg-white shadow-sm border-b border-blue-900/10 px-4 py-3 flex items-center justify-between sticky-header">
+  <!-- Navbar with Hamburger -->
+  <nav class="w-full bg-white shadow-sm border-b border-blue-900/10 px-4 py-3 flex items-center justify-between">
     <a href="oau-blog.html" class="flex items-center gap-2 font-bold text-xl text-blue-900">
       <img src="logo.png" class="h-8" alt="logo">
       OAU <span class="text-yellow-600">ExamGuard</span> Blog
@@ -58,7 +50,7 @@
     </div>
   </div>
 
-  <main class="max-w-3xl mx-auto px-4 py-8" id="mainContent">
+  <main class="max-w-3xl mx-auto px-4 py-8">
     <!-- Blog Main Content -->
     <article id="blogContent" class="bg-white rounded-2xl shadow p-6 mb-12 min-h-[320px] flex flex-col items-stretch">
       <div id="blogLoading" class="flex justify-center items-center py-24">
@@ -95,7 +87,8 @@
       <div id="relatedPosts" class="grid gap-6 md:grid-cols-2"></div>
     </section>
   </main>
-<!-- Footer -->
+
+  <!-- Footer -->
   <footer class="bg-white border-t py-8 mt-8">
     <div class="max-w-7xl mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-4">
       <div class="flex items-center gap-2 text-blue-900 font-bold text-lg">
@@ -149,39 +142,15 @@
     }
 
     // --- Add a comment to backend
-    async function addCommentToBackend(postId, userId, name, text, parentId) {
+    async function addCommentToBackend(postId, userId, name, text) {
       try {
         const res = await fetch(`${DASHBOARD_API}/add-comment/${postId}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, text, user: userId, parentId })
+          body: JSON.stringify({ name, text, user: userId })
         });
         if (!res.ok) throw new Error("Failed to add comment");
         return true;
-      } catch {
-        return false;
-      }
-    }
-
-    // --- Like post
-    async function likePostOnBackend(postId) {
-      try {
-        const res = await fetch(`${DASHBOARD_API}/like/${postId}`, {
-          method: "PATCH"
-        });
-        return res.ok;
-      } catch {
-        return false;
-      }
-    }
-
-    // --- Like comment
-    async function likeCommentOnBackend(postId, commentId) {
-      try {
-        const res = await fetch(`${DASHBOARD_API}/like-comment/${postId}/${commentId}`, {
-          method: "PATCH"
-        });
-        return res.ok;
       } catch {
         return false;
       }
@@ -211,50 +180,20 @@
         return;
       }
 
-      // Pick the featured image robustly
-      let featuredImage = null;
-      if (Array.isArray(mainPost.images) && mainPost.images.length) {
-        featuredImage = mainPost.images[0];
-      } else if (typeof mainPost.images === "string" && mainPost.images.startsWith("data:image")) {
-        featuredImage = mainPost.images;
-      } else if (mainPost.imageUrl && mainPost.imageUrl.startsWith("data:image")) {
-        featuredImage = mainPost.imageUrl;
-      } else if (mainPost.imageUrl) {
-        featuredImage = mainPost.imageUrl;
-      }
-      if (!featuredImage) {
-        featuredImage = "https://images.unsplash.com/photo-1503676382389-4809596d5290?auto=format&fit=crop&w=800&q=80";
-      }
-
-      // Remove the main featured image from inside the content (if present)
-      let content = mainPost.content || "";
-      content = content.replace(
-        /<img[^>]+src=["'][^"'>]*["'][^>]*class=["']?([^"'>]*\s)?featured-content-img(\s[^"'>]*)?["']?[^>]*>/gi,
-        ''
-      );
-
-      // If the featured image is inside content but not marked, remove the first img with matching src
-      if (featuredImage && content.includes(featuredImage)) {
-        // Remove only first occurrence of <img ...src="{featuredImage}"...>
-        content = content.replace(
-          new RegExp(`<img[^>]+src=["']${featuredImage}["'][^>]*>`, "i"),
-          ""
-        );
-      }
-
       // Format post details
       const author = mainPost.authorName || "Anonymous";
       const date = mainPost.date ? new Date(mainPost.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : "";
+      const image = mainPost.imageUrl || "https://images.unsplash.com/photo-1503676382389-4809596d5290?auto=format&fit=crop&w=800&q=80";
       const category = mainPost.category || "General";
-      let views = mainPost.views ?? 0;
-      let likes = mainPost.likes ?? 0;
+      const views = mainPost.views ?? 0;
+      const likes = mainPost.likes ?? 0;
       const comments = Array.isArray(mainPost.comments) ? mainPost.comments : [];
+      const content = mainPost.content || "";
       const title = mainPost.title || "";
-      const authorId = mainPost.authorId || mainPost.user;
-
+      const authorId = mainPost.authorId || mainPost.user; // Add userId to post in backend
       // Render main post
       document.getElementById('blogContent').innerHTML = `
-        <img src="${featuredImage}" alt="${title}" class="w-full h-64 object-contain bg-gray-50 rounded-lg mb-4 shadow" />
+        <img src="${image}" alt="${title}" class="w-full h-64 object-cover rounded-lg mb-4 shadow" />
         <h1 class="text-3xl font-extrabold text-blue-900 mb-2">${title}</h1>
         <div class="flex flex-wrap gap-2 text-sm text-gray-500 mb-2">
           <span class="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full font-medium">${category}</span>
@@ -263,20 +202,12 @@
         </div>
         <div class="flex gap-4 text-xs text-gray-400 mb-6">
           <span>👁️ ${views} reads</span>
-          <span id="like-main-btn" class="cursor-pointer select-none">⭐ <span id="main-like-count">${likes}</span> like${likes==1?'':'s'}</span>
+          <span>⭐ ${likes} likes</span>
           <span>💬 ${comments.length} comments</span>
         </div>
         <div class="prose prose-lg max-w-none text-gray-900 mb-6">${content}</div>
         <div class="border-t pt-5 text-green-700 font-bold text-center">You earned 2 points for reading!</div>
       `;
-
-      // Like post handler
-      document.getElementById("like-main-btn").onclick = async function() {
-        if (await likePostOnBackend(postId)) {
-          likes++;
-          document.getElementById("main-like-count").textContent = likes;
-        }
-      };
 
       // --- Author card
       if (authorId) {
@@ -292,22 +223,24 @@
         }
       }
 
-      // --- Render comments (with like and reply)
-      renderComments(comments, postId);
+      // --- Render comments
+      renderComments(comments);
 
-      // --- Comments submit handler (root comments)
+      // --- Comments submit handler
       document.getElementById("commentForm").onsubmit = async function(e) {
         e.preventDefault();
         const name = document.getElementById("commentName").value.trim() || "Anonymous";
         const text = document.getElementById("commentText").value.trim();
         if (!text) return;
+
+        // Save to backend
         const userId = null; // Optionally get from auth, or leave null for anonymous
-        const ok = await addCommentToBackend(postId, userId, name, text, null);
+        const ok = await addCommentToBackend(postId, userId, name, text);
         if (ok) {
           // Reload comments
           allPosts = await fetchAllPosts();
           const updatedPost = allPosts.find(p => p._id === postId);
-          renderComments(updatedPost && Array.isArray(updatedPost.comments) ? updatedPost.comments : [], postId);
+          renderComments(updatedPost && Array.isArray(updatedPost.comments) ? updatedPost.comments : []);
           this.reset();
         } else {
           alert("Failed to add comment. Please try again.");
@@ -322,29 +255,15 @@
         related = related.slice(0, 4);
       }
 
-      // --- Render related posts (featured image only)
+      // --- Render related posts
       const relatedGrid = document.getElementById('relatedPosts');
       if (related.length === 0) {
         relatedGrid.innerHTML = `<div class="text-gray-400">No related posts found.</div>`;
       } else {
-        relatedGrid.innerHTML = related.map(blog => {
-          // select featured image
-          let img = null;
-          if (Array.isArray(blog.images) && blog.images.length) {
-            img = blog.images[0];
-          } else if (typeof blog.images === "string" && blog.images.startsWith("data:image")) {
-            img = blog.images;
-          } else if (blog.imageUrl && blog.imageUrl.startsWith("data:image")) {
-            img = blog.imageUrl;
-          } else if (blog.imageUrl) {
-            img = blog.imageUrl;
-          }
-          if (!img) {
-            img = "https://images.unsplash.com/photo-1503676382389-4809596d5290?auto=format&fit=crop&w=400&q=80";
-          }
-          return `
+        relatedGrid.innerHTML = related.map(blog => `
           <a href="blog-details.html?id=${blog._id}" class="block bg-white rounded-xl shadow hover:shadow-xl overflow-hidden transition group">
-            <img src="${img}" alt="${blog.title}" class="h-36 w-full object-contain bg-gray-50 group-hover:scale-105 transition" />
+            <img src="${blog.imageUrl || "https://images.unsplash.com/photo-1503676382389-4809596d5290?auto=format&fit=crop&w=400&q=80"}"
+                 alt="${blog.title}" class="h-36 w-full object-cover group-hover:scale-105 transition" />
             <div class="p-4">
               <h3 class="font-bold text-blue-900 text-lg mb-1 line-clamp-2">${blog.title}</h3>
               <div class="flex items-center text-yellow-500 text-base font-bold mb-1">${blog.category || "General"}</div>
@@ -357,94 +276,28 @@
               </div>
             </div>
           </a>
-          `;
-        }).join('');
+        `).join('');
       }
     })();
 
-    // --- Render comments utility (with like and reply)
-    function renderComments(comments, postId, parentId = null, depth = 0) {
-      const list = parentId ? document.getElementById(`replies-${parentId}`) : document.getElementById("commentsList");
+    // --- Render comments utility
+    function renderComments(comments) {
+      const list = document.getElementById("commentsList");
       if (!Array.isArray(comments) || comments.length === 0) {
-        if (!parentId) list.innerHTML = `<div class="text-gray-400 italic">No comments yet. Be the first to comment!</div>`;
+        list.innerHTML = `<div class="text-gray-400 italic">No comments yet. Be the first to comment!</div>`;
         return;
       }
-      // Filter by parentId
-      const rootComments = comments.filter(c => !c.parentId && !parentId || c.parentId === parentId);
       // Sort by most recent
-      rootComments.sort((a, b) => new Date(b.date) - new Date(a.date));
-      list.innerHTML = rootComments.map(comment => {
-        // Like count
-        let likeCount = comment.likes ?? 0;
-        return `
-        <div class="comment-bubble mb-4" style="margin-left:${depth * 24}px">
+      comments = [...comments].sort((a, b) => new Date(b.date) - new Date(a.date));
+      list.innerHTML = comments.map(comment => `
+        <div class="comment-bubble mb-4">
           <div>
             <span class="comment-author">${comment.name || 'Anonymous'}</span>
             <span class="comment-date ml-2">${comment.date ? new Date(comment.date).toLocaleString() : ''}</span>
           </div>
           <div class="mt-1">${comment.text}</div>
-          <div class="flex gap-4 mt-2 text-xs text-gray-500">
-            <span class="cursor-pointer select-none comment-like-btn" data-comment-id="${comment._id}" data-post-id="${postId}">⭐ <span id="comment-like-count-${comment._id}">${likeCount}</span> like${likeCount==1?'':'s'}</span>
-            <span class="cursor-pointer select-none comment-reply-btn" data-comment-id="${comment._id}">↩️ Reply</span>
-          </div>
-          <form id="replyForm-${comment._id}" class="hidden mt-2 flex gap-2">
-            <input type="text" class="flex-1 px-2 py-1 border rounded" placeholder="Write a reply..." />
-            <button type="submit" class="bg-yellow-500 text-blue-900 px-3 py-1 rounded font-bold hover:bg-blue-900 hover:text-yellow-400 transition">Reply</button>
-          </form>
-          <div id="replies-${comment._id}"></div>
         </div>
-        `;
-      }).join('');
-
-      // Like and reply event listeners
-      rootComments.forEach(comment => {
-        const likeBtn = list.querySelector(`.comment-like-btn[data-comment-id="${comment._id}"]`);
-        if (likeBtn) {
-          likeBtn.onclick = async function() {
-            if (await likeCommentOnBackend(postId, comment._id)) {
-              let countEl = document.getElementById(`comment-like-count-${comment._id}`);
-              let count = parseInt(countEl.textContent, 10);
-              countEl.textContent = count + 1;
-            }
-          };
-        }
-        const replyBtn = list.querySelector(`.comment-reply-btn[data-comment-id="${comment._id}"]`);
-        const replyForm = document.getElementById(`replyForm-${comment._id}`);
-        if (replyBtn && replyForm) {
-          replyBtn.onclick = function() {
-            replyForm.classList.toggle("hidden");
-            replyForm.querySelector("input").focus();
-          };
-          replyForm.onsubmit = async function(e) {
-            e.preventDefault();
-            const text = replyForm.querySelector("input").value.trim();
-            if (!text) return;
-            // Optional: get name from root input or set "Anonymous"
-            const name = document.getElementById("commentName") ? document.getElementById("commentName").value.trim() : "Anonymous";
-            const ok = await addCommentToBackend(postId, null, name, text, comment._id);
-            if (ok) {
-              // Reload comments
-              const res = await fetch(`${DASHBOARD_API}/allposts`);
-              const allPosts = res.ok ? await res.json() : [];
-              const updatedPost = allPosts.find(p => p._id === postId);
-              renderComments(updatedPost && Array.isArray(updatedPost.comments) ? updatedPost.comments : [], postId);
-              replyForm.reset();
-              replyForm.classList.add("hidden");
-            } else {
-              alert("Failed to reply. Please try again.");
-            }
-          };
-        }
-        // Render replies recursively
-        if (comment.replies && comment.replies.length > 0) {
-          renderComments(comment.replies, postId, comment._id, depth + 1);
-        } else if (Array.isArray(comments)) {
-          // Nested replies: find children
-          const children = comments.filter(c => c.parentId === comment._id);
-          if (children.length)
-            renderComments(comments, postId, comment._id, depth + 1);
-        }
-      });
+      `).join('');
     }
   </script>
 </body>
