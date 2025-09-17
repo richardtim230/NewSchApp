@@ -307,6 +307,42 @@ function getPostIdFromURL() {
   return params.get("id");
 }
 
+// Utility: get user id for deduplication
+function getCurrentUserIdOrVisitor() {
+  const user = getUserFromToken();
+  if (user && user.id) return user.id;
+  let visitorId = localStorage.getItem('visitor_id');
+  if (!visitorId) {
+    visitorId = 'guest_' + Math.random().toString(36).substr(2, 10) + '_' + Date.now();
+    localStorage.setItem('visitor_id', visitorId);
+  }
+  return visitorId;
+}
+function shouldCountBlogRead(postId) {
+  const key = 'blog_read_' + postId;
+  const lastRead = localStorage.getItem(key);
+  if (!lastRead) return true;
+  return (Date.now() - Number(lastRead)) > (2 * 60 * 60 * 1000); // 2 hours
+}
+function markBlogRead(postId) {
+  localStorage.setItem('blog_read_' + postId, Date.now().toString());
+}
+// Increment read count on page load
+async function incrementBlogReadCount(postId) {
+  if (!shouldCountBlogRead(postId)) return;
+  const userOrVisitor = getCurrentUserIdOrVisitor();
+  try {
+    await fetch(`https://examguide.onrender.com/api/blogger-dashboard/increment-views/${postId}`, {
+      method: "PATCH",
+      headers: {
+        "x-visitor-id": userOrVisitor
+      }
+    });
+    markBlogRead(postId);
+  } catch (e) {}
+}
+
+
 // --- Fetch all published posts (for related posts)
 async function fetchAllPosts() {
   const res = await fetch(`${DASHBOARD_API}/allposts`);
@@ -644,7 +680,8 @@ function attachCommentActionListeners() {
   let mainPost = null;
   let postId = getPostIdFromURL();
   let category = null;
-
+  incrementBlogReadCount(postId); // <-- Add this here at the top
+    
   if (!postId) {
     document.getElementById('blogContent').innerHTML = `<div class="text-center text-gray-500 py-20">Blog post not found.</div>`;
     return;
