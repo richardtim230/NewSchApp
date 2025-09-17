@@ -204,218 +204,83 @@
 
   <script>
     const API_BASE = "https://examguide.onrender.com/api";
-    const DASHBOARD_API = API_BASE + "/blogger-dashboard";
+const DASHBOARD_API = API_BASE + "/blogger-dashboard";
 
-    // Hamburger menu
-    document.getElementById('hamburger-btn').addEventListener('click', function() {
-      document.getElementById('mobile-menu').classList.remove('hidden');
-      document.body.style.overflow = 'hidden';
+// Hamburger menu
+document.getElementById('hamburger-btn').addEventListener('click', function() {
+  document.getElementById('mobile-menu').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+});
+function closeMobileMenu() {
+  document.getElementById('mobile-menu').classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+// --- Parse post id from URL
+function getPostIdFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("id");
+}
+
+// --- Fetch all published posts (for related posts)
+async function fetchAllPosts() {
+  const res = await fetch(`${DASHBOARD_API}/allposts`);
+  return res.ok ? await res.json() : [];
+}
+
+// --- Fetch user info (for author card)
+async function fetchUserInfo(userId) {
+  if (!userId) return {};
+  try {
+    const res = await fetch(`${API_BASE}/users/${userId}`);
+    if (!res.ok) return {};
+    const data = await res.json();
+    return data.user || data;
+  } catch {
+    return {};
+  }
+}
+
+// --- Backend: Like a post
+async function likePost(postId) {
+  const res = await fetch(`${DASHBOARD_API}/like/${postId}`, { method: "PATCH" });
+  return res.ok ? (await res.json()).likes : null;
+}
+
+// --- Backend: Like a comment
+async function likeComment(postId, commentId) {
+  const res = await fetch(`${DASHBOARD_API}/like-comment/${postId}/${commentId}`, { method: "PATCH" });
+  return res.ok ? (await res.json()).likes : null;
+}
+
+// --- Add a comment or reply to backend
+async function addCommentToBackend(postId, userId, name, text, parentId=null) {
+  try {
+    const res = await fetch(`${DASHBOARD_API}/add-comment/${postId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, text, user: userId, parentId })
     });
-    function closeMobileMenu() {
-      document.getElementById('mobile-menu').classList.add('hidden');
-      document.body.style.overflow = '';
-    }
+    if (!res.ok) throw new Error("Failed to add comment");
+    return true;
+  } catch {
+    return false;
+  }
+}
 
-    // --- Parse post id from URL
-    function getPostIdFromURL() {
-      const params = new URLSearchParams(window.location.search);
-      return params.get("id");
-    }
+// --- Show register/login banner if not logged in
+function showAuthBanner() {
+  if (document.getElementById('auth-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'auth-banner';
+  banner.className = "fixed inset-x-0 top-0 bg-yellow-200 text-blue-900 text-center py-4 z-50 font-bold shadow";
+  banner.innerHTML = `
+    You must <a href="mock.html" class="underline text-blue-900">register</a> or <a href="mock.html" class="underline text-blue-900">log in</a> to earn credit points for reading blog posts!
+    <button onclick="this.parentElement.remove()" class="ml-4 px-2 py-1 bg-yellow-400 rounded">Dismiss</button>
+  `;
+  document.body.appendChild(banner);
+}
 
-    // --- Fetch all published posts (for related posts)
-    async function fetchAllPosts() {
-      const res = await fetch(`${DASHBOARD_API}/allposts`);
-      return res.ok ? await res.json() : [];
-    }
-
-    // --- Fetch user info (for author card)
-    async function fetchUserInfo(userId) {
-      if (!userId) return {};
-      try {
-        const res = await fetch(`${API_BASE}/users/${userId}`);
-        if (!res.ok) return {};
-        const data = await res.json();
-        return data.user || data;
-      } catch {
-        return {};
-      }
-    }
-
-    // --- Backend: Like a post
-    async function likePost(postId) {
-      const res = await fetch(`${DASHBOARD_API}/like/${postId}`, { method: "PATCH" });
-      return res.ok ? (await res.json()).likes : null;
-    }
-
-    // --- Backend: Like a comment
-    async function likeComment(postId, commentId) {
-      const res = await fetch(`${DASHBOARD_API}/like-comment/${postId}/${commentId}`, { method: "PATCH" });
-      return res.ok ? (await res.json()).likes : null;
-    }
-
-    // --- Add a comment or reply to backend
-    async function addCommentToBackend(postId, userId, name, text, parentId=null) {
-      try {
-        const res = await fetch(`${DASHBOARD_API}/add-comment/${postId}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, text, user: userId, parentId })
-        });
-        if (!res.ok) throw new Error("Failed to add comment");
-        return true;
-      } catch {
-        return false;
-      }
-    }
-
-    // --- Main: fetch and render the selected post
-    let allPostsCache = [];
-    let mainPost = null;
-    let postId = null;
-    let category = null;
-
-    (async function(){
-      postId = getPostIdFromURL();
-      if (!postId) {
-        document.getElementById('blogContent').innerHTML = `<div class="text-center text-gray-500 py-20">Blog post not found.</div>`;
-        return;
-      }
-
-      // Fetch all posts
-      try {
-        allPostsCache = await fetchAllPosts();
-      } catch {
-        document.getElementById('blogContent').innerHTML = `<div class="text-center text-gray-500 py-20">Could not load posts.</div>`;
-        return;
-      }
-
-      // Find the main post
-      mainPost = allPostsCache.find(p => p._id === postId);
-      if (!mainPost) {
-        document.getElementById('blogContent').innerHTML = `<div class="text-center text-gray-500 py-20">Blog post not found.</div>`;
-        return;
-      }
-
-      // Format post details
-      const author = mainPost.authorName || "Anonymous";
-      const date = mainPost.date ? new Date(mainPost.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : "";
-      const image = mainPost.imageUrl || "https://images.unsplash.com/photo-1503676382389-4809596d5290?auto=format&fit=crop&w=800&q=80";
-      category = mainPost.category || "General";
-      const views = mainPost.views ?? 0;
-      const likes = mainPost.likes ?? 0;
-      const comments = Array.isArray(mainPost.comments) ? mainPost.comments : [];
-      const content = mainPost.content || "";
-      const title = mainPost.title || "";
-      const authorId = mainPost.authorId || mainPost.user;
-
-      // --- Render main post
-      document.getElementById('blogContent').innerHTML = `
-        <div class="relative">
-          <img src="${image}" alt="${title}" class="w-full h-auto object-cover rounded-lg mb-4 shadow" />
-          <button id="likePostBtn" class="absolute top-3 right-4 bg-white/90 rounded-full border border-yellow-200 px-3 py-1 flex items-center gap-1 font-semibold like-btn transition hover:bg-yellow-50 ${localStorage.getItem('liked_post_'+postId) ? 'liked' : ''}">
-            <svg class="w-5 h-5 ${localStorage.getItem('liked_post_'+postId) ? 'text-yellow-400' : 'text-yellow-500'}" fill="currentColor" viewBox="0 0 20 20"><path d="M3.172 5.172A4 4 0 0 1 9.999 6.586a4 4 0 1 1 6.828-1.414c1.562 1.563 1.562 4.095 0 5.657l-6.657 6.657a1 1 0 0 1-1.414 0l-6.657-6.657c-1.562-1.562-1.562-4.094 0-5.657z"/></svg>
-            <span id="likePostCount">${likes}</span>
-          </button>
-        </div>
-        <h1 class="text-3xl font-extrabold text-blue-900 mb-2">${title}</h1>
-        <div class="flex flex-wrap gap-2 text-sm text-gray-500 mb-2">
-          <span class="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full font-medium">${category}</span>
-          <span>${author}</span>
-          <span>• ${date}</span>
-        </div>
-        <div class="flex gap-4 text-xs text-gray-400 mb-6">
-          <span>👁️ ${views} reads</span>
-          <span>⭐ <span id="likePostCount2">${likes}</span> likes</span>
-          <span>💬 ${comments.length} comments</span>
-        </div>
-        <div class="prose prose-lg max-w-none text-gray-900 mb-6">${content}</div>
-        
-      `;
-
-      // Like post button
-      document.getElementById('likePostBtn').addEventListener('click', async function() {
-        if (localStorage.getItem('liked_post_' + postId)) return;
-        this.disabled = true;
-        const newLikes = await likePost(postId);
-        if (newLikes !== null) {
-          localStorage.setItem('liked_post_' + postId, '1');
-          document.getElementById('likePostBtn').classList.add('liked');
-          document.getElementById('likePostCount').textContent = newLikes;
-          document.getElementById('likePostCount2').textContent = newLikes;
-        }
-        this.disabled = false;
-      });
-
-      // --- Author card
-      if (authorId) {
-        const authorData = await fetchUserInfo(authorId);
-        if (authorData && (authorData.fullname || authorData.username)) {
-          document.getElementById("authorCard").classList.remove("hidden");
-          document.getElementById("authorName").textContent = authorData.fullname || authorData.username || "Anonymous";
-          document.getElementById("authorDept").textContent = (authorData.department ? authorData.department + " Dept" : "") + (authorData.faculty ? ", " + authorData.faculty : "");
-          document.getElementById("authorBio").textContent = authorData.bio || "";
-          document.getElementById("authorAvatar").src = authorData.profilePic
-            ? (authorData.profilePic.startsWith("http") ? authorData.profilePic : (authorData.profilePic))
-            : `https://ui-avatars.com/api/?name=${encodeURIComponent(authorData.fullname || authorData.username || "Author")}&background=ffda00&color=263159&rounded=true`;
-        }
-      }
-
-      // --- Render comments
-      renderComments(comments);
-
-      // --- Comments submit handler
-      document.getElementById("commentForm").onsubmit = async function(e) {
-        e.preventDefault();
-        const name = document.getElementById("commentName").value.trim() || "Anonymous";
-        const text = document.getElementById("commentText").value.trim();
-        if (!text) return;
-
-        // Save to backend
-        const userId = null;
-        const ok = await addCommentToBackend(postId, userId, name, text);
-        if (ok) {
-          // Reload comments
-          allPostsCache = await fetchAllPosts();
-          mainPost = allPostsCache.find(p => p._id === postId);
-          renderComments(mainPost && Array.isArray(mainPost.comments) ? mainPost.comments : []);
-          this.reset();
-        } else {
-          alert("Failed to add comment. Please try again.");
-        }
-      };
-
-      // --- Related posts (same category, exclude main post). Fallback: recent other posts.
-      let related = allPostsCache.filter(p => p._id !== postId && (p.category === category));
-      if (related.length < 2) {
-        related = allPostsCache.filter(p => p._id !== postId).slice(0, 4);
-      } else {
-        related = related.slice(0, 4);
-      }
-
-// --- Render related posts
-      const relatedGrid = document.getElementById('relatedPosts');
-      if (related.length === 0) {
-        relatedGrid.innerHTML = `<div class="text-gray-400">No related posts found.</div>`;
-      } else {
-        relatedGrid.innerHTML = related.map(blog => `
-          <a href="blog-details.html?id=${blog._id}" class="block bg-white rounded-xl shadow hover:shadow-xl overflow-hidden transition group">
-            <img src="${blog.imageUrl || "https://images.unsplash.com/photo-1503676382389-4809596d5290?auto=format&fit=crop&w=400&q=80"}"
-                 alt="${blog.title}" class="h-auto w-full object-cover group-hover:scale-105 transition" />
-            <div class="p-4">
-              <h3 class="font-bold text-blue-900 text-lg mb-1 line-clamp-2">${blog.title}</h3>
-              <div class="flex items-center text-yellow-500 text-base font-bold mb-1">${blog.category || "General"}</div>
-              <div class="text-xs text-gray-400 mb-2">${blog.authorName || "Anonymous"} • ${blog.date ? new Date(blog.date).toLocaleDateString() : ""}</div>
-              <p class="text-gray-600 mb-2 line-clamp-2">${blog.content ? blog.content.substring(0, 80) + "..." : ""}</p>
-              <div class="flex gap-2 text-xs text-gray-400">
-                <span>👁️ ${blog.views ?? 0}</span>
-                <span>⭐ ${blog.likes ?? 0}</span>
-                <span>💬 ${Array.isArray(blog.comments) ? blog.comments.length : 0}</span>
-              </div>
-            </div>
-          </a>
-        `).join('');
-      }
-    })();
 // --- Auth check
 function getUserToken() {
   return localStorage.token || sessionStorage.token || null;
@@ -431,19 +296,6 @@ function getUserFromToken() {
   } catch {
     return null;
   }
-}
-
-// --- Show register/login banner if not logged in
-function showAuthBanner() {
-  if (document.getElementById('auth-banner')) return;
-  const banner = document.createElement('div');
-  banner.id = 'auth-banner';
-  banner.className = "fixed inset-x-0 top-0 bg-yellow-200 text-blue-900 text-center py-4 z-50 font-bold shadow";
-  banner.innerHTML = `
-    You must <a href="mock.html" class="underline text-blue-900">register</a> or <a href="mock.html" class="underline text-blue-900">log in</a> to earn credit points for reading blog posts!
-    <button onclick="this.parentElement.remove()" class="ml-4 px-2 py-1 bg-yellow-400 rounded">Dismiss</button>
-  `;
-  document.body.appendChild(banner);
 }
 
 // --- Activity monitoring and reward logic
@@ -465,7 +317,6 @@ function monitorAndRewardReading(postId) {
   function startTimer() {
     interval = setInterval(() => {
       timeSpent++;
-      // console.log('Reading seconds:', timeSpent);
       checkReward();
     }, 1000);
   }
@@ -482,7 +333,7 @@ function monitorAndRewardReading(postId) {
 
   // Check if both conditions met, then award points
   function checkReward() {
-    if (timeSpent >= 120 && scrolled) { // e.g. 2 minutes + 80% scrolled
+    if (timeSpent >= 120 && scrolled) {
       clearInterval(interval);
       awardReadingPoints(postId, user.id);
     }
@@ -506,9 +357,7 @@ async function awardReadingPoints(postId, userId) {
     const data = await res.json();
     if (res.ok && data.success) {
       localStorage.setItem("rewarded_blog_" + postId, "1");
-      // Show positive feedback
       alert("Congratulations! You earned 5 points for reading this blog post.");
-      // Optionally, update UI to reflect points/disable reward again
     } else if (data.error) {
       alert(data.error);
     }
@@ -516,12 +365,12 @@ async function awardReadingPoints(postId, userId) {
     alert("Error awarding points!");
   }
 }
+
+// --- Inject Blog Post JSON-LD Schema
 function injectBlogPostJsonLD({ title, image, author, datePublished, description }) {
-  // Remove existing JSON-LD if any
   const oldLd = document.getElementById('blog-post-json-ld');
   if (oldLd) oldLd.remove();
 
-  // Build JSON-LD object
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "BlogPosting",
@@ -537,145 +386,277 @@ function injectBlogPostJsonLD({ title, image, author, datePublished, description
       "name": "OAU ExamGuard",
       "logo": {
         "@type": "ImageObject",
-        "url": "https://newschapp.vercel.app/logo.png"
+        "url": "https://oau.examguard.com.ng/logo.png"
       }
     },
     "description": description
   };
 
-  // Create script element
   const script = document.createElement('script');
   script.type = 'application/ld+json';
   script.id = 'blog-post-json-ld';
   script.textContent = JSON.stringify(jsonLd, null, 2);
-
-  // Inject into <head>
   document.head.appendChild(script);
 }
 
-    // --- Render comments utility (supports nested replies, likes, reply button, styled)
-    function renderComments(comments) {
-      const list = document.getElementById("commentsList");
-      if (!Array.isArray(comments) || comments.length === 0) {
-        list.innerHTML = `<div class="text-gray-400 italic">No comments yet. Be the first to comment!</div>`;
-        return;
-      }
-      // Sort by most recent
-      comments = [...comments].sort((a, b) => new Date(b.date) - new Date(a.date));
-      list.innerHTML = comments.filter(c => !c.parentId).map(c => renderCommentHTML(c, comments)).join('');
-      attachCommentActionListeners();
-    }
+// --- Render comments utility (supports nested replies, likes, reply button, styled)
+function renderComments(comments) {
+  const list = document.getElementById("commentsList");
+  if (!Array.isArray(comments) || comments.length === 0) {
+    list.innerHTML = `<div class="text-gray-400 italic">No comments yet. Be the first to comment!</div>`;
+    return;
+  }
+  comments = [...comments].sort((a, b) => new Date(b.date) - new Date(a.date));
+  list.innerHTML = comments.filter(c => !c.parentId).map(c => renderCommentHTML(c, comments)).join('');
+  attachCommentActionListeners();
+}
 
-    // Render one comment (recursively with replies)
-    function renderCommentHTML(comment, allComments) {
-      const cid = comment._id || '';
-      const likedKey = 'liked_comment_' + cid;
-      const liked = localStorage.getItem(likedKey);
-      // Replies (recursive)
-      let repliesHTML = '';
-      if (Array.isArray(comment.replies) && comment.replies.length > 0) {
-        // Use replies array (backend nested)
-        repliesHTML = `<div class="replies-container">${comment.replies.sort((a,b)=>new Date(a.date)-new Date(b.date)).map(r => renderCommentHTML(r, allComments)).join('')}</div>`;
-      } else if (Array.isArray(allComments)) {
-        // For legacy: find direct children
-        const children = allComments.filter(r => r.parentId === cid);
-        if (children.length) {
-          repliesHTML = `<div class="replies-container">${children.sort((a,b)=>new Date(a.date)-new Date(b.date)).map(r => renderCommentHTML(r, allComments)).join('')}</div>`;
-        }
+// Render one comment (recursively with replies)
+function renderCommentHTML(comment, allComments) {
+  const cid = comment._id || '';
+  const likedKey = 'liked_comment_' + cid;
+  const liked = localStorage.getItem(likedKey);
+  let repliesHTML = '';
+  if (Array.isArray(comment.replies) && comment.replies.length > 0) {
+    repliesHTML = `<div class="replies-container">${comment.replies.sort((a,b)=>new Date(a.date)-new Date(b.date)).map(r => renderCommentHTML(r, allComments)).join('')}</div>`;
+  } else if (Array.isArray(allComments)) {
+    const children = allComments.filter(r => r.parentId === cid);
+    if (children.length) {
+      repliesHTML = `<div class="replies-container">${children.sort((a,b)=>new Date(a.date)-new Date(b.date)).map(r => renderCommentHTML(r, allComments)).join('')}</div>`;
+    }
+  }
+  return `
+    <div class="comment-bubble" data-comment-id="${cid}">
+      <div>
+        <span class="comment-author">${comment.name || 'Anonymous'}</span>
+        <span class="comment-date ml-2">${comment.date ? new Date(comment.date).toLocaleString() : ''}</span>
+      </div>
+      <div class="mt-1 text-gray-800">${comment.text}</div>
+      <div class="comment-actions">
+        <button class="like-btn ${liked ? 'liked' : ''}" data-comment-id="${cid}">
+          <svg class="w-4 h-4 mr-1 ${liked ? 'text-yellow-400' : 'text-yellow-500'}" fill="currentColor" viewBox="0 0 20 20"><path d="M3.172 5.172A4 4 0 0 1 9.999 6.586a4 4 0 1 1 6.828-1.414c1.562 1.562 1.562 4.095 0 5.657L10 17.657l-6.828-6.828a4 4 0 0 1 0-5.657z"/></svg>
+          <span class="like-count">${comment.likes || 0}</span>
+        </button>
+        <button class="reply-btn" data-comment-id="${cid}">Reply</button>
+      </div>
+      <div class="reply-form-container"></div>
+      ${repliesHTML}
+    </div>
+  `;
+}
+
+// Attach like/reply button listeners and reply form logic
+function attachCommentActionListeners() {
+  document.querySelectorAll('.like-btn[data-comment-id]').forEach(btn => {
+    btn.onclick = async function(e) {
+      e.preventDefault();
+      const commentId = this.getAttribute('data-comment-id');
+      if (!commentId || localStorage.getItem('liked_comment_' + commentId)) return;
+      this.disabled = true;
+      const likeCountSpan = this.querySelector('.like-count');
+      const newLikes = await likeComment(getPostIdFromURL(), commentId);
+      if (newLikes !== null) {
+        localStorage.setItem('liked_comment_' + commentId, '1');
+        this.classList.add('liked');
+        likeCountSpan.textContent = newLikes;
       }
-      // Main comment
-      return `
-        <div class="comment-bubble" data-comment-id="${cid}">
-          <div>
-            <span class="comment-author">${comment.name || 'Anonymous'}</span>
-            <span class="comment-date ml-2">${comment.date ? new Date(comment.date).toLocaleString() : ''}</span>
+      this.disabled = false;
+    }
+  });
+
+  document.querySelectorAll('.reply-btn[data-comment-id]').forEach(btn => {
+    btn.onclick = function(e) {
+      e.preventDefault();
+      const commentId = this.getAttribute('data-comment-id');
+      document.querySelectorAll('.reply-form-container').forEach(f => f.innerHTML = '');
+      const parentBubble = this.closest('.comment-bubble');
+      const container = parentBubble.querySelector('.reply-form-container');
+      container.innerHTML = `
+        <form class="reply-form" data-parent-id="${commentId}">
+          <input type="text" name="name" placeholder="Your name" class="w-full px-2 py-1 mb-1 border rounded focus:ring-2 focus:ring-yellow-400" required />
+          <textarea name="text" rows="2" placeholder="Write a reply..." class="w-full px-2 py-1 border rounded focus:ring-2 focus:ring-yellow-400" required></textarea>
+          <div class="flex items-center gap-2">
+            <button type="submit" class="bg-yellow-500 text-blue-900 px-4 py-1 rounded font-bold hover:bg-blue-900 hover:text-yellow-400 transition">Reply</button>
+            <button type="button" class="cancel-reply-btn text-xs text-gray-500 hover:underline">Cancel</button>
           </div>
-          <div class="mt-1 text-gray-800">${comment.text}</div>
-          <div class="comment-actions">
-            <button class="like-btn ${liked ? 'liked' : ''}" data-comment-id="${cid}">
-              <svg class="w-4 h-4 mr-1 ${liked ? 'text-yellow-400' : 'text-yellow-500'}" fill="currentColor" viewBox="0 0 20 20"><path d="M3.172 5.172A4 4 0 0 1 9.999 6.586a4 4 0 1 1 6.828-1.414c1.562 1.563 1.562 4.095 0 5.657l-6.657 6.657a1 1 0 0 1-1.414 0l-6.657-6.657c-1.562-1.562-1.562-4.094 0-5.657z"/></svg>
-              <span class="like-count">${comment.likes || 0}</span>
-            </button>
-            <button class="reply-btn" data-comment-id="${cid}">Reply</button>
-          </div>
-          <div class="reply-form-container"></div>
-          ${repliesHTML}
-        </div>
+        </form>
       `;
-    }
-
-    // Attach like/reply button listeners and reply form logic
-    function attachCommentActionListeners() {
-      // Like buttons
-      document.querySelectorAll('.like-btn[data-comment-id]').forEach(btn => {
-        btn.onclick = async function(e) {
-          e.preventDefault();
-          const commentId = this.getAttribute('data-comment-id');
-          if (!commentId || localStorage.getItem('liked_comment_' + commentId)) return;
-          this.disabled = true;
-          const likeCountSpan = this.querySelector('.like-count');
-          const newLikes = await likeComment(postId, commentId);
-          if (newLikes !== null) {
-            localStorage.setItem('liked_comment_' + commentId, '1');
-            this.classList.add('liked');
-            likeCountSpan.textContent = newLikes;
-          }
-          this.disabled = false;
+      container.querySelector('form').onsubmit = async function(ev) {
+        ev.preventDefault();
+        const name = this.name.value.trim() || "Anonymous";
+        const text = this.text.value.trim();
+        if (!text) return;
+        const ok = await addCommentToBackend(getPostIdFromURL(), null, name, text, commentId);
+        if (ok) {
+          allPostsCache = await fetchAllPosts();
+          mainPost = allPostsCache.find(p => p._id === getPostIdFromURL());
+          renderComments(mainPost && Array.isArray(mainPost.comments) ? mainPost.comments : []);
         }
-      });
-
-      // Reply buttons
-      document.querySelectorAll('.reply-btn[data-comment-id]').forEach(btn => {
-        btn.onclick = function(e) {
-          e.preventDefault();
-          const commentId = this.getAttribute('data-comment-id');
-          // Remove other open reply forms
-          document.querySelectorAll('.reply-form-container').forEach(f => f.innerHTML = '');
-          // Insert reply form
-          const parentBubble = this.closest('.comment-bubble');
-          const container = parentBubble.querySelector('.reply-form-container');
-          container.innerHTML = `
-            <form class="reply-form" data-parent-id="${commentId}">
-              <input type="text" name="name" placeholder="Your name" class="w-full px-2 py-1 mb-1 border rounded focus:ring-2 focus:ring-yellow-400" required />
-              <textarea name="text" rows="2" placeholder="Write a reply..." class="w-full px-2 py-1 border rounded focus:ring-2 focus:ring-yellow-400" required></textarea>
-              <div class="flex items-center gap-2">
-                <button type="submit" class="bg-yellow-500 text-blue-900 px-4 py-1 rounded font-bold hover:bg-blue-900 hover:text-yellow-400 transition">Reply</button>
-                <button type="button" class="cancel-reply-btn text-xs text-gray-500 hover:underline">Cancel</button>
-              </div>
-            </form>
-          `;
-          // Attach submit/cancel
-          container.querySelector('form').onsubmit = async function(ev) {
-            ev.preventDefault();
-            const name = this.name.value.trim() || "Anonymous";
-            const text = this.text.value.trim();
-            if (!text) return;
-            const ok = await addCommentToBackend(postId, null, name, text, commentId);
-            if (ok) {
-              allPostsCache = await fetchAllPosts();
-              mainPost = allPostsCache.find(p => p._id === postId);
-              renderComments(mainPost && Array.isArray(mainPost.comments) ? mainPost.comments : []);
-            }
-          };
-          container.querySelector('.cancel-reply-btn').onclick = function() {
-            container.innerHTML = '';
-          };
-        }
-      });
+      };
+      container.querySelector('.cancel-reply-btn').onclick = function() {
+        container.innerHTML = '';
+      };
     }
-injectBlogPostJsonLD({
-  title: mainPost.title,
-  image: mainPost.imageUrl,
-  author: mainPost.authorName || "Anonymous",
-  datePublished: mainPost.date, // Should be ISO format if possible
-  description: mainPost.summary || mainPost.content.substring(0, 120) + "..."
-});
-    // --- On page load, after you know postId:
-document.addEventListener("DOMContentLoaded", () => {
-  // ...your other logic...
-  const postId = getPostIdFromURL();
+  });
+}
+
+// --- Main: fetch and render the selected post and related features
+(async function(){
+  let allPostsCache = [];
+  let mainPost = null;
+  let postId = getPostIdFromURL();
+  let category = null;
+
+  if (!postId) {
+    document.getElementById('blogContent').innerHTML = `<div class="text-center text-gray-500 py-20">Blog post not found.</div>`;
+    return;
+  }
+
+  try {
+    allPostsCache = await fetchAllPosts();
+  } catch {
+    document.getElementById('blogContent').innerHTML = `<div class="text-center text-gray-500 py-20">Could not load posts.</div>`;
+    return;
+  }
+
+  mainPost = allPostsCache.find(p => p._id === postId);
+  if (!mainPost) {
+    document.getElementById('blogContent').innerHTML = `<div class="text-center text-gray-500 py-20">Blog post not found.</div>`;
+    return;
+  }
+
+  // Format post details
+  const author = mainPost.authorName || "Anonymous";
+  const date = mainPost.date ? new Date(mainPost.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : "";
+  const image = mainPost.imageUrl || "https://images.unsplash.com/photo-1503676382389-4809596d5290?auto=format&fit=crop&w=800&q=80";
+  category = mainPost.category || "General";
+  const views = mainPost.views ?? 0;
+  const likes = mainPost.likes ?? 0;
+  const comments = Array.isArray(mainPost.comments) ? mainPost.comments : [];
+  const content = mainPost.content || "";
+  const title = mainPost.title || "";
+  const authorId = mainPost.authorId || mainPost.user;
+
+  // Render main post
+  document.getElementById('blogContent').innerHTML = `
+    <div class="relative">
+      <img src="${image}" alt="${title}" class="w-full h-auto object-cover rounded-lg mb-4 shadow" />
+      <button id="likePostBtn" class="absolute top-3 right-4 bg-white/90 rounded-full border border-yellow-200 px-3 py-1 flex items-center gap-1 font-semibold like-btn transition hover:bg-yellow-50">
+        <svg class="w-5 h-5 ${localStorage.getItem('liked_post_'+postId) ? 'text-yellow-400' : 'text-yellow-500'}" fill="currentColor" viewBox="0 0 20 20"><path d="M3.172 5.172A4 4 0 0 1 9.999 6.586a4 4 0 1 1 6.828-1.414c1.562 1.562 1.562 4.095 0 5.657L10 17.657l-6.828-6.828a4 4 0 0 1 0-5.657z"/></svg>
+        <span id="likePostCount">${likes}</span>
+      </button>
+    </div>
+    <h1 class="text-3xl font-extrabold text-blue-900 mb-2">${title}</h1>
+    <div class="flex flex-wrap gap-2 text-sm text-gray-500 mb-2">
+      <span class="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full font-medium">${category}</span>
+      <span>${author}</span>
+      <span>• ${date}</span>
+    </div>
+    <div class="flex gap-4 text-xs text-gray-400 mb-6">
+      <span>👁️ ${views} reads</span>
+      <span>⭐ <span id="likePostCount2">${likes}</span> likes</span>
+      <span>💬 ${comments.length} comments</span>
+    </div>
+    <div class="prose prose-lg max-w-none text-gray-900 mb-6">${content}</div>
+  `;
+
+  // Like post button
+  document.getElementById('likePostBtn').addEventListener('click', async function() {
+    if (localStorage.getItem('liked_post_' + postId)) return;
+    this.disabled = true;
+    const newLikes = await likePost(postId);
+    if (newLikes !== null) {
+      localStorage.setItem('liked_post_' + postId, '1');
+      document.getElementById('likePostBtn').classList.add('liked');
+      document.getElementById('likePostCount').textContent = newLikes;
+      document.getElementById('likePostCount2').textContent = newLikes;
+    }
+    this.disabled = false;
+  });
+
+  // Author card
+  if (authorId) {
+    const authorData = await fetchUserInfo(authorId);
+    if (authorData && (authorData.fullname || authorData.username)) {
+      document.getElementById("authorCard").classList.remove("hidden");
+      document.getElementById("authorName").textContent = authorData.fullname || authorData.username || "Anonymous";
+      document.getElementById("authorDept").textContent = (authorData.department ? authorData.department + " Dept" : "") + (authorData.faculty ? ", " + authorData.faculty : "");
+      document.getElementById("authorBio").textContent = authorData.bio || "";
+      document.getElementById("authorAvatar").src = authorData.profilePic
+        ? (authorData.profilePic.startsWith("http") ? authorData.profilePic : (authorData.profilePic))
+        : `https://ui-avatars.com/api/?name=${encodeURIComponent(authorData.fullname || authorData.username || "Author")}&background=ffda00&color=263159&rounded=true`;
+    }
+  }
+
+  // Render comments
+  renderComments(comments);
+
+  // Comments submit handler
+  document.getElementById("commentForm").onsubmit = async function(e) {
+    e.preventDefault();
+    const name = document.getElementById("commentName").value.trim() || "Anonymous";
+    const text = document.getElementById("commentText").value.trim();
+    if (!text) return;
+
+    const userId = null;
+    const ok = await addCommentToBackend(postId, userId, name, text);
+    if (ok) {
+      allPostsCache = await fetchAllPosts();
+      mainPost = allPostsCache.find(p => p._id === postId);
+      renderComments(mainPost && Array.isArray(mainPost.comments) ? mainPost.comments : []);
+      this.reset();
+    } else {
+      alert("Failed to add comment. Please try again.");
+    }
+  };
+
+  // Related posts (same category, exclude main post). Fallback: recent other posts.
+  let related = allPostsCache.filter(p => p._id !== postId && (p.category === category));
+  if (related.length < 2) {
+    related = allPostsCache.filter(p => p._id !== postId).slice(0, 4);
+  } else {
+    related = related.slice(0, 4);
+  }
+
+  // Render related posts
+  const relatedGrid = document.getElementById('relatedPosts');
+  if (related.length === 0) {
+    relatedGrid.innerHTML = `<div class="text-gray-400">No related posts found.</div>`;
+  } else {
+    relatedGrid.innerHTML = related.map(blog => `
+      <a href="blog-details.html?id=${blog._id}" class="block bg-white rounded-xl shadow hover:shadow-xl overflow-hidden transition group">
+        <img src="${blog.imageUrl || "https://images.unsplash.com/photo-1503676382389-4809596d5290?auto=format&fit=crop&w=400&q=80"}"
+             alt="${blog.title}" class="h-auto w-full object-cover group-hover:scale-105 transition" />
+        <div class="p-4">
+          <h3 class="font-bold text-blue-900 text-lg mb-1 line-clamp-2">${blog.title}</h3>
+          <div class="flex items-center text-yellow-500 text-base font-bold mb-1">${blog.category || "General"}</div>
+          <div class="text-xs text-gray-400 mb-2">${blog.authorName || "Anonymous"} • ${blog.date ? new Date(blog.date).toLocaleDateString() : ""}</div>
+          <p class="text-gray-600 mb-2 line-clamp-2">${blog.content ? blog.content.substring(0, 80) + "..." : ""}</p>
+          <div class="flex gap-2 text-xs text-gray-400">
+            <span>👁️ ${blog.views ?? 0}</span>
+            <span>⭐ ${blog.likes ?? 0}</span>
+            <span>💬 ${Array.isArray(blog.comments) ? blog.comments.length : 0}</span>
+          </div>
+        </div>
+      </a>
+    `).join('');
+  }
+
+  // Inject Blog Post Schema Markup after mainPost is ready
+  injectBlogPostJsonLD({
+    title: mainPost.title,
+    image: mainPost.imageUrl,
+    author: mainPost.authorName || "Anonymous",
+    datePublished: mainPost.date,
+    description: mainPost.summary || (mainPost.content ? mainPost.content.substring(0, 120) + "..." : "")
+  });
+
+  // Monitor and reward blog reading (AFTER everything loads and post is ready)
   monitorAndRewardReading(postId);
-});
+
+})();  
+    
+                            
   </script>
 </body>
 </html>
