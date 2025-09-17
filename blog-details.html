@@ -136,6 +136,10 @@
       <a href="gen-marketplace.html" class="hover:text-yellow-600 transition">Marketplace</a>
       <a href="mock.html" class="bg-yellow-500 text-blue-900 px-5 py-2 rounded-full font-semibold hover:bg-blue-900 hover:text-yellow-400 transition">Login</a>
     </div>
+  <div id="userPointsDisplay" class="hidden flex items-center gap-2 text-sm font-bold text-yellow-600 ml-4">
+  <svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zM8 10v4h4v-4h-4zm0-6v4h4V4H8z"/></svg>
+  <span id="userPointsValue">0</span> pts
+</div>
   </nav>
   <!-- Mobile menu -->
   <div id="mobile-menu" class="fixed top-0 left-0 w-full h-full bg-white z-40 flex-col items-center justify-center pt-20 text-center hidden">
@@ -324,11 +328,9 @@ function showAuthBanner() {
   document.body.appendChild(banner);
 }
 
-// --- Auth check
 function getUserToken() {
   return localStorage.token || sessionStorage.token || null;
 }
-
 function getUserFromToken() {
   const token = getUserToken();
   if (!token) return null;
@@ -339,6 +341,36 @@ function getUserFromToken() {
   } catch {
     return null;
   }
+}
+
+// --- Fetch current user's points and display in navbar
+async function fetchAndDisplayUserPoints() {
+  const user = getUserFromToken();
+  const pointsDiv = document.getElementById("userPointsDisplay");
+  const pointsVal = document.getElementById("userPointsValue");
+  if (!user || !user.id) {
+    pointsDiv.classList.add("hidden");
+    return;
+  }
+  try {
+    // Fetch user profile from backend
+    const res = await fetch(`https://examguide.onrender.com/api/users/${user.id}`, {
+      headers: { "Authorization": "Bearer " + getUserToken() }
+    });
+    if (!res.ok) throw new Error("Could not fetch user profile");
+    const data = await res.json();
+    // Show user points (default to 0)
+    pointsVal.textContent = data?.user?.points ?? 0;
+    pointsDiv.classList.remove("hidden");
+  } catch {
+    pointsDiv.classList.add("hidden");
+  }
+}
+
+// --- Update points UI after awarding points
+function updateUserPointsUI(newPoints) {
+  const pointsVal = document.getElementById("userPointsValue");
+  if (pointsVal) pointsVal.textContent = newPoints;
 }
 // --- Activity monitoring and reward logic
 function monitorAndRewardReading(postId) {
@@ -392,8 +424,18 @@ function monitorAndRewardReading(postId) {
   startTimer();
 }
 
-// --- API call to award points
+
+// --- Utility: Get current user from JWT token
+
+
+// --- Call on page load
+document.addEventListener("DOMContentLoaded", fetchAndDisplayUserPoints);
+
+// --- Also call after awarding points successfully
+// In your awardReadingPoints() function, after awarding points:
 async function awardReadingPoints(postId) {
+  // If already rewarded, do nothing and do NOT show any notification
+  if (localStorage.getItem("rewarded_blog_" + postId)) return;
   const token = getUserToken();
   if (!token) {
     showNotificationModal("Error", "You must be logged in to earn points.", "error");
@@ -412,13 +454,17 @@ async function awardReadingPoints(postId) {
     if (res.ok && data.success) {
       localStorage.setItem("rewarded_blog_" + postId, "1");
       showNotificationModal("Success", `Congratulations! You earned 5 points. Your total is now ${data.points}.`, "success");
+      updateUserPointsUI(data.points); // <---- update points in navbar!
+    } else if (data.error && data.error.toLowerCase().includes("already")) {
+      localStorage.setItem("rewarded_blog_" + postId, "1");
     } else {
       showNotificationModal("Error", data.error || "Failed to award points.", "error");
     }
   } catch (e) {
     showNotificationModal("Error", "Error awarding points: " + (e.message || e), "error");
   }
-}
+}    
+
 
 // --- Inject Blog Post JSON-LD Schema
 function injectBlogPostJsonLD({ title, image, author, datePublished, description }) {
