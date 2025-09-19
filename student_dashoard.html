@@ -1350,8 +1350,179 @@ class="sidebar fixed top-0 left-0 h-screen w-72 bg-blue-900 text-white p-8 md:bl
   <!-- PDF.js for PDF text extraction -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.js"></script>
 <script>
-// --- STUDYPADI SCRIPT BLOCK ---
-// This file handles StudyPadi (AI Study Material Q&A) logic, including file processing, progress, Gemini API, and improved UI feedback.
+
+    // Gemini API Key (replace with your actual key)
+    const GEMINI_API_KEY = "AIzaSyAcHoajEEKUQ48oHVDSgp2njtjVFDqq_j8";
+
+    // Navigation links for buttons
+    const NAV_LINKS = {
+      "homepage": { text: "Homepage", url: "index.html" },
+      "marketplace": { text: "Marketplace", url: "index.html#marketplace" },
+      "full marketplace": { text: "Full Marketplace", url: "gen-marketplace.html" },
+      "blog": { text: "Blog", url: "index.html#blog" },
+      "blog & stories": { text: "Blog & Stories", url: "ngg-blog.html" },
+      "login": { text: "Login", url: "index.html#login" },
+      "register": { text: "Register", url: "index.html#register" },
+      "mock exams": { text: "Mock Exams", url: "mock.html" },
+      "contact form": { text: "Contact Form", url: "index.html#contact" }
+    };
+
+    // Conversation history for Gemini
+    let conversation = [
+      {
+        role: "user",
+        parts: [{
+          text:
+`You are ExamGuard's human support agent. Answer every question as a friendly, helpful team member.
+- Never say you are an AI or language model.
+- Guide users on how to use ExamGuard: homepage, marketplace, blog, login, registration, mock exams, and contact.
+- When appropriate, suggest navigation by writing [Homepage], [Marketplace], [Full Marketplace], [Blog], [Blog & Stories], [Login], [Register], [Mock Exams], or [Contact Form] in square brackets to turn into buttons.
+- Respond in a conversational, human, supportive tone. Greet users, use first person, and be concise and clear.
+- If the user uploads an image, thank them and let them know our team will review it.
+- If the question is not about ExamGuard or its features, politely steer them back to platform support.
+`
+        }]
+      }
+    ];
+
+    // Elements
+    const chatbotToggleBtn = document.getElementById('chatbotToggleBtn');
+    const chatbotModal = document.getElementById('chatbotModal');
+    const chatbotCloseBtn = document.getElementById('chatbotCloseBtn');
+    const chatbotForm = document.getElementById('chatbotForm');
+    const chatbotInput = document.getElementById('chatbotInput');
+    const chatbotMessages = document.getElementById('chatbotMessages');
+    const chatbotFile = document.getElementById('chatbotFile');
+
+    // Modal open/close
+    function openChatbot() {
+      chatbotModal.classList.remove('hidden');
+      setTimeout(() => chatbotInput.focus(), 250);
+      chatbotMessages.scrollTop = chatbotMessages.scrollHeight;
+    }
+    function closeChatbot() {
+      chatbotModal.classList.add('hidden');
+    }
+    chatbotToggleBtn.addEventListener('click', openChatbot);
+    chatbotCloseBtn.addEventListener('click', closeChatbot);
+    chatbotModal.addEventListener('click', function(e){
+      if (e.target === chatbotModal) closeChatbot();
+    });
+
+    // Message rendering
+    function addMessage(msg, type = "bot", imgUrl = null) {
+      const msgDiv = document.createElement('div');
+      msgDiv.className = `max-w-[88%] px-4 py-3 mb-3 rounded-2xl shadow text-[1rem] ${type === "bot" ? "chatbot-message-bot" : "chatbot-message-user"} flex flex-col`;
+      if (imgUrl) {
+        msgDiv.innerHTML = `<img src="${imgUrl}" class="chatbot-message-img mb-1" alt="Sent Image">${msg ? `<span>${msg}</span>` : ""}`;
+      } else {
+        msgDiv.innerHTML = msg;
+      }
+      chatbotMessages.appendChild(msgDiv);
+      chatbotMessages.scrollTop = chatbotMessages.scrollHeight;
+    }
+
+    // Group and render all buttons together at the end of message
+    function enrichGeminiResponse(text) {
+      // Find all [ButtonName] in square brackets, group them, remove from text
+      const buttonRegex = /\[([^\]]+)\]/gi;
+      let buttons = [];
+      let cleanText = text.replace(buttonRegex, (match, btn) => {
+        const key = btn.trim().toLowerCase();
+        if (NAV_LINKS[key]) {
+          buttons.push(`<a href="${NAV_LINKS[key].url}" class="chat-link-btn" target="_blank">${NAV_LINKS[key].text}</a>`);
+          return "";
+        }
+        return match;
+      });
+      cleanText = cleanText.replace(/\s{2,}/g, ' ').trim();
+      let html = `<div>${cleanText}</div>`;
+      if (buttons.length) {
+        html += `<div class="chat-link-row">${buttons.join('')}</div>`;
+      }
+      return html;
+    }
+
+    // Initial welcome message
+    function showWelcome() {
+      chatbotMessages.innerHTML = '';
+      addMessage("👋 Hi there! How can I help you get around ExamGuard today?");
+      // Reset conversation history except for system prompt
+      conversation = [conversation[0]];
+    }
+    showWelcome();
+
+    // Gemini API call: send full conversation history for memory
+    async function geminiReply(userMsg, imgBase64) {
+      // Add current user turn to conversation
+      let userTurn = { role: "user", parts: [{ text: userMsg }] };
+      if (imgBase64) {
+        userTurn.parts.push({ inline_data: { mime_type: "image/png", data: imgBase64.split(',')[1] } });
+      }
+      conversation.push(userTurn);
+
+      // Show typing...
+      addMessage('<span class="gemini-typing">Typing</span>', "bot");
+      const loadingDiv = chatbotMessages.lastChild;
+
+      try {
+        const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + GEMINI_API_KEY, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contents: conversation })
+        });
+        const data = await res.json();
+        loadingDiv.remove();
+        let answer = (data && data.candidates && data.candidates[0]?.content?.parts?.map(p => p.text).join('\n')) ||
+                     (data?.candidates?.[0]?.content?.text) || "Sorry, I couldn't process your request. Please try again.";
+        // Add Gemini's answer to conversation history
+        conversation.push({ role: "model", parts: [{ text: answer }] });
+        addMessage(enrichGeminiResponse(answer), "bot");
+      } catch (e) {
+        loadingDiv.remove();
+        addMessage("Sorry, there was an error contacting support agent.", "bot");
+      }
+    }
+
+    // Chat form submit
+    chatbotForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      const userMsg = chatbotInput.value.trim();
+      const imgFile = chatbotFile.files[0];
+      if (!userMsg && !imgFile) return;
+
+      if (imgFile) {
+        const reader = new FileReader();
+        reader.onload = function(ev) {
+          addMessage("", "user", ev.target.result);
+          if (userMsg) addMessage(userMsg, "user");
+          chatbotInput.value = "";
+          chatbotFile.value = "";
+          geminiReply(userMsg || "[Image uploaded]", ev.target.result);
+        };
+        reader.readAsDataURL(imgFile);
+      } else {
+        addMessage(userMsg, "user");
+        chatbotInput.value = "";
+        geminiReply(userMsg);
+      }
+      chatbotFile.value = "";
+    });
+
+    // Image upload via input
+    chatbotFile.addEventListener('change', function() {
+      if (chatbotFile.files.length > 0) {
+        chatbotInput.focus();
+      }
+    });
+
+    // Re-show welcome if closed and reopened
+    chatbotToggleBtn.addEventListener('click', showWelcome);
+
+    // Optional: scroll to bottom on open
+    chatbotToggleBtn.addEventListener('click', function(){
+      setTimeout(()=>{chatbotMessages.scrollTop = chatbotMessages.scrollHeight;}, 400);
+    });
 
 // --- PDF.js Loader Utility ---
 function ensurePdfjsLibLoaded() {
@@ -1627,7 +1798,7 @@ document.getElementById("studypadiForm").onsubmit = async function(e) {
     updateStudypadiProgress(35, "Sending prompt to AI...");
 
     // Call Gemini API
-    const GEMINI_API_KEY = 'AIzaSyBz7OlB61faUevy8cinOfTIke4Umrr5mq4'; // Replace for production
+    
     let url, data;
     if (imageBase64s.length) {
       url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + GEMINI_API_KEY;
