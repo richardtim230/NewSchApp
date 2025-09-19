@@ -55,10 +55,15 @@
       transition: background 0.2s;
     }
     .chatbot-file-label:hover { background: #e0e7ff; }
+    .chat-link-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5em;
+      margin-top: 1.1em;
+    }
     .chat-link-btn {
       display: inline-block;
-      margin: 0.4em 0.3em 0 0;
-      padding: 0.5em 1.2em;
+      padding: 0.47em 1.2em;
       color: #fff !important;
       background: #2563eb;
       border-radius: 9999px;
@@ -67,6 +72,7 @@
       text-decoration: none;
       box-shadow: 0 2px 8px #1e40af22;
       transition: background 0.2s, color 0.2s;
+      margin: 0;
     }
     .chat-link-btn:hover, .chat-link-btn:focus { background: #facc15; color: #1e3a8a !important; }
     .gemini-typing::after {
@@ -93,7 +99,6 @@
     </svg>
     Support
   </button>
-
   <!-- Chat Modal -->
   <div id="chatbotModal"
     class="hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/30">
@@ -114,7 +119,6 @@
       </div>
       <!-- Modal Body: Messages -->
       <div id="chatbotMessages" class="flex-1 p-5 overflow-y-auto chatbot-scroll bg-blue-50" style="min-height:360px; max-height:440px;">
-        <!-- Messages will go here -->
       </div>
       <!-- Modal Footer: Input -->
       <div class="px-4 py-3 border-t border-blue-100 bg-white rounded-b-xl">
@@ -135,21 +139,39 @@
     </div>
   </div>
   <script>
-    // Gemini API Key - replace with your actual key for production
-    const GEMINI_API_KEY = "AIzaSyAcHoajEEKUQ48oHVDSgp2njtjVFDqq_j8"; // <-- PUT YOUR GEMINI API KEY HERE
+    // Gemini API Key (replace with your actual key)
+    const GEMINI_API_KEY = "AIzaSyAcHoajEEKUQ48oHVDSgp2njtjVFDqq_j8";
 
-    // All navigation links for your platform (for button linking)
+    // Navigation links for buttons
     const NAV_LINKS = {
-      homepage: { text: "Homepage", url: "index.html" },
-      marketplace: { text: "Marketplace", url: "index.html#marketplace" },
-      fullMarketplace: { text: "Full Marketplace", url: "gen-marketplace.html" },
-      blog: { text: "Blog", url: "index.html#blog" },
-      blogCommunity: { text: "Blog & Stories", url: "ngg-blog.html" },
-      login: { text: "Login", url: "index.html#login" },
-      register: { text: "Register", url: "index.html#register" },
-      mock: { text: "Mock Exams", url: "mock.html" },
-      contact: { text: "Contact Form", url: "index.html#contact" }
+      "homepage": { text: "Homepage", url: "index.html" },
+      "marketplace": { text: "Marketplace", url: "index.html#marketplace" },
+      "full marketplace": { text: "Full Marketplace", url: "gen-marketplace.html" },
+      "blog": { text: "Blog", url: "index.html#blog" },
+      "blog & stories": { text: "Blog & Stories", url: "ngg-blog.html" },
+      "login": { text: "Login", url: "index.html#login" },
+      "register": { text: "Register", url: "index.html#register" },
+      "mock exams": { text: "Mock Exams", url: "mock.html" },
+      "contact form": { text: "Contact Form", url: "index.html#contact" }
     };
+
+    // Conversation history for Gemini
+    let conversation = [
+      {
+        role: "user",
+        parts: [{
+          text:
+`You are ExamGuard's human support agent. Answer every question as a friendly, helpful team member.
+- Never say you are an AI or language model.
+- Guide users on how to use ExamGuard: homepage, marketplace, blog, login, registration, mock exams, and contact.
+- When appropriate, suggest navigation by writing [Homepage], [Marketplace], [Full Marketplace], [Blog], [Blog & Stories], [Login], [Register], [Mock Exams], or [Contact Form] in square brackets to turn into buttons.
+- Respond in a conversational, human, supportive tone. Greet users, use first person, and be concise and clear.
+- If the user uploads an image, thank them and let them know our team will review it.
+- If the question is not about ExamGuard or its features, politely steer them back to platform support.
+`
+        }]
+      }
+    ];
 
     // Elements
     const chatbotToggleBtn = document.getElementById('chatbotToggleBtn');
@@ -188,69 +210,62 @@
       chatbotMessages.scrollTop = chatbotMessages.scrollHeight;
     }
 
+    // Group and render all buttons together at the end of message
+    function enrichGeminiResponse(text) {
+      // Find all [ButtonName] in square brackets, group them, remove from text
+      const buttonRegex = /\[([^\]]+)\]/gi;
+      let buttons = [];
+      let cleanText = text.replace(buttonRegex, (match, btn) => {
+        const key = btn.trim().toLowerCase();
+        if (NAV_LINKS[key]) {
+          buttons.push(`<a href="${NAV_LINKS[key].url}" class="chat-link-btn" target="_blank">${NAV_LINKS[key].text}</a>`);
+          return "";
+        }
+        return match;
+      });
+      cleanText = cleanText.replace(/\s{2,}/g, ' ').trim();
+      let html = `<div>${cleanText}</div>`;
+      if (buttons.length) {
+        html += `<div class="chat-link-row">${buttons.join('')}</div>`;
+      }
+      return html;
+    }
+
     // Initial welcome message
     function showWelcome() {
       chatbotMessages.innerHTML = '';
       addMessage("👋 Hi there! How can I help you get around ExamGuard today?");
+      // Reset conversation history except for system prompt
+      conversation = [conversation[0]];
     }
     showWelcome();
 
-    // --- Gemini Prompting ---
-    // Inject links as buttons if Gemini outputs [Homepage], [Marketplace], etc.
-    function enrichGeminiResponse(text) {
-      // Replace [ButtonLabel] with the proper platform links
-      let enriched = text
-        .replace(/\[Homepage\]/gi, `<a href="${NAV_LINKS.homepage.url}" class="chat-link-btn">${NAV_LINKS.homepage.text}</a>`)
-        .replace(/\[Marketplace\]/gi, `<a href="${NAV_LINKS.marketplace.url}" class="chat-link-btn">${NAV_LINKS.marketplace.text}</a>`)
-        .replace(/\[Full Marketplace\]/gi, `<a href="${NAV_LINKS.fullMarketplace.url}" class="chat-link-btn">${NAV_LINKS.fullMarketplace.text}</a>`)
-        .replace(/\[Blog\]/gi, `<a href="${NAV_LINKS.blog.url}" class="chat-link-btn">${NAV_LINKS.blog.text}</a>`)
-        .replace(/\[Blog & Stories\]/gi, `<a href="${NAV_LINKS.blogCommunity.url}" class="chat-link-btn">${NAV_LINKS.blogCommunity.text}</a>`)
-        .replace(/\[Login\]/gi, `<a href="${NAV_LINKS.login.url}" class="chat-link-btn">${NAV_LINKS.login.text}</a>`)
-        .replace(/\[Register\]/gi, `<a href="${NAV_LINKS.register.url}" class="chat-link-btn">${NAV_LINKS.register.text}</a>`)
-        .replace(/\[Mock Exams\]/gi, `<a href="${NAV_LINKS.mock.url}" class="chat-link-btn">${NAV_LINKS.mock.text}</a>`)
-        .replace(/\[Contact Form\]/gi, `<a href="${NAV_LINKS.contact.url}" class="chat-link-btn">${NAV_LINKS.contact.text}</a>`);
-      return enriched;
-    }
-
-    // Gemini system prompt (make it behave like a helpful human agent)
-    const SYSTEM_PROMPT = `
-You are ExamGuard's human support agent. Answer every question as a friendly, helpful team member.
-- Never say you are an AI or language model.
-- Guide users on how to use ExamGuard: homepage, marketplace, blog, login, registration, mock exams, and contact.
-- When appropriate, suggest navigation by writing [Homepage], [Marketplace], [Full Marketplace], [Blog], [Blog & Stories], [Login], [Register], [Mock Exams], or [Contact Form] in square brackets to turn into buttons.
-- Respond in a conversational, human, supportive tone. Greet users, use first person, and be concise and clear.
-- If the user uploads an image, thank them and let them know our team will review it.
-- If the question is not about ExamGuard or its features, politely steer them back to platform support.
-`;
-
-    // Gemini API call for text (and optionally image)
+    // Gemini API call: send full conversation history for memory
     async function geminiReply(userMsg, imgBase64) {
-      let body;
-      // Build Gemini message with system prompt and user content
-      let contents = [{ role: "user", parts: [{ text: SYSTEM_PROMPT + "\n" + userMsg }] }];
+      // Add current user turn to conversation
+      let userTurn = { role: "user", parts: [{ text: userMsg }] };
       if (imgBase64) {
-        contents[0].parts.push({ inline_data: { mime_type: "image/png", data: imgBase64.split(',')[1] } });
+        userTurn.parts.push({ inline_data: { mime_type: "image/png", data: imgBase64.split(',')[1] } });
       }
-      body = { contents };
+      conversation.push(userTurn);
 
       // Show typing...
       addMessage('<span class="gemini-typing">Typing</span>', "bot");
       const loadingDiv = chatbotMessages.lastChild;
 
       try {
-        // Gemini API (v1beta)
-        const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + GEMINI_API_KEY, {
+        const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=" + GEMINI_API_KEY, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body)
+          body: JSON.stringify({ contents: conversation })
         });
         const data = await res.json();
         loadingDiv.remove();
         let answer = (data && data.candidates && data.candidates[0]?.content?.parts?.map(p => p.text).join('\n')) ||
                      (data?.candidates?.[0]?.content?.text) || "Sorry, I couldn't process your request. Please try again.";
-        // Inject navigation links/buttons as needed
-        answer = enrichGeminiResponse(answer);
-        addMessage(answer, "bot");
+        // Add Gemini's answer to conversation history
+        conversation.push({ role: "model", parts: [{ text: answer }] });
+        addMessage(enrichGeminiResponse(answer), "bot");
       } catch (e) {
         loadingDiv.remove();
         addMessage("Sorry, there was an error contacting support agent.", "bot");
@@ -291,6 +306,11 @@ You are ExamGuard's human support agent. Answer every question as a friendly, he
 
     // Re-show welcome if closed and reopened
     chatbotToggleBtn.addEventListener('click', showWelcome);
+
+    // Optional: scroll to bottom on open
+    chatbotToggleBtn.addEventListener('click', function(){
+      setTimeout(()=>{chatbotMessages.scrollTop = chatbotMessages.scrollHeight;}, 400);
+    });
   </script>
 </body>
 </html>
