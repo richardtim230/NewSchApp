@@ -98,9 +98,9 @@ async function loadPlatformStats() {
 async function loadApprovals() {
   try {
     const [itemsRes, postsRes] = await Promise.all([
-      fetch(BACKEND + "/api/marketplace/listings-public", {headers: authHeader()}),
-      fetch(BACKEND + "/api/blogger-dashboard/allposts", {headers: authHeader()})
-    ]);
+  fetch(BACKEND + "/api/marketplace/admin/alllistings", {headers: authHeader()}),
+  fetch(BACKEND + "/api/blogger-dashboard/admin/allposts", {headers: authHeader()})
+]);
     const items = await itemsRes.json();
     const posts = await postsRes.json();
 
