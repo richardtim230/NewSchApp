@@ -132,16 +132,16 @@ async function loadApprovals() {
 
     // Map posts
     const postsAll = posts.map(p => ({
-      type: "Post",
-      title: p.title,
-      user: userNames[p.authorId] || p.authorId || "Unknown",
-      img: p.images && p.images.length ? p.images[0] : (p.imageUrl || ""),
-      submitted: p.date ? new Date(p.date).toLocaleDateString() : "",
-      status: p.status || "pending",
-      id: p._id,
-      dashboardId: p.authorId,
-      desc: p.summary || ""
-    }));
+  type: "Post",
+  title: p.title,
+  user: userNames[p.authorId] || p.authorId || "Unknown",
+  img: p.images && p.images.length ? p.images[0] : (p.imageUrl || ""),
+  submitted: p.date ? new Date(p.date).toLocaleDateString() : "",
+  status: p.status || "pending",
+  id: p._id,
+  dashboardId: p.authorId,
+  desc: p.summary || ""
+}));
 
     const allItems = [...itemsAll, ...postsAll];
     document.getElementById('approvalsTable').innerHTML = allItems.length ?
