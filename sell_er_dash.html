@@ -39,17 +39,56 @@
       font-weight: bold;
     }
     .nav-shadow { box-shadow: 0 2px 12px 0 rgba(30,41,59,0.10);}
-    .prod-card-gradient { background: linear-gradient(100deg, #fef9c3 60%, #fef3c7 100%);}
-    .offer-card-gradient { background: linear-gradient(100deg, #e0f2fe 60%, #f0f9ff 100%);}
-    .wishlist-heart { background: #fff; box-shadow: 0 2px 8px 0 rgba(0,0,0,0.07);}
-    .tab-btn-active { border-bottom-width: 2px; border-color: #fbbf24; color: #1e293b; background-color: #fef9c3;}
-    .tab-btn { border-bottom-width: 2px; border-color: transparent; color: #334155; background-color: transparent;}
-    .badge-approved { background: #34d399; color: #fff; }
-    .badge-pending { background: #fbbf24; color: #1e293b; }
-    .badge-unpublished { background: #e5e7eb; color: #374151; }
+    .prod-card-gradient {
+      background: linear-gradient(100deg, #fef9c3 60%, #fef3c7 100%);
+    }
+    .offer-card-gradient {
+      background: linear-gradient(100deg, #e0f2fe 60%, #f0f9ff 100%);
+    }
+    .wishlist-heart {
+      background: #fff;
+      box-shadow: 0 2px 8px 0 rgba(0,0,0,0.07);
+    }
+    .tab-btn-active {
+      border-bottom-width: 2px;
+      border-color: #fbbf24;
+      color: #1e293b;
+      background-color: #fef9c3;
+    }
+    .tab-btn {
+      border-bottom-width: 2px;
+      border-color: transparent;
+      color: #334155;
+      background-color: transparent;
+    }
+    .overlay-loader {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      background: rgba(255,255,255,0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.2s;
+    }
+    .loader-spin {
+      border: 6px solid #fcd34d;
+      border-top: 6px solid #1e3a8a;
+      border-radius: 50%;
+      width: 62px;
+      height: 62px;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body class="bg-white text-gray-900 min-h-screen">
+  <div id="overlayLoader" class="overlay-loader">
+    <div class="flex flex-col items-center">
+      <div class="loader-spin mb-6"></div>
+      <div class="font-bold text-lg text-blue-900">Checking authentication...</div>
+    </div>
+  </div>
   <nav class="fixed top-0 left-0 right-0 z-50 bg-white/80 nav-shadow backdrop-blur-md border-b border-gray-200">
     <div class="max-w-7xl mx-auto px-4 flex justify-between items-center h-16">
       <div class="flex items-center gap-2 font-bold text-xl">
@@ -267,6 +306,8 @@
   </div>
   <script>
     const BACKEND = "https://examguide.onrender.com";
+    let products = [];
+    let userId = "";
     function getToken() {
       return localStorage.token || sessionStorage.token || '';
     }
@@ -276,19 +317,34 @@
         'Content-Type': 'application/json'
       };
     }
-    let products = [];
+    async function checkAuth() {
+      const overlay = document.getElementById('overlayLoader');
+      try {
+        const token = getToken();
+        if (!token) throw new Error("No token");
+        const res = await fetch(BACKEND + "/api/auth/me", { headers: authHeader() });
+        if (!res.ok) throw new Error("Not logged in");
+        const data = await res.json();
+        userId = data.user?._id || "";
+        overlay.style.opacity = "0";
+        setTimeout(()=>{ overlay.style.display="none"; }, 300);
+        fetchProducts();
+      } catch {
+        window.location.href = "mock.html";
+      }
+    }
     async function fetchProducts() {
-      const res = await fetch(BACKEND + "/api/blogger-dashboard", {headers: authHeader()});
+      const res = await fetch(BACKEND + "/api/marketplace/mylistings", {headers: authHeader()});
       if (!res.ok) {
         document.getElementById('productsList').innerHTML = `<div class="text-red-500 py-8 text-center">Failed to load products. Please refresh.</div>`;
         return;
       }
-      const dash = await res.json();
-      products = (dash.listings || []).map(l => ({...l, id: l._id}));
+      const data = await res.json();
+      products = (data || []).map(l => ({...l, id: l._id}));
       renderProducts();
     }
     async function addProductToBackend(prod) {
-      const res = await fetch(BACKEND + "/api/blogger-dashboard/listings", {
+      const res = await fetch(BACKEND + "/api/marketplace/listings", {
         method: "POST",
         headers: authHeader(),
         body: JSON.stringify(prod)
@@ -297,7 +353,7 @@
       return await res.json();
     }
     async function updateProductInBackend(id, prod) {
-      const res = await fetch(BACKEND + `/api/blogger-dashboard/listings/${id}`, {
+      const res = await fetch(BACKEND + `/api/marketplace/listings/${id}`, {
         method: "PATCH",
         headers: authHeader(),
         body: JSON.stringify(prod)
@@ -306,11 +362,23 @@
       return await res.json();
     }
     async function deleteProductFromBackend(id) {
-      const res = await fetch(BACKEND + `/api/blogger-dashboard/listings/${id}`, {
+      const res = await fetch(BACKEND + `/api/marketplace/listings/${id}`, {
         method: "DELETE",
         headers: authHeader()
       });
       if (!res.ok) throw new Error("Could not delete product");
+    }
+    function statusBadge(status, approved) {
+      let color = "bg-gray-200 text-gray-700";
+      let label = "Pending Approval";
+      if (approved === true && (status === "Active" || status === "Published")) {
+        color = "bg-green-100 text-green-800";
+        label = "Published";
+      } else if (status === "Unpublished") {
+        color = "bg-red-100 text-red-700";
+        label = "Unpublished";
+      }
+      return `<span class="absolute top-2 right-2 px-2 py-1 rounded font-bold text-xs shadow ${color}">${label}</span>`;
     }
     function renderProducts() {
       const el = document.getElementById('productsList');
@@ -320,20 +388,16 @@
       }
       el.innerHTML = "";
       products.forEach(prod => {
-        let badge;
-        if (prod.status === "Unpublished") badge = `<span class="badge-unpublished px-3 py-1 rounded-full text-xs font-bold ml-2">Unpublished</span>`;
-        else if (prod.approved === true) badge = `<span class="badge-approved px-3 py-1 rounded-full text-xs font-bold ml-2">Approved</span>`;
-        else badge = `<span class="badge-pending px-3 py-1 rounded-full text-xs font-bold ml-2">Pending Approval</span>`;
         el.innerHTML += `
         <div class="prod-card-gradient rounded-2xl shadow p-4 flex flex-col md:flex-row gap-4 items-center border border-yellow-200 relative group">
           <div class="relative w-full md:w-40 flex-shrink-0 flex items-center justify-center">
             <img src="${prod.img || prod.imageUrl || ''}" alt="${prod.title}" class="h-28 w-full object-cover rounded-lg shadow" />
-            <span class="absolute top-2 right-2 glassy-gold px-2 py-1 rounded font-bold text-xs text-blue-900 shadow">${prod.status || "Active"}</span>
+            ${statusBadge(prod.status, prod.approved)}
           </div>
           <div class="flex-1 flex flex-col justify-between py-2">
             <div>
               <span class="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs mb-2">${prod.category || ''}</span>
-              <h3 class="font-bold text-lg md:text-xl text-blue-900 mb-1">${prod.title} ${badge}</h3>
+              <h3 class="font-bold text-lg md:text-xl text-blue-900 mb-1">${prod.title}</h3>
               <div class="text-sm text-gray-700 mb-2">${prod.desc || prod.description || ''}</div>
             </div>
             <div class="flex items-center justify-between mt-2">
@@ -389,7 +453,7 @@
         try {
           await deleteProductFromBackend(id);
           await fetchProducts();
-        } catch {
+        } catch (err) {
           alert("Failed to delete product.");
         }
       }
@@ -411,11 +475,10 @@
       try {
         await updateProductInBackend(id, { status: prod.status === "Unpublished" ? "Active" : "Unpublished" });
         await fetchProducts();
-      } catch {
+      } catch (err) {
         alert("Could not update product status.");
       }
     }
-    fetchProducts();
     document.getElementById('point-badge').textContent = 72;
     document.getElementById('point-badge-mobile').textContent = 72;
     document.getElementById('rewardTotal').textContent = 72;
@@ -444,6 +507,7 @@
         helpInput.value = "";
       }
     });
+    window.addEventListener('DOMContentLoaded', checkAuth);
   </script>
 </body>
 </html>
