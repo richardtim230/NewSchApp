@@ -1,4 +1,6 @@
 const BACKEND = "https://examguide.onrender.com";
+
+// --- Token and Auth Header ---
 function getToken() {
   return localStorage.token || sessionStorage.token || '';
 }
@@ -9,6 +11,46 @@ function authHeader() {
   };
 }
 
+// --- Notification Modal ---
+function showNotification(message, success = true) {
+  let modal = document.getElementById('notificationModal');
+  let content = document.getElementById('notificationModalContent');
+  content.innerHTML = `<div class="font-bold text-lg ${success ? "text-green-700" : "text-red-600"}">${message}</div>`;
+  modal.classList.remove('hidden');
+  setTimeout(() => modal.classList.add('hidden'), 2400);
+}
+document.getElementById('closeNotificationModal')?.addEventListener('click', function() {
+  document.getElementById('notificationModal').classList.add('hidden');
+});
+
+// --- Loader Spinner for Buttons ---
+function setActionLoading(btn, loading=true) {
+  if (loading) {
+    btn.disabled = true;
+    btn.innerHTML = `<span class="loader-spin inline-block align-middle mr-1" style="width:16px;height:16px;border-width:3px;"></span>Processing...`;
+  } else {
+    btn.disabled = false;
+    btn.innerHTML = btn.dataset.originalText || btn.textContent || 'Action';
+  }
+}
+
+// --- Cache for user info ---
+const userCache = {};
+async function getUserName(userId) {
+  if (!userId) return 'Unknown';
+  if (userCache[userId]) return userCache[userId];
+  try {
+    const res = await fetch(`${BACKEND}/api/users/${userId}`, {headers: authHeader()});
+    const data = await res.json();
+    let name = data?.user?.fullname || data?.user?.username || userId;
+    userCache[userId] = name;
+    return name;
+  } catch {
+    return userId;
+  }
+}
+
+// --- Main Admin Auth Check ---
 async function checkAdminAuth() {
   const overlay = document.getElementById('overlayLoader');
   try {
@@ -31,13 +73,12 @@ async function checkAdminAuth() {
     window.location.href = "mock.html";
   }
 }
-
-document.getElementById('hamburger-btn').addEventListener('click', function() {
+document.getElementById('hamburger-btn')?.addEventListener('click', function() {
   const menu = document.getElementById('mobile-menu');
   menu.hidden = !menu.hidden;
 });
 
-// Platform Stats
+// --- Platform Stats ---
 async function loadPlatformStats() {
   try {
     const usersRes = await fetch(BACKEND + "/api/users/count", {headers: authHeader()});
@@ -53,16 +94,34 @@ async function loadPlatformStats() {
   } catch {}
 }
 
-// Approvals Tab: Show ALL items/posts regardless of approval/published status
+// --- Approvals Tab (Posts & Items) ---
 async function loadApprovals() {
   try {
-    // Marketplace Listings
-    const resItems = await fetch(BACKEND + "/api/marketplace/listings-public", {headers: authHeader()});
-    const items = await resItems.json();
+    const [itemsRes, postsRes] = await Promise.all([
+      fetch(BACKEND + "/api/marketplace/listings-public", {headers: authHeader()}),
+      fetch(BACKEND + "/api/blogger-dashboard/allposts", {headers: authHeader()})
+    ]);
+    const items = await itemsRes.json();
+    const posts = await postsRes.json();
+
+    // Get unique userIds
+    let userIds = [
+      ...new Set([
+        ...items.map(i => i.seller),
+        ...posts.map(p => p.authorId)
+      ])
+    ].filter(Boolean);
+
+    let userNames = {};
+    await Promise.all(userIds.map(async uid => {
+      userNames[uid] = await getUserName(uid);
+    }));
+
+    // Map items
     const itemsAll = items.map(l => ({
       type: "Item",
       title: l.title,
-      user: l.seller || "Unknown",
+      user: userNames[l.seller] || l.seller || "Unknown",
       img: l.img || l.imageUrl || "",
       submitted: l.date ? new Date(l.date).toLocaleDateString() : "",
       status: l.approved ? "Approved" : "Pending",
@@ -71,13 +130,11 @@ async function loadApprovals() {
       desc: l.description || ""
     }));
 
-    // Posts (show ALL)
-    const resPosts = await fetch(BACKEND + "/api/blogger-dashboard/allposts", {headers: authHeader()});
-    const posts = await resPosts.json();
+    // Map posts
     const postsAll = posts.map(p => ({
       type: "Post",
       title: p.title,
-      user: p.authorId || "Unknown",
+      user: userNames[p.authorId] || p.authorId || "Unknown",
       img: p.images && p.images.length ? p.images[0] : (p.imageUrl || ""),
       submitted: p.date ? new Date(p.date).toLocaleDateString() : "",
       status: p.status || "Unknown",
@@ -100,8 +157,10 @@ async function loadApprovals() {
           <td>${a.submitted}</td>
           <td><span class="bg-yellow-100 text-yellow-800 rounded-full px-2 py-1 text-xs">${a.status}</span></td>
           <td>
-            <button onclick="approveItem('${a.type}','${a.dashboardId}','${a.id}')" class="bg-blue-900 text-white px-2 py-1 rounded text-xs font-semibold hover:bg-yellow-400 hover:text-blue-900 transition">Approve</button>
-            <button onclick="declineItem('${a.type}','${a.dashboardId}','${a.id}')" class="bg-red-100 text-red-600 px-2 py-1 rounded text-xs font-semibold hover:bg-red-200">Decline</button>
+            <button data-original-text="Approve" class="action-btn bg-blue-900 text-white px-2 py-1 rounded text-xs font-semibold hover:bg-yellow-400 hover:text-blue-900 transition"
+              onclick="approveItem(this,'${a.type}','${a.dashboardId}','${a.id}')">Approve</button>
+            <button data-original-text="Decline" class="action-btn bg-red-100 text-red-600 px-2 py-1 rounded text-xs font-semibold hover:bg-red-200"
+              onclick="declineItem(this,'${a.type}','${a.dashboardId}','${a.id}')">Decline</button>
           </td>
         </tr>`
       ).join('') :
@@ -111,57 +170,79 @@ async function loadApprovals() {
   }
 }
 
-// Approve/Decline actions
+// --- Approve/Decline Actions with Loader/Feedback ---
 window.viewApproval = function(type,dashboardId,id) {
   document.getElementById('approvalModalContent').innerHTML = `<div class="text-lg font-bold">Approval for ${type} ID: ${id}</div>`;
   document.getElementById('approvalModal').classList.remove('hidden');
 };
-document.getElementById('closeApprovalModal').onclick = function() {
+document.getElementById('closeApprovalModal')?.addEventListener('click', function() {
   document.getElementById('approvalModal').classList.add('hidden');
-};
+});
 function closeApprovalModal() {
   document.getElementById('approvalModal').classList.add('hidden');
 }
-window.approveItem = async function(type,dashboardId,id) {
+window.approveItem = async function(btn, type, dashboardId, id) {
+  setActionLoading(btn, true);
   try {
+    let res;
     if(type==="Item"){
-      await fetch(BACKEND + `/api/marketplace/approve-listing/${dashboardId}/${id}`, {
+      res = await fetch(BACKEND + `/api/marketplace/approve-listing/${dashboardId}/${id}`, {
         method: "PATCH",
         headers: authHeader(),
         body: JSON.stringify({ approved: true })
       });
     } else {
-      await fetch(BACKEND + `/api/blogger-dashboard/approve-post/${dashboardId}/${id}`, {
+      res = await fetch(BACKEND + `/api/blogger-dashboard/approve-post/${dashboardId}/${id}`, {
         method: "PATCH",
         headers: authHeader(),
         body: JSON.stringify({ status: "Published" })
       });
     }
-    loadApprovals();
-    closeApprovalModal();
-  } catch {}
+    if (res.ok) {
+      showNotification("Action successful!", true);
+      loadApprovals();
+    } else {
+      let msg = (await res.json()).message || "Action failed";
+      showNotification(msg, false);
+      setActionLoading(btn, false);
+    }
+  } catch(e) {
+    showNotification("Network error", false);
+    setActionLoading(btn, false);
+  }
 };
-window.declineItem = async function(type,dashboardId,id) {
+window.declineItem = async function(btn,type,dashboardId,id) {
+  setActionLoading(btn, true);
   try {
+    let res;
     if(type==="Item"){
-      await fetch(BACKEND + `/api/marketplace/approve-listing/${dashboardId}/${id}`, {
+      res = await fetch(BACKEND + `/api/marketplace/approve-listing/${dashboardId}/${id}`, {
         method: "PATCH",
         headers: authHeader(),
         body: JSON.stringify({ approved: false })
       });
     } else {
-      await fetch(BACKEND + `/api/blogger-dashboard/approve-post/${dashboardId}/${id}`, {
+      res = await fetch(BACKEND + `/api/blogger-dashboard/approve-post/${dashboardId}/${id}`, {
         method: "PATCH",
         headers: authHeader(),
         body: JSON.stringify({ status: "Draft" })
       });
     }
-    loadApprovals();
-    closeApprovalModal();
-  } catch {}
+    if (res.ok) {
+      showNotification("Action successful!", true);
+      loadApprovals();
+    } else {
+      let msg = (await res.json()).message || "Action failed";
+      showNotification(msg, false);
+      setActionLoading(btn, false);
+    }
+  } catch(e) {
+    showNotification("Network error", false);
+    setActionLoading(btn, false);
+  }
 };
 
-// USERS TAB with PAGINATION
+// --- USERS TAB with PAGINATION ---
 let usersCache = [];
 let usersTotalPages = 1;
 let usersCurrentPage = 1;
@@ -209,7 +290,7 @@ function renderUsersPagination() {
   document.getElementById('usersPagination').innerHTML = html;
 }
 
-// User actions
+// --- User actions ---
 window.verifyUser = async function(id) {
   await fetch(BACKEND+`/api/users/${id}/verify`,{method:"PATCH",headers:authHeader()});
   loadUsers(usersCurrentPage);
@@ -222,15 +303,15 @@ window.viewUser = function(id) {
   document.getElementById('userModalContent').innerHTML = `<div class="text-lg font-bold">User ID: ${id}</div>`;
   document.getElementById('userModal').classList.remove('hidden');
 };
-document.getElementById('closeUserModal').onclick = function() {
+document.getElementById('closeUserModal')?.addEventListener('click', function() {
   document.getElementById('userModal').classList.add('hidden');
-};
+});
 
-// Earnings tab (unchanged, but could be paginated as well)
+// --- Earnings tab (unchanged, could paginate) ---
 async function loadEarnings() {
   try {
     const res = await fetch(BACKEND + "/api/blogger-dashboard", {headers: authHeader()});
-    const dashboards = [await res.json()]; // or fetch all dashboards
+    const dashboards = [await res.json()];
     let rows = [];
     dashboards.forEach(dash => {
       (dash.commissions || []).forEach(e => {
@@ -252,7 +333,7 @@ async function loadEarnings() {
   }
 }
 
-// Points tab
+// --- Points tab ---
 async function loadPoints() {
   try {
     const res = await fetch(BACKEND + "/api/users", {headers: authHeader()});
@@ -278,7 +359,7 @@ async function loadPoints() {
   }
 }
 
-// Reports tab (sample fetch, replace with real endpoint)
+// --- Reports tab (sample fetch, replace with real endpoint) ---
 async function loadReports() {
   try {
     const res = await fetch(BACKEND + "/api/reports", {headers: authHeader()});
@@ -305,7 +386,7 @@ async function loadReports() {
   }
 }
 
-// Activity tab (sample fetch, replace with real endpoint)
+// --- Activity tab (sample fetch, replace with real endpoint) ---
 async function loadActivity() {
   try {
     const res = await fetch(BACKEND + "/api/activity", {headers: authHeader()});
@@ -328,13 +409,13 @@ async function loadActivity() {
   }
 }
 
-// Points revoke (unchanged)
+// --- Points revoke (unchanged) ---
 window.revokePoints = async function(userId, rewardId) {
-  // Backend endpoint needed for revoke action
   alert("Revoke points not implemented on backend.");
   loadPoints();
 };
 
+// --- Tab switching ---
 document.querySelectorAll('[data-tab]').forEach(btn => {
   btn.addEventListener('click', function() {
     document.querySelectorAll('[data-tab]').forEach(b => b.classList.remove('tab-btn-active'));
@@ -344,8 +425,8 @@ document.querySelectorAll('[data-tab]').forEach(btn => {
   });
 });
 
-// Help tab
-document.getElementById('helpForm').addEventListener('submit', function(e){
+// --- Help tab ---
+document.getElementById('helpForm')?.addEventListener('submit', function(e){
   e.preventDefault();
   const helpInput = document.getElementById('helpInput');
   if (helpInput.value.trim()) {
@@ -356,5 +437,6 @@ document.getElementById('helpForm').addEventListener('submit', function(e){
   }
 });
 
-// Load everything
+// --- Load everything ---
 window.addEventListener('DOMContentLoaded', checkAdminAuth);
+
