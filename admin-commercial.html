@@ -416,62 +416,59 @@
       } catch {}
     }
     async function loadPendingApprovals() {
-      try {
-        // Marketplace items
-        const resItems = await fetch(BACKEND + "/api/marketplace/listings-public", {headers: authHeader()});
-        const items = await resItems.json();
-        const itemsPending = items.filter(l => l.approved === false).map(l => ({
-          id: l._id,
-          dashboardId: l.seller,
-          type: "Item",
-          title: l.title,
-          user: l.seller || "Unknown",
-          userPic: "https://randomuser.me/api/portraits/men/25.jpg",
-          submitted: l.date ? new Date(l.date).toLocaleDateString() : "",
-          status: "Pending",
-          img: l.img || l.imageUrl || "",
-          desc: l.description || "",
-          listingId: l._id
-        }));
-        // Posts
-        const resPosts = await fetch(BACKEND + "/api/blogger-dashboard/allposts", {headers: authHeader()});
-        const posts = await resPosts.json();
-        const postsPending = posts.filter(p => p.status !== "Published").map(p => ({
-          id: p._id,
-          dashboardId: p.authorId,
-          type: "Post",
-          title: p.title,
-          user: p.authorId || "Unknown",
-          userPic: "https://randomuser.me/api/portraits/women/43.jpg",
-          submitted: p.date ? new Date(p.date).toLocaleDateString() : "",
-          status: "Pending",
-          img: p.images && p.images.length ? p.images[0] : (p.imageUrl || ""),
-          desc: p.summary || "",
-          postId: p._id
-        }));
-        const allPending = [...itemsPending, ...postsPending];
-        document.getElementById('approvalsTable').innerHTML = allPending.map(a =>
-          `<tr>
-            <td>${a.type}</td>
-            <td>
-              <img src="${a.img}" class="w-12 h-10 object-cover rounded shadow border border-yellow-100" alt="">
-              <button onclick="viewApproval('${a.type}','${a.dashboardId}','${a.id}')" class="ml-1 text-xs text-blue-600 underline hover:text-yellow-600">View</button>
-            </td>
-            <td>${a.title}</td>
-            <td>
-              <img src="${a.userPic}" class="inline w-7 h-7 rounded-full border-2 border-white mr-2" alt="">
-              ${a.user}
-            </td>
-            <td>${a.submitted}</td>
-            <td><span class="bg-yellow-100 text-yellow-800 rounded-full px-2 py-1 text-xs">${a.status}</span></td>
-            <td>
-              <button onclick="approveItem('${a.type}','${a.dashboardId}','${a.id}')" class="bg-blue-900 text-white px-2 py-1 rounded text-xs font-semibold hover:bg-yellow-400 hover:text-blue-900 transition">Approve</button>
-              <button onclick="declineItem('${a.type}','${a.dashboardId}','${a.id}')" class="bg-red-100 text-red-600 px-2 py-1 rounded text-xs font-semibold hover:bg-red-200">Decline</button>
-            </td>
-          </tr>`
-        ).join('');
-      } catch {}
-    }
+  try {
+    // Marketplace Listings
+    const resItems = await fetch(BACKEND + "/api/marketplace/listings-public", {headers: authHeader()});
+    const items = await resItems.json();
+    const itemsPending = items.filter(l => l.approved === false).map(l => ({
+      type: "Item",
+      title: l.title,
+      user: l.seller || "Unknown",
+      img: l.img || l.imageUrl || "",
+      submitted: l.date ? new Date(l.date).toLocaleDateString() : "",
+      status: "Pending",
+      id: l._id,
+      dashboardId: l.seller,
+      desc: l.description || ""
+    }));
+
+    // Posts
+    const resPosts = await fetch(BACKEND + "/api/blogger-dashboard/allposts", {headers: authHeader()});
+    const posts = await resPosts.json();
+    const postsPending = posts.filter(p => p.status !== "Published").map(p => ({
+      type: "Post",
+      title: p.title,
+      user: p.authorId || "Unknown",
+      img: p.images && p.images.length ? p.images[0] : (p.imageUrl || ""),
+      submitted: p.date ? new Date(p.date).toLocaleDateString() : "",
+      status: "Pending",
+      id: p._id,
+      dashboardId: p.authorId,
+      desc: p.summary || ""
+    }));
+
+    const allPending = [...itemsPending, ...postsPending];
+    document.getElementById('approvalsTable').innerHTML = allPending.map(a =>
+      `<tr>
+        <td>${a.type}</td>
+        <td>
+          <img src="${a.img}" class="w-12 h-10 object-cover rounded shadow border border-yellow-100" alt="">
+          <button onclick="viewApproval('${a.type}','${a.dashboardId}','${a.id}')" class="ml-1 text-xs text-blue-600 underline hover:text-yellow-600">View</button>
+        </td>
+        <td>${a.title}</td>
+        <td>${a.user}</td>
+        <td>${a.submitted}</td>
+        <td><span class="bg-yellow-100 text-yellow-800 rounded-full px-2 py-1 text-xs">${a.status}</span></td>
+        <td>
+          <button onclick="approveItem('${a.type}','${a.dashboardId}','${a.id}')" class="bg-blue-900 text-white px-2 py-1 rounded text-xs font-semibold hover:bg-yellow-400 hover:text-blue-900 transition">Approve</button>
+          <button onclick="declineItem('${a.type}','${a.dashboardId}','${a.id}')" class="bg-red-100 text-red-600 px-2 py-1 rounded text-xs font-semibold hover:bg-red-200">Decline</button>
+        </td>
+      </tr>`
+    ).join('');
+  } catch (e) {
+    document.getElementById('approvalsTable').innerHTML = `<tr><td colspan="7" class="text-center text-red-500 py-4">Failed to load approvals.</td></tr>`;
+  }
+}
     window.viewApproval = function(type,dashboardId,id) {
       document.getElementById('approvalModalContent').innerHTML = `<div class="text-lg font-bold">Approval for ${type} ID: ${id}</div>`;
       document.getElementById('approvalModal').classList.remove('hidden');
@@ -521,27 +518,26 @@
       } catch {}
     };
     async function loadUsers() {
-      try {
-        const res = await fetch(BACKEND + "/api/users", {headers: authHeader()});
-        const users = await res.json();
-        document.getElementById('usersTable').innerHTML = users.map(u =>
-          `<tr>
-            <td>
-              <img src="${u.profilePic || 'https://randomuser.me/api/portraits/men/23.jpg'}" class="w-10 h-10 rounded-full border-2 border-yellow-100" alt="">
-              <button onclick="viewUser('${u._id}')" class="ml-1 text-xs text-blue-600 underline hover:text-yellow-600">View</button>
-            </td>
-            <td>${u.fullname || u.username}</td>
-            <td>${u.role}</td>
-            <td><span class="${u.active?'bg-green-100 text-green-700':'bg-red-100 text-red-600'} rounded-full px-2 py-1 text-xs">${u.active?"Active":"Banned"}</span></td>
-            <td>${u.verified?'<span class="bg-blue-100 text-blue-900 px-2 py-1 rounded-full text-xs">Yes</span>':'<span class="bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs">No</span>'}</td>
-            <td>${u.points||0}</td>
-            <td>
-              <button onclick="verifyUser('${u._id}')" class="bg-yellow-400 text-blue-900 px-2 py-1 rounded text-xs font-semibold hover:bg-blue-900 hover:text-yellow-400 transition">Verify</button>
-              <button onclick="banUser('${u._id}')" class="bg-red-100 text-red-600 px-2 py-1 rounded text-xs font-semibold hover:bg-red-200">Ban</button>
-            </td>
-          </tr>`
-        ).join('');
-      } catch {}
+  try {
+    const res = await fetch(BACKEND + "/api/users", {headers: authHeader()});
+    const users = await res.json();
+    document.getElementById('usersTable').innerHTML = users.map(u =>
+      `<tr>
+        <td><img src="${u.profilePic || 'https://randomuser.me/api/portraits/men/23.jpg'}" class="w-10 h-10 rounded-full border-2 border-yellow-100" alt=""></td>
+        <td>${u.fullname || u.username}</td>
+        <td>${u.role}</td>
+        <td><span class="${u.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'} rounded-full px-2 py-1 text-xs">${u.active ? "Active" : "Banned"}</span></td>
+        <td>${u.verified ? "Yes" : "No"}</td>
+        <td>${u.points || 0}</td>
+        <td>
+          <button onclick="verifyUser('${u._id}')" class="bg-yellow-400 text-blue-900 px-2 py-1 rounded text-xs font-semibold hover:bg-blue-900 hover:text-yellow-400 transition">Verify</button>
+          <button onclick="banUser('${u._id}')" class="bg-red-100 text-red-600 px-2 py-1 rounded text-xs font-semibold hover:bg-red-200">Ban</button>
+        </td>
+      </tr>`
+    ).join('');
+  } catch (e) {
+    document.getElementById('usersTable').innerHTML = `<tr><td colspan="7" class="text-center text-red-500 py-4">Failed to load users.</td></tr>`;
+  }
     }
     window.verifyUser = async function(id) {
       await fetch(BACKEND+`/api/users/${id}/verify`,{method:"PATCH",headers:authHeader()});
@@ -559,12 +555,52 @@
       document.getElementById('userModal').classList.add('hidden');
     };
     async function loadEarnings() {
-      // Replace with real API call
-      document.getElementById('earningsTable').innerHTML = '';
-    }
+  try {
+    const res = await fetch(BACKEND + "/api/blogger-dashboard", {headers: authHeader()});
+    const dashboards = [await res.json()]; // or fetch all dashboards
+    let rows = [];
+    dashboards.forEach(dash => {
+      (dash.commissions || []).forEach(e => {
+        rows.push(`<tr>
+          <td>${dash.user}</td>
+          <td>${e.type}</td>
+          <td>₦${e.amount.toLocaleString()}</td>
+          <td><span class="bg-green-100 text-green-700 rounded-full px-2 py-1 text-xs">${e.status}</span></td>
+          <td>${e.date}</td>
+          <td>
+            <button class="bg-blue-900 text-white px-2 py-1 rounded text-xs font-semibold hover:bg-yellow-400 hover:text-blue-900 transition">Pay</button>
+          </td>
+        </tr>`);
+      });
+    });
+    document.getElementById('earningsTable').innerHTML = rows.join('');
+  } catch (e) {
+    document.getElementById('earningsTable').innerHTML = `<tr><td colspan="6" class="text-center text-red-500 py-4">Failed to load earnings.</td></tr>`;
+  }
+}
     async function loadPoints() {
-      // Replace with real API call
-      document.getElementById('pointsTable').innerHTML = '';
+  try {
+    const res = await fetch(BACKEND + "/api/users", {headers: authHeader()});
+    const users = await res.json();
+    let rows = [];
+    users.forEach(u => {
+      (u.rewardHistory?.admin || []).forEach(r =>
+        rows.push(`<tr>
+          <td>${u.fullname || u.username}</td>
+          <td>Admin</td>
+          <td>${r.points}</td>
+          <td>${new Date(r.date).toLocaleDateString()}</td>
+          <td>${r.reason}</td>
+          <td>
+            <button onclick="revokePoints('${u._id}','${r._id}')" class="bg-red-100 text-red-600 px-2 py-1 rounded text-xs font-semibold hover:bg-red-200">Revoke</button>
+          </td>
+        </tr>`)
+      );
+    });
+    document.getElementById('pointsTable').innerHTML = rows.join('');
+  } catch (e) {
+    document.getElementById('pointsTable').innerHTML = `<tr><td colspan="6" class="text-center text-red-500 py-4">Failed to load points.</td></tr>`;
+  }
     }
     async function loadReports() {
       // Replace with real API call
