@@ -137,7 +137,7 @@ async function loadApprovals() {
       user: userNames[p.authorId] || p.authorId || "Unknown",
       img: p.images && p.images.length ? p.images[0] : (p.imageUrl || ""),
       submitted: p.date ? new Date(p.date).toLocaleDateString() : "",
-      status: p.status || "Unknown",
+      status: p.status || "pending",
       id: p._id,
       dashboardId: p.authorId,
       desc: p.summary || ""
