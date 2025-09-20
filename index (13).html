@@ -1,101 +1,111 @@
-<script type="text/javascript">
-        var gk_isXlsx = false;
-        var gk_xlsxFileLookup = {};
-        var gk_fileData = {};
-        function filledCell(cell) {
-          return cell !== '' && cell != null;
-        }
-        function loadFileData(filename) {
-        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
-            try {
-                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
-                var firstSheetName = workbook.SheetNames[0];
-                var worksheet = workbook.Sheets[firstSheetName];
-
-                // Convert sheet to JSON to filter blank rows
-                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
-                // Filter out blank rows (rows where all cells are empty, null, or undefined)
-                var filteredData = jsonData.filter(row => row.some(filledCell));
-
-                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
-                var headerRowIndex = filteredData.findIndex((row, index) =>
-                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
-                );
-                // Fallback
-                if (headerRowIndex === -1 || headerRowIndex > 25) {
-                  headerRowIndex = 0;
-                }
-
-                // Convert filtered JSON back to CSV
-                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
-                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
-                return csv;
-            } catch (e) {
-                console.error(e);
-                return "";
-            }
-        }
-        return gk_fileData[filename] || "";
-        }
-        </script><!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Image Zoom Page</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Loading | OAU ExamGuard</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .slider-img {
+      transition: transform 1.2s cubic-bezier(.77,0,.175,1), opacity 0.7s ease;
+      opacity: 0;
+      transform: translateX(100vw) scale(0.9);
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      translate: -50% -50%;
+      z-index: 1;
+      border-radius: 1rem;
+      box-shadow: 0 4px 40px 0 rgba(30,30,60,0.13);
+    }
+    .slider-img.active {
+      opacity: 1;
+      transform: translateX(0) scale(1.06);
+      z-index: 2;
+      box-shadow: 0 8px 32px 0 rgba(0,0,0,0.14);
+    }
+    .slider-img.exit-left {
+      opacity: 0;
+      transform: translateX(-100vw) scale(0.93);
+      z-index: 1;
+    }
+    .slider-img.exit-right {
+      opacity: 0;
+      transform: translateX(100vw) scale(0.93);
+      z-index: 1;
+    }
+    .loader-text {
+      font-family: 'Poppins', sans-serif;
+      font-weight: 800;
+      font-size: 2rem;
+      letter-spacing: 2px;
+      background: linear-gradient(90deg,#d97706,#1e3a8a 75%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-top: 2.5rem;
+      text-align: center;
+      animation: pulseText 2s infinite;
+    }
+    @keyframes pulseText {
+      0%,100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    /* Responsive for smaller screens */
+    @media (max-width:600px){
+      .slider-img { width: 85vw; height: 38vw;}
+      .loader-text { font-size: 1.2rem;}
+    }
+  </style>
 </head>
-<body class="bg-white flex flex-col items-center justify-center min-h-screen space-y-6">
-    <h1 class="text-3xl font-bold text-gray-900">ExamGuard Nigeria</h1>
-    <div id="imageContainer" class="relative w-full max-w-md mx-auto">
-        <img id="image1" src="educate.jpg" alt="ExamGuard Nigeria" class="w-full h-auto absolute top-0 left-0">
-        <img id="image2" src="3d-illustration-white-male-reading-books_80392-7.jpg" alt="ExamGuard Nigeria" class="w-full h-auto absolute top-0 left-0 hidden">
-        <img id="image3" src="educational-tools-symbols-vector-illustration_1308-182490 (1).jpg" alt="ExamGuard Nigeria" class="w-full h-auto absolute top-0 left-0 hidden">
-    </div>
-    <div class="flex items-center space-x-3">
-        <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-gray-900"></div>
-        <p class="text-gray-900">Loading, preparing your experience</p>
-    </div>
+<body class="bg-white flex items-center justify-center min-h-screen relative overflow-hidden">
 
-    <script>
-        const images = [
-            document.getElementById('image1'),
-            document.getElementById('image2'),
-            document.getElementById('image3')
-        ];
-        let currentIndex = 0;
+  <!-- Logo or Spinner (Optional) -->
+  <div class="absolute top-6 left-1/2 -translate-x-1/2 z-10">
+    <img src="logo.png" alt="ExamGuard Logo" class="h-12 drop-shadow-lg" />
+  </div>
 
-        function zoomImage(image) {
-            image.classList.remove('hidden');
-            image.classList.add('animate-zoom');
-            setTimeout(() => {
-                image.classList.remove('animate-zoom');
-                image.classList.add('hidden');
-            }, 5000);
+  <!-- Sliding Image Container -->
+  <div id="slider" class="relative w-full max-w-2xl h-[320px] flex items-center justify-center overflow-hidden mx-auto">
+    <img src="educational-tools-symbols-vector-illustration_1308-182490 (1).jpg" alt="Studying" class="slider-img" />
+    <img src="3d-illustration-white-male-reading-books_80392-7.jpg" alt="CBT" class="slider-img" />
+    <img src="educate.jpg" alt="Marketplace" class="slider-img" />
+    <img src="educational-tools-symbols-vector-illustration_1308-182490 (1).jpg" alt="Rewards" class="slider-img" />
+    <img src="3d-illustration-white-male-reading-books_80392-7.jpg" alt="AI Chat" class="slider-img" />
+  </div>
+
+  <div class="loader-text">
+    Loading ExamGuard...<br/>
+    <span class="text-yellow-500">Get ready for success!</span>
+  </div>
+
+  <!-- Optional: Animated Dots -->
+  <div class="flex justify-center gap-2 mt-8">
+    <span class="w-3 h-3 rounded-full bg-yellow-500 animate-bounce"></span>
+    <span class="w-3 h-3 rounded-full bg-blue-900 animate-bounce [animation-delay:.15s]"></span>
+    <span class="w-3 h-3 rounded-full bg-yellow-500 animate-bounce [animation-delay:.3s]"></span>
+  </div>
+
+  <script>
+    // Simple slider animation
+    const images = document.querySelectorAll('.slider-img');
+    let current = 0;
+    function showImg(idx, direction = 'right') {
+      images.forEach((img, i) => {
+        img.classList.remove('active','exit-left','exit-right');
+        if(i === idx) {
+          img.classList.add('active');
+        } else if(i === (direction === 'right' ? (idx-1+images.length)%images.length : (idx+1)%images.length)) {
+          img.classList.add(direction === 'right' ? 'exit-left' : 'exit-right');
         }
-
-        function cycleImages() {
-            zoomImage(images[currentIndex]);
-            currentIndex = (currentIndex + 1) % images.length;
-            setTimeout(cycleImages, 6000);
-        }
-
-        // Define zoom animation
-        const style = document.createElement('style');
-        style.innerHTML = `
-            .animate-zoom {
-                animation: zoomInOut 5s ease-in-out;
-            }
-            @keyframes zoomInOut {
-                0% { transform: scale(1); }
-                50% { transform: scale(1.2); }
-                100% { transform: scale(1); }
-            }
-        `;
-        document.head.appendChild(style);
-
-        // Start the cycle
-        cycleImages();
-    </script>
+      });
+    }
+    showImg(current);
+    setInterval(() => {
+      let next = (current + 1) % images.length;
+      showImg(next, 'right');
+      current = next;
+    }, 1700);
+  </script>
 </body>
 </html>
