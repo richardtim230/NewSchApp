@@ -162,31 +162,26 @@ function renderPagination(totalPages, page) {
   if (!pag) return;
   pag.innerHTML = '';
   if (totalPages <= 1) {
-    pag.innerHTML = `<button class="bg-yellow-500 text-blue-900 px-4 py-2 rounded font-bold">1</button>`;
+    pag.innerHTML = `<button type="button" class="bg-yellow-500 text-blue-900 px-4 py-2 rounded font-bold">1</button>`;
     return;
   }
-  // Prev
-  pag.innerHTML += `<button ${page === 1 ? "disabled style='opacity:.5;cursor:not-allowed'" : ""} onclick="goToPage(${page - 1})" class="bg-blue-900 text-white px-4 py-2 rounded hover:bg-yellow-600 hover:text-blue-900 transition">Prev</button>`;
-
-  // Numbered pages
+  pag.innerHTML += `<button type="button" ${page === 1 ? "disabled" : ""} onclick="goToPage(${page - 1})" class="bg-blue-900 text-white px-4 py-2 rounded hover:bg-yellow-600 hover:text-blue-900 transition">Prev</button>`;
   for (let i = 1; i <= totalPages; i++) {
-    if (i === page) {
-      pag.innerHTML += `<button class="bg-yellow-500 text-blue-900 px-4 py-2 rounded font-bold">${i}</button>`;
-    } else {
-      pag.innerHTML += `<button onclick="goToPage(${i})" class="bg-white border px-4 py-2 rounded text-blue-900 hover:bg-yellow-100 transition">${i}</button>`;
-    }
+    pag.innerHTML += i === page
+      ? `<button type="button" class="bg-yellow-500 text-blue-900 px-4 py-2 rounded font-bold">${i}</button>`
+      : `<button type="button" onclick="goToPage(${i})" class="bg-white border px-4 py-2 rounded text-blue-900 hover:bg-yellow-100 transition">${i}</button>`;
   }
-  // Next
-  pag.innerHTML += `<button ${page === totalPages ? "disabled style='opacity:.5;cursor:not-allowed'" : ""} onclick="goToPage(${page + 1})" class="bg-blue-900 text-white px-4 py-2 rounded hover:bg-yellow-600 hover:text-blue-900 transition">Next</button>`;
+  pag.innerHTML += `<button type="button" ${page === totalPages ? "disabled" : ""} onclick="goToPage(${page + 1})" class="bg-blue-900 text-white px-4 py-2 rounded hover:bg-yellow-600 hover:text-blue-900 transition">Next</button>`;
 }
 
+// Do NOT call fetchBlogPosts here!
 window.goToPage = function(pageNum) {
-  // Clamp to available page range
   const totalPages = Math.max(1, Math.ceil(filteredBlogs.length / POSTS_PER_PAGE));
   if (pageNum < 1 || pageNum > totalPages) return;
   currentPage = pageNum;
   renderBlogs(filteredBlogs, currentPage);
 };
+
 
 async function incrementReadCount(postId) {
   try {
