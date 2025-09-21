@@ -1,5 +1,3 @@
-// ... keep your existing imports and constants
-
 const API_URL = "https://examguide.onrender.com/api/blogger-dashboard/allposts";
 const USER_API = "https://examguide.onrender.com/api/users/";
 
@@ -12,7 +10,7 @@ let currentCategory = 'General';
 // Pagination state
 let currentPage = 1;
 let totalPages = 1;
-const PAGE_LIMIT = 9; // You can change this as needed
+const PAGE_LIMIT = 9; // Number of posts per page
 
 // Show loader at start
 document.getElementById('blogLoader').style.display = "flex";
@@ -23,7 +21,6 @@ async function fetchBlogPosts(category = 'General', setActiveTab = false, tabBtn
   document.getElementById('blogLoader').style.display = "flex";
   document.getElementById('blogGrid').style.display = "none";
   try {
-    // Use pagination
     let url = `${API_URL}?page=${page}&limit=${PAGE_LIMIT}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error("Could not fetch blogs");
@@ -97,7 +94,6 @@ async function fetchBlogPosts(category = 'General', setActiveTab = false, tabBtn
   document.getElementById('blogGrid').style.display = "grid";
 }
 
-// Render blogs as before
 function renderBlogs(posts) {
   const grid = document.getElementById('blogGrid');
   if (!grid) return;
@@ -107,7 +103,6 @@ function renderBlogs(posts) {
     return;
   }
   posts.forEach(blog => {
-    // ... keep your existing rendering logic for each blog ...
     let imagesArr = [];
     if (Array.isArray(blog.image)) {
       imagesArr = blog.image;
@@ -233,6 +228,15 @@ function renderPagination() {
     span.textContent = "...";
     return span;
   }
+}
+
+// PATCH increment read count for a post
+async function incrementReadCount(postId) {
+  try {
+    await fetch(`https://examguide.onrender.com/api/blogger-dashboard/increment-views/${postId}`, {
+      method: "PATCH"
+    });
+  } catch {}
 }
 
 // Handler for Read & Earn button
