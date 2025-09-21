@@ -12,6 +12,7 @@ const POSTS_PER_PAGE = 5;
 document.getElementById('blogLoader').style.display = "flex";
 document.getElementById('blogGrid').style.display = "none";
 
+
 async function fetchBlogPosts(category = 'General', setActiveTab = false, tabBtn = null) {
   document.getElementById('blogLoader').style.display = "flex";
   document.getElementById('blogGrid').style.display = "none";
@@ -19,6 +20,8 @@ async function fetchBlogPosts(category = 'General', setActiveTab = false, tabBtn
     const res = await fetch(API_URL);
     if (!res.ok) throw new Error("Could not fetch blogs");
     const data = await res.json();
+
+    // Get all unique authorIds
     const authorIds = [...new Set(data.map(post => post.authorId || post.user).filter(Boolean))];
     await Promise.all(authorIds.map(async uid => {
       if (authorsCache[uid]) return;
@@ -32,9 +35,10 @@ async function fetchBlogPosts(category = 'General', setActiveTab = false, tabBtn
             ? (d.user.profilePic.startsWith("http") ? d.user.profilePic : d.user.profilePic)
             : `https://ui-avatars.com/api/?name=${encodeURIComponent(d.user?.fullname || d.user?.username || "A")}&background=FFCE45&color=263159&rounded=true`
         };
-      } catch { }
+      } catch { /* ignore error */ }
     }));
 
+    // Transform data to fit the expected frontend fields
     blogPosts = data.map(post => {
       const userId = post.authorId || post.user;
       const authorData = userId && authorsCache[userId] ? authorsCache[userId] : { name: "Anonymous", avatar: "https://ui-avatars.com/api/?name=A&background=FFCE45&color=263159&rounded=true" };
@@ -62,15 +66,17 @@ async function fetchBlogPosts(category = 'General', setActiveTab = false, tabBtn
       filteredBlogs = [...blogPosts];
     }
     currentCategory = category;
-    currentPage = 1; // Reset page on fetch/filter change
+    currentPage = 1; // Reset page on filter
 
     renderBlogs(filteredBlogs, currentPage);
 
+    // Set active tab visually if needed
     if (setActiveTab && tabBtn) {
       setActiveCategoryTab(tabBtn);
     }
   } catch (e) {
     document.getElementById('blogGrid').innerHTML = `<div class='col-span-3 text-center text-gray-500 py-10'>Could not load blog posts.</div>`;
+    renderPagination(1, 1);
   }
   document.getElementById('blogLoader').style.display = "none";
   document.getElementById('blogGrid').style.display = "grid";
@@ -80,7 +86,7 @@ function renderBlogs(posts, page = 1) {
   const grid = document.getElementById('blogGrid');
   if (!grid) return;
   grid.innerHTML = "";
-  const totalPages = Math.ceil(posts.length / POSTS_PER_PAGE) || 1;
+  const totalPages = Math.max(1, Math.ceil(posts.length / POSTS_PER_PAGE));
   page = Math.max(1, Math.min(page, totalPages));
   currentPage = page;
 
@@ -92,6 +98,7 @@ function renderBlogs(posts, page = 1) {
     grid.innerHTML = "<div class='col-span-3 text-center text-gray-500 py-10'>No blog posts found.</div>";
   } else {
     pagePosts.forEach(blog => {
+      // Ensure blog.images is always an array (support string, array, or fallback)
       let imagesArr = [];
       if (Array.isArray(blog.image)) {
         imagesArr = blog.image;
@@ -108,6 +115,7 @@ function renderBlogs(posts, page = 1) {
       } else if (typeof blog.image === "string" && blog.image) {
         imagesArr = [blog.image];
       }
+      // fallback if nothing is present
       if (!imagesArr.length || !imagesArr[0]) {
         imagesArr = ['oaugate-1140x570.jpg'];
       }
@@ -159,6 +167,7 @@ function renderPagination(totalPages, page) {
   }
   // Prev
   pag.innerHTML += `<button ${page === 1 ? "disabled style='opacity:.5;cursor:not-allowed'" : ""} onclick="goToPage(${page - 1})" class="bg-blue-900 text-white px-4 py-2 rounded hover:bg-yellow-600 hover:text-blue-900 transition">Prev</button>`;
+
   // Numbered pages
   for (let i = 1; i <= totalPages; i++) {
     if (i === page) {
@@ -171,9 +180,12 @@ function renderPagination(totalPages, page) {
   pag.innerHTML += `<button ${page === totalPages ? "disabled style='opacity:.5;cursor:not-allowed'" : ""} onclick="goToPage(${page + 1})" class="bg-blue-900 text-white px-4 py-2 rounded hover:bg-yellow-600 hover:text-blue-900 transition">Next</button>`;
 }
 
-// Expose for inline HTML use
 window.goToPage = function(pageNum) {
-  renderBlogs(filteredBlogs, pageNum);
+  // Clamp to available page range
+  const totalPages = Math.max(1, Math.ceil(filteredBlogs.length / POSTS_PER_PAGE));
+  if (pageNum < 1 || pageNum > totalPages) return;
+  currentPage = pageNum;
+  renderBlogs(filteredBlogs, currentPage);
 };
 
 async function incrementReadCount(postId) {
@@ -211,6 +223,7 @@ function setActiveCategoryTab(activeBtn) {
   }
 }
 
+// Sorting with pagination reset
 document.getElementById('blogSortSelect').addEventListener('change', function (e) {
   let sorted = [...filteredBlogs];
   if (this.value === 'popular') sorted.sort((a, b) => b.reads - a.reads);
@@ -227,6 +240,7 @@ document.getElementById('darkToggle').addEventListener('click', function () {
   document.body.classList.toggle('text-gray-100');
 });
 
+// On page load, show only General by default and set active tab
 window.addEventListener('DOMContentLoaded', function () {
   setActiveCategoryTab(document.querySelector('.category-tab'));
   fetchBlogPosts('General');
