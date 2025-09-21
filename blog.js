@@ -1,20 +1,18 @@
+
 const API_URL = "https://examguide.onrender.com/api/blogger-dashboard/allposts";
 const USER_API = "https://examguide.onrender.com/api/users/";
 
+// Store blogs globally for filtering/sorting
 let blogPosts = [];
 let filteredBlogs = [];
 let authorsCache = {};
 let currentCategory = 'General';
 
-let currentPage = 1;
-const POSTS_PER_PAGE = 5;
-let totalPages = 1;
-
 // Show loader at start
 document.getElementById('blogLoader').style.display = "flex";
 document.getElementById('blogGrid').style.display = "none";
 
-// Fetch blogs and optionally filter by category
+// Fetch only blogs for a specific category from API
 async function fetchBlogPosts(category = 'General', setActiveTab = false, tabBtn = null) {
   document.getElementById('blogLoader').style.display = "flex";
   document.getElementById('blogGrid').style.display = "none";
@@ -24,6 +22,7 @@ async function fetchBlogPosts(category = 'General', setActiveTab = false, tabBtn
     const data = await res.json();
     // Get all unique authorIds
     const authorIds = [...new Set(data.map(post => post.authorId || post.user).filter(Boolean))];
+    // Fetch author names and avatars concurrently, cache by userId
     await Promise.all(authorIds.map(async uid => {
       if (authorsCache[uid]) return;
       try {
@@ -36,9 +35,10 @@ async function fetchBlogPosts(category = 'General', setActiveTab = false, tabBtn
             ? (d.user.profilePic.startsWith("http") ? d.user.profilePic : d.user.profilePic)
             : `https://ui-avatars.com/api/?name=${encodeURIComponent(d.user?.fullname || d.user?.username || "A")}&background=FFCE45&color=263159&rounded=true`
         };
-      } catch { }
+      } catch { /* ignore error */ }
     }));
 
+    // Transform data to fit the expected frontend fields
     blogPosts = data.map(post => {
       const userId = post.authorId || post.user;
       const authorData = userId && authorsCache[userId] ? authorsCache[userId] : { name: "Anonymous", avatar: "https://ui-avatars.com/api/?name=A&background=FFCE45&color=263159&rounded=true" };
@@ -67,27 +67,28 @@ async function fetchBlogPosts(category = 'General', setActiveTab = false, tabBtn
       filteredBlogs = [...blogPosts];
     }
     currentCategory = category;
-    currentPage = 1;
-    updatePagination();
-    renderBlogs(getCurrentPageBlogs());
-    renderPagination();
 
-    if (setActiveTab && tabBtn) setActiveCategoryTab(tabBtn);
+    renderBlogs(filteredBlogs);
+
+    // Set active tab visually if needed
+    if (setActiveTab && tabBtn) {
+      setActiveCategoryTab(tabBtn);
+    }
   } catch (e) {
     document.getElementById('blogGrid').innerHTML = `<div class='col-span-3 text-center text-gray-500 py-10'>Could not load blog posts.</div>`;
   }
+  // Hide loader and show grid after loading
   document.getElementById('blogLoader').style.display = "none";
   document.getElementById('blogGrid').style.display = "grid";
 }
 
-function updatePagination() {
-  totalPages = Math.max(1, Math.ceil(filteredBlogs.length / POSTS_PER_PAGE));
-  if (currentPage > totalPages) currentPage = totalPages;
-}
-
-function getCurrentPageBlogs() {
-  const start = (currentPage - 1) * POSTS_PER_PAGE;
-  return filteredBlogs.slice(start, start + POSTS_PER_PAGE);
+// PATCH increment read count for a post
+async function incrementReadCount(postId) {
+  try {
+    await fetch(`https://examguide.onrender.com/api/blogger-dashboard/increment-views/${postId}`, {
+      method: "PATCH"
+    });
+  } catch {}
 }
 
 function renderBlogs(posts) {
@@ -99,6 +100,7 @@ function renderBlogs(posts) {
     return;
   }
   posts.forEach(blog => {
+    // Ensure blog.images is always an array (support string, array, or fallback)
     let imagesArr = [];
     if (Array.isArray(blog.image)) {
       imagesArr = blog.image;
@@ -115,9 +117,12 @@ function renderBlogs(posts) {
     } else if (typeof blog.image === "string" && blog.image) {
       imagesArr = [blog.image];
     }
+    // fallback if nothing is present
     if (!imagesArr.length || !imagesArr[0]) {
       imagesArr = ['oaugate-1140x570.jpg'];
     }
+
+    // Use the first image and ensure full aspect ratio (no cropping)
     grid.innerHTML += `
     <div class="bg-white rounded-2xl shadow-xl flex flex-col overflow-hidden hover:scale-[1.025] hover:shadow-2xl transition-all duration-200 border border-gray-100 group relative">
       <div class="relative">
@@ -154,44 +159,27 @@ function renderBlogs(posts) {
   });
 }
 
-function renderPagination() {
-  const pagDiv = document.querySelector(".pagination-container");
-  let html = '';
-  if (totalPages <= 1) {
-    html = `<button class="bg-yellow-500 text-blue-900 px-4 py-2 rounded font-bold">1</button>`;
-  } else {
-    html += `<button class="bg-blue-900 text-white px-4 py-2 rounded ${currentPage === 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-yellow-600 hover:text-blue-900'}" onclick="changePage('prev')" ${currentPage === 1 ? 'disabled' : ''}>Prev</button>`;
-    for (let i = 1; i <= totalPages; i++) {
-      html += `<button class="${i === currentPage ? 'bg-yellow-500 text-blue-900 font-bold' : 'bg-white border text-blue-900 hover:bg-yellow-100 transition'} px-4 py-2 rounded" onclick="goToPage(${i})">${i}</button>`;
-    }
-    html += `<button class="bg-blue-900 text-white px-4 py-2 rounded ${currentPage === totalPages ? 'opacity-50 cursor-not-allowed' : 'hover:bg-yellow-600 hover:text-blue-900'}" onclick="changePage('next')" ${currentPage === totalPages ? 'disabled' : ''}>Next</button>`;
+// Handler for Read & Earn button
+async function onReadAndEarn(postId) {
+  // Find and update read count in UI optimistically
+  const countSpan = document.getElementById('read-count-' + postId);
+  if (countSpan) {
+    let num = parseInt(countSpan.textContent, 10);
+    if (!isNaN(num)) countSpan.textContent = num + 1;
   }
-  pagDiv.innerHTML = html;
+  await incrementReadCount(postId);
+  window.location = `campus-news-update?id=${postId}`;
 }
 
-window.goToPage = function(page) {
-  if (page >= 1 && page <= totalPages) {
-    currentPage = page;
-    renderBlogs(getCurrentPageBlogs());
-    renderPagination();
-    window.scrollTo({ top: document.getElementById('blogGrid').offsetTop - 100, behavior: 'smooth' });
-  }
-};
-
-window.changePage = function(direction) {
-  if (direction === 'prev' && currentPage > 1) {
-    goToPage(currentPage - 1);
-  }
-  if (direction === 'next' && currentPage < totalPages) {
-    goToPage(currentPage + 1);
-  }
-};
-
-window.filterBlogCategory = function(cat, btn) {
+// FILTER BY CATEGORY & set active tab
+function filterBlogCategory(cat, btn) {
+  // Visually set active tab
   setActiveCategoryTab(btn);
+  // If "All" or "General" or anything else, fetch and filter accordingly
   fetchBlogPosts(cat, false);
-};
+}
 
+// Set active tab visual state
 function setActiveCategoryTab(activeBtn) {
   document.querySelectorAll('.category-tab').forEach(btn => {
     btn.classList.remove('bg-blue-900', 'text-white', 'font-bold', 'active');
@@ -204,46 +192,27 @@ function setActiveCategoryTab(activeBtn) {
   }
 }
 
-document.getElementById('blogSortSelect').addEventListener('change', function() {
+// SORT BLOGS
+document.getElementById('blogSortSelect').addEventListener('change', function(e){
   let sorted = [...filteredBlogs];
   if (this.value === 'popular') sorted.sort((a, b) => b.reads - a.reads);
   else if (this.value === 'highest') sorted.sort((a, b) => b.rating - a.rating);
   else sorted.sort((a, b) => new Date(b.date) - new Date(a.date));
-  filteredBlogs = sorted;
-  currentPage = 1;
-  updatePagination();
-  renderBlogs(getCurrentPageBlogs());
-  renderPagination();
+  renderBlogs(sorted);
 });
 
+// DARK MODE
 document.getElementById('darkToggle').addEventListener('click', function() {
   document.body.classList.toggle('dark');
   document.body.classList.toggle('bg-gray-900');
   document.body.classList.toggle('text-gray-100');
 });
 
-// Handler for Read & Earn button
-window.onReadAndEarn = async function(postId) {
-  const countSpan = document.getElementById('read-count-' + postId);
-  if (countSpan) {
-    let num = parseInt(countSpan.textContent, 10);
-    if (!isNaN(num)) countSpan.textContent = num + 1;
-  }
-  try {
-    await fetch(`https://examguide.onrender.com/api/blogger-dashboard/increment-views/${postId}`, { method: "PATCH" });
-  } catch { }
-  window.location = `campus-news-update?id=${postId}`;
-};
-
+// INIT: show only General category by default and set active tab
 window.addEventListener('DOMContentLoaded', function() {
+  // Set "General" tab as active visually
   setActiveCategoryTab(document.querySelector('.category-tab'));
   fetchBlogPosts('General');
-  // Create pagination container if not present
-  if (!document.querySelector(".pagination-container")) {
-    const pagDiv = document.createElement("div");
-    pagDiv.className = "flex justify-center mt-8 gap-2 pagination-container";
-    document.getElementById("blogGrid").after(pagDiv);
-  }
 });
 
 // Close modal when clicking outside (post blog)
