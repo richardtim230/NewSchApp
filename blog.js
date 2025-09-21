@@ -1,3 +1,5 @@
+
+
 const API_URL = "https://examguide.onrender.com/api/blogger-dashboard/allposts";
 const USER_API = "https://examguide.onrender.com/api/users/";
 
@@ -7,32 +9,21 @@ let filteredBlogs = [];
 let authorsCache = {};
 let currentCategory = 'General';
 
-// Pagination state
-let currentPage = 1;
-let totalPages = 1;
-const PAGE_LIMIT = 9; // Number of posts per page
-
 // Show loader at start
 document.getElementById('blogLoader').style.display = "flex";
 document.getElementById('blogGrid').style.display = "none";
 
-// Fetch blogs with pagination and (optional) category
-async function fetchBlogPosts(category = 'General', setActiveTab = false, tabBtn = null, page = 1) {
+// Fetch only blogs for a specific category from API
+async function fetchBlogPosts(category = 'General', setActiveTab = false, tabBtn = null) {
   document.getElementById('blogLoader').style.display = "flex";
   document.getElementById('blogGrid').style.display = "none";
   try {
-    let url = `${API_URL}?page=${page}&limit=${PAGE_LIMIT}`;
-    const res = await fetch(url);
+    const res = await fetch(API_URL);
     if (!res.ok) throw new Error("Could not fetch blogs");
     const data = await res.json();
-
-    // data.posts = array of posts, data.total, data.page, data.totalPages
-    const postsData = data.posts || [];
-    currentPage = data.page || 1;
-    totalPages = data.totalPages || 1;
-
     // Get all unique authorIds
-    const authorIds = [...new Set(postsData.map(post => post.authorId || post.user).filter(Boolean))];
+    const authorIds = [...new Set(data.map(post => post.authorId || post.user).filter(Boolean))];
+    // Fetch author names and avatars concurrently, cache by userId
     await Promise.all(authorIds.map(async uid => {
       if (authorsCache[uid]) return;
       try {
@@ -49,7 +40,7 @@ async function fetchBlogPosts(category = 'General', setActiveTab = false, tabBtn
     }));
 
     // Transform data to fit the expected frontend fields
-    blogPosts = postsData.map(post => {
+    blogPosts = data.map(post => {
       const userId = post.authorId || post.user;
       const authorData = userId && authorsCache[userId] ? authorsCache[userId] : { name: "Anonymous", avatar: "https://ui-avatars.com/api/?name=A&background=FFCE45&color=263159&rounded=true" };
       return {
@@ -79,7 +70,6 @@ async function fetchBlogPosts(category = 'General', setActiveTab = false, tabBtn
     currentCategory = category;
 
     renderBlogs(filteredBlogs);
-    renderPagination();
 
     // Set active tab visually if needed
     if (setActiveTab && tabBtn) {
@@ -87,11 +77,19 @@ async function fetchBlogPosts(category = 'General', setActiveTab = false, tabBtn
     }
   } catch (e) {
     document.getElementById('blogGrid').innerHTML = `<div class='col-span-3 text-center text-gray-500 py-10'>Could not load blog posts.</div>`;
-    document.querySelector(".pagination")?.remove();
   }
   // Hide loader and show grid after loading
   document.getElementById('blogLoader').style.display = "none";
   document.getElementById('blogGrid').style.display = "grid";
+}
+
+// PATCH increment read count for a post
+async function incrementReadCount(postId) {
+  try {
+    await fetch(`https://examguide.onrender.com/api/blogger-dashboard/increment-views/${postId}`, {
+      method: "PATCH"
+    });
+  } catch {}
 }
 
 function renderBlogs(posts) {
@@ -103,6 +101,7 @@ function renderBlogs(posts) {
     return;
   }
   posts.forEach(blog => {
+    // Ensure blog.images is always an array (support string, array, or fallback)
     let imagesArr = [];
     if (Array.isArray(blog.image)) {
       imagesArr = blog.image;
@@ -119,10 +118,12 @@ function renderBlogs(posts) {
     } else if (typeof blog.image === "string" && blog.image) {
       imagesArr = [blog.image];
     }
+    // fallback if nothing is present
     if (!imagesArr.length || !imagesArr[0]) {
       imagesArr = ['oaugate-1140x570.jpg'];
     }
 
+    // Use the first image and ensure full aspect ratio (no cropping)
     grid.innerHTML += `
     <div class="bg-white rounded-2xl shadow-xl flex flex-col overflow-hidden hover:scale-[1.025] hover:shadow-2xl transition-all duration-200 border border-gray-100 group relative">
       <div class="relative">
@@ -159,88 +160,9 @@ function renderBlogs(posts) {
   });
 }
 
-// Render dynamic pagination below the blog grid
-function renderPagination() {
-  // Remove old pagination if any
-  document.querySelector(".pagination")?.remove();
-
-  // Only show if more than one page
-  if (totalPages < 2) return;
-
-  // Create container
-  const pagDiv = document.createElement("div");
-  pagDiv.className = "flex justify-center mt-8 gap-2 pagination";
-
-  // Prev button
-  const prevBtn = document.createElement("button");
-  prevBtn.className = `bg-blue-900 text-white px-4 py-2 rounded hover:bg-yellow-600 hover:text-blue-900 transition${currentPage === 1 ? " opacity-50 cursor-not-allowed" : ""}`;
-  prevBtn.disabled = currentPage === 1;
-  prevBtn.textContent = "Prev";
-  prevBtn.onclick = () => {
-    if (currentPage > 1) fetchBlogPosts(currentCategory, false, null, currentPage - 1);
-  };
-  pagDiv.appendChild(prevBtn);
-
-  // Page numbers (show up to 5 pages, with ... if needed)
-  let start = Math.max(1, currentPage - 2);
-  let end = Math.min(totalPages, start + 4);
-  if (end - start < 4) start = Math.max(1, end - 4);
-  if (start > 1) {
-    pagDiv.appendChild(makePageBtn(1));
-    if (start > 2) {
-      pagDiv.appendChild(makeEllipsis());
-    }
-  }
-  for (let p = start; p <= end; p++) {
-    pagDiv.appendChild(makePageBtn(p));
-  }
-  if (end < totalPages) {
-    if (end < totalPages - 1) pagDiv.appendChild(makeEllipsis());
-    pagDiv.appendChild(makePageBtn(totalPages));
-  }
-
-  // Next button
-  const nextBtn = document.createElement("button");
-  nextBtn.className = `bg-blue-900 text-white px-4 py-2 rounded hover:bg-yellow-600 hover:text-blue-900 transition${currentPage === totalPages ? " opacity-50 cursor-not-allowed" : ""}`;
-  nextBtn.disabled = currentPage === totalPages;
-  nextBtn.textContent = "Next";
-  nextBtn.onclick = () => {
-    if (currentPage < totalPages) fetchBlogPosts(currentCategory, false, null, currentPage + 1);
-  };
-  pagDiv.appendChild(nextBtn);
-
-  // Insert after blogGrid
-  document.getElementById("blogGrid").after(pagDiv);
-
-  function makePageBtn(page) {
-    const btn = document.createElement("button");
-    btn.className = page === currentPage
-      ? "bg-yellow-500 text-blue-900 px-4 py-2 rounded font-bold"
-      : "bg-white border px-4 py-2 rounded text-blue-900 hover:bg-yellow-100 transition";
-    btn.textContent = page;
-    btn.disabled = page === currentPage;
-    btn.onclick = () => fetchBlogPosts(currentCategory, false, null, page);
-    return btn;
-  }
-  function makeEllipsis() {
-    const span = document.createElement("span");
-    span.className = "px-2 py-2 text-blue-900";
-    span.textContent = "...";
-    return span;
-  }
-}
-
-// PATCH increment read count for a post
-async function incrementReadCount(postId) {
-  try {
-    await fetch(`https://examguide.onrender.com/api/blogger-dashboard/increment-views/${postId}`, {
-      method: "PATCH"
-    });
-  } catch {}
-}
-
 // Handler for Read & Earn button
 async function onReadAndEarn(postId) {
+  // Find and update read count in UI optimistically
   const countSpan = document.getElementById('read-count-' + postId);
   if (countSpan) {
     let num = parseInt(countSpan.textContent, 10);
@@ -252,9 +174,10 @@ async function onReadAndEarn(postId) {
 
 // FILTER BY CATEGORY & set active tab
 function filterBlogCategory(cat, btn) {
+  // Visually set active tab
   setActiveCategoryTab(btn);
-  // Always reset to page 1 on category change
-  fetchBlogPosts(cat, false, null, 1);
+  // If "All" or "General" or anything else, fetch and filter accordingly
+  fetchBlogPosts(cat, false);
 }
 
 // Set active tab visual state
@@ -270,7 +193,7 @@ function setActiveCategoryTab(activeBtn) {
   }
 }
 
-// SORT BLOGS (sorts current page only)
+// SORT BLOGS
 document.getElementById('blogSortSelect').addEventListener('change', function(e){
   let sorted = [...filteredBlogs];
   if (this.value === 'popular') sorted.sort((a, b) => b.reads - a.reads);
@@ -288,8 +211,9 @@ document.getElementById('darkToggle').addEventListener('click', function() {
 
 // INIT: show only General category by default and set active tab
 window.addEventListener('DOMContentLoaded', function() {
+  // Set "General" tab as active visually
   setActiveCategoryTab(document.querySelector('.category-tab'));
-  fetchBlogPosts('General', false, null, 1);
+  fetchBlogPosts('General');
 });
 
 // Close modal when clicking outside (post blog)
