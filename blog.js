@@ -7,7 +7,7 @@ let filteredBlogs = [];
 let authorsCache = {};
 let currentCategory = 'General';
 
-const POSTS_PER_PAGE = 5;
+const POSTS_PER_PAGE = 20;
 let currentPage = 1;
 
 // Show loader at start
