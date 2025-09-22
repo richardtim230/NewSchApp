@@ -241,12 +241,10 @@ function setActiveTab(category) {
   });
 }
 
-// Tab event listeners (make sure they use filterBlogCategory)
-document.querySelectorAll('#blogTabs .blog-tab, #blogCategoryTabs .category-tab').forEach(btn => {
-  btn.addEventListener('click', function() {
-    saveState(this.dataset ? this.dataset.cat || this.textContent.trim() : this.textContent.trim(), 1);
-    filterBlogCategory(this.dataset ? this.dataset.cat || this.textContent.trim() : this.textContent.trim(), false, 1);
-  });
+btn.addEventListener('click', function(e) {
+  e.preventDefault(); // prevent accidental form submission
+  saveState(this.dataset ? this.dataset.cat || this.textContent.trim() : this.textContent.trim(), 1);
+  filterBlogCategory(this.dataset ? this.dataset.cat || this.textContent.trim() : this.textContent.trim(), false, 1);
 });
 
 // Sort blogs
