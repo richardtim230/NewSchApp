@@ -141,7 +141,6 @@ function renderBlogs(posts) {
   renderPagination(posts.length, totalPages);
 }
 
-// PAGINATION BUTTONS RENDERING
 function renderPagination(totalPosts, totalPages) {
   const paginationDiv = document.getElementById('blogPagination');
   if (!paginationDiv) return;
@@ -150,6 +149,7 @@ function renderPagination(totalPosts, totalPages) {
 
   // Prev button
   const prevBtn = document.createElement('button');
+  prevBtn.type = "button";  // <-- FIX
   prevBtn.className = "bg-blue-900 text-white px-4 py-2 rounded hover:bg-yellow-600 hover:text-blue-900 transition";
   prevBtn.textContent = "Prev";
   prevBtn.disabled = currentPage === 1;
@@ -161,13 +161,13 @@ function renderPagination(totalPosts, totalPages) {
   };
   paginationDiv.appendChild(prevBtn);
 
-  // Page numbers (show up to 5 pages, with ... if more)
-  let pageBtns = [];
+  // Page numbers
   let startPage = Math.max(1, currentPage - 2);
   let endPage = Math.min(totalPages, startPage + 4);
   if (endPage - startPage < 4) startPage = Math.max(1, endPage - 4);
   for (let i = startPage; i <= endPage; i++) {
     const btn = document.createElement('button');
+    btn.type = "button";  // <-- FIX
     if (i === currentPage) {
       btn.className = "bg-yellow-500 text-blue-900 px-4 py-2 rounded font-bold";
     } else {
@@ -183,6 +183,7 @@ function renderPagination(totalPosts, totalPages) {
 
   // Next button
   const nextBtn = document.createElement('button');
+  nextBtn.type = "button";  // <-- FIX
   nextBtn.className = "bg-blue-900 text-white px-4 py-2 rounded hover:bg-yellow-600 hover:text-blue-900 transition";
   nextBtn.textContent = "Next";
   nextBtn.disabled = currentPage === totalPages || totalPages === 0;
