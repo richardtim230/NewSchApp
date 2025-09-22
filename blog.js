@@ -1,110 +1,151 @@
 const API_URL = "https://examguide.onrender.com/api/blogger-dashboard/allposts";
 const USER_API = "https://examguide.onrender.com/api/users/";
 
-const POSTS_PER_PAGE = 20;
-const STORAGE_POSTS_KEY = "oau_blogs_posts";
-const STORAGE_AUTHORS_KEY = "oau_blogs_authors";
-const STORAGE_CATEGORY_KEY = "oau_blogs_category";
-const STORAGE_PAGE_KEY = "oau_blogs_page";
-
+// Store blogs globally for filtering/sorting
 let blogPosts = [];
 let filteredBlogs = [];
 let authorsCache = {};
+let currentCategory = 'General';
 
-function saveState(category, page) {
-  localStorage.setItem(STORAGE_CATEGORY_KEY, category);
-  localStorage.setItem(STORAGE_PAGE_KEY, page);
+const POSTS_PER_PAGE = 5;
+let currentPage = 1;
+
+// Show loader at start
+document.getElementById('blogLoader').style.display = "flex";
+document.getElementById('blogGrid').style.display = "none";
+
+// Read page from URL, fallback to 1
+function getPageFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  return parseInt(params.get('page')) || 1;
 }
 
-function loadState() {
-  const category = localStorage.getItem(STORAGE_CATEGORY_KEY) || "General";
-  const page = parseInt(localStorage.getItem(STORAGE_PAGE_KEY) || "1");
-  return { category, page };
+// When pagination is clicked, update url and reload
+function setPageInURL(page) {
+  const params = new URLSearchParams(window.location.search);
+  params.set('page', page);
+  window.location.search = params.toString(); // reloads page
 }
 
-function fetchAndCacheBlogPosts() {
+// Fetch only blogs for a specific category from API
+async function fetchBlogPosts(category = 'General', setActiveTab = false, tabBtn = null) {
   document.getElementById('blogLoader').style.display = "flex";
   document.getElementById('blogGrid').style.display = "none";
-  fetch(API_URL)
-    .then(res => res.json())
-    .then(async data => {
-      const authorIds = [...new Set(data.map(post => post.authorId || post.user).filter(Boolean))];
-      let tempAuthorsCache = {};
-      await Promise.all(authorIds.map(async uid => {
-        try {
-          const resp = await fetch(USER_API + uid);
-          if (!resp.ok) return;
-          const d = await resp.json();
-          tempAuthorsCache[uid] = {
-            name: d.user?.fullname || d.user?.username || "Anonymous",
-            avatar: d.user?.profilePic
-              ? (d.user.profilePic.startsWith("http") ? d.user.profilePic : d.user.profilePic)
-              : `https://ui-avatars.com/api/?name=${encodeURIComponent(d.user?.fullname || d.user?.username || "A")}&background=FFCE45&color=263159&rounded=true`
-          };
-        } catch { }
-      }));
-      blogPosts = data.map(post => {
-        const userId = post.authorId || post.user;
-        const authorData = userId && tempAuthorsCache[userId] ? tempAuthorsCache[userId] : { name: "Anonymous", avatar: "https://ui-avatars.com/api/?name=A&background=FFCE45&color=263159&rounded=true" };
-        return {
-          id: post._id,
-          title: post.title,
-          category: post.category || "General",
-          author: authorData.name,
-          authorAvatar: authorData.avatar,
-          date: post.date ? new Date(post.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : "",
-          image: post.images || "oaugate-1140x570.jpg",
-          summary: post.content ? post.content.replace(/<[^>]+>/g, '').substring(0, 120) + "..." : "",
-          content: post.content || "",
-          reads: post.views || 0,
-          rating: post.likes ? (Math.min(5, 3 + (post.likes / 20))).toFixed(1) : 4.5,
-          comments: Array.isArray(post.comments) ? post.comments.length : 0,
-          featured: post.featured || false,
-          userId
+  try {
+    const res = await fetch(API_URL);
+    if (!res.ok) throw new Error("Could not fetch blogs");
+    const data = await res.json();
+    // Get all unique authorIds
+    const authorIds = [...new Set(data.map(post => post.authorId || post.user).filter(Boolean))];
+    // Fetch author names and avatars concurrently, cache by userId
+    await Promise.all(authorIds.map(async uid => {
+      if (authorsCache[uid]) return;
+      try {
+        const resp = await fetch(USER_API + uid);
+        if (!resp.ok) return;
+        const d = await resp.json();
+        authorsCache[uid] = {
+          name: d.user?.fullname || d.user?.username || "Anonymous",
+          avatar: d.user?.profilePic
+            ? (d.user.profilePic.startsWith("http") ? d.user.profilePic : d.user.profilePic)
+            : `https://ui-avatars.com/api/?name=${encodeURIComponent(d.user?.fullname || d.user?.username || "A")}&background=FFCE45&color=263159&rounded=true`
         };
-      });
-      localStorage.setItem(STORAGE_POSTS_KEY, JSON.stringify(blogPosts));
-      localStorage.setItem(STORAGE_AUTHORS_KEY, JSON.stringify(tempAuthorsCache));
-      const { category, page } = loadState();
-      filterBlogCategory(category, true, page);
-    })
-    .catch(() => {
-      document.getElementById('blogGrid').innerHTML = `<div class='col-span-3 text-center text-gray-500 py-10'>Could not load blog posts.</div>`;
-      document.getElementById('blogLoader').style.display = "none";
-      document.getElementById('blogGrid').style.display = "grid";
+      } catch { /* ignore error */ }
+    }));
+
+    // Transform data to fit the expected frontend fields
+    blogPosts = data.map(post => {
+      const userId = post.authorId || post.user;
+      const authorData = userId && authorsCache[userId] ? authorsCache[userId] : { name: "Anonymous", avatar: "https://ui-avatars.com/api/?name=A&background=FFCE45&color=263159&rounded=true" };
+      return {
+        id: post._id,
+        title: post.title,
+        category: post.category || "General",
+        author: authorData.name,
+        authorAvatar: authorData.avatar,
+        date: post.date ? new Date(post.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : "",
+        image: post.images || "oaugate-1140x570.jpg",
+        summary: post.content ? post.content.replace(/<[^>]+>/g, '').substring(0, 120) + "..." : "",
+        content: post.content || "",
+        reads: post.views || 0,
+        rating: post.likes ? (Math.min(5, 3 + (post.likes / 20))).toFixed(1) : 4.5,
+        comments: Array.isArray(post.comments) ? post.comments.length : 0,
+        featured: post.featured || false,
+        userId
+      };
     });
+
+    // Filter by category unless "All"
+    if (category && category !== 'All') {
+      filteredBlogs = blogPosts.filter(blog => blog.category === category);
+    } else {
+      filteredBlogs = [...blogPosts];
+    }
+    currentCategory = category;
+
+    renderBlogs(filteredBlogs);
+
+    // Set active tab visually if needed
+    if (setActiveTab && tabBtn) {
+      setActiveCategoryTab(tabBtn);
+    }
+  } catch (e) {
+    document.getElementById('blogGrid').innerHTML = `<div class='col-span-3 text-center text-gray-500 py-10'>Could not load blog posts.</div>`;
+  }
+  // Hide loader and show grid after loading
+  document.getElementById('blogLoader').style.display = "none";
+  document.getElementById('blogGrid').style.display = "grid";
 }
 
-function loadPostsFromStorage() {
-  const posts = localStorage.getItem(STORAGE_POSTS_KEY);
-  const authors = localStorage.getItem(STORAGE_AUTHORS_KEY);
-  if (posts) blogPosts = JSON.parse(posts);
-  if (authors) authorsCache = JSON.parse(authors);
+// PATCH increment read count for a post
+async function incrementReadCount(postId) {
+  try {
+    await fetch(`https://examguide.onrender.com/api/blogger-dashboard/increment-views/${postId}`, {
+      method: "PATCH"
+    });
+  } catch {}
 }
 
-function renderBlogs(posts, currentPage) {
+function renderBlogs(posts) {
   const grid = document.getElementById('blogGrid');
   if (!grid) return;
-  const totalPages = Math.ceil(posts.length / POSTS_PER_PAGE);
-  if (currentPage > totalPages) currentPage = totalPages || 1;
-  const startIdx = (currentPage - 1) * POSTS_PER_PAGE;
-  const endIdx = startIdx + POSTS_PER_PAGE;
-  const pagePosts = posts.slice(startIdx, endIdx);
-
   grid.innerHTML = "";
+
+  // Pagination logic
+  const totalPages = Math.ceil(posts.length / POSTS_PER_PAGE) || 1;
+  currentPage = Math.min(getPageFromURL(), totalPages);
+
+  // Paginate the posts
+  const start = (currentPage - 1) * POSTS_PER_PAGE;
+  const end = start + POSTS_PER_PAGE;
+  const pagePosts = posts.slice(start, end);
+
   if (pagePosts.length === 0) {
     grid.innerHTML = "<div class='col-span-3 text-center text-gray-500 py-10'>No blog posts found.</div>";
   } else {
     pagePosts.forEach(blog => {
+      // Ensure blog.images is always an array (support string, array, or fallback)
       let imagesArr = [];
-      if (Array.isArray(blog.image)) imagesArr = blog.image;
-      else if (Array.isArray(blog.images)) imagesArr = blog.images;
-      else if (typeof blog.image === "string" && blog.image.startsWith("data:image")) imagesArr = [blog.image];
-      else if (typeof blog.images === "string" && blog.images.startsWith("data:image")) imagesArr = [blog.images];
-      else if (blog.imageUrl && blog.imageUrl.startsWith("data:image")) imagesArr = [blog.imageUrl];
-      else if (blog.imageUrl) imagesArr = [blog.imageUrl];
-      else if (typeof blog.image === "string" && blog.image) imagesArr = [blog.image];
-      if (!imagesArr.length || !imagesArr[0]) imagesArr = ['oaugate-1140x570.jpg'];
+      if (Array.isArray(blog.image)) {
+        imagesArr = blog.image;
+      } else if (Array.isArray(blog.images)) {
+        imagesArr = blog.images;
+      } else if (typeof blog.image === "string" && blog.image.startsWith("data:image")) {
+        imagesArr = [blog.image];
+      } else if (typeof blog.images === "string" && blog.images.startsWith("data:image")) {
+        imagesArr = [blog.images];
+      } else if (blog.imageUrl && blog.imageUrl.startsWith("data:image")) {
+        imagesArr = [blog.imageUrl];
+      } else if (blog.imageUrl) {
+        imagesArr = [blog.imageUrl];
+      } else if (typeof blog.image === "string" && blog.image) {
+        imagesArr = [blog.image];
+      }
+      // fallback if nothing is present
+      if (!imagesArr.length || !imagesArr[0]) {
+        imagesArr = ['oaugate-1140x570.jpg'];
+      }
+
       grid.innerHTML += `
       <div class="bg-white rounded-2xl shadow-xl flex flex-col overflow-hidden hover:scale-[1.025] hover:shadow-2xl transition-all duration-200 border border-gray-100 group relative">
         <div class="relative">
@@ -130,7 +171,6 @@ function renderBlogs(posts, currentPage) {
             <span title="Comments">💬 ${blog.comments}</span>
           </div>
           <button 
-            type="button"
             onclick="onReadAndEarn('${blog.id}')"
             class="w-full bg-yellow-500 text-blue-900 px-4 py-2 rounded-lg font-bold hover:bg-blue-900 hover:text-yellow-400 transition mt-auto focus:outline-none focus:ring-2 focus:ring-yellow-300"
             aria-label="Read full blog post by ${blog.author}">
@@ -141,59 +181,35 @@ function renderBlogs(posts, currentPage) {
       `;
     });
   }
-  renderPagination(posts.length, totalPages, currentPage);
-  document.getElementById('blogLoader').style.display = "none";
-  grid.style.display = "grid";
+  renderPagination(totalPages);
 }
-function renderPagination(totalPosts, totalPages, currentPage) {
-  const paginationDiv = document.getElementById('blogPagination');
-  if (!paginationDiv) return;
-  paginationDiv.innerHTML = "";
 
-  // Prev button
-  const prevBtn = document.createElement("button");
-  prevBtn.textContent = "Prev";
-  prevBtn.className = "px-3 py-2 bg-yellow-500 text-white rounded disabled:opacity-50";
-  prevBtn.disabled = currentPage === 1;
-  prevBtn.addEventListener("click", (e) => {
-    e.preventDefault(); // 🚀 prevent page reload
-    if (currentPage > 1) loadBlogs(currentPage - 1);
-  });
-  paginationEl.appendChild(prevBtn);
-
-  // Page numbers
-  let startPage = Math.max(1, currentPage - 2);
-  let endPage = Math.min(totalPages, startPage + 4);
-  if (endPage - startPage < 4) startPage = Math.max(1, endPage - 4);
-  for (let i = startPage; i <= endPage; i++) {
-    const btn = document.createElement('button');
-    btn.type = "button";
-    if (i === currentPage) {
-      btn.className = "bg-yellow-500 text-blue-900 px-4 py-2 rounded font-bold";
-    } else {
-      btn.className = "bg-white border px-4 py-2 rounded text-blue-900 hover:bg-yellow-100 transition";
-    }
-    btn.textContent = i;
-    btn.onclick = () => {
-      saveState(localStorage.getItem(STORAGE_CATEGORY_KEY), i);
-      filterBlogCategory(localStorage.getItem(STORAGE_CATEGORY_KEY), true, i);
-    };
-    paginationDiv.appendChild(btn);
+// Render the pagination buttons
+function renderPagination(totalPages) {
+  const pag = document.getElementById('blogPagination');
+  if (!pag) return;
+  pag.innerHTML = '';
+  if (totalPages <= 1) {
+    pag.innerHTML = `<button class="bg-yellow-500 text-blue-900 px-4 py-2 rounded font-bold">1</button>`;
+    return;
   }
-
-  // Next button
-  const nextBtn = document.createElement("button");
-  nextBtn.textContent = "Next";
-  nextBtn.className = "px-3 py-2 bg-blue-900 text-white rounded disabled:opacity-50";
-  nextBtn.disabled = currentPage === totalPages;
-  nextBtn.addEventListener("click", (e) => {
-    e.preventDefault(); // 🚀 prevent page reload
-    if (currentPage < totalPages) loadBlogs(currentPage + 1);
-  });
-  paginationEl.appendChild(nextBtn);
+  // Prev
+  pag.innerHTML += `<button onclick="setPageInURL(${Math.max(1, currentPage-1)})" class="bg-blue-900 text-white px-4 py-2 rounded hover:bg-yellow-600 hover:text-blue-900 transition"${currentPage===1 ? " disabled style='opacity:0.5;cursor:not-allowed'" : ""}>Prev</button>`;
+  // Numbered pages
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === currentPage) {
+      pag.innerHTML += `<button class="bg-yellow-500 text-blue-900 px-4 py-2 rounded font-bold">${i}</button>`;
+    } else {
+      pag.innerHTML += `<button onclick="setPageInURL(${i})" class="bg-white border px-4 py-2 rounded text-blue-900 hover:bg-yellow-100 transition">${i}</button>`;
+    }
+  }
+  // Next
+  pag.innerHTML += `<button onclick="setPageInURL(${Math.min(totalPages, currentPage+1)})" class="bg-blue-900 text-white px-4 py-2 rounded hover:bg-yellow-600 hover:text-blue-900 transition"${currentPage===totalPages ? " disabled style='opacity:0.5;cursor:not-allowed'" : ""}>Next</button>`;
 }
 
+// Handler for Read & Earn button
 async function onReadAndEarn(postId) {
+  // Find and update read count in UI optimistically
   const countSpan = document.getElementById('read-count-' + postId);
   if (countSpan) {
     let num = parseInt(countSpan.textContent, 10);
@@ -203,52 +219,41 @@ async function onReadAndEarn(postId) {
   window.location = `campus-news-update?id=${postId}`;
 }
 
-async function incrementReadCount(postId) {
-  try {
-    await fetch(`https://examguide.onrender.com/api/blogger-dashboard/increment-views/${postId}`, { method: "PATCH" });
-  } catch {}
+// FILTER BY CATEGORY & set active tab
+function filterBlogCategory(cat, btn) {
+  // Visually set active tab
+  setActiveCategoryTab(btn);
+  // Remove ?page=... from URL
+  const params = new URLSearchParams(window.location.search);
+  params.delete('page');
+  window.history.replaceState({}, '', window.location.pathname + '?' + params.toString());
+  fetchBlogPosts(cat, false);
 }
 
-// FILTER BY CATEGORY
-function filterBlogCategory(cat, skipTabUpdate = false, page = 1) {
-  localStorage.setItem(STORAGE_CATEGORY_KEY, cat);
-  localStorage.setItem(STORAGE_PAGE_KEY, page);
-  if (!skipTabUpdate) setActiveTab(cat);
-
-  loadPostsFromStorage();
-  filteredBlogs = (cat === 'All') ? [...blogPosts] : blogPosts.filter(blog => blog.category === cat);
-  renderBlogs(filteredBlogs, page);
-}
-
-// ACTIVE TAB UI CONTROL
-function setActiveTab(category) {
-  document.querySelectorAll('#blogTabs .blog-tab, #blogCategoryTabs .category-tab').forEach(btn => {
-    btn.classList.remove('bg-blue-900', 'text-white', 'ring-2', 'ring-yellow-400', 'font-semibold', 'active');
+// Set active tab visual state
+function setActiveCategoryTab(activeBtn) {
+  document.querySelectorAll('.category-tab').forEach(btn => {
+    btn.classList.remove('bg-blue-900', 'text-white', 'font-bold', 'active');
     btn.classList.remove('bg-yellow-500', 'text-blue-900');
     btn.classList.add('bg-yellow-100', 'text-yellow-700');
-    btn.classList.remove('bg-yellow-100', 'text-yellow-700');
-    if ((btn.dataset && btn.dataset.cat === category) || btn.textContent.trim() === category) {
-      btn.classList.remove('bg-yellow-100', 'text-yellow-700');
-      btn.classList.add('bg-blue-900', 'text-white', 'ring-2', 'ring-yellow-400', 'font-semibold', 'active');
-    }
   });
+  if (activeBtn) {
+    activeBtn.classList.remove('bg-yellow-100', 'text-yellow-700');
+    activeBtn.classList.add('bg-blue-900', 'text-white', 'font-bold', 'active');
+  }
 }
 
-btn.addEventListener('click', function(e) {
-  e.preventDefault(); // prevent accidental form submission
-  saveState(this.dataset ? this.dataset.cat || this.textContent.trim() : this.textContent.trim(), 1);
-  filterBlogCategory(this.dataset ? this.dataset.cat || this.textContent.trim() : this.textContent.trim(), false, 1);
-});
-
-// Sort blogs
+// SORT BLOGS
 document.getElementById('blogSortSelect').addEventListener('change', function(e){
   let sorted = [...filteredBlogs];
   if (this.value === 'popular') sorted.sort((a, b) => b.reads - a.reads);
   else if (this.value === 'highest') sorted.sort((a, b) => b.rating - a.rating);
   else sorted.sort((a, b) => new Date(b.date) - new Date(a.date));
-  saveState(localStorage.getItem(STORAGE_CATEGORY_KEY), 1);
-  renderBlogs(sorted, 1);
-  filteredBlogs = sorted;
+  // Remove ?page=... from URL
+  const params = new URLSearchParams(window.location.search);
+  params.delete('page');
+  window.history.replaceState({}, '', window.location.pathname + '?' + params.toString());
+  renderBlogs(sorted);
 });
 
 // DARK MODE
@@ -258,17 +263,14 @@ document.getElementById('darkToggle').addEventListener('click', function() {
   document.body.classList.toggle('text-gray-100');
 });
 
-// INIT: Try to load from storage, else fetch
-const postsInStorage = localStorage.getItem(STORAGE_POSTS_KEY);
-const { category, page } = loadState();
-if (postsInStorage) {
-  loadPostsFromStorage();
-  filterBlogCategory(category, true, page);
-} else {
-  fetchAndCacheBlogPosts();
-}
+// INIT: show only General category by default and set active tab/page
+window.addEventListener('DOMContentLoaded', function() {
+  currentPage = getPageFromURL();
+  setActiveCategoryTab(document.querySelector('.category-tab'));
+  fetchBlogPosts('General');
+});
 
-// Modal close logic (unchanged)
+// Close modal when clicking outside (post blog)
 document.querySelectorAll('[data-modal-hide="post-blog-modal"]').forEach(btn => {
   btn.addEventListener('click', () => document.getElementById('post-blog-modal').classList.add('hidden'));
 });
