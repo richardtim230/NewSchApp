@@ -1,7 +1,7 @@
 const API_URL = "https://examguide.onrender.com/api/blogger-dashboard/allposts";
 const USER_API = "https://examguide.onrender.com/api/users/";
 
-const POSTS_PER_PAGE = 5;
+const POSTS_PER_PAGE = 20;
 const STORAGE_POSTS_KEY = "oau_blogs_posts";
 const STORAGE_AUTHORS_KEY = "oau_blogs_authors";
 const STORAGE_CATEGORY_KEY = "oau_blogs_category";
