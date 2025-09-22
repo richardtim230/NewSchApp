@@ -143,7 +143,7 @@ function renderBlogs(posts) {
 
 // PAGINATION BUTTONS RENDERING
 function renderPagination(totalPosts, totalPages) {
-  const paginationDiv = document.querySelector('.flex.justify-center.mt-8.gap-2');
+  const paginationDiv = document.getElementById('blogPagination');
   if (!paginationDiv) return;
 
   paginationDiv.innerHTML = "";
