@@ -1,40 +1,63 @@
+// Updated blog.js for optimized backend usage and efficient network
+
 const API_URL = "https://examguide.onrender.com/api/blogger-dashboard/public/posts";
+const COUNT_URL = "https://examguide.onrender.com/api/blogger-dashboard/public/posts/count";
 const POSTS_PER_PAGE = 20;
 
-// Store blogs globally for filtering/sorting
+// Store blogs globally for sorting
 let blogPosts = [];
-let filteredBlogs = [];
 let currentCategory = 'General';
 let currentPage = 1;
+let totalPages = 1;
 
-// Helper: Read page from URL
+// Show loader at start
+document.getElementById('blogLoader').style.display = "flex";
+document.getElementById('blogGrid').style.display = "none";
+
+// Read page from URL
 function getPageFromURL() {
   const params = new URLSearchParams(window.location.search);
   return parseInt(params.get('page')) || 1;
 }
 
-// Helper: Set page in URL
+// Set page in URL
 function setPageInURL(page) {
   const params = new URLSearchParams(window.location.search);
   params.set('page', page);
   window.location.search = params.toString(); // reloads page
 }
 
-// Updated fetchBlogPosts: uses new backend
+// Fetch total count for pagination (async, returns int)
+async function fetchTotalCount(category = 'General') {
+  try {
+    const res = await fetch(`${COUNT_URL}?category=${encodeURIComponent(category)}`);
+    if (!res.ok) return 0;
+    const data = await res.json();
+    return data.count || 0;
+  } catch {
+    return 0;
+  }
+}
+
+// Main optimized fetch function
 async function fetchBlogPosts(category = 'General', setActiveTab = false, tabBtn = null) {
   document.getElementById('blogLoader').style.display = "flex";
   document.getElementById('blogGrid').style.display = "none";
 
-  // Get current page from URL
   currentPage = getPageFromURL();
+  currentCategory = category;
+
+  // Fetch posts and total count in parallel for speed
+  const [postsRes, totalCount] = await Promise.all([
+    fetch(`${API_URL}?category=${encodeURIComponent(category)}&page=${currentPage}&limit=${POSTS_PER_PAGE}`),
+    fetchTotalCount(category)
+  ]);
 
   try {
-    // Request paginated, filtered posts from backend
-    const res = await fetch(`${API_URL}?category=${encodeURIComponent(category)}&page=${currentPage}&limit=${POSTS_PER_PAGE}`);
-    if (!res.ok) throw new Error("Could not fetch blogs");
-    const data = await res.json();
+    if (!postsRes.ok) throw new Error("Could not fetch blogs");
+    const data = await postsRes.json();
 
-    // Backend includes author info
+    // Map backend data to frontend format
     blogPosts = data.map(post => ({
       id: post._id,
       title: post.title,
@@ -42,8 +65,7 @@ async function fetchBlogPosts(category = 'General', setActiveTab = false, tabBtn
       author: post.author,
       authorAvatar: post.authorAvatar,
       date: post.date ? new Date(post.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : "",
-      images: post.images || [],
-      imageUrl: post.imageUrl || "",
+      images: Array.isArray(post.images) && post.images.length ? post.images : (post.imageUrl ? [post.imageUrl] : ["oaugate-1140x570.jpg"]),
       summary: post.content ? post.content.replace(/<[^>]+>/g, '').substring(0, 120) + "..." : "",
       content: post.content || "",
       reads: post.views || 0,
@@ -53,20 +75,18 @@ async function fetchBlogPosts(category = 'General', setActiveTab = false, tabBtn
       userId: post.authorId
     }));
 
-    // No need to filter client-side; backend already filtered
-    filteredBlogs = [...blogPosts];
-    currentCategory = category;
+    // Total pages for pagination
+    totalPages = Math.max(1, Math.ceil(totalCount / POSTS_PER_PAGE));
 
-    renderBlogs(filteredBlogs);
+    renderBlogs(blogPosts);
 
-    // Set active tab visually if needed
     if (setActiveTab && tabBtn) setActiveCategoryTab(tabBtn);
 
   } catch (e) {
     document.getElementById('blogGrid').innerHTML = `<div class='col-span-3 text-center text-gray-500 py-10'>Could not load blog posts.</div>`;
+    totalPages = 1;
   }
 
-  // Hide loader and show grid after loading
   document.getElementById('blogLoader').style.display = "none";
   document.getElementById('blogGrid').style.display = "grid";
 }
@@ -85,40 +105,15 @@ function renderBlogs(posts) {
   if (!grid) return;
   grid.innerHTML = "";
 
-  // Pagination logic
-  const totalPages = Math.ceil(posts.length / POSTS_PER_PAGE) || 1;
-  currentPage = Math.min(getPageFromURL(), totalPages);
-
   // Paginate the posts
-  const start = (currentPage - 1) * POSTS_PER_PAGE;
-  const end = start + POSTS_PER_PAGE;
-  const pagePosts = posts.slice(start, end);
+  const pagePosts = posts;
 
   if (pagePosts.length === 0) {
     grid.innerHTML = "<div class='col-span-3 text-center text-gray-500 py-10'>No blog posts found.</div>";
   } else {
     pagePosts.forEach(blog => {
-      // Ensure blog.images is always an array (support string, array, or fallback)
-      let imagesArr = [];
-      if (Array.isArray(blog.image)) {
-        imagesArr = blog.image;
-      } else if (Array.isArray(blog.images)) {
-        imagesArr = blog.images;
-      } else if (typeof blog.image === "string" && blog.image.startsWith("data:image")) {
-        imagesArr = [blog.image];
-      } else if (typeof blog.images === "string" && blog.images.startsWith("data:image")) {
-        imagesArr = [blog.images];
-      } else if (blog.imageUrl && blog.imageUrl.startsWith("data:image")) {
-        imagesArr = [blog.imageUrl];
-      } else if (blog.imageUrl) {
-        imagesArr = [blog.imageUrl];
-      } else if (typeof blog.image === "string" && blog.image) {
-        imagesArr = [blog.image];
-      }
-      // fallback if nothing is present
-      if (!imagesArr.length || !imagesArr[0]) {
-        imagesArr = ['oaugate-1140x570.jpg'];
-      }
+      let imagesArr = blog.images && Array.isArray(blog.images) ? blog.images : [];
+      if (!imagesArr.length || !imagesArr[0]) imagesArr = ['oaugate-1140x570.jpg'];
 
       grid.innerHTML += `
       <div class="bg-white rounded-2xl shadow-xl flex flex-col overflow-hidden hover:scale-[1.025] hover:shadow-2xl transition-all duration-200 border border-gray-100 group relative">
@@ -127,6 +122,7 @@ function renderBlogs(posts) {
             src="${imagesArr[0]}" 
             alt="${blog.title}" 
             class="w-full max-h-72 object-contain rounded-lg mb-3 group-hover:scale-105 transition bg-gray-50" 
+            loading="lazy"
           />
           ${blog.featured ? `<span class="absolute top-4 left-4 bg-yellow-400 text-blue-900 px-3 py-1 rounded-full text-xs font-bold shadow-lg">Featured</span>` : ''}
         </div>
@@ -168,9 +164,12 @@ function renderPagination(totalPages) {
     return;
   }
   // Prev
-  pag.innerHTML += `<button onclick="setPageInURL(${Math.max(1, currentPage-1)})" class="bg-blue-900 text-white px-4 py-2 rounded hover:bg-yellow-600 hover:text-blue-900 transition"${currentPage===1 ? " disabled style='opacity:0.5;cursor:not-allowed'" : ""}>Prev</button>`;
-  // Numbered pages
-  for (let i = 1; i <= totalPages; i++) {
+  pag.innerHTML += `<button onclick="setPageInURL(${Math.max(1, currentPage-1)})" class="bg-blue-900 text-white px-4 py-2 rounded hover:bg-yellow-600 hover:text-blue-900 transition"${currentPage===1 ? ' disabled' : ''}>Prev</button>`;
+  // Numbered pages (show max 5 at a time)
+  let start = Math.max(1, currentPage - 2);
+  let end = Math.min(totalPages, start + 4);
+  if (end - start < 4) start = Math.max(1, end - 4);
+  for (let i = start; i <= end; i++) {
     if (i === currentPage) {
       pag.innerHTML += `<button class="bg-yellow-500 text-blue-900 px-4 py-2 rounded font-bold">${i}</button>`;
     } else {
@@ -178,7 +177,7 @@ function renderPagination(totalPages) {
     }
   }
   // Next
-  pag.innerHTML += `<button onclick="setPageInURL(${Math.min(totalPages, currentPage+1)})" class="bg-blue-900 text-white px-4 py-2 rounded hover:bg-yellow-600 hover:text-blue-900 transition"${currentPage===totalPages ? " disabled style='opacity:0.5;cursor:not-allowed'" : ""}>Next</button>`;
+  pag.innerHTML += `<button onclick="setPageInURL(${Math.min(totalPages, currentPage+1)})" class="bg-blue-900 text-white px-4 py-2 rounded hover:bg-yellow-600 hover:text-blue-900 transition"${currentPage===totalPages ? ' disabled' : ''}>Next</button>`;
 }
 
 // Handler for Read & Earn button
@@ -195,7 +194,6 @@ async function onReadAndEarn(postId) {
 
 // FILTER BY CATEGORY & set active tab
 function filterBlogCategory(cat, btn) {
-  // Visually set active tab
   setActiveCategoryTab(btn);
   // Remove ?page=... from URL
   const params = new URLSearchParams(window.location.search);
@@ -219,7 +217,7 @@ function setActiveCategoryTab(activeBtn) {
 
 // SORT BLOGS
 document.getElementById('blogSortSelect').addEventListener('change', function(e){
-  let sorted = [...filteredBlogs];
+  let sorted = [...blogPosts];
   if (this.value === 'popular') sorted.sort((a, b) => b.reads - a.reads);
   else if (this.value === 'highest') sorted.sort((a, b) => b.rating - a.rating);
   else sorted.sort((a, b) => new Date(b.date) - new Date(a.date));
