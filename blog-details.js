@@ -314,4 +314,49 @@ function attachCommentActionListeners() {
       </a>
     `).join('');
   }
-})();
+    // Inject Blog Post Schema Markup after mainPost is ready
+  injectBlogPostJsonLD({
+    title: mainPost.title,
+    image: mainPost.imageUrl,
+    author: mainPost.authorName || "Anonymous",
+    datePublished: mainPost.date,
+    description: mainPost.summary || (mainPost.content ? mainPost.content.substring(0, 120) + "..." : "")
+  });
+
+  // Monitor and reward blog reading (AFTER everything loads and post is ready)
+  monitorAndRewardReading(postId);
+
+})();  
+
+// --- Inject Blog Post JSON-LD Schema
+function injectBlogPostJsonLD({ title, image, author, datePublished, description }) {
+  const oldLd = document.getElementById('blog-post-json-ld');
+  if (oldLd) oldLd.remove();
+
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    "headline": title,
+    "image": image,
+    "author": {
+      "@type": "Person",
+      "name": author
+    },
+    "datePublished": datePublished,
+    "publisher": {
+      "@type": "Organization",
+      "name": "OAU ExamGuard",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://oau.examguard.com.ng/logo.png"
+      }
+    },
+    "description": description
+  };
+
+  const script = document.createElement('script');
+  script.type = 'application/ld+json';
+  script.id = 'blog-post-json-ld';
+  script.textContent = JSON.stringify(jsonLd, null, 2);
+  document.head.appendChild(script);
+}
