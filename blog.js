@@ -1,97 +1,71 @@
-const API_URL = "https://examguide.onrender.com/api/blogger-dashboard/allposts";
-const USER_API = "https://examguide.onrender.com/api/users/";
+const API_URL = "https://examguide.onrender.com/api/blogger-dashboard/public/posts";
+const POSTS_PER_PAGE = 20;
 
 // Store blogs globally for filtering/sorting
 let blogPosts = [];
 let filteredBlogs = [];
-let authorsCache = {};
 let currentCategory = 'General';
-
-const POSTS_PER_PAGE = 20;
 let currentPage = 1;
 
-// Show loader at start
-document.getElementById('blogLoader').style.display = "flex";
-document.getElementById('blogGrid').style.display = "none";
-
-// Read page from URL, fallback to 1
+// Helper: Read page from URL
 function getPageFromURL() {
   const params = new URLSearchParams(window.location.search);
   return parseInt(params.get('page')) || 1;
 }
 
-// When pagination is clicked, update url and reload
+// Helper: Set page in URL
 function setPageInURL(page) {
   const params = new URLSearchParams(window.location.search);
   params.set('page', page);
   window.location.search = params.toString(); // reloads page
 }
 
-// Fetch only blogs for a specific category from API
+// Updated fetchBlogPosts: uses new backend
 async function fetchBlogPosts(category = 'General', setActiveTab = false, tabBtn = null) {
   document.getElementById('blogLoader').style.display = "flex";
   document.getElementById('blogGrid').style.display = "none";
+
+  // Get current page from URL
+  currentPage = getPageFromURL();
+
   try {
-    const res = await fetch(API_URL);
+    // Request paginated, filtered posts from backend
+    const res = await fetch(`${API_URL}?category=${encodeURIComponent(category)}&page=${currentPage}&limit=${POSTS_PER_PAGE}`);
     if (!res.ok) throw new Error("Could not fetch blogs");
     const data = await res.json();
-    // Get all unique authorIds
-    const authorIds = [...new Set(data.map(post => post.authorId || post.user).filter(Boolean))];
-    // Fetch author names and avatars concurrently, cache by userId
-    await Promise.all(authorIds.map(async uid => {
-      if (authorsCache[uid]) return;
-      try {
-        const resp = await fetch(USER_API + uid);
-        if (!resp.ok) return;
-        const d = await resp.json();
-        authorsCache[uid] = {
-          name: d.user?.fullname || d.user?.username || "Anonymous",
-          avatar: d.user?.profilePic
-            ? (d.user.profilePic.startsWith("http") ? d.user.profilePic : d.user.profilePic)
-            : `https://ui-avatars.com/api/?name=${encodeURIComponent(d.user?.fullname || d.user?.username || "A")}&background=FFCE45&color=263159&rounded=true`
-        };
-      } catch { /* ignore error */ }
+
+    // Backend includes author info
+    blogPosts = data.map(post => ({
+      id: post._id,
+      title: post.title,
+      category: post.category || "General",
+      author: post.author,
+      authorAvatar: post.authorAvatar,
+      date: post.date ? new Date(post.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : "",
+      images: post.images || [],
+      imageUrl: post.imageUrl || "",
+      summary: post.content ? post.content.replace(/<[^>]+>/g, '').substring(0, 120) + "..." : "",
+      content: post.content || "",
+      reads: post.views || 0,
+      rating: post.likes ? (Math.min(5, 3 + (post.likes / 20))).toFixed(1) : 4.5,
+      comments: typeof post.comments === "number" ? post.comments : 0,
+      featured: post.featured || false,
+      userId: post.authorId
     }));
 
-    // Transform data to fit the expected frontend fields
-    blogPosts = data.map(post => {
-      const userId = post.authorId || post.user;
-      const authorData = userId && authorsCache[userId] ? authorsCache[userId] : { name: "Anonymous", avatar: "https://ui-avatars.com/api/?name=A&background=FFCE45&color=263159&rounded=true" };
-      return {
-        id: post._id,
-        title: post.title,
-        category: post.category || "General",
-        author: authorData.name,
-        authorAvatar: authorData.avatar,
-        date: post.date ? new Date(post.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : "",
-        image: post.images || "oaugate-1140x570.jpg",
-        summary: post.content ? post.content.replace(/<[^>]+>/g, '').substring(0, 120) + "..." : "",
-        content: post.content || "",
-        reads: post.views || 0,
-        rating: post.likes ? (Math.min(5, 3 + (post.likes / 20))).toFixed(1) : 4.5,
-        comments: Array.isArray(post.comments) ? post.comments.length : 0,
-        featured: post.featured || false,
-        userId
-      };
-    });
-
-    // Filter by category unless "All"
-    if (category && category !== 'All') {
-      filteredBlogs = blogPosts.filter(blog => blog.category === category);
-    } else {
-      filteredBlogs = [...blogPosts];
-    }
+    // No need to filter client-side; backend already filtered
+    filteredBlogs = [...blogPosts];
     currentCategory = category;
 
     renderBlogs(filteredBlogs);
 
     // Set active tab visually if needed
-    if (setActiveTab && tabBtn) {
-      setActiveCategoryTab(tabBtn);
-    }
+    if (setActiveTab && tabBtn) setActiveCategoryTab(tabBtn);
+
   } catch (e) {
     document.getElementById('blogGrid').innerHTML = `<div class='col-span-3 text-center text-gray-500 py-10'>Could not load blog posts.</div>`;
   }
+
   // Hide loader and show grid after loading
   document.getElementById('blogLoader').style.display = "none";
   document.getElementById('blogGrid').style.display = "grid";
