@@ -2132,19 +2132,44 @@ document.getElementById("confirm-logout").onclick = () => {
   localStorage.clear();
   window.location.href = '/mock-icthallb';
 };
-document.querySelector('.practice-form').onsubmit = function(e) {
-  e.preventDefault();
-  const subject = document.getElementById('subject').value;
-  const year = document.getElementById('year').value;
-  const questions = document.getElementById('questions').value;
-  const time = document.getElementById('time').value;
-  const difficulty = document.getElementById('difficulty').value;
 
-  // Save to localStorage for robustness
-  localStorage.setItem('pqConfig', JSON.stringify({subject, year, questions, time, difficulty}));
-  // Redirect to pq.html with query params
-  window.location.href = `tpp.html?subject=${encodeURIComponent(subject)}&year=${year}&count=${questions}&time=${time}&difficulty=${difficulty}`;
+
+const courseCodes = {
+  "Mathematics": ["MTH101", "MTH102", "MTH105", "MTH201", "MTH202"],
+  "Physics": ["PHY101", "PHY102", "PHY201", "PHY202", "PHY205"],
+  "Chemistry": ["CHM101", "CHM102", "CHM201", "CHM202"],
+  "Biology": ["BIO101", "BIO102", "BIO201", "BIO202"],
+  "Computer Science": ["CSC101", "CSC102", "CSC201", "CSC202"]
 };
+
+document.getElementById("subject").addEventListener("change", function() {
+  const subject = this.value;
+  const codeSelect = document.getElementById("courseCode");
+  codeSelect.innerHTML = `<option value="">Select Course Code</option>`;
+  if (subject && courseCodes[subject]) {
+    courseCodes[subject].forEach(code => {
+      codeSelect.innerHTML += `<option value="${code}">${code}</option>`;
+    });
+    codeSelect.disabled = false;
+  } else {
+    codeSelect.disabled = true;
+  }
+});
+
+document.getElementById("practice-config-form").onsubmit = function(e) {
+  e.preventDefault();
+  const config = {
+    subject: document.getElementById("subject").value,
+    year: document.getElementById("year").value,
+    courseCode: document.getElementById("courseCode").value,
+    count: document.getElementById("questions").value,
+    time: document.getElementById("time").value,
+    topic: document.getElementById("topic").value
+  };
+  localStorage.setItem("tppConfig", JSON.stringify(config));
+  window.location.href = "tpp.html";
+};
+
 // ============ TEST START ===========
 window.startTest = function(examSetId) {
   window.location.href = `test.html?examSet=${encodeURIComponent(examSetId)}`;
