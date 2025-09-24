@@ -297,7 +297,7 @@ function attachCommentActionListeners() {
     relatedGrid.innerHTML = `<div class="text-gray-400">No related posts found.</div>`;
   } else {
     relatedGrid.innerHTML = related.map(blog => `
-      <a href="blog-details.html?id=${blog._id}" class="block bg-white rounded-xl shadow hover:shadow-xl overflow-hidden transition group">
+      <a href="campus-news-update?id=${blog._id}" class="block bg-white rounded-xl shadow hover:shadow-xl overflow-hidden transition group">
         <img src="${blog.imageUrl || "https://images.unsplash.com/photo-1503676382389-4809596d5290?auto=format&fit=crop&w=400&q=80"}"
              alt="${blog.title}" class="h-auto w-full object-cover group-hover:scale-105 transition" />
         <div class="p-4">
