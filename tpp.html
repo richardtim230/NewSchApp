@@ -25,6 +25,62 @@
       .sidebar { width: 100%; max-width: 100%; margin-bottom: 2rem; }
       .exam-section { width: 100%; }
     }
+    .feedback-outer {
+      background: linear-gradient(135deg, #eef2ff 0%, #dbeafe 100%);
+      border-radius: 1.5rem;
+      box-shadow: 0 4px 32px rgba(79,70,229,0.09);
+      padding: 2.5rem 2rem 2rem 2rem;
+      max-width: 480px;
+      margin: 2rem auto 1.5rem auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      border: 2px solid #c7d2fe;
+    }
+    .feedback-score {
+      font-size: 2.7rem;
+      font-weight: 800;
+      background: linear-gradient(90deg, #2563eb, #818cf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      text-fill-color: transparent;
+      margin-bottom: 0.6rem;
+    }
+    .feedback-badge {
+      font-size: 1.18rem;
+      font-weight: 600;
+      padding: 0.4em 1.2em;
+      border-radius: 9999px;
+      background: #d1fae5;
+      color: #047857;
+      margin-bottom: 1.3rem;
+      box-shadow: 0 2px 6px rgba(16,185,129,0.08);
+    }
+    .feedback-list {
+      margin-top: 1.2rem;
+      margin-bottom: 0.5rem;
+      text-align: left;
+      color: #374151;
+      font-size: 1.05rem;
+      padding-left: 1.5rem;
+    }
+    .feedback-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #6366f1;
+      margin-bottom: 0.36em;
+      letter-spacing: 1px;
+      text-align: center;
+    }
+    .feedback-success {
+      background: #d1fae5;
+      color: #065f46;
+    }
+    .feedback-fail {
+      background: #fef2f2;
+      color: #b91c1c;
+    }
   </style>
 </head>
 <body class="bg-gradient-to-br from-blue-50 to-white min-h-screen flex flex-col">
@@ -162,6 +218,7 @@
           <button onclick="saveAnswer()" id="saveNextBtn" class="py-2 px-6 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow transition focus-ring" type="button" accesskey="n">Save &amp; Next (N)</button>
         </div>
       </div>
+      <div id="feedbackBox" style="display:none;"></div>
     </section>
   </main>
 
@@ -214,7 +271,6 @@
   let submitted = false;
 
   // ====== CONFIG FORM LOGIC ======
-  // Populate course code on subject change
   document.getElementById("subject").addEventListener("change", function() {
     const subject = this.value;
     const codeSelect = document.getElementById("courseCode");
@@ -243,11 +299,11 @@
     }
     const cfg = { subject, courseCode, year, count, time, topic };
     localStorage.setItem("tppConfig", JSON.stringify(cfg));
-    // Reload page with config (SPA style)
     window.location.reload();
   };
 
   // ====== INIT ======
+  let examInSession = false;
   window.onload = async function() {
     parseConfig();
     await fetchUser();
@@ -255,19 +311,25 @@
     startTime = Date.now();
     updateTimer();
     timerInterval = setInterval(() => {
+      if (!examInSession) return;
       timer--;
       updateTimer();
       if (timer <= 0) submitExam();
     }, 1000);
+    setFooterState();
   };
 
   function parseConfig() {
     if (localStorage.getItem('tppConfig')) {
       config = JSON.parse(localStorage.getItem('tppConfig'));
     }
-    // If config is missing, do nothing (will show config form)
-    if (!config.subject || !config.year || !config.courseCode) return;
-
+    examInSession = !!(config.subject && config.year && config.courseCode);
+    if (!examInSession) {
+      document.getElementById('examCard').innerHTML = "<div class='text-gray-500 text-center py-14 text-lg'>No practice session is active.<br>Select your configuration on the left and click <b>Start Practice</b> to begin.</div>";
+      document.getElementById('timer').textContent = "--:--:--";
+      setFooterState();
+      return;
+    }
     exam.subject = config.subject;
     exam.year = config.year;
     exam.courseCode = config.courseCode;
@@ -276,9 +338,7 @@
     exam.topic = config.topic || "";
     timer = exam.duration;
 
-    // Update fields in form to reflect config (on reload)
     document.getElementById("subject").value = config.subject;
-    // Populate course code dropdown based on subject
     document.getElementById("subject").dispatchEvent(new Event("change"));
     document.getElementById("courseCode").value = config.courseCode;
     document.getElementById("year").value = config.year;
@@ -289,6 +349,17 @@
     document.getElementById('examTitle').textContent = exam.title;
     document.getElementById('examMeta').textContent = `Subject: ${exam.subject} • Year: ${exam.year} • Code: ${exam.courseCode}`;
     document.getElementById("displayCourseCode").textContent = exam.courseCode;
+  }
+
+  function setFooterState() {
+    const disabled = !examInSession || submitted;
+    document.getElementById("prevBtn").disabled = disabled;
+    document.getElementById("nextBtn").disabled = disabled;
+    document.getElementById("submitBtn").disabled = disabled;
+    document.getElementById("saveNextBtn").disabled = disabled;
+    document.getElementById("skipBtn").disabled = disabled;
+    document.getElementById("questionNavGrid").querySelectorAll?.("button").forEach(btn => btn.disabled = disabled);
+    document.getElementById("timer").style.opacity = disabled ? "0.5" : "1";
   }
 
   async function fetchUser() {
@@ -303,17 +374,14 @@
         profilePic: data.user?.profilePic || "https://i.pravatar.cc/56",
         class: data.user?.level || ""
       };
-    } catch (err) {
-      // Use fallback user (already set)
-    }
+    } catch (err) {}
     document.getElementById('userAvatar').src = user.profilePic;
     document.getElementById('userFullname').textContent = user.fullname;
     document.getElementById('userMeta').textContent = `Class: ${user.class} | Reg. No: ${user.regNo}`;
   }
 
   async function fetchQuestions() {
-    // If config missing, don't fetch
-    if (!config.subject || !config.year || !config.courseCode) return;
+    if (!examInSession) { setFooterState(); return; }
     try {
       const params = new URLSearchParams({
         subject: exam.subject,
@@ -327,16 +395,20 @@
       });
       questions = await resp.json();
       if (!Array.isArray(questions) || questions.length === 0) {
-        document.getElementById('examCard').innerHTML = "<div class='text-red-600'>No questions found for this course code and filter.</div>";
-        clearInterval(timerInterval);
+        document.getElementById('examCard').innerHTML = "<div class='text-red-600 text-center py-10 text-lg font-bold'>No questions found for this course code and filter.</div>";
+        examInSession = false;
+        setFooterState();
         return;
       }
       answers = {};
       flags = {};
       currentQuestion = 0;
       renderQuestion();
+      setFooterState();
     } catch (err) {
       document.getElementById('examCard').innerHTML = `<div class='text-red-600'>Failed to load questions: ${err.message}</div>`;
+      examInSession = false;
+      setFooterState();
     }
   }
 
@@ -355,8 +427,6 @@
     document.getElementById("statusBadge").textContent = answers[q._id] ? "Answered" : "Not Answered";
     document.getElementById("statusBadge").className = `px-2 py-0.5 text-xs rounded ${answers[q._id] ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`;
     document.getElementById("displayCourseCode").textContent = exam.courseCode;
-
-    // Image
     const imgWrap = document.getElementById("questionImageContainer");
     const imgEl = document.getElementById("questionImage");
     if (q.image) {
@@ -366,9 +436,7 @@
       imgWrap.style.display = "none";
       imgEl.src = "";
     }
-    // Question text (with math)
     document.getElementById("questionText").innerHTML = q.text || q.question || "";
-    // Options
     const form = document.getElementById("optionsForm");
     form.innerHTML = "";
     (q.options || q.choices || []).forEach((opt, idx) => {
@@ -390,19 +458,16 @@
       inp.setAttribute("tabindex", "-1");
       inp.onclick = () => selectOption(idx);
       label.appendChild(inp);
-      // Option Letter
       const spanLetter = document.createElement("span");
       spanLetter.className = "font-medium";
       spanLetter.innerHTML = String.fromCharCode(65 + idx) + ".";
       label.appendChild(spanLetter);
-      // Option Text (supports math)
       const optText = document.createElement("span");
       optText.className = "mathjax";
       optText.innerHTML = opt;
       label.appendChild(optText);
       form.appendChild(label);
     });
-    // Flag button
     const flagBtn = document.getElementById("flagBtn");
     if (flags[q._id]) {
       flagBtn.classList.add("bg-yellow-300","border-yellow-500","text-yellow-900");
@@ -413,12 +478,12 @@
       flagBtn.setAttribute("aria-pressed", "false");
       flagBtn.innerHTML = '<svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 4v16M4 4h16l-2.5 5 2.5 5H4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Flag';
     }
-    // Progress
     updateQuestionNavGrid();
     updateProgress();
     if (window.MathJax) MathJax.typesetPromise();
     clearTimeout(autosaveTimeout);
     autosaveTimeout = setTimeout(saveProgress, 7000);
+    setFooterState();
   }
 
   function updateQuestionNavGrid() {
@@ -430,6 +495,7 @@
       btn.className = "w-9 h-9 rounded-full border-2 text-sm font-bold focus-ring transition";
       btn.textContent = i + 1;
       btn.setAttribute("aria-label", `Go to question ${i + 1}`);
+      btn.disabled = !examInSession || submitted;
       btn.onclick = () => goToQuestion(i);
       if (i === currentQuestion) {
         btn.classList.add("bg-blue-600","text-white","border-blue-400");
@@ -468,6 +534,7 @@
   }
 
   function prevQuestion() {
+    if (!examInSession) return;
     if (currentQuestion > 0) {
       currentQuestion--;
       renderQuestion();
@@ -475,6 +542,7 @@
   }
 
   function nextQuestion() {
+    if (!examInSession) return;
     if (currentQuestion < questions.length - 1) {
       currentQuestion++;
       renderQuestion();
@@ -482,15 +550,18 @@
   }
 
   function goToQuestion(idx) {
+    if (!examInSession) return;
     currentQuestion = idx;
     renderQuestion();
   }
 
   function skipQuestion() {
+    if (!examInSession) return;
     nextQuestion();
   }
 
   async function saveProgress() {
+    if (!examInSession) return;
     document.getElementById('autoSave').textContent = "Saving...";
     try {
       const answersArray = questions.map(q => ({
@@ -518,12 +589,13 @@
   }
 
   async function saveAnswer() {
+    if (!examInSession) return;
     await saveProgress();
     nextQuestion();
   }
 
   async function submitExam() {
-    if (submitted) return;
+    if (!examInSession || submitted) return;
     if (!confirm('Submit exam?')) return;
     clearInterval(timerInterval);
     document.getElementById("submitBtn").disabled = true;
@@ -561,20 +633,41 @@
         })
       });
       submitted = true;
-      document.getElementById("examCard").innerHTML = `
-        <div class="text-2xl font-bold text-green-700 mb-2">Exam Submitted</div>
-        <div class="text-lg">Score: <span class="font-bold">${result.score}/${result.total}</span></div>
-        <div class="mt-2 text-sm">Feedback:</div>
-        <ul class="list-disc pl-6 mt-1 text-gray-700">${(result.feedback||[]).map(f=>`<li>${f}</li>`).join('')}</ul>
-      `;
+      showFeedback(result);
+      setFooterState();
     } catch (e) {
-      document.getElementById("examCard").innerHTML = "<div class='text-red-600'>Error submitting exam.</div>";
+      document.getElementById("examCard").innerHTML = "<div class='text-red-600 text-center py-16 text-xl'>Error submitting exam.</div>";
     }
+  }
+
+  function showFeedback(result) {
+    // Hide exam card, show feedback section
+    document.getElementById("examCard").style.display = "none";
+    const box = document.getElementById("feedbackBox");
+    box.style.display = "";
+    let percent = Math.round((result.score / (result.total || 1)) * 100);
+    let badge = percent >= 70
+      ? `<span class="feedback-badge feedback-success">Great job! 🎉</span>`
+      : `<span class="feedback-badge feedback-fail">Keep Practicing!</span>`;
+    let feedbackList = (result.feedback||[]).length
+      ? `<div class="feedback-title">Review:</div><ul class="feedback-list list-disc">${result.feedback.map(f=>`<li>${f}</li>`).join('')}</ul>`
+      : "";
+    box.innerHTML = `
+      <div class="feedback-outer">
+        <div class="feedback-title">Session Completed</div>
+        <div class="feedback-score">${result.score} / ${result.total}</div>
+        <div class="font-semibold text-indigo-600 mb-2">Your Score</div>
+        ${badge}
+        ${feedbackList}
+        <button onclick="window.location.reload()" class="mt-4 px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-semibold">Retake Practice</button>
+      </div>
+    `;
   }
 
   // Keyboard navigation
   document.addEventListener('keydown', function(e) {
     if (e.target.matches('input,textarea')) return;
+    if (!examInSession) return;
     if (e.key === "p" || e.key === "P") prevQuestion();
     if (e.key === "x" || e.key === "X") nextQuestion();
     if (e.key === "n" || e.key === "N") saveAnswer();
