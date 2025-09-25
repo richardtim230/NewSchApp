@@ -481,9 +481,156 @@
       });
       document.querySelector("#pastQuestionsTable tbody").innerHTML = html;
     }
-    function editPastQuestion(id) {
-      alert("In production, this will open a modal with the Quill editor prefilled for editing.");
+    // Add this function to fetch single question data for editing
+async function openEditPastQuestionModal(id) {
+  const btn = document.querySelector(`button[onclick="editPastQuestion('${id}')"]`);
+  setBtnLoading(btn, true);
+  let resp, q;
+  try {
+    resp = await fetch(API_URL + "past-questions/" + id, {
+      headers: { Authorization: "Bearer " + token }
+    });
+    if (!resp.ok) throw new Error("Failed to fetch question for editing");
+    q = await resp.json();
+  } catch (e) {
+    alert("Unable to fetch question data.");
+    setBtnLoading(btn, false);
+    return;
+  }
+  setBtnLoading(btn, false);
+
+  // Render the edit modal similar to addPastQModal, but prefilled
+  let html = `
+    <div class="modal-backdrop" onclick="closeModal(event)">
+      <div class="modal" onclick="event.stopPropagation()">
+        <button class="close-modal" onclick="closeModal(event)">&times;</button>
+        <h2>Edit Past Question</h2>
+        <label>Subject</label>
+        <input id="edit_subject" type="text" value="${q.subject || ""}" required>
+        <label>Year</label>
+        <input id="edit_year" type="text" value="${q.year || ""}" required>
+        <label>Course Code</label>
+        <input id="edit_courseCode" type="text" value="${q.courseCode || ""}" required>
+        <label>Topic (Optional)</label>
+        <input id="edit_topic" type="text" value="${q.topic || ""}">
+        <label>Tags (comma separated)</label>
+        <input id="edit_tags" type="text" value="${(q.tags || []).join(', ')}">
+        <label>Question Text (Rich Format)</label>
+        <div id="edit_quillEditor" class="quill-editor"></div>
+        <label>Image (optional) ${q.image ? `<br><img src="${q.image}" style="max-width:70px;">` : ""}</label>
+        <input id="edit_questionImage" type="file" accept="image/*">
+        <label>Options</label>
+        <input id="edit_optionA" type="text" value="${q.options?.[0] || ""}" required>
+        <input id="edit_optionB" type="text" value="${q.options?.[1] || ""}" required>
+        <input id="edit_optionC" type="text" value="${q.options?.[2] || ""}" required>
+        <input id="edit_optionD" type="text" value="${q.options?.[3] || ""}" required>
+        <label>Correct Answer</label>
+        <select id="edit_correctAnswer">
+          <option value="A" ${q.correctAnswer === q.options?.[0] ? "selected" : ""}>A</option>
+          <option value="B" ${q.correctAnswer === q.options?.[1] ? "selected" : ""}>B</option>
+          <option value="C" ${q.correctAnswer === q.options?.[2] ? "selected" : ""}>C</option>
+          <option value="D" ${q.correctAnswer === q.options?.[3] ? "selected" : ""}>D</option>
+        </select>
+        <label>Explanation (Rich Format, Optional)</label>
+        <div id="edit_quillExplanation" class="quill-editor"></div>
+        <span id="editPastQMsg"></span>
+        <button class="btn" id="editPastQBtn" onclick="submitEditPastQuestion('${id}')">Save<span class="spinner" style="display:none"></span></button>
+      </div>
+    </div>
+  `;
+  document.getElementById("modalRoot").innerHTML = html;
+  window.editPqQuill = new Quill('#edit_quillEditor', {
+    theme: 'snow',
+    modules: { toolbar: [
+      ['bold', 'italic', 'underline', 'strike'],
+      [{'header': 1}, {'header': 2}],
+      [{'list': 'ordered'}, {'list': 'bullet'}],
+      ['link', 'image'], ['clean']]
     }
+  });
+  window.editExplQuill = new Quill('#edit_quillExplanation', {
+    theme: 'snow',
+    modules: { toolbar: [
+      ['bold', 'italic', 'underline'], ['list', 'bullet'], ['link', 'image'], ['clean']
+    ]}
+  });
+  // Prefill Quill editors
+  editPqQuill.root.innerHTML = q.text || "";
+  editExplQuill.root.innerHTML = q.explanation || "";
+}
+
+// Submission function for editing
+async function submitEditPastQuestion(id) {
+  const btn = document.getElementById("editPastQBtn");
+  setBtnLoading(btn, true);
+  const subject = document.getElementById("edit_subject").value.trim();
+  const year = document.getElementById("edit_year").value.trim();
+  const courseCode = document.getElementById("edit_courseCode").value.trim();
+  const topic = document.getElementById("edit_topic").value.trim();
+  const tags = document.getElementById("edit_tags").value.trim().split(",").map(t=>t.trim()).filter(Boolean);
+  const text = window.editPqQuill.root.innerHTML;
+  const optionA = document.getElementById("edit_optionA").value.trim();
+  const optionB = document.getElementById("edit_optionB").value.trim();
+  const optionC = document.getElementById("edit_optionC").value.trim();
+  const optionD = document.getElementById("edit_optionD").value.trim();
+  const correctLetter = document.getElementById("edit_correctAnswer").value;
+  const options = [optionA, optionB, optionC, optionD];
+  const correctAnswer = options["ABCD".indexOf(correctLetter)];
+  const explanation = window.editExplQuill.root.innerHTML;
+  const imageInput = document.getElementById("edit_questionImage");
+  const imageFile = imageInput && imageInput.files[0];
+
+  const msg = document.getElementById("editPastQMsg");
+  msg.innerText = "";
+  if (!subject || !year || !courseCode || !text || options.some(o=>!o) || !correctAnswer) { msg.innerText = "All fields required!"; setBtnLoading(btn, false); return; }
+  if (!options.includes(correctAnswer)) { msg.innerText = "Correct answer must match one of the options."; setBtnLoading(btn, false); return; }
+
+  try {
+    const formData = new FormData();
+    formData.append("subject", subject);
+    formData.append("year", year);
+    formData.append("courseCode", courseCode);
+    formData.append("topic", topic);
+    formData.append("tags", JSON.stringify(tags));
+    formData.append("text", text);
+    formData.append("options", JSON.stringify(options));
+    formData.append("correctAnswer", correctAnswer);
+    formData.append("explanation", explanation);
+    if (imageFile) formData.append("image", imageFile);
+
+    const resp = await fetch(API_URL + "past-questions/" + id, {
+      method: "PUT",
+      headers: { Authorization: "Bearer " + token },
+      body: formData
+    });
+
+    let data;
+    try {
+      data = await resp.json();
+    } catch {
+      msg.innerText = "Server returned an invalid response.";
+      setBtnLoading(btn, false);
+      return;
+    }
+
+    if (!resp.ok) {
+      msg.innerText = data.error || data.message || "Failed to update question.";
+      setBtnLoading(btn, false);
+      return;
+    }
+    msg.innerText = "Past Question updated!";
+    fetchPastQuestions();
+    setTimeout(() => { closeModal(); }, 1200);
+  } catch (err) {
+    msg.innerText = "Network error. Please check your connection or try again.";
+  }
+  setBtnLoading(btn, false);
+}
+
+// Update this function to actually open the edit modal
+function editPastQuestion(id) {
+  openEditPastQuestionModal(id);
+}
     async function deletePastQuestion(id, btn) {
       if (!confirm("Delete this past question?")) return;
       setBtnLoading(btn, true);
