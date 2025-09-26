@@ -315,7 +315,7 @@
     // OFFER MODAL logic
     let currentOfferProductId = null;
     let currentOfferProductTitle = null;
-  window.openOfferModal = function(productId, productTitle){
+  window.openOfferModal = async function(productId, productTitle){
   currentOfferProductId = productId;
   currentOfferProductTitle = productTitle;
   document.getElementById('offerProductId').value = productId;
@@ -324,18 +324,61 @@
   let details = "";
   if(buyerProfile && buyerProfile.user){
     const u = buyerProfile.user;
+
+    // Helper to get faculty/department name if it's only an ID
+    async function getFacultyName(faculty) {
+      if (!faculty) return "";
+      if (typeof faculty === "object" && faculty.name) return faculty.name;
+      // Otherwise, fetch from API
+      try {
+        const res = await fetch(`https://examguide.onrender.com/api/faculties/${faculty}`);
+        if (res.ok) {
+          const data = await res.json();
+          return data.name || "";
+        }
+      } catch {}
+      return faculty; // fallback to ID
+    }
+    async function getDepartmentName(department) {
+      if (!department) return "";
+      if (typeof department === "object" && department.name) return department.name;
+      // Otherwise, fetch from API
+      try {
+        const res = await fetch(`https://examguide.onrender.com/api/departments/${department}`);
+        if (res.ok) {
+          const data = await res.json();
+          return data.name || "";
+        }
+      } catch {}
+      return department; // fallback to ID
+    }
+
+    // Render details, awaiting names if necessary
     details = `
       <span class="block"><strong>Your Details for Seller:</strong></span>
       <span>Name: ${u.fullname || u.username}</span><br>
       <span>Email: ${u.email || ''}</span><br>
       <span>Phone: ${u.phone || ''}</span><br>
-      <span>Faculty: ${u.faculty?.name ?? u.faculty ?? ''}</span><br>
-      <span>Department: ${u.department?.name ?? u.department ?? ''}</span>
+      <span>Faculty: <span id="buyerFaculty">${typeof u.faculty === 'object' ? (u.faculty.name || '') : u.faculty}</span></span><br>
+      <span>Department: <span id="buyerDepartment">${typeof u.department === 'object' ? (u.department.name || '') : u.department}</span></span>
     `;
+    document.getElementById('buyerDetails').innerHTML = details;
+
+    // If faculty/department is an ID, fetch name and update in-place
+    if (typeof u.faculty === "string" && u.faculty.length === 24) {
+      getFacultyName(u.faculty).then(name => {
+        if (name) document.getElementById('buyerFaculty').textContent = name;
+      });
+    }
+    if (typeof u.department === "string" && u.department.length === 24) {
+      getDepartmentName(u.department).then(name => {
+        if (name) document.getElementById('buyerDepartment').textContent = name;
+      });
+    }
   } else {
     details = `<span class="block text-red-600">You must sign in for communication and offer follow-up.</span>`;
+    document.getElementById('buyerDetails').innerHTML = details;
   }
-  document.getElementById('buyerDetails').innerHTML = details;
 }
     window.closeOfferModal = function(){
       document.getElementById('sendOfferModal').classList.add('hidden');
