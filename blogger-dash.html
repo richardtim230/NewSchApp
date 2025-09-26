@@ -330,7 +330,20 @@ function renderPostLinks() {
       sessionStorage.removeItem('token');
       window.location = "mock-icthallb";
     }
+async function uploadImageToCloudinary(file) {
+  const formData = new FormData();
+  formData.append('image', file);
 
+  // Use your backend endpoint that uploads to Cloudinary and returns { url }
+  const res = await fetch(BACKEND + "/api/images", {
+    method: "POST",
+    body: formData,
+    headers: { 'Authorization': 'Bearer ' + getToken() } // If auth needed
+  });
+  if (!res.ok) throw new Error("Cloud upload failed");
+  const data = await res.json();
+  return data.url; // Cloudinary URL
+    }
     let posts = [];
     let quill, quillInitialized = false, editingPostId = null;
     let uploadedImages = [];
@@ -504,30 +517,38 @@ function initEditor() {
       });
     }
 
-    // Image preview and limit (now base64)
     document.getElementById("imageUpload").addEventListener("change", async function(evt) {
-      const files = Array.from(evt.target.files);
-      if (files.length > 3) {
-        alert("You can upload a maximum of 3 images per post.");
-        evt.target.value = "";
-        return;
-      }
-      let html = "";
+  const files = Array.from(evt.target.files);
+  if (files.length > 3) {
+    alert("You can upload a maximum of 3 images per post.");
+    evt.target.value = "";
+    return;
+  }
+  let html = "";
+  uploadedImages = [];
+  for (const file of files) {
+    if (file.size > 5*1024*1024) {
+      alert("Each image must be less than 5MB.");
+      evt.target.value = "";
+      html = "";
       uploadedImages = [];
-      for (const file of files) {
-        if (file.size > 5*1024*1024) {
-          alert("Each image must be less than 5MB.");
-          evt.target.value = "";
-          html = "";
-          uploadedImages = [];
-          return;
-        }
-        const base64 = await fileToBase64(file);
-        html += `<img src="${base64}" class="w-14 h-14 rounded border object-cover" title="${file.name}">`;
-        uploadedImages.push(base64); // push base64 string
-      }
+      return;
+    }
+    try {
+      // Show loading indicator per image (optional)
+      html += `<span class="w-14 h-14 flex items-center justify-center border rounded">Uploading...</span>`;
       document.getElementById("imagePreview").innerHTML = html;
-    });
+
+      const imageUrl = await uploadImageToCloudinary(file);
+      html += `<img src="${imageUrl}" class="w-14 h-14 rounded border object-cover" title="${file.name}">`;
+      uploadedImages.push(imageUrl);
+      document.getElementById("imagePreview").innerHTML = html;
+    } catch (err) {
+      alert("Image upload failed: " + err.message);
+      return;
+    }
+  }
+});
 
     // SAVE DRAFT AND PUBLISH: Send base64
     document.getElementById('postEditorForm').onsubmit = async function(e){
