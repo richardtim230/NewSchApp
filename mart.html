@@ -176,7 +176,6 @@
     </div>
   </section>
 
-  <!-- Footer -->
   <footer class="bg-gray-900 text-gray-300 py-10">
     <div class="max-w-7xl mx-auto px-6 grid md:grid-cols-3 gap-8">
       <div>
@@ -205,6 +204,43 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.5.1/flowbite.min.js"></script>
   <script>
+    // --- Faculty/Department Cache & Lookup Utilities ---
+    let facultiesCache = [];
+    let departmentsCache = [];
+
+    async function fetchFacultiesAndDepartments() {
+      try {
+        const [faculties, departments] = await Promise.all([
+          fetch('https://examguide.onrender.com/api/faculties').then(r => r.json()),
+          fetch('https://examguide.onrender.com/api/departments').then(r => r.json())
+        ]);
+        facultiesCache = faculties;
+        departmentsCache = departments;
+      } catch {
+        facultiesCache = [];
+        departmentsCache = [];
+      }
+    }
+
+    function getFacultyName(faculty) {
+      if (!faculty) return '';
+      if (typeof faculty === 'object' && faculty.name) return faculty.name;
+      if (typeof faculty === 'string') {
+        const found = facultiesCache.find(f => f._id === faculty);
+        return found ? found.name : faculty;
+      }
+      return '';
+    }
+    function getDepartmentName(department) {
+      if (!department) return '';
+      if (typeof department === 'object' && department.name) return department.name;
+      if (typeof department === 'string') {
+        const found = departmentsCache.find(d => d._id === department);
+        return found ? found.name : department;
+      }
+      return '';
+    }
+
     // Auth Check & Buyer Info
     let buyerProfile = null;
     async function checkAuth() {
@@ -312,45 +348,47 @@
       }
     }
 
-    // OFFER MODAL logic
-let currentOfferProductId = null;
-let currentOfferProductTitle = null;
-window.openOfferModal = function(productId, productTitle){
-  currentOfferProductId = productId;
-  currentOfferProductTitle = productTitle;
-  document.getElementById('offerProductId').value = productId;
-  document.getElementById('sendOfferModal').classList.remove('hidden');
+    // OFFER MODAL logic (updated to robustly show faculty/department names!)
+    let currentOfferProductId = null;
+    let currentOfferProductTitle = null;
+    window.openOfferModal = function(productId, productTitle){
+      currentOfferProductId = productId;
+      currentOfferProductTitle = productTitle;
+      document.getElementById('offerProductId').value = productId;
+      document.getElementById('sendOfferModal').classList.remove('hidden');
 
-  let details = "";
-  if (buyerProfile && buyerProfile.user) {
-    const u = buyerProfile.user;
+      let details = "";
+      if (buyerProfile && buyerProfile.user) {
+        const u = buyerProfile.user;
 
-    // Always prefer .name property if present (populated), else fallback to string or empty
-    let facultyDisplay = u.faculty?.name || u.faculty || "";
-    let departmentDisplay = u.department?.name || u.department || "";
+        // Use cached lookup helpers for bulletproof name rendering
+        let facultyDisplay = getFacultyName(u.faculty);
+        let departmentDisplay = getDepartmentName(u.department);
 
-    details = `
-      <span class="block"><strong>Your Details for Seller:</strong></span>
-      <span>Name: ${u.fullname || u.username}</span><br>
-      <span>Email: ${u.email || ''}</span><br>
-      <span>Phone: ${u.phone || ''}</span><br>
-      <span>Faculty: <span id="buyerFaculty">${facultyDisplay}</span></span><br>
-      <span>Department: <span id="buyerDepartment">${departmentDisplay}</span></span>
-    `;
-    document.getElementById('buyerDetails').innerHTML = details;
-  } else {
-    details = `<span class="block text-red-600">You must sign in for communication and offer follow-up.</span>`;
-    document.getElementById('buyerDetails').innerHTML = details;
-  }
-}
+        details = `
+          <span class="block"><strong>Your Details for Seller:</strong></span>
+          <span>Name: ${u.fullname || u.username}</span><br>
+          <span>Email: ${u.email || ''}</span><br>
+          <span>Phone: ${u.phone || ''}</span><br>
+          <span>Faculty: <span id="buyerFaculty">${facultyDisplay}</span></span><br>
+          <span>Department: <span id="buyerDepartment">${departmentDisplay}</span></span>
+        `;
+        document.getElementById('buyerDetails').innerHTML = details;
+      } else {
+        details = `<span class="block text-red-600">You must sign in for communication and offer follow-up.</span>`;
+        document.getElementById('buyerDetails').innerHTML = details;
+      }
+    }
 
-window.closeOfferModal = function(){
-  document.getElementById('sendOfferModal').classList.add('hidden');
-  document.getElementById('offerForm').reset();
-  document.getElementById('offerResponse').classList.add('hidden');
-}
-    document.addEventListener("DOMContentLoaded", function() {
-      checkAuth();
+    window.closeOfferModal = function(){
+      document.getElementById('sendOfferModal').classList.add('hidden');
+      document.getElementById('offerForm').reset();
+      document.getElementById('offerResponse').classList.add('hidden');
+    }
+
+    document.addEventListener("DOMContentLoaded", async function() {
+      await fetchFacultiesAndDepartments();
+      await checkAuth();
       fetchPublicProducts();
 
       document.getElementById("search-btn").onclick = function() {
@@ -379,8 +417,8 @@ window.closeOfferModal = function(){
             name: u.fullname || u.username,
             email: u.email,
             phone: u.phone,
-            faculty: u.faculty,
-            department: u.department
+            faculty: getFacultyName(u.faculty),
+            department: getDepartmentName(u.department)
           };
         }
         // Compose full message to seller
