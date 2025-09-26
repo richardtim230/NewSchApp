@@ -10,122 +10,284 @@
 <body class="bg-gray-50 text-gray-900">
 
 <script>
-  // Dummy product data
-  const products = {
-    1: {
-      id: 1,
-      title: "Casio FX-991EX Calculator",
-      price: "₦6,500",
-      category: "Gadgets",
-      posted: "3 hours ago",
-      seller: { name: "Blessing", avatar: "https://randomuser.me/api/portraits/women/44.jpg", dept: "Sciences 200L", rating: 4.6, sales: 7, joined: "Jan 2024", verified: true },
-      images: [
-        "https://flowbite.s3.amazonaws.com/docs/gallery/square/image-1.jpg",
-        "https://flowbite.s3.amazonaws.com/docs/gallery/square/image-2.jpg"
-      ],
-      condition: "Like New",
-      desc: "Like new. Used for only one semester. Perfect for science students.",
-      reviews: [
-        { name: "Michael", comment: "Great seller, fast response!", date: "2 days ago", rating: 5 },
-        { name: "Janet", comment: "Calculator was as described.", date: "5 days ago", rating: 4 }
-      ],
-      similar: [
-        { id: 2, title: "HP Elitebook Laptop", price: "₦180,000", image: "https://flowbite.s3.amazonaws.com/docs/gallery/square/image-2.jpg" }
-      ]
-    },
-    2: {
-      id: 2,
-      title: "HP Elitebook Laptop",
-      price: "₦180,000",
-      category: "Electronics",
-      posted: "1 day ago",
-      seller: { name: "Michael", avatar: "https://randomuser.me/api/portraits/men/32.jpg", dept: "Engineering 300L", rating: 4.9, sales: 15, joined: "Feb 2023", verified: true },
-      images: [
-        "https://flowbite.s3.amazonaws.com/docs/gallery/square/image-2.jpg",
-        "https://flowbite.s3.amazonaws.com/docs/gallery/square/image-1.jpg"
-      ],
-      condition: "Used",
-      desc: "Slim, powerful, and perfect for students.",
-      reviews: [
-        { name: "Blessing", comment: "Laptop battery lasts long!", date: "3 days ago", rating: 5 },
-        { name: "Janet", comment: "Perfect for my engineering projects.", date: "1 week ago", rating: 4 }
-      ],
-      similar: [
-        { id: 1, title: "Casio FX-991EX Calculator", price: "₦6,500", image: "https://flowbite.s3.amazonaws.com/docs/gallery/square/image-1.jpg" }
-      ]
-    }
-    // Add more products here...
-  };
+  // Auth check & buyer profile
+  let buyerProfile = null;
+  async function checkAuth() {
+    try {
+      const token = localStorage.getItem("eg_token");
+      if (token) {
+        const res = await fetch("https://examguide.onrender.com/api/users/me", {
+          headers: { "Authorization": "Bearer " + token }
+        });
+        if (res.ok) {
+          document.getElementById("account-btn").textContent = "My Dashboard";
+          document.getElementById("account-btn").href = "/dashboard";
+          buyerProfile = await res.json();
+          return true;
+        }
+      }
+    } catch (e) {}
+    document.getElementById("account-btn").textContent = "Sign In";
+    document.getElementById("account-btn").href = "/login";
+    buyerProfile = null;
+    return false;
+  }
 
   // Get product ID from URL
   function getProductId() {
     const params = new URLSearchParams(window.location.search);
-    return params.get("id") || "1";
+    return params.get("id") || "";
   }
 
-  // Render function runs after DOM is loaded
-  document.addEventListener("DOMContentLoaded", function() {
+  // Render item data from backend
+  async function renderItem() {
     const id = getProductId();
-    const product = products[id] || products[1];
+    let product = null;
+    let demo = null;
+    // Demo fallback products
+    const demoProducts = {
+      "1": {
+        id: 1,
+        title: "Casio FX-991EX Calculator",
+        price: "₦6,500",
+        category: "Gadgets",
+        posted: "3 hours ago",
+        seller: { name: "Blessing", avatar: "https://randomuser.me/api/portraits/women/44.jpg", dept: "Sciences 200L", rating: 4.6, sales: 7 },
+        images: [
+          "https://flowbite.s3.amazonaws.com/docs/gallery/square/image-1.jpg",
+          "https://flowbite.s3.amazonaws.com/docs/gallery/square/image-2.jpg"
+        ],
+        condition: "Like New",
+        desc: "Like new. Used for only one semester. Perfect for science students.",
+        reviews: [
+          { name: "Michael", comment: "Great seller, fast response!", date: "2 days ago", rating: 5 },
+          { name: "Janet", comment: "Calculator was as described.", date: "5 days ago", rating: 4 }
+        ],
+        similar: [
+          { id: 2, title: "HP Elitebook Laptop", price: "₦180,000", image: "https://flowbite.s3.amazonaws.com/docs/gallery/square/image-2.jpg" }
+        ]
+      },
+      "2": {
+        id: 2,
+        title: "HP Elitebook Laptop",
+        price: "₦180,000",
+        category: "Electronics",
+        posted: "1 day ago",
+        seller: { name: "Michael", avatar: "https://randomuser.me/api/portraits/men/32.jpg", dept: "Engineering 300L", rating: 4.9, sales: 15 },
+        images: [
+          "https://flowbite.s3.amazonaws.com/docs/gallery/square/image-2.jpg",
+          "https://flowbite.s3.amazonaws.com/docs/gallery/square/image-1.jpg"
+        ],
+        condition: "Used",
+        desc: "Slim, powerful, and perfect for students.",
+        reviews: [
+          { name: "Blessing", comment: "Laptop battery lasts long!", date: "3 days ago", rating: 5 },
+          { name: "Janet", comment: "Perfect for my engineering projects.", date: "1 week ago", rating: 4 }
+        ],
+        similar: [
+          { id: 1, title: "Casio FX-991EX Calculator", price: "₦6,500", image: "https://flowbite.s3.amazonaws.com/docs/gallery/square/image-1.jpg" }
+        ]
+      }
+    };
 
-    // Breadcrumbs
-    document.getElementById("breadcrumb-category").textContent = product.category;
-    document.getElementById("breadcrumb-title").textContent = product.title;
+    // Try backend fetch first
+    if (id) {
+      try {
+        let url = `https://examguide.onrender.com/api/bloggerDashboard/public/posts/${id}`;
+        let res = await fetch(url);
+        if (res.ok) {
+          product = await res.json();
+        }
+      } catch (e) {}
+    }
+    // If no product, fallback to demo
+    if (!product || !product.title) {
+      product = demoProducts[id] || demoProducts["1"];
+      demo = true;
+    } else {
+      demo = false;
+    }
 
-    // Images
+    // Render breadcrumbs
+    document.getElementById("breadcrumb-category").textContent = product.category || "";
+    document.getElementById("breadcrumb-title").textContent = product.title || "";
+
+    // Render images
     const mainImg = document.getElementById("main-img");
-    mainImg.src = product.images[0];
+    mainImg.src = (product.images && product.images[0]) || product.imageUrl || "";
     mainImg.alt = product.title + " main image";
-    // Thumbnails
-    document.getElementById("thumbnails").innerHTML = product.images.map((img, idx) =>
+    document.getElementById("thumbnails").innerHTML = (product.images || [product.imageUrl]).filter(Boolean).map((img, idx) =>
       `<img src="${img}" class="w-16 h-16 object-cover rounded cursor-pointer ${idx === 0 ? 'border-2 border-blue-600':''}" alt="Thumb ${idx+1}" onclick="document.getElementById('main-img').src='${img}'">`
     ).join("");
 
     // Item Info
-    document.getElementById("item-title").textContent = product.title;
-    document.getElementById("item-price").textContent = product.price;
-    document.getElementById("item-cond").textContent = product.condition;
-    document.getElementById("item-posted").textContent = "Posted " + product.posted;
-    document.getElementById("item-desc").textContent = product.desc;
+    document.getElementById("item-title").textContent = product.title || "";
+    document.getElementById("item-price").textContent = product.price || "";
+    document.getElementById("item-cond").textContent = product.condition || "";
+    document.getElementById("item-posted").textContent = product.posted || (product.date ? ("Posted " + new Date(product.date).toLocaleDateString()) : "");
+    document.getElementById("item-desc").textContent = product.desc || product.content || "";
 
     // Seller Info
-    document.getElementById("seller-avatar").src = product.seller.avatar;
-    document.getElementById("seller-name").textContent = product.seller.name;
-    document.getElementById("seller-dept").textContent = "(" + product.seller.dept + ")";
-    document.getElementById("seller-rating").textContent = "⭐ " + product.seller.rating + " (" + product.seller.sales + " sales)";
+    let sellerName = demo ? product.seller.name : product.authorName;
+    let sellerDept = demo ? product.seller.dept : (product.authorDepartment || "");
+    let sellerAvatar = demo ? product.seller.avatar : (product.authorAvatar || "");
+    let sellerRating = demo ? product.seller.rating : (product.likes ? (product.likes + "/5") : "N/A");
+    let sellerSales = demo ? product.seller.sales : (product.comments ? product.comments.length : "");
+    document.getElementById("seller-avatar").src = sellerAvatar || "";
+    document.getElementById("seller-name").textContent = sellerName || "";
+    document.getElementById("seller-dept").textContent = "(" + sellerDept + ")";
+    document.getElementById("seller-rating").textContent = "⭐ " + sellerRating + " (" + sellerSales + " sales)";
 
     // Profile Modal
-    document.getElementById("modal-seller-avatar").src = product.seller.avatar;
-    document.getElementById("modal-seller-name").textContent = product.seller.name;
-    document.getElementById("modal-seller-dept").textContent = product.seller.dept;
-    document.getElementById("modal-seller-rating").textContent = "⭐ " + product.seller.rating + " (" + product.seller.sales + " sales)";
-    document.getElementById("modal-seller-verified").textContent = product.seller.verified ? "Verified Student Seller" : "";
-    document.getElementById("modal-seller-joined").textContent = "Joined: " + product.seller.joined;
+    document.getElementById("modal-seller-avatar").src = sellerAvatar || "";
+    document.getElementById("modal-seller-name").textContent = sellerName || "";
+    document.getElementById("modal-seller-dept").textContent = sellerDept || "";
+    document.getElementById("modal-seller-rating").textContent = "⭐ " + sellerRating + " (" + sellerSales + " sales)";
+    document.getElementById("modal-seller-verified").textContent = demo ? "Verified Student Seller" : "";
+    document.getElementById("modal-seller-joined").textContent = demo ? "Joined: Jan 2024" : "";
 
     // Reviews
-    document.getElementById("reviews-list").innerHTML = product.reviews.map(r =>
+    let reviews = demo ? product.reviews : (product.comments || []);
+    document.getElementById("reviews-list").innerHTML = reviews.map(r =>
       `<div class="bg-gray-50 p-3 rounded shadow flex gap-3 items-center">
         <span class="text-yellow-500 text-2xl">⭐</span>
         <div>
-          <div class="font-bold">${r.name}</div>
-          <div class="text-sm text-gray-500">"${r.comment}"</div>
-          <div class="text-xs text-gray-400">${r.date}</div>
+          <div class="font-bold">${r.name || r.authorName || ""}</div>
+          <div class="text-sm text-gray-500">"${r.comment || r.text || ""}"</div>
+          <div class="text-xs text-gray-400">${r.date ? r.date : ''}</div>
         </div>
       </div>`
     ).join("");
 
-    // Similar Items
-    document.getElementById("similar-items").innerHTML = product.similar.map(s =>
-      `<div class="bg-white rounded-xl shadow overflow-hidden">
-        <a href="items.html?id=${s.id}">
-          <img src="${s.image}" class="h-32 w-full object-cover" alt="${s.title}">
-        </a>
-        <div class="p-3">
-          <div class="font-bold text-blue-800">${s.title}</div>
-          <div class="text-yellow-600 font-semibold">${s.price}</div>
-        </div>
-      </div>`
-    ).join("");
+    // Similar Items (only for demo or if you want to fetch related posts from backend)
+    if (demo) {
+      document.getElementById("similar-items").innerHTML = product.similar.map(s =>
+        `<div class="bg-white rounded-xl shadow overflow-hidden">
+          <a href="item.html?id=${s.id}">
+            <img src="${s.image}" class="h-32 w-full object-cover" alt="${s.title}">
+          </a>
+          <div class="p-3">
+            <div class="font-bold text-blue-800">${s.title}</div>
+            <div class="text-yellow-600 font-semibold">${s.price}</div>
+          </div>
+        </div>`
+      ).join("");
+    } else {
+      // Fetch related from backend
+      try {
+        let url = `https://examguide.onrender.com/api/bloggerDashboard/public/posts/${id}/related?limit=4`;
+        let res = await fetch(url);
+        if (res.ok) {
+          let related = await res.json();
+          document.getElementById("similar-items").innerHTML = related.map(s =>
+            `<div class="bg-white rounded-xl shadow overflow-hidden">
+              <a href="item.html?id=${s._id}">
+                <img src="${s.imageUrl}" class="h-32 w-full object-cover" alt="${s.title}">
+              </a>
+              <div class="p-3">
+                <div class="font-bold text-blue-800">${s.title}</div>
+              </div>
+            </div>`
+          ).join("");
+        }
+      } catch (e) {}
+    }
+  }
+
+  // OFFER MODAL logic
+  let currentOfferProductId = null;
+  let currentOfferProductTitle = null;
+  window.openOfferModal = function(productId, productTitle){
+    currentOfferProductId = productId;
+    currentOfferProductTitle = productTitle;
+    document.getElementById('offerProductId').value = productId;
+    document.getElementById('sendOfferModal').classList.remove('hidden');
+    // Pre-populate buyer details
+    let details = "";
+    if(buyerProfile && buyerProfile.user){
+      const u = buyerProfile.user;
+      details = `
+        <span class="block"><strong>Your Details for Seller:</strong></span>
+        <span>Name: ${u.fullname || u.username}</span><br>
+        <span>Email: ${u.email || ''}</span><br>
+        <span>Phone: ${u.phone || ''}</span><br>
+        <span>Faculty: ${u.faculty || ''}</span><br>
+        <span>Department: ${u.department || ''}</span>
+      `;
+    } else {
+      details = `<span class="block text-red-600">You must sign in for communication and offer follow-up.</span>`;
+    }
+    document.getElementById('buyerDetails').innerHTML = details;
+  }
+  window.closeOfferModal = function(){
+    document.getElementById('sendOfferModal').classList.add('hidden');
+    document.getElementById('offerForm').reset();
+    document.getElementById('offerResponse').classList.add('hidden');
+  }
+
+  // Offer form submit handler
+  document.addEventListener("DOMContentLoaded", function() {
+    checkAuth();
+    renderItem();
+
+    document.getElementById('offerForm').onsubmit = async function(e) {
+      e.preventDefault();
+      const productId = document.getElementById('offerProductId').value;
+      const offerPrice = document.getElementById('offerPrice').value;
+      const offerMessage = document.getElementById('offerMessage').value;
+      const token = localStorage.getItem("eg_token");
+      // Gather buyer details
+      let buyerDetails = "";
+      if(buyerProfile && buyerProfile.user){
+        const u = buyerProfile.user;
+        buyerDetails = {
+          id: u._id,
+          name: u.fullname || u.username,
+          email: u.email,
+          phone: u.phone,
+          faculty: u.faculty,
+          department: u.department
+        };
+      }
+      // Compose full message to seller
+      const fullMessage = `
+Offer from: ${buyerDetails.name || "Guest"}
+Email: ${buyerDetails.email || "N/A"}
+Phone: ${buyerDetails.phone || "N/A"}
+Faculty: ${buyerDetails.faculty || ""}
+Department: ${buyerDetails.department || ""}
+Product: ${currentOfferProductTitle || ""}
+---
+${offerMessage}
+      `.trim();
+
+      try {
+        const res = await fetch("https://examguide.onrender.com/api/offers", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { "Authorization": "Bearer " + token } : {})
+          },
+          body: JSON.stringify({
+            productId,
+            offerPrice,
+            message: fullMessage,
+            buyer: buyerDetails
+          })
+        });
+        if (res.ok) {
+          document.getElementById('offerResponse').textContent = "Offer sent successfully! Saved for follow-up.";
+          document.getElementById('offerResponse').classList.remove('hidden');
+          document.getElementById('offerForm').reset();
+          setTimeout(closeOfferModal, 1500);
+        } else {
+          throw new Error("Failed to send offer");
+        }
+      } catch (err) {
+        document.getElementById('offerResponse').textContent = "Could not send offer. Please try again.";
+        document.getElementById('offerResponse').classList.remove('hidden');
+      }
+    }
   });
 </script>
 
@@ -139,7 +301,7 @@
         <a href="#" class="hover:text-blue-600 transition">Categories</a>
         <a href="#" class="hover:text-blue-600 transition">Contact</a>
       </nav>
-      <a href="#" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Sign In</a>
+      <a id="account-btn" href="#" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Sign In</a>
     </div>
   </header>
 
@@ -189,7 +351,7 @@
       <div class="flex gap-4 mt-4">
         <button class="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-lg">Add to Cart</button>
         <!-- Send Offer Modal Trigger -->
-        <button data-modal-target="offerModal" data-modal-toggle="offerModal" class="flex-1 px-4 py-3 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 text-lg">Send Offer</button>
+        <button type="button" onclick="openOfferModal(getProductId(), document.getElementById('item-title').textContent)" class="flex-1 px-4 py-3 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 text-lg">Send Offer</button>
         <!-- Report Modal Trigger -->
         <button data-modal-target="reportModal" data-modal-toggle="reportModal" class="flex-1 px-4 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 text-lg">Report</button>
       </div>
@@ -202,6 +364,28 @@
       </section>
     </div>
   </main>
+
+  <!-- Send Offer Modal -->
+  <div id="sendOfferModal" tabindex="-1" class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto h-[calc(100%-1rem)] max-h-full bg-black/40 flex items-center justify-center">
+    <div class="relative bg-white rounded-lg shadow w-full max-w-md mx-auto">
+      <div class="flex items-center justify-between p-4 border-b rounded-t">
+        <h3 class="text-xl font-semibold">Send Offer</h3>
+        <button type="button" class="text-gray-400 hover:text-gray-900" onclick="closeOfferModal()">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24"><path stroke="currentColor" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <form class="p-6 flex flex-col gap-3" id="offerForm">
+        <input type="hidden" name="productId" id="offerProductId"/>
+        <label class="text-sm font-semibold">Your Offer (₦)</label>
+        <input type="number" class="border rounded px-3 py-2" id="offerPrice" placeholder="Enter your price" required>
+        <label class="text-sm font-semibold">Message to Seller</label>
+        <textarea rows="2" class="border rounded px-3 py-2" id="offerMessage" placeholder="Message..." required></textarea>
+        <div id="buyerDetails" class="mt-2 mb-2 text-sm text-gray-700"></div>
+        <button type="submit" class="mt-2 px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600">Send Offer</button>
+      </form>
+      <div id="offerResponse" class="p-4 text-center text-green-600 hidden"></div>
+    </div>
+  </div>
 
   <!-- Similar Items -->
   <section class="max-w-7xl mx-auto px-6 py-10">
@@ -258,26 +442,8 @@
     </div>
   </div>
   
-  <!-- Offer Modal -->
-  <div id="offerModal" tabindex="-1" class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto h-[calc(100%-1rem)] max-h-full bg-black/40 flex items-center justify-center">
-    <div class="relative bg-white rounded-lg shadow w-full max-w-md mx-auto">
-      <div class="flex items-center justify-between p-4 border-b rounded-t">
-        <h3 class="text-xl font-semibold">Send Offer</h3>
-        <button type="button" class="text-gray-400 hover:text-gray-900" data-modal-hide="offerModal">
-          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24"><path stroke="currentColor" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-        </button>
-      </div>
-      <div class="p-6">
-        <form class="flex flex-col gap-2">
-          <label class="text-sm font-semibold">Your Offer (₦)</label>
-          <input type="number" class="border rounded px-3 py-2" placeholder="Enter your price">
-          <textarea rows="2" class="border rounded px-3 py-2" placeholder="Message to seller..."></textarea>
-          <button class="mt-2 px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600">Send Offer</button>
-        </form>
-      </div>
-    </div>
-  </div>
-  
+  <!-- Offer Modal (already included above) -->
+
   <!-- Report Modal -->
   <div id="reportModal" tabindex="-1" class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto h-[calc(100%-1rem)] max-h-full bg-black/40 flex items-center justify-center">
     <div class="relative bg-white rounded-lg shadow w-full max-w-md mx-auto">
