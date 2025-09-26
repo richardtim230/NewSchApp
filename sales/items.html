@@ -10,6 +10,43 @@
 <body class="bg-gray-50 text-gray-900">
 
 <script>
+  // --- Faculty/Department Cache & Lookup Utilities ---
+  let facultiesCache = [];
+  let departmentsCache = [];
+
+  async function fetchFacultiesAndDepartments() {
+    try {
+      const [faculties, departments] = await Promise.all([
+        fetch('https://examguide.onrender.com/api/faculties').then(r => r.json()),
+        fetch('https://examguide.onrender.com/api/departments').then(r => r.json())
+      ]);
+      facultiesCache = faculties;
+      departmentsCache = departments;
+    } catch {
+      facultiesCache = [];
+      departmentsCache = [];
+    }
+  }
+
+  function getFacultyName(faculty) {
+    if (!faculty) return '';
+    if (typeof faculty === 'object' && faculty.name) return faculty.name;
+    if (typeof faculty === 'string') {
+      const found = facultiesCache.find(f => f._id === faculty);
+      return found ? found.name : faculty;
+    }
+    return '';
+  }
+  function getDepartmentName(department) {
+    if (!department) return '';
+    if (typeof department === 'object' && department.name) return department.name;
+    if (typeof department === 'string') {
+      const found = departmentsCache.find(d => d._id === department);
+      return found ? found.name : department;
+    }
+    return '';
+  }
+
   // Auth check & buyer profile
   let buyerProfile = null;
   async function checkAuth() {
@@ -194,7 +231,7 @@
     }
   }
 
-  // OFFER MODAL logic
+  // OFFER MODAL logic (updated to robustly show faculty/department names!)
   let currentOfferProductId = null;
   let currentOfferProductTitle = null;
   window.openOfferModal = function(productId, productTitle){
@@ -206,13 +243,17 @@
     let details = "";
     if(buyerProfile && buyerProfile.user){
       const u = buyerProfile.user;
+
+      let facultyDisplay = getFacultyName(u.faculty);
+      let departmentDisplay = getDepartmentName(u.department);
+
       details = `
         <span class="block"><strong>Your Details for Seller:</strong></span>
         <span>Name: ${u.fullname || u.username}</span><br>
         <span>Email: ${u.email || ''}</span><br>
         <span>Phone: ${u.phone || ''}</span><br>
-        <span>Faculty: ${u.faculty || ''}</span><br>
-        <span>Department: ${u.department || ''}</span>
+        <span>Faculty: <span id="buyerFaculty">${facultyDisplay}</span></span><br>
+        <span>Department: <span id="buyerDepartment">${departmentDisplay}</span></span>
       `;
     } else {
       details = `<span class="block text-red-600">You must sign in for communication and offer follow-up.</span>`;
@@ -226,8 +267,9 @@
   }
 
   // Offer form submit handler
-  document.addEventListener("DOMContentLoaded", function() {
-    checkAuth();
+  document.addEventListener("DOMContentLoaded", async function() {
+    await fetchFacultiesAndDepartments();
+    await checkAuth();
     renderItem();
 
     document.getElementById('offerForm').onsubmit = async function(e) {
@@ -239,16 +281,16 @@
       // Gather buyer details
       let buyerDetails = "";
       if(buyerProfile && buyerProfile.user){
-  const u = buyerProfile.user;
-  details = `
-    <span class="block"><strong>Your Details for Seller:</strong></span>
-    <span>Name: ${u.fullname || u.username}</span><br>
-    <span>Email: ${u.email || ''}</span><br>
-    <span>Phone: ${u.phone || ''}</span><br>
-    <span>Faculty: ${u.faculty?.name || u.faculty || ''}</span><br>
-    <span>Department: ${u.department?.name || u.department || ''}</span>
-  `;
-  }
+        const u = buyerProfile.user;
+        buyerDetails = {
+          id: u._id,
+          name: u.fullname || u.username,
+          email: u.email,
+          phone: u.phone,
+          faculty: getFacultyName(u.faculty),
+          department: getDepartmentName(u.department)
+        };
+      }
       // Compose full message to seller
       const fullMessage = `
 Offer from: ${buyerDetails.name || "Guest"}
