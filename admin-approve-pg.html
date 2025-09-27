@@ -67,8 +67,7 @@
     </div>
   </nav>
 
-  <!-- MAIN CONTENT -->
-  <main class="max-w-6xl mx-auto px-4 py-8">
+  <main class="max-w-6xl mx-auto px-2 sm:px-4 py-8">
     <!-- LISTINGS TAB -->
     <section class="tab-content" id="tab-listings">
       <div class="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
@@ -87,7 +86,7 @@
           </select>
         </div>
       </div>
-      <div id="listingsGrid" class="grid gap-8 sm:grid-cols-2 lg:grid-cols-3"></div>
+      <div id="listingsGrid" class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3"></div>
       <div id="listingsLoader" class="py-16 flex justify-center hidden">
         <span class="w-10 h-10 border-4 border-indigo-300 rounded-full border-t-transparent spinner"></span>
       </div>
@@ -104,7 +103,7 @@
           <button class="seller-tab-btn px-4 py-2 rounded bg-yellow-100 text-yellow-800" data-status="pending">Pending</button>
         </div>
       </div>
-      <div id="sellersGrid" class="grid gap-8 sm:grid-cols-2 lg:grid-cols-3"></div>
+      <div id="sellersGrid" class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3"></div>
       <div id="sellersLoader" class="py-16 flex justify-center hidden">
         <span class="w-10 h-10 border-4 border-indigo-300 rounded-full border-t-transparent spinner"></span>
       </div>
@@ -121,7 +120,7 @@
           <button class="blogger-tab-btn px-4 py-2 rounded bg-yellow-100 text-yellow-800" data-status="pending">Pending</button>
         </div>
       </div>
-      <div id="bloggersGrid" class="grid gap-8 sm:grid-cols-2 lg:grid-cols-3"></div>
+      <div id="bloggersGrid" class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3"></div>
       <div id="bloggersLoader" class="py-16 flex justify-center hidden">
         <span class="w-10 h-10 border-4 border-indigo-300 rounded-full border-t-transparent spinner"></span>
       </div>
@@ -138,7 +137,7 @@
           <button class="post-tab-btn px-4 py-2 rounded bg-yellow-100 text-yellow-800" data-status="pending">Pending</button>
         </div>
       </div>
-      <div id="postsGrid" class="grid gap-8 sm:grid-cols-2 lg:grid-cols-3"></div>
+      <div id="postsGrid" class="grid gap-6 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3"></div>
       <div id="postsLoader" class="py-16 flex justify-center hidden">
         <span class="w-10 h-10 border-4 border-indigo-300 rounded-full border-t-transparent spinner"></span>
       </div>
@@ -195,9 +194,9 @@
     </section>
   </main>
 
-  <!-- Seller Modal -->
+  <!-- Seller/Blogger Modal -->
   <div id="sellerModal" class="modal-bg fixed inset-0 z-50 hidden flex items-center justify-center">
-    <div class="bg-white p-6 rounded-xl shadow-lg w-full max-w-md relative">
+    <div class="bg-white p-6 rounded-xl shadow-lg w-full max-w-md relative mx-2">
       <button onclick="closeSellerModal()" class="absolute top-3 right-3 text-gray-400 hover:text-blue-900">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -236,39 +235,25 @@
       showListingsLoader(false);
       return res.ok ? await res.json() : [];
     }
-    async function fetchSeller(userId) {
-      let existing = allSellers.find(s => s._id === userId);
-      if (existing) return existing;
-      const res = await fetch(BACKEND + `/api/users/${userId}`, { headers: authHeader() });
-      if (!res.ok) return null;
-      const data = await res.json();
-      allSellers.push(data.user || data);
-      return data.user || data;
-    }
     async function fetchAllSellers() {
       showSellersLoader(true);
-      const res = await fetch(BACKEND + "/api/users/?role=seller", { headers: authHeader() });
+      const res = await fetch(BACKEND + "/api/users?role=seller", { headers: authHeader() });
       showSellersLoader(false);
-      if (!res.ok) return [];
       const data = await res.json();
-      if (Array.isArray(data.users)) return data.users;
-      return Array.isArray(data) ? data : [];
+      return Array.isArray(data.users) ? data.users : Array.isArray(data) ? data : [];
     }
     async function fetchAllBloggers() {
       showBloggersLoader(true);
-      const res = await fetch(BACKEND + "/api/users/?role=blogger", { headers: authHeader() });
+      const res = await fetch(BACKEND + "/api/users?role=blogger", { headers: authHeader() });
       showBloggersLoader(false);
-      if (!res.ok) return [];
       const data = await res.json();
-      if (Array.isArray(data.users)) return data.users;
-      return Array.isArray(data) ? data : [];
+      return Array.isArray(data.users) ? data.users : Array.isArray(data) ? data : [];
     }
     async function fetchAllPosts() {
       showPostsLoader(true);
       const res = await fetch(BACKEND + "/api/blogger-dashboard/admin/allposts", { headers: authHeader() });
       showPostsLoader(false);
-      if (!res.ok) return [];
-      return await res.json();
+      return res.ok ? await res.json() : [];
     }
     async function updateListingStatus(listingId, update) {
       showSpinner();
@@ -276,6 +261,26 @@
         method: "PATCH",
         headers: authHeader(),
         body: JSON.stringify(update)
+      });
+      hideSpinner();
+      return res.ok;
+    }
+    async function updateUserApproval(userId, approved) {
+      showSpinner();
+      const res = await fetch(BACKEND + `/api/users/${userId}/approval`, {
+        method: "PATCH",
+        headers: authHeader(),
+        body: JSON.stringify({ approved })
+      });
+      hideSpinner();
+      return res.ok;
+    }
+    async function updatePostApproval(postId, approved) {
+      showSpinner();
+      const res = await fetch(BACKEND + `/api/blogger-dashboard/admin/posts/${postId}/approval`, {
+        method: "PATCH",
+        headers: authHeader(),
+        body: JSON.stringify({ approved, status: approved ? "Published" : "Draft" })
       });
       hideSpinner();
       return res.ok;
@@ -326,7 +331,13 @@
           <div class="mb-2">
             Status: ${seller.approved ? `<span class="badge-approved px-2 py-1 rounded text-xs">Approved</span>` : `<span class="badge-pending px-2 py-1 rounded text-xs">Pending</span>`}
           </div>
-          <button onclick="viewSeller('${seller._id}')" class="bg-indigo-100 text-blue-900 font-semibold px-4 py-2 rounded shadow hover:bg-indigo-200 transition">View Profile</button>
+          <div class="flex gap-2 w-full mt-2">
+            ${seller.approved ? 
+              `<button onclick="approveUser('${seller._id}', false)" class="bg-red-100 text-red-700 px-2 py-1 rounded font-bold flex-1">Reject</button>` :
+              `<button onclick="approveUser('${seller._id}', true)" class="bg-green-100 text-green-700 px-2 py-1 rounded font-bold flex-1">Approve</button>`
+            }
+            <button onclick="viewSeller('${seller._id}')" class="bg-indigo-100 text-blue-900 font-semibold px-4 py-2 rounded shadow hover:bg-indigo-200 transition flex-1">View Profile</button>
+          </div>
         </div>
       `;
     }
@@ -342,23 +353,35 @@
           <div class="mb-2">
             Status: ${blogger.approved ? `<span class="badge-approved px-2 py-1 rounded text-xs">Approved</span>` : `<span class="badge-pending px-2 py-1 rounded text-xs">Pending</span>`}
           </div>
-          <button onclick="viewBlogger('${blogger._id}')" class="bg-indigo-100 text-blue-900 font-semibold px-4 py-2 rounded shadow hover:bg-indigo-200 transition">View Profile</button>
+          <div class="flex gap-2 w-full mt-2">
+            ${blogger.approved ? 
+              `<button onclick="approveBlogger('${blogger._id}', false)" class="bg-red-100 text-red-700 px-2 py-1 rounded font-bold flex-1">Reject</button>` :
+              `<button onclick="approveBlogger('${blogger._id}', true)" class="bg-green-100 text-green-700 px-2 py-1 rounded font-bold flex-1">Approve</button>`
+            }
+            <button onclick="viewBlogger('${blogger._id}')" class="bg-indigo-100 text-blue-900 font-semibold px-4 py-2 rounded shadow hover:bg-indigo-200 transition flex-1">View Profile</button>
+          </div>
         </div>
       `;
     }
     function postCard(post) {
       return `
-        <div class="bg-white rounded-xl shadow border flex flex-col p-5">
+        <div class="bg-white rounded-xl shadow border flex flex-col p-4 max-w-full">
           <h3 class="font-bold text-lg text-indigo-800 mb-1 truncate">${post.title}</h3>
           <div class="flex items-center gap-2 mb-2">
             <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">${post.category || ''}</span>
             <span class="text-xs">${post.status || 'Pending'}</span>
           </div>
-          <div class="text-gray-800 text-sm mb-2 line-clamp-3">${(post.content || '').replace(/(<([^>]+)>)/gi, '').slice(0, 150)}...</div>
+          <div class="text-gray-800 text-sm mb-2 line-clamp-3 break-words">${(post.content || '').replace(/(<([^>]+)>)/gi, '').slice(0, 150)}...</div>
           <div class="flex-1"></div>
           <div class="flex justify-between items-center mt-2">
             <span class="text-xs text-gray-500">By: ${post.authorName || ''}</span>
             <span class="text-xs text-gray-500">${post.date ? new Date(post.date).toLocaleDateString() : ''}</span>
+          </div>
+          <div class="flex gap-2 mt-2">
+            ${(post.status === "Published" || post.status === "Active") ?
+              `<button onclick="approvePost('${post._id}', false)" class="bg-red-100 text-red-700 px-2 py-1 rounded font-bold flex-1">Reject</button>` :
+              `<button onclick="approvePost('${post._id}', true)" class="bg-green-100 text-green-700 px-2 py-1 rounded font-bold flex-1">Approve</button>`
+            }
           </div>
         </div>
       `;
@@ -423,8 +446,7 @@
     async function loadListingsTab() {
       showListingsLoader(true);
       allListings = await fetchAllListings();
-      const sellerIds = [...new Set(allListings.map(l => l.sellerId))];
-      for (const id of sellerIds) await fetchSeller(id);
+      allSellers = await fetchAllSellers();
       showListingsLoader(false);
       renderListings();
       updateAnalytics();
@@ -460,7 +482,22 @@
       if (!ok) alert("Failed to unpublish listing.");
       await loadListingsTab();
     };
-    window.viewSeller = async function(userId) {
+    window.approveUser = async function(userId, approve) {
+      const ok = await updateUserApproval(userId, approve);
+      if (!ok) alert("Failed to update user approval.");
+      await loadSellersTab();
+    };
+    window.approveBlogger = async function(userId, approve) {
+      const ok = await updateUserApproval(userId, approve);
+      if (!ok) alert("Failed to update blogger approval.");
+      await loadBloggersTab();
+    };
+    window.approvePost = async function(postId, approve) {
+      const ok = await updatePostApproval(postId, approve);
+      if (!ok) alert("Failed to update post approval.");
+      await loadPostsTab();
+    };
+    window.viewSeller = function(userId) {
       const seller = allSellers.find(s => s._id === userId);
       if (!seller) return alert("Could not fetch seller details.");
       document.getElementById('sellerModalContent').innerHTML = `
@@ -478,7 +515,7 @@
       `;
       document.getElementById('sellerModal').classList.remove('hidden');
     };
-    window.viewBlogger = async function(userId) {
+    window.viewBlogger = function(userId) {
       const blogger = allBloggers.find(b => b._id === userId);
       if (!blogger) return alert("Could not fetch blogger details.");
       document.getElementById('sellerModalContent').innerHTML = `
@@ -538,7 +575,6 @@
       document.querySelector(`[data-tab="${tabName}"]`).classList.add('tab-btn-active');
       document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
       document.getElementById('tab-' + tabName).classList.remove('hidden');
-      // Lazy load each tab
       if (tabName === 'listings') loadListingsTab();
       if (tabName === 'sellers') loadSellersTab();
       if (tabName === 'bloggers') loadBloggersTab();
@@ -551,7 +587,6 @@
     document.getElementById('searchInput').addEventListener('input', renderListings);
     document.getElementById('statusFilter').addEventListener('change', renderListings);
 
-    // === HELP FORM ===
     document.getElementById('helpForm').addEventListener('submit', function(e){
       e.preventDefault();
       const helpInput = document.getElementById('helpInput');
@@ -563,7 +598,6 @@
       }
     });
 
-    // INIT
     window.addEventListener('DOMContentLoaded', () => {
       tabSwitch('listings');
     });
