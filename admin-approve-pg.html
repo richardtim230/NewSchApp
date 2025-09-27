@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Admin Dashboard | Listings Moderation</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .badge-approved { background: #d1fae5; color: #065f46; }
+    .badge-pending { background: #fef3c7; color: #92400e; }
+    .badge-rejected { background: #fee2e2; color: #991b1b; }
+    .modal-bg {
+      background: rgba(30,41,59,0.30);
+      backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(2px);
+    }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+  <nav class="bg-white shadow-md px-6 py-4 flex justify-between items-center">
+    <h1 class="font-bold text-2xl text-blue-900">Admin Listings Moderation</h1>
+    <div>
+      <input id="searchInput" type="text" class="border rounded px-3 py-1" placeholder="Search products/sellers..." />
+      <select id="statusFilter" class="border rounded px-2 py-1 ml-2">
+        <option value="">All</option>
+        <option value="pending">Pending</option>
+        <option value="approved">Approved</option>
+        <option value="rejected">Rejected</option>
+        <option value="unpublished">Unpublished</option>
+      </select>
+    </div>
+  </nav>
+  <main class="max-w-6xl mx-auto py-10 px-4">
+    <div id="listingsGrid" class="grid gap-8 sm:grid-cols-2 lg:grid-cols-3"></div>
+  </main>
+  
+  <!-- Seller Modal -->
+  <div id="sellerModal" class="modal-bg fixed inset-0 z-50 hidden flex items-center justify-center">
+    <div class="bg-white p-6 rounded-xl shadow-lg w-full max-w-md relative">
+      <button onclick="closeSellerModal()" class="absolute top-3 right-3 text-gray-400 hover:text-blue-900">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      </button>
+      <div id="sellerModalContent"></div>
+    </div>
+  </div>
+
+  <script>
+    const BACKEND = "https://examguide.onrender.com";
+    function getToken() { return localStorage.token || sessionStorage.token || ''; }
+    function authHeader() { return { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' }; }
+    
+    let allListings = [];
+    let allSellers = {};
+
+    async function fetchAllListings() {
+      const res = await fetch(BACKEND + "/api/blogger-dashboard/admin/alllistings", { headers: authHeader() });
+      return res.ok ? await res.json() : [];
+    }
+
+    async function fetchSeller(userId) {
+      if (allSellers[userId]) return allSellers[userId];
+      const res = await fetch(BACKEND + `/api/users/${userId}`, { headers: authHeader() });
+      if (!res.ok) return null;
+      const data = await res.json();
+      allSellers[userId] = data.user || data;
+      return allSellers[userId];
+    }
+
+    async function updateListingStatus(listingId, update) {
+      const res = await fetch(BACKEND + `/api/blogger-dashboard/listings/${listingId}`, {
+        method: "PATCH",
+        headers: authHeader(),
+        body: JSON.stringify(update)
+      });
+      return res.ok;
+    }
+
+    function badge(status, approved) {
+      if (approved) return `<span class="px-2 py-1 rounded text-xs badge-approved font-semibold">Approved</span>`;
+      if (status === "Unpublished" || status === "rejected") return `<span class="px-2 py-1 rounded text-xs badge-rejected font-semibold">Rejected</span>`;
+      return `<span class="px-2 py-1 rounded text-xs badge-pending font-semibold">Pending</span>`;
+    }
+
+    function listingCard(listing) {
+      return `
+        <div class="bg-white rounded-xl shadow border flex flex-col relative overflow-hidden">
+          <div class="flex items-center justify-center bg-gray-100 h-44">
+            <img src="${listing.img || listing.imageUrl || ''}" alt="${listing.title}" class="h-40 object-contain rounded" />
+          </div>
+          <div class="p-4 flex-1 flex flex-col">
+            <div class="flex items-center justify-between mb-2">
+              <span class="font-bold text-lg text-blue-900">${listing.title}</span>
+              ${badge(listing.status, listing.approved)}
+            </div>
+            <span class="inline-block text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded mb-2">${listing.category || ''}</span>
+            <div class="mb-2 text-sm line-clamp-2">${listing.description || ''}</div>
+            <div class="text-yellow-700 font-bold text-lg mb-2">₦${(listing.price || 0).toLocaleString()}</div>
+            <div class="flex items-center text-xs mb-2">
+              <span class="mr-2 text-gray-500">Seller:</span>
+              <button onclick="viewSeller('${listing.sellerId}')" class="text-blue-700 hover:underline font-semibold mr-2">View Seller</button>
+            </div>
+            <div class="flex gap-2 mt-auto">
+              ${listing.approved ? 
+                `<button onclick="setApproval('${listing._id}', false)" class="bg-red-100 text-red-700 px-2 py-1 rounded font-bold flex-1">Reject</button>` :
+                `<button onclick="setApproval('${listing._id}', true)" class="bg-green-100 text-green-700 px-2 py-1 rounded font-bold flex-1">Approve</button>`
+              }
+              <button onclick="unpublishListing('${listing._id}')" class="bg-gray-200 text-gray-800 px-2 py-1 rounded font-bold flex-1">Unpublish</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function renderListings() {
+      const grid = document.getElementById('listingsGrid');
+      let filtered = allListings;
+
+      const q = document.getElementById('searchInput').value.trim().toLowerCase();
+      const filter = document.getElementById('statusFilter').value;
+
+      if (q) {
+        filtered = filtered.filter(l =>
+          (l.title && l.title.toLowerCase().includes(q)) ||
+          (l.category && l.category.toLowerCase().includes(q)) ||
+          (l.description && l.description.toLowerCase().includes(q)) ||
+          (l.sellerId && allSellers[l.sellerId]?.fullname?.toLowerCase().includes(q))
+        );
+      }
+      if (filter) {
+        if (filter === "approved") filtered = filtered.filter(l => l.approved);
+        else if (filter === "pending") filtered = filtered.filter(l => !l.approved && (!l.status || l.status === "Pending" || l.status === "Active"));
+        else if (filter === "rejected" || filter === "unpublished") filtered = filtered.filter(l => l.status === "Unpublished" || l.status === "rejected");
+      }
+
+      if (!filtered.length) {
+        grid.innerHTML = `<div class="col-span-3 text-center text-lg text-gray-400 py-12">No listings found.</div>`;
+        return;
+      }
+      grid.innerHTML = filtered.map(listingCard).join("");
+    }
+
+    async function loadAllData() {
+      // Fetch all listings and preload all sellers
+      allListings = await fetchAllListings();
+      const sellerIds = [...new Set(allListings.map(l => l.sellerId))];
+      await Promise.all(sellerIds.map(fetchSeller));
+      renderListings();
+    }
+
+    window.setApproval = async function(listingId, approve) {
+      const ok = await updateListingStatus(listingId, { approved: approve, status: approve ? "Active" : "Unpublished" });
+      if (!ok) alert("Failed to update listing status.");
+      await loadAllData();
+    };
+
+    window.unpublishListing = async function(listingId) {
+      const ok = await updateListingStatus(listingId, { status: "Unpublished", approved: false });
+      if (!ok) alert("Failed to unpublish listing.");
+      await loadAllData();
+    };
+
+    window.viewSeller = async function(userId) {
+      const seller = await fetchSeller(userId);
+      if (!seller) return alert("Could not fetch seller details.");
+      document.getElementById('sellerModalContent').innerHTML = `
+        <div class="flex flex-col items-center mb-4">
+          <img src="${seller.profilePic || 'https://ui-avatars.com/api/?name='+encodeURIComponent(seller.fullname||'User')+'&background=FFCE45&color=263159&rounded=true'}"
+            class="w-20 h-20 rounded-full border-4 border-yellow-400 mb-2" />
+          <div class="font-bold text-lg text-blue-900">${seller.fullname || seller.username || 'Seller'}</div>
+          <div class="text-gray-500">${seller.email || ''}</div>
+        </div>
+        <div>
+          <div class="mb-1"><b>Phone:</b> <span class="text-gray-800">${seller.phone || 'N/A'}</span></div>
+          <div class="mb-1"><b>Joined:</b> <span class="text-gray-800">${seller.createdAt ? new Date(seller.createdAt).toLocaleDateString() : ''}</span></div>
+          <div class="mb-1"><b>Bio:</b> <span class="text-gray-800">${seller.bio || '—'}</span></div>
+        </div>
+      `;
+      document.getElementById('sellerModal').classList.remove('hidden');
+    };
+    window.closeSellerModal = function() {
+      document.getElementById('sellerModal').classList.add('hidden');
+    };
+
+    document.getElementById('searchInput').addEventListener('input', renderListings);
+    document.getElementById('statusFilter').addEventListener('change', renderListings);
+
+    window.addEventListener('DOMContentLoaded', loadAllData);
+  </script>
+</body>
+</html>
