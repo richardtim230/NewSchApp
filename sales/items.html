@@ -41,7 +41,6 @@
         <div class="relative w-full aspect-square rounded-xl overflow-hidden bg-gray-100 group cursor-zoom-in" onclick="openLightbox()">
           <img id="product-main-img" src="" alt="Product Image" class="w-full h-full object-contain object-center transition-all duration-300"/>
           <span class="absolute bottom-2 right-2 bg-white/70 px-2 py-1 rounded text-xs text-gray-700 shadow hidden md:block">🔍 Click to Zoom</span>
-          <span id="sold-out" class="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-bold shadow hidden">Sold Out</span>
         </div>
         <div id="product-thumbs" class="flex gap-2"></div>
         <div class="flex gap-2 mt-1">
@@ -60,7 +59,9 @@
           <span id="stock-indicator" class="text-xs px-2 py-1 rounded bg-green-100 text-green-700 font-medium"></span>
         </div>
         <div class="flex items-center gap-4 flex-wrap">
-          <span id="product-price" class="text-2xl font-bold text-yellow-700"></span>
+          <span id="product-price" class="text-2xl font-bold text-yellow-700 flex items-center gap-2">
+            <span class="text-xl">&#8358;</span><span id="product-price-value"></span>
+          </span>
           <span id="product-rating" class="text-yellow-500"></span>
           <span id="product-views" class="text-xs text-gray-500"></span>
         </div>
@@ -83,10 +84,26 @@
       </div>
     </div>
 
-    <!-- Reviews -->
-    <div class="mt-8 max-w-2xl mx-auto hidden" id="reviews-section">
+    <!-- Reviews (with add form) -->
+    <div class="mt-8 max-w-2xl mx-auto" id="reviews-section">
       <h3 class="font-semibold mb-2 text-lg text-blue-900">Ratings & Reviews</h3>
       <div id="reviews-list" class="space-y-3"></div>
+
+      <!-- Add Review/Ratings: Only show if logged in -->
+      <div id="add-review-card" class="bg-white rounded-lg shadow p-4 mt-4 hidden">
+        <div class="font-semibold mb-2">Add Your Review</div>
+        <form id="reviewForm" class="flex flex-col gap-3">
+          <div class="flex items-center gap-2">
+            <label class="text-sm font-semibold">Your Rating:</label>
+            <div id="rating-stars" class="flex items-center gap-1">
+              <!-- Stars inserted by JS -->
+            </div>
+          </div>
+          <textarea id="reviewMessage" rows="2" class="border rounded px-3 py-2" placeholder="Write your review..." required></textarea>
+          <button type="submit" class="self-end px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Submit Review</button>
+        </form>
+        <div id="reviewResponse" class="p-2 text-center text-green-600 hidden"></div>
+      </div>
     </div>
 
     <!-- Chart Section -->
@@ -206,7 +223,6 @@
 
     // --- Product Loading ---
     async function fetchProducts() {
-      // Try backend
       try {
         let res = await fetch(BACKEND + "/api/blogger-dashboard/public/listings");
         if (!res.ok) throw new Error("Not found");
@@ -219,14 +235,23 @@
       } catch (e) { return []; }
     }
     async function fetchProduct(id) {
+      // Try backend call for single product
+      try {
+        let res = await fetch(BACKEND + `/api/blogger-dashboard/public/listings/${id}`);
+        if (res.ok) {
+          let prod = await res.json();
+          return prod;
+        }
+      } catch(e){}
+      // Fallback: try allProducts
       if (!allProducts.length) allProducts = await fetchProducts();
       let prod = allProducts.find(p => p._id === id || p.id == id);
       if (prod) return prod;
-      // Fallback
+      // Fallback - minimal
       return {
         id,
         title: "Sample Product",
-        price: "₦10,000",
+        price: "10000",
         category: "Sample",
         posted: "2 hours ago",
         seller: "Demo Seller",
@@ -236,7 +261,7 @@
         ],
         tags: ["Demo", "Sample"],
         description: "This is a sample product description for demo.",
-        rating: "⭐ 4.6 (7)",
+        rating: "4.6",
         inStock: false,
         views: 3
       };
@@ -252,13 +277,33 @@
       } catch { return []; }
     }
 
-    // --- Reviews stub ---
+    // --- Reviews APIs ---
     async function fetchReviews(productId) {
-      // Replace with backend in future
-      return [
-        { user: "Jane D.", avatar: "", rating: 5, comment: "Great product and super fast delivery!" },
-        { user: "Abdul", avatar: "", rating: 4, comment: "Item as described. Seller was responsive." }
-      ];
+      // Try to get from backend endpoint (replace with your actual endpoint)
+      try {
+        const res = await fetch(BACKEND + `/api/reviews/product/${productId}`);
+        if (res.ok) {
+          const { reviews=[] } = await res.json();
+          return reviews;
+        }
+      } catch {}
+      return [];
+    }
+
+    async function addReview(productId, rating, comment) {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(BACKEND + `/api/reviews/product/${productId}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { "Authorization": "Bearer " + token } : {})
+          },
+          body: JSON.stringify({ rating, comment })
+        });
+        if (res.ok) return true;
+      } catch {}
+      return false;
     }
 
     // --- Render Product Details ---
@@ -269,12 +314,17 @@
       document.getElementById("product-category").textContent = product.category || "";
       document.getElementById("product-posted").textContent = product.posted 
         || (product.date ? new Date(product.date).toLocaleString() : "");
-      document.getElementById("product-price").textContent = product.price || "";
-      document.getElementById("product-rating").textContent = product.rating || (product.likes ? `⭐ ${product.likes}` : "");
+      // Price formatting with naira sign
+      let priceNum = product.price;
+      if (typeof priceNum === "string") priceNum = priceNum.replace(/[^\d.]/g,"");
+      document.getElementById("product-price-value").textContent = Number(priceNum || 0).toLocaleString();
+      // Rating
+      document.getElementById("product-rating").innerHTML = getStarRating(product.rating || product.likes || 0, true);
       document.getElementById("product-description").textContent = product.description || product.summary || "";
       document.getElementById("stock-indicator").textContent = (product.inStock !== false) ? "In Stock" : "Sold";
       document.getElementById("stock-indicator").className = "text-xs px-2 py-1 rounded font-medium " + (product.inStock !== false ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-500");
-      document.getElementById("sold-out").classList.toggle("hidden", !!product.inStock);
+      // Remove sold out tag entirely!
+      // document.getElementById("sold-out").classList.toggle("hidden", true);
       document.getElementById("product-views").textContent = product.views ? `${product.views} views` : "";
       // Tags
       let tags = Array.isArray(product.tags) ? product.tags : [];
@@ -287,7 +337,7 @@
       document.getElementById("seller-meta").textContent = product.sellerMeta || "";
       document.getElementById("seller-profile-link").href = `mart.html?seller=${encodeURIComponent(sName)}`;
 
-      // Images (fills container)
+      // Images
       let imgs = [];
       if (Array.isArray(product.images) && product.images.length > 0) imgs = product.images;
       else if (product.img) imgs = [product.img];
@@ -305,6 +355,18 @@
       // Hide loader, show details
       document.getElementById("product-loading").classList.add("hidden");
       document.getElementById("product-details").classList.remove("hidden");
+    }
+
+    // --- Star Rating Helper ---
+    function getStarRating(rating, showValue) {
+      let rate = parseFloat(rating);
+      if (isNaN(rate)) rate = 0;
+      let full = Math.floor(rate), half = rate % 1 >= 0.5 ? 1 : 0, empty = 5 - full - half;
+      let stars = '';
+      for(let i=0;i<full;i++) stars += '★';
+      if(half) stars += '⯪';
+      for(let i=0;i<empty;i++) stars += '☆';
+      return `<span class="text-base">${stars}</span>${showValue?` <span class="text-xs text-gray-600 ml-1">(${rate.toFixed(1)})</span>`:""}`;
     }
 
     // --- Image preview logic ---
@@ -360,7 +422,6 @@
     }
     document.getElementById("reportForm").onsubmit = function(e) {
       e.preventDefault();
-      // Demo logic: just show thank you
       document.getElementById("reportResponse").textContent = "Thank you. Your report was submitted!";
       document.getElementById("reportResponse").classList.remove("hidden");
       setTimeout(closeReportModal, 1800);
@@ -446,7 +507,6 @@ ${offerMessage}
         window.location.href = "/login";
         return;
       }
-      // Implement chat page or open chat modal
       alert("Chat feature coming soon!");
     };
 
@@ -468,7 +528,6 @@ ${offerMessage}
       const offers = await fetchOffers(productId);
       if (!offers || !offers.length) return;
       document.getElementById('offers-chart-section').classList.remove('hidden');
-      // Sort by date, get price & date for chart
       const sorted = offers.slice().sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt));
       const labels = sorted.map(o=>new Date(o.createdAt).toLocaleDateString());
       const data = sorted.map(o=>parseInt(o.offerPrice,10));
@@ -492,41 +551,98 @@ ${offerMessage}
     // --- Reviews Rendering ---
     async function renderReviews(productId) {
       const reviews = await fetchReviews(productId);
+      const reviewsList = document.getElementById('reviews-list');
+      reviewsList.innerHTML = "";
       if (reviews && reviews.length) {
-        document.getElementById('reviews-list').innerHTML = reviews.map(r=>`
+        reviewsList.innerHTML = reviews.map(r=>`
           <div class="bg-white rounded-lg p-3 shadow flex gap-3 items-start">
-            <div class="w-10 h-10 rounded-full bg-yellow-50 flex items-center justify-center text-lg">${r.avatar ? `<img src="${r.avatar}" class="w-full h-full object-cover rounded-full"/>` : r.user[0]}</div>
+            <div class="w-10 h-10 rounded-full bg-yellow-50 flex items-center justify-center text-lg">
+              ${r.avatar ? `<img src="${r.avatar}" class="w-full h-full object-cover rounded-full"/>` : (r.user && r.user[0] ? r.user[0].toUpperCase() : "U")}
+            </div>
             <div class="flex-1">
-              <div class="font-semibold text-sm">${r.user} <span class="text-yellow-500">${"★".repeat(r.rating)}${"☆".repeat(5-r.rating)}</span></div>
+              <div class="font-semibold text-sm">${r.user || "User"} <span class="text-yellow-500">${getStarRating(r.rating)}</span></div>
               <div class="text-gray-700 text-sm">${r.comment}</div>
+              <div class="text-xs text-gray-400 mt-1">${r.date ? new Date(r.date).toLocaleString() : ""}</div>
             </div>
           </div>
         `).join("");
-        document.getElementById('reviews-section').classList.remove('hidden');
+      } else {
+        reviewsList.innerHTML = `<div class="text-gray-500 text-center py-6">No reviews yet.</div>`;
       }
+    }
+
+    // --- Add Review Form Logic ---
+    function setupAddReview(productId) {
+      const addReviewCard = document.getElementById("add-review-card");
+      if (buyerProfile && buyerProfile.user) {
+        addReviewCard.classList.remove("hidden");
+      } else {
+        addReviewCard.classList.add("hidden");
+        return;
+      }
+      // Star rating - interactive
+      const ratingStars = document.getElementById("rating-stars");
+      ratingStars.innerHTML = "";
+      let selectedRating = 0;
+      for(let i=1;i<=5;i++) {
+        let star = document.createElement("span");
+        star.textContent = "★";
+        star.className = "cursor-pointer text-2xl text-gray-300 hover:text-yellow-400";
+        star.onmouseenter = ()=> {
+          for(let j=0;j<5;j++) ratingStars.children[j].classList.toggle("text-yellow-400", j<i);
+        };
+        star.onmouseleave = ()=> {
+          for(let j=0;j<5;j++) ratingStars.children[j].classList.toggle("text-yellow-400", j<selectedRating);
+        };
+        star.onclick = ()=> {
+          selectedRating = i;
+          for(let j=0;j<5;j++) ratingStars.children[j].classList.toggle("text-yellow-400", j<selectedRating);
+        };
+        ratingStars.appendChild(star);
+      }
+      // Submit review handler
+      document.getElementById("reviewForm").onsubmit = async function(e) {
+        e.preventDefault();
+        if (selectedRating < 1) {
+          alert("Please select a rating!");
+          return;
+        }
+        const comment = document.getElementById("reviewMessage").value;
+        const ok = await addReview(productId, selectedRating, comment);
+        const resp = document.getElementById("reviewResponse");
+        if (ok) {
+          resp.textContent = "Review submitted!";
+          resp.classList.remove("hidden");
+          this.reset();
+          selectedRating = 0;
+          for(let j=0;j<5;j++) ratingStars.children[j].classList.remove("text-yellow-400");
+          await renderReviews(productId);
+        } else {
+          resp.textContent = "Failed to submit review.";
+          resp.classList.remove("hidden");
+        }
+        setTimeout(()=>resp.classList.add("hidden"), 2000);
+      };
     }
 
     // --- Related Items ---
     function renderRelatedItems(product, products) {
-      // Related: same category, not self, else fallback to random
       let related = products.filter(p=>p._id !== product._id && p.category === product.category);
       if (related.length < 4) {
         const others = products.filter(p=>p._id !== product._id && !related.includes(p));
-        // Shuffle and take up to fill 4 total
         for (let i=related.length; i<4 && others.length; i++) {
           const idx = Math.floor(Math.random()*others.length);
           related.push(others[idx]);
           others.splice(idx,1);
         }
       }
-      // Render
       document.getElementById("related-items").innerHTML = related.slice(0,4).map(p=>`
         <div class="bg-white rounded-xl shadow overflow-hidden hover:scale-105 transition">
-          <a href="item_details.html?id=${p._id||p.id}" class="block">
-            <img src="${(Array.isArray(p.images) && p.images[0]) || p.img || p.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(p.title || 'Product') + '&background=eee&color=263159&rounded=true'}" class="h-36 w-full object-cover bg-gray-100" alt="${p.title}">
+          <a href="items.html?id=${p._id||p.id}" class="block">
+            <img src="${(Array.isArray(p.images) && p.images[0]) || p.img || p.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(p.title || 'Product') + '&background=eee&color=263159&rounded=true'}" class="w-full h-36 object-cover bg-gray-100"/>
             <div class="p-3">
               <div class="font-semibold text-blue-900 text-sm truncate">${p.title}</div>
-              <div class="text-yellow-700 font-bold">${p.price}</div>
+              <div class="text-yellow-700 font-bold flex items-center gap-1"><span>&#8358;</span>${Number(p.price||0).toLocaleString()}</div>
             </div>
           </a>
         </div>
@@ -546,7 +662,8 @@ ${offerMessage}
       renderProduct(product);
       updateFavoriteBtn(product._id||product.id);
       renderOffersChart(product._id||product.id);
-      renderReviews(product._id||product.id);
+      await renderReviews(product._id||product.id);
+      setupAddReview(product._id||product.id);
       renderRelatedItems(product, allProducts);
     });
   </script>
