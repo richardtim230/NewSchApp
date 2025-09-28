@@ -81,17 +81,28 @@ function renderProducts() {
   }
   el.innerHTML = "";
   products.forEach(prod => {
-    // Support new multi-image logic: show first image, fallback to old
-    let imgUrl = '';
-    if (Array.isArray(prod.images) && prod.images.length > 0)
-      imgUrl = prod.images[0];
-    else
-      imgUrl = prod.img || prod.imageUrl || '';
+    // Multi-image: show all as thumbs, fallback to old
+    let imagesArr = Array.isArray(prod.images) && prod.images.length > 0 ? prod.images : [];
+    if (!imagesArr.length && (prod.img || prod.imageUrl)) imagesArr = [prod.img || prod.imageUrl];
+
     const prodOffers = offersByProduct[prod._id] || [];
+
+    // Thumbnails
+    let thumbsHtml = '';
+    if (imagesArr.length) {
+      thumbsHtml = `<div class="product-thumb-list">` +
+        imagesArr.map(url => `<img src="${url}" alt="thumb" />`).join('') +
+        `</div>`;
+    }
+
+    // Main preview (first image)
+    let mainImg = imagesArr[0] || '';
+
     el.innerHTML += `
       <div class="prod-card-gradient rounded-2xl shadow p-4 flex flex-col md:flex-row gap-4 items-center border border-yellow-200 relative group">
-        <div class="relative w-full md:w-40 flex-shrink-0 flex items-center justify-center">
-          <img src="${imgUrl}" alt="${prod.title}" class="h-28 w-full object-contain bg-gray-100 rounded-lg shadow" />
+        <div class="relative w-full md:w-40 flex-shrink-0 flex flex-col items-center justify-center">
+          <img src="${mainImg}" alt="${prod.title}" class="h-28 w-full object-contain bg-gray-100 rounded-lg shadow mb-2" />
+          ${thumbsHtml}
           ${statusBadge(prod.status, prod.approved)}
         </div>
         <div class="flex-1 flex flex-col justify-between py-2">
@@ -164,18 +175,74 @@ window.updateOfferStatus = async function (offerId, status) {
 document.getElementById('addProductBtn').addEventListener('click', function () {
   document.getElementById('addProductModal').classList.remove('hidden');
   document.getElementById('addProductForm').reset();
+  setImageFields(); // always reset image fields to one empty field
   editingProductId = null;
 });
 document.getElementById('closeAddModal').addEventListener('click', function () {
   document.getElementById('addProductModal').classList.add('hidden');
 });
 let editingProductId = null;
+
+// --- Dynamic multi-image logic ---
+function createImageField(value = "", idx = null) {
+  const div = document.createElement("div");
+  div.className = "flex gap-2 items-center";
+  const input = document.createElement("input");
+  input.type = "url";
+  input.placeholder = "Image URL";
+  input.required = true;
+  input.className = "flex-1 px-3 py-2 border rounded";
+  input.value = value || "";
+  input.name = "prodImageInput";
+  if (idx !== null) input.dataset.idx = idx;
+  const removeBtn = document.createElement("button");
+  removeBtn.type = "button";
+  removeBtn.className = "text-red-400 hover:text-red-700 text-lg font-bold px-1";
+  removeBtn.innerHTML = "&times;";
+  removeBtn.onclick = () => {
+    div.remove();
+  };
+  div.appendChild(input);
+  div.appendChild(removeBtn);
+  return div;
+}
+
+function getAllImageFieldValues() {
+  return Array.from(document.querySelectorAll('#product-img-fields input[name="prodImageInput"]'))
+    .map(i => i.value.trim()).filter(Boolean);
+}
+
+function setImageFields(urls = []) {
+  const fieldsDiv = document.getElementById('product-img-fields');
+  fieldsDiv.innerHTML = "";
+  if (!Array.isArray(urls) || urls.length === 0) urls = [""];
+  urls.forEach((url, i) => {
+    fieldsDiv.appendChild(createImageField(url, i));
+  });
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+  // On modal open, ensure at least one field
+  document.getElementById('addProductBtn').addEventListener('click', function () {
+    setImageFields();
+  });
+
+  // Plus button to add more fields
+  document.getElementById('add-img-field-btn').onclick = function() {
+    const fieldsDiv = document.getElementById('product-img-fields');
+    if (fieldsDiv.children.length < 8) {
+      fieldsDiv.appendChild(createImageField());
+    }
+  };
+});
+
 document.getElementById('addProductForm').addEventListener('submit', async function (e) {
   e.preventDefault();
-  const imagesArr = document.getElementById('prodImgs').value
-    .split('\n')
-    .map(url => url.trim())
-    .filter(Boolean);
+  const imagesArr = getAllImageFieldValues();
+  if (imagesArr.length === 0) {
+    alert("Please provide at least one product image.");
+    return;
+  }
   const prod = {
     title: document.getElementById('prodTitle').value,
     category: document.getElementById('prodCategory').value,
@@ -195,6 +262,7 @@ document.getElementById('addProductForm').addEventListener('submit', async funct
     await fetchProductsAndOffers();
     document.getElementById('addProductModal').classList.add('hidden');
     this.reset();
+    setImageFields();
     editingProductId = null;
   } catch (err) {
     alert("Error saving product: " + err.message);
@@ -244,9 +312,7 @@ window.editProduct = function (id) {
   document.getElementById('prodCategory').value = prod.category || '';
   document.getElementById('prodPrice').value = prod.price || '';
   document.getElementById('prodDesc').value = prod.desc || prod.description || '';
-  document.getElementById('prodImgs').value = Array.isArray(prod.images)
-    ? prod.images.join('\n')
-    : (prod.img || prod.imageUrl || '');
+  setImageFields(Array.isArray(prod.images) ? prod.images : (prod.img || prod.imageUrl ? [prod.img || prod.imageUrl] : [""]));
   editingProductId = id;
 };
 window.unpublishProduct = async function (id) {
