@@ -77,13 +77,33 @@
           <button id="chat-seller-btn" class="ml-auto px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition">💬 Chat Seller</button>
         </div>
         <div id="product-description" class="mt-2 text-gray-800"></div>
-        <div class="flex gap-2 mt-2">
-          <button id="send-offer-btn" class="px-5 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition">Send Offer</button>
-          <button id="share-btn" class="px-4 py-2 bg-gray-200 text-gray-900 rounded-lg hover:bg-gray-300 transition">Share</button>
-        </div>
+        <!-- Add to Product Details Buttons section -->
+<div class="flex gap-2 mt-2">
+  <button id="send-offer-btn" class="px-5 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition">Send Offer</button>
+  <button id="add-to-cart-btn" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition">Add to Cart</button>
+  <button id="share-btn" class="px-4 py-2 bg-gray-200 text-gray-900 rounded-lg hover:bg-gray-300 transition">Share</button>
+</div>
       </div>
     </div>
 
+
+<!-- Chat Seller Modal -->
+<div id="chatSellerModal" tabindex="-1" class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto h-[calc(100%-1rem)] max-h-full bg-black/40 flex items-center justify-center">
+  <div class="relative bg-white rounded-lg shadow w-full max-w-md mx-auto flex flex-col">
+    <div class="flex items-center justify-between p-4 border-b rounded-t">
+      <h3 class="text-xl font-semibold">Chat with Seller</h3>
+      <button type="button" class="text-gray-400 hover:text-gray-900" onclick="closeChatModal()">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24"><path stroke="currentColor" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div id="chatMessages" class="flex-1 overflow-y-auto p-4 bg-gray-50 h-64"></div>
+    <form id="chatForm" class="flex gap-2 p-4 border-t">
+      <input id="chatInput" type="text" class="flex-1 border rounded px-3 py-2" placeholder="Type your message..." required>
+      <button type="submit" class="px-3 py-2 bg-blue-600 text-white rounded">Send</button>
+    </form>
+    <div id="chatResponse" class="p-2 text-center text-green-600 hidden"></div>
+  </div>
+</div>
     <!-- Reviews (with add form) -->
     <div class="mt-8 max-w-2xl mx-auto" id="reviews-section">
       <h3 class="font-semibold mb-2 text-lg text-blue-900">Ratings & Reviews</h3>
@@ -681,6 +701,128 @@ ${offerMessage}
       setupAddReview(product._id||product.id);
       renderRelatedItems(product, allProducts);
     });
+
+
+  // ========== ADD TO CART ==========
+  document.getElementById('add-to-cart-btn').onclick = async function() {
+    if (!buyerProfile || !buyerProfile.user) {
+      alert("Sign in to add to cart!");
+      window.location.href = "/login";
+      return;
+    }
+    const token = localStorage.getItem("token");
+    const productId = currentProduct._id || currentProduct.id;
+    try {
+      const res = await fetch(BACKEND + "/api/cart/add", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + token
+        },
+        body: JSON.stringify({
+          productId,
+          quantity: 1
+        })
+      });
+      if (res.ok) {
+        alert("Item added to cart!");
+      } else {
+        alert("Failed to add to cart.");
+      }
+    } catch (e) {
+      alert("Failed to add to cart.");
+    }
+  };
+
+  // ========== CHAT SELLER ==========
+  let chatSellerId = null;
+  document.getElementById('chat-seller-btn').onclick = async function(){
+    if(!buyerProfile || !buyerProfile.user){
+      alert("Sign in to chat with seller!");
+      window.location.href = "/login";
+      return;
+    }
+    chatSellerId = currentProduct.sellerId || currentProduct.seller || currentProduct.authorId;
+    openChatModal();
+    await loadChatHistory();
+  };
+
+  function openChatModal() {
+    document.getElementById("chatSellerModal").classList.remove("hidden");
+    document.getElementById("chatMessages").innerHTML = '<div class="text-gray-400 text-center my-4">Loading chat...</div>';
+    document.getElementById("chatResponse").classList.add("hidden");
+  }
+  function closeChatModal() {
+    document.getElementById("chatSellerModal").classList.add("hidden");
+    document.getElementById("chatInput").value = "";
+  }
+
+  // Fetch chat history with this seller from backend
+  async function loadChatHistory() {
+    const token = localStorage.getItem("token");
+    try {
+      const res = await fetch(BACKEND + `/api/blogger-dashboard/messages/${chatSellerId}`, {
+        headers: { "Authorization": "Bearer " + token }
+      });
+      const messages = res.ok ? await res.json() : [];
+      renderChatMessages(messages);
+    } catch {
+      renderChatMessages([]);
+    }
+  }
+  function renderChatMessages(messages) {
+    const box = document.getElementById("chatMessages");
+    if (!messages.length) {
+      box.innerHTML = '<div class="text-gray-400 text-center my-4">No messages yet. Start the conversation!</div>';
+      return;
+    }
+    box.innerHTML = messages.map(msg => `
+      <div class="mb-2 flex ${msg.senderId === buyerProfile.user._id ? 'justify-end' : 'justify-start'}">
+        <div class="rounded px-3 py-2 ${msg.senderId === buyerProfile.user._id ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-900'} max-w-[80%]">
+          <span class="block text-xs text-gray-100/90">${msg.senderName || ''}</span>
+          ${msg.text}
+          <div class="text-[10px] text-gray-200/80 text-right">${msg.date ? new Date(msg.date).toLocaleTimeString() : ''}</div>
+        </div>
+      </div>
+    `).join("");
+    box.scrollTop = box.scrollHeight;
+  }
+
+  // Send chat message to backend
+  document.getElementById("chatForm").onsubmit = async function(e) {
+    e.preventDefault();
+    const input = document.getElementById("chatInput");
+    const text = input.value.trim();
+    if (!text) return;
+    const token = localStorage.getItem("token");
+    try {
+      const res = await fetch(BACKEND + "/api/blogger-dashboard/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + token
+        },
+        body: JSON.stringify({
+          sellerId: chatSellerId,
+          text,
+          productId: currentProduct._id || currentProduct.id
+        })
+      });
+      if (res.ok) {
+        input.value = "";
+        await loadChatHistory();
+        document.getElementById("chatResponse").classList.add("hidden");
+      } else {
+        document.getElementById("chatResponse").textContent = "Failed to send message.";
+        document.getElementById("chatResponse").classList.remove("hidden");
+      }
+    } catch {
+      document.getElementById("chatResponse").textContent = "Failed to send message.";
+      document.getElementById("chatResponse").classList.remove("hidden");
+    }
+  };
+
+
   </script>
 </body>
 </html>
