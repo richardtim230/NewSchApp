@@ -81,7 +81,12 @@ function renderProducts() {
   }
   el.innerHTML = "";
   products.forEach(prod => {
-    const imgUrl = prod.img || prod.imageUrl || '';
+    // Support new multi-image logic: show first image, fallback to old
+    let imgUrl = '';
+    if (Array.isArray(prod.images) && prod.images.length > 0)
+      imgUrl = prod.images[0];
+    else
+      imgUrl = prod.img || prod.imageUrl || '';
     const prodOffers = offersByProduct[prod._id] || [];
     el.innerHTML += `
       <div class="prod-card-gradient rounded-2xl shadow p-4 flex flex-col md:flex-row gap-4 items-center border border-yellow-200 relative group">
@@ -167,12 +172,17 @@ document.getElementById('closeAddModal').addEventListener('click', function () {
 let editingProductId = null;
 document.getElementById('addProductForm').addEventListener('submit', async function (e) {
   e.preventDefault();
+  const imagesArr = document.getElementById('prodImgs').value
+    .split('\n')
+    .map(url => url.trim())
+    .filter(Boolean);
   const prod = {
     title: document.getElementById('prodTitle').value,
     category: document.getElementById('prodCategory').value,
     price: Number(document.getElementById('prodPrice').value),
     description: document.getElementById('prodDesc').value,
-    img: document.getElementById('prodImg').value,
+    images: imagesArr,
+    img: imagesArr[0] || '',
     status: "Active",
     sales: 0
   };
@@ -234,7 +244,9 @@ window.editProduct = function (id) {
   document.getElementById('prodCategory').value = prod.category || '';
   document.getElementById('prodPrice').value = prod.price || '';
   document.getElementById('prodDesc').value = prod.desc || prod.description || '';
-  document.getElementById('prodImg').value = prod.img || prod.imageUrl || '';
+  document.getElementById('prodImgs').value = Array.isArray(prod.images)
+    ? prod.images.join('\n')
+    : (prod.img || prod.imageUrl || '');
   editingProductId = id;
 };
 window.unpublishProduct = async function (id) {
