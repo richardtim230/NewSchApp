@@ -277,12 +277,31 @@ window.closePostModal = function() {
       return Array.isArray(data.users) ? data.users : Array.isArray(data) ? data : [];
     }
     async function fetchAllBloggers() {
-      showBloggersLoader(true);
-      const res = await fetch(BACKEND + "/api/users?role=blogger", { headers: authHeader() });
-      showBloggersLoader(false);
-      const data = await res.json();
-      return Array.isArray(data.users) ? data.users : Array.isArray(data) ? data : [];
-    }
+  showBloggersLoader(true);
+
+  // Try fetching both roles at once if supported
+  let bloggers = [];
+  try {
+    // If backend supports comma-separated roles
+    const res = await fetch(BACKEND + "/api/users?role=blogger,pending_blogger", { headers: authHeader() });
+    const data = await res.json();
+    bloggers = Array.isArray(data.users) ? data.users : Array.isArray(data) ? data : [];
+  } catch {
+    // Fallback: fetch both roles separately and merge
+    const [bloggerRes, pendingRes] = await Promise.all([
+      fetch(BACKEND + "/api/users?role=blogger", { headers: authHeader() }),
+      fetch(BACKEND + "/api/users?role=pending_blogger", { headers: authHeader() })
+    ]);
+    let bloggers1 = [];
+    let bloggers2 = [];
+    try { bloggers1 = Array.isArray(await bloggerRes.json()) ? await bloggerRes.json() : (await bloggerRes.json()).users || []; } catch {}
+    try { bloggers2 = Array.isArray(await pendingRes.json()) ? await pendingRes.json() : (await pendingRes.json()).users || []; } catch {}
+    bloggers = [...bloggers1, ...bloggers2];
+  }
+
+  showBloggersLoader(false);
+  return bloggers;
+}
     async function fetchAllPosts() {
       showPostsLoader(true);
       const res = await fetch(BACKEND + "/api/blogger-dashboard/admin/allposts", { headers: authHeader() });
