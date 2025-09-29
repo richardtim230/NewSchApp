@@ -337,7 +337,7 @@ async function renderReviews(productId) {
           ${r.avatar ? `<img src="${r.avatar}" class="w-full h-full object-cover rounded-full"/>` : (r.user && r.user[0] ? r.user[0].toUpperCase() : "U")}
         </div>
         <div class="flex-1">
-          <div class="font-semibold text-sm">${r.user || "User"} <span class="text-yellow-500">${getStarRating(r.rating)}</span></div>
+          <div class="font-semibold text-sm">${r.username ||r.fullname || "User"} <span class="text-yellow-500">${getStarRating(r.rating)}</span></div>
           <div class="text-gray-700 text-sm">${r.comment}</div>
           <div class="text-xs text-gray-400 mt-1">${r.date ? new Date(r.date).toLocaleString() : ""}</div>
         </div>
