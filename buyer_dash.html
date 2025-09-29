@@ -256,6 +256,33 @@
     </section>
   </main>
 
+  <!-- Chat Seller Modal -->
+  <div id="chatSellerModal" tabindex="-1" class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto h-[calc(100%-1rem)] max-h-full modal-bg flex items-center justify-center">
+    <div class="relative bg-white rounded-lg shadow w-full max-w-md mx-auto flex flex-col">
+      <div class="flex items-center justify-between p-4 border-b rounded-t">
+        <h3 class="text-xl font-semibold" id="chatHeader"></h3>
+        <button type="button" class="text-gray-400 hover:text-gray-900" onclick="closeChatModal()">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24"><path stroke="currentColor" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div id="chatMessages" class="flex-1 overflow-y-auto p-4 bg-gray-50 h-64"></div>
+      <form id="chatSendForm" class="flex gap-2 p-4 border-t">
+        <input id="chatMsgInput" type="text" class="flex-1 border rounded px-3 py-2" placeholder="Type your message..." required>
+        <button type="submit" class="px-3 py-2 bg-blue-600 text-white rounded">Send</button>
+      </form>
+      <div id="chatResponse" class="p-2 text-center text-green-600 hidden"></div>
+    </div>
+  </div>
+
+  <!-- Image Lightbox Modal -->
+  <div id="lightbox-modal" class="fixed inset-0 z-50 hidden items-center justify-center modal-bg">
+    <button type="button" class="absolute top-4 right-4 text-white text-2xl font-bold p-2 bg-black/70 rounded-full z-10" onclick="closeImageModal()">✕</button>
+    <div class="flex flex-col items-center justify-center">
+      <img id="lightbox-img" src="" alt="Full Image" class="max-h-[90vh] max-w-[96vw] rounded-lg shadow-xl border-4 border-white"/>
+      <div id="lightbox-thumbs" class="mt-4 flex gap-2"></div>
+    </div>
+  </div>
+
 <script>
 const BACKEND = "https://examguide.onrender.com";
 function getToken() {
@@ -304,7 +331,7 @@ async function fetchOrders() {
     if (res.ok) {
       const cart = await res.json();
       orders = cart.items || [];
-      renderOrders();
+      await renderOrders();
       updatePoints();
       updateCashbackAndCoupons();
     } else {
@@ -314,34 +341,196 @@ async function fetchOrders() {
     document.getElementById('ordersList').innerHTML = `<div class="text-red-500 py-8 text-center">Failed to load orders.</div>`;
   }
 }
-function renderOrders() {
+
+// Helper to fetch product details if not populated
+async function fetchProduct(productId) {
+  try {
+    const res = await fetch(BACKEND + "/api/blogger-dashboard/public/listings/" + productId, {headers: authHeader()});
+    if (res.ok) {
+      return await res.json();
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+// --- CHAT MODAL LOGIC ---
+let messages = [];
+let currentChatSellerId = null;
+function openChatModal(sellerId, sellerName) {
+  currentChatSellerId = sellerId;
+  document.getElementById("chatSellerModal").classList.remove("hidden");
+  document.getElementById("chatMessages").innerHTML = '<div class="text-gray-400 text-center my-4">Loading chat...</div>';
+  document.getElementById("chatHeader").textContent = sellerName;
+  document.getElementById("chatResponse").classList.add("hidden");
+  loadChatHistory(sellerId);
+}
+function closeChatModal() {
+  document.getElementById("chatSellerModal").classList.add("hidden");
+  document.getElementById("chatMsgInput").value = "";
+}
+
+// --- IMAGE MODAL LOGIC ---
+function openImageModal(images) {
+  document.getElementById("lightbox-modal").classList.remove("hidden");
+  document.getElementById("lightbox-img").src = images[0];
+  // Thumbnails
+  const thumbsDiv = document.getElementById("lightbox-thumbs");
+  thumbsDiv.innerHTML = "";
+  images.forEach((img, idx) => {
+    const thumb = document.createElement("img");
+    thumb.src = img;
+    thumb.alt = "Image " + (idx+1);
+    thumb.className = "h-16 w-16 rounded border-2 border-gray-200 cursor-pointer object-cover";
+    thumb.onclick = () => {
+      document.getElementById("lightbox-img").src = img;
+    };
+    thumbsDiv.appendChild(thumb);
+  });
+}
+function closeImageModal() {
+  document.getElementById("lightbox-modal").classList.add("hidden");
+  document.getElementById("lightbox-thumbs").innerHTML = "";
+}
+
+// --- REMOVE FROM CART ---
+async function removeFromCart(productId) {
+  try {
+    const res = await fetch(BACKEND + "/api/cart/remove", {
+      method: "POST",
+      headers: authHeader(),
+      body: JSON.stringify({ productId })
+    });
+    if (res.ok) {
+      orders = orders.filter(o => {
+        let pid = o.productId._id || o.productId;
+        return pid !== productId;
+      });
+      await renderOrders();
+    } else {
+      alert("Failed to remove item!");
+    }
+  } catch {
+    alert("Failed to remove item!");
+  }
+}
+
+// --- CHAT SELLER FUNCTIONALITY ---
+async function loadChatHistory(sellerId) {
+  if (!getToken() || !sellerId) return;
+  try {
+    const res = await fetch(BACKEND + `/api/blogger-dashboard/massages/${sellerId}`, {headers: authHeader()});
+    const msgs = res.ok ? await res.json() : [];
+    messages = msgs;
+    renderChatMessages();
+  } catch {
+    messages = [];
+    renderChatMessages();
+  }
+}
+
+function renderChatMessages() {
+  const chatBox = document.getElementById('chatMessages');
+  chatBox.innerHTML = "";
+  if (!messages.length) {
+    chatBox.innerHTML = '<div class="text-gray-400 text-center my-4">No messages yet. Start the conversation!</div>';
+    return;
+  }
+  messages.forEach(msg => {
+    chatBox.innerHTML += `
+      <div class="mb-2 flex ${msg.senderId === userProfile?._id ? 'justify-end' : 'justify-start'}">
+        <span class="inline-block px-3 py-2 rounded-xl ${msg.senderId === userProfile?._id ? "bg-yellow-400 text-blue-900" : "bg-blue-900 text-yellow-400"}">
+          <span class="block text-xs">${msg.senderName || ''}</span>
+          ${msg.text}
+          <div class="text-[10px] text-gray-400 text-right">${msg.date ? new Date(msg.date).toLocaleTimeString() : ''}</div>
+        </span>
+      </div>
+    `;
+  });
+  chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+document.getElementById('chatSendForm').addEventListener('submit', async function(e){
+  e.preventDefault();
+  const input = document.getElementById('chatMsgInput');
+  const text = input.value.trim();
+  if (!text || !currentChatSellerId) return;
+  try {
+    const res = await fetch(BACKEND + "/api/blogger-dashboard/massages", {
+      method: "POST",
+      headers: authHeader(),
+      body: JSON.stringify({
+        sellerId: currentChatSellerId,
+        text,
+        productId: "" // Optionally: pass last ordered product id
+      })
+    });
+    if (res.ok) {
+      input.value = "";
+      await loadChatHistory(currentChatSellerId);
+    } else {
+      alert("Failed to send message.");
+    }
+  } catch {
+    alert("Failed to send message.");
+  }
+});
+
+// --- FULLY INTEGRATED RENDER ORDERS ---
+async function renderOrders() {
   const el = document.getElementById('ordersList');
   if (!orders.length) {
     el.innerHTML = `<div class="text-gray-500 text-center py-8">You have no orders yet.</div>`;
     return;
   }
-  el.innerHTML = "";
-  orders.forEach(order => {
-    const product = order.productId || {};
-    el.innerHTML += `
+
+  const productPromises = orders.map(async order => {
+    let product = order.productId;
+    if (!product || !product.title) {
+      product = await fetchProduct(order.productId._id || order.productId);
+    }
+    return { order, product };
+  });
+
+  const orderProducts = await Promise.all(productPromises);
+
+  el.innerHTML = orderProducts.map(({ order, product }) => {
+    const images = Array.isArray(product.images) && product.images.length ? product.images : [product.img || product.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(product.title || 'Product')}&background=eee&color=263159&rounded=true`];
+    const seller = product.seller || product.authorName || "Seller";
+    const sellerId = product.sellerId || product.seller;
+    const dateOrdered = order.addedAt ? new Date(order.addedAt).toLocaleString() : "";
+    const imageBtnId = `preview-btn-${product._id || product.id}`;
+    return `
       <div class="order-card-gradient rounded-2xl shadow p-4 flex flex-col md:flex-row gap-4 items-center border border-yellow-200">
         <div class="relative w-full md:w-48 flex-shrink-0 flex items-center justify-center">
-          <img src="${product.img || product.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(product.title || 'Product') + '&background=eee&color=263159&rounded=true'}" alt="${product.title || ''}" class="h-32 w-full object-cover rounded-lg shadow" />
+          <img src="${images[0]}" alt="${product.title || ''}" class="rounded-xl h-36 w-36 object-cover border border-yellow-100"/>
+          ${images.length > 1 ? `<button id="${imageBtnId}" class="absolute bottom-2 right-2 bg-white px-2 py-1 rounded text-xs shadow" style="z-index:2;">View All</button>` : ""}
         </div>
         <div class="flex-1 flex flex-col justify-between py-2">
           <div>
-            <div class="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs mb-2">${product.seller || ''}</div>
+            <div class="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs mb-2">${seller}</div>
             <h3 class="font-bold text-lg md:text-xl text-blue-900 mb-1">${product.title || ''}</h3>
             <div class="text-sm text-gray-700 mb-2">Quantity: ${order.quantity}</div>
+            <div class="text-xs text-gray-500 mb-2">Ordered: ${dateOrdered}</div>
+          </div>
+          <div class="flex gap-2 mt-2">
+            <a href="items.html?id=${product._id || product.id}" target="_blank" class="bg-yellow-400 text-blue-900 px-4 py-2 rounded font-bold hover:bg-blue-900 hover:text-yellow-400 transition">View Details</a>
+            <button class="bg-blue-600 text-white px-4 py-2 rounded font-bold hover:bg-blue-900 transition" onclick="openChatModal('${sellerId}', '${seller}')">Chat Seller</button>
+            <button class="bg-red-500 text-white px-4 py-2 rounded font-bold hover:bg-red-700 transition" onclick="removeFromCart('${product._id || product.id}')">Remove</button>
           </div>
         </div>
       </div>
+      ${images.length > 1 ?
+        `<script>document.getElementById('${imageBtnId}').onclick = function(){openImageModal(${JSON.stringify(images)});};</script>` : ""}
     `;
-  });
+  }).join("");
 }
-window.viewOrderDetails = function(orderId) {
-  alert("Order details coming soon! Order ID: " + orderId);
-};
+
+// IMAGE MODAL CLOSE HANDLER (click outside image)
+document.getElementById("lightbox-modal").addEventListener("click", function(e){
+  if (e.target === this) closeImageModal();
+});
 
 // --- WISHLIST ---
 let wishlist = [];
@@ -370,7 +559,7 @@ function renderWishlist() {
     el.innerHTML += `
       <div class="wishlist-card-gradient rounded-2xl shadow p-4 flex flex-col md:flex-row gap-4 items-center border border-blue-200">
         <div class="relative w-full md:w-48 flex-shrink-0 flex items-center justify-center">
-          <img src="${item.img || item.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(item.title || 'Product') + '&background=eee&color=263159&rounded=true'}" alt="${item.title}" class="h-32 w-full object-cover rounded-lg shadow" />
+          <img src="${item.img || item.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(item.title || 'Product') + '&background=eee&color=263159&rounded=true'}" alt="${item.title}" class="rounded-xl h-36 w-36 object-cover border border-blue-100"/>
           <button class="absolute top-2 right-2 wishlist-heart rounded-full p-2 focus:outline-none" aria-label="Remove from wishlist" onclick="removeFromWishlist('${item._id || item.id}')">
             <svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
               <path d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z"></path>
@@ -433,7 +622,6 @@ function updatePoints() {
   document.getElementById('rewardTotal').textContent = pts;
 }
 function updateCashbackAndCoupons() {
-  // Placeholder logic: sum cashback and coupons from orders if fields exist
   let cashback = orders.reduce((a, b) => a + (b.cashback || 0), 0);
   let coupons = orders.reduce((a, b) => a + (b.coupons || 0), 0);
   document.getElementById('cashbackTotal').textContent = "₦" + cashback.toLocaleString();
@@ -443,7 +631,6 @@ function updateCashbackAndCoupons() {
 function renderRecentRewards() {
   let el = document.getElementById('recentRewards');
   el.innerHTML = "";
-  // Example: list last 5 orders with points/cashback/coupons
   orders.slice(-5).reverse().forEach(order => {
     let msg = "";
     if (order.points) msg += `+${order.points} points for buying <span class="text-yellow-700 font-semibold">${order.title}</span>`;
@@ -453,16 +640,11 @@ function renderRecentRewards() {
   });
 }
 
-// --- MESSAGES (PRODUCTION, BACKEND) ---
-let messages = [];
+// --- MESSAGES (production: backend) ---
 let sellers = [];
-let currentChatSellerId = null;
 async function fetchMessages() {
   if (!getToken()) return;
-  // Fetch all sellers the user has messaged with
-  // For demo: get from orders' sellers
   sellers = [...new Set(orders.map(o => o.sellerId || o.seller).filter(Boolean))];
-  // Default: show first seller's chat if available
   if (sellers.length) {
     openChat(sellers[0]);
   }
@@ -548,7 +730,6 @@ document.getElementById('chatSendForm').addEventListener('submit', async functio
     alert("Failed to send message.");
   }
 });
-// Messages search
 document.getElementById('chatSearchInput').addEventListener('input', function(){
   const val = this.value.toLowerCase();
   const chatList = document.getElementById('chatList');
