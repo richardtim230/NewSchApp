@@ -6,7 +6,6 @@
   <title>OAU ExamGuard Marketplace | Buy & Sell</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.2.1/flowbite.min.css" rel="stylesheet"/>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.2.1/flowbite.min.js"></script>
   <style>
     .gold-accent { color: #f59e42; }
     .navy-bg { background-color: #1e293b; }
@@ -20,7 +19,6 @@
       .market-hero-bg { background-position: 60% center; }
     }
     .dark .dark-invert { filter: invert(1) hue-rotate(180deg); }
-    /* Ensure images show full content not cut */
     .market-img-full {
       object-fit: contain !important;
       background: #f3f4f6;
@@ -41,6 +39,31 @@
     .category-tab:hover {
       background-color: #fde68a;
       color: #1e293b;
+    }
+    .btn-loader {
+      pointer-events: none;
+      opacity: 0.7;
+      position: relative;
+    }
+    .btn-loader .spinner {
+      display: inline-block;
+      margin-left: 0.5rem;
+      width: 1rem;
+      height: 1rem;
+      border: 2px solid #fff;
+      border-top: 2px solid #fbbf24;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg);}
+    }
+    .spinner-center {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 160px;
     }
   </style>
 </head>
@@ -124,15 +147,12 @@
       <h2 class="text-2xl font-bold text-blue-900">Latest Listings</h2>
       <span id="listingCount" class="text-gray-500 text-sm"></span>
     </div>
-    <div id="marketGrid" class="grid gap-6 md:grid-cols-3 sm:grid-cols-2"></div>
-    <!-- Pagination (demo, not functional) -->
-    <div class="flex justify-center mt-8 gap-2">
-      <button class="bg-blue-900 text-white px-4 py-2 rounded hover:bg-yellow-600 hover:text-blue-900 transition">Prev</button>
-      <button class="bg-yellow-500 text-blue-900 px-4 py-2 rounded font-bold">1</button>
-      <button class="bg-white border px-4 py-2 rounded text-blue-900 hover:bg-yellow-100 transition">2</button>
-      <button class="bg-white border px-4 py-2 rounded text-blue-900 hover:bg-yellow-100 transition">3</button>
-      <button class="bg-blue-900 text-white px-4 py-2 rounded hover:bg-yellow-600 hover:text-blue-900 transition">Next</button>
+    <div id="marketLoader" class="spinner-center hidden">
+      <div class="spinner" style="border-color:#1e293b;border-top-color:#fbbf24;width:2.5rem;height:2.5rem"></div>
     </div>
+    <div id="marketGrid" class="grid gap-6 md:grid-cols-3 sm:grid-cols-2"></div>
+    <!-- Pagination -->
+    <div class="flex justify-center mt-8 gap-2" id="pagination"></div>
   </section>
 
   <!-- Post Item Modal (Flowbite) -->
@@ -260,367 +280,343 @@
           <textarea class="w-full px-3 py-2 border rounded" id="offerReasonInput" placeholder="Explain why you chose this offer or add a note for seller..." rows="2" required></textarea>
           <label class="block font-medium mt-2">Send Message (optional)</label>
           <textarea class="w-full px-3 py-2 border rounded" id="offerMsgInput" placeholder="Extra message for seller..." rows="2"></textarea>
-          <button type="submit" class="w-full py-2 bg-yellow-500 text-blue-900 font-bold rounded hover:bg-blue-900 hover:text-yellow-400 transition">Send Offer</button>
+          <button type="submit" id="offerSubmitBtn" class="w-full py-2 bg-yellow-500 text-blue-900 font-bold rounded hover:bg-blue-900 hover:text-yellow-400 transition">Send Offer</button>
         </form>
         <div id="offerResponse" class="p-3 text-center text-green-600 hidden"></div>
       </div>
     </div>
   </div>
- <script>
+  <script>
     // === MARKETPLACE BACKEND INTEGRATION ===
-    const BACKEND = "https://examguide.onrender.com";
-    let marketItems = [];
-    let filteredItems = [];
-    const wishlist = new Set();
-    let buyerProfile = null;
+const BACKEND = "https://examguide.onrender.com";
+let marketItems = [];
+let filteredItems = [];
+const wishlist = new Set();
+let buyerProfile = null;
+let currentPage = 1;
+let totalItems = 0;
+let pageLimit = 20;
+let pageCategory = "All";
+let pageSearch = "";
 
-    // Auth check
-    async function checkAuth() {
-      try {
-        const token = localStorage.getItem("token");
-        if (token) {
-          const res = await fetch(BACKEND+"/api/auth/me", { headers: { "Authorization": "Bearer " + token } });
-          if (res.ok) {
-            buyerProfile = await res.json();
-            return true;
-          }
-        }
-      } catch (e) {}
-      buyerProfile = null;
-      return false;
-    }
-
-    // Fetch all published/active items from all sellers
-    async function fetchAllListings() {
-      try {
-        const res = await fetch(BACKEND + "/api/blogger-dashboard/public/listings");
-        if (!res.ok) throw new Error("Could not fetch listings");
-        const data = await res.json();
-        // Normalizing results for UI compatibility
-        marketItems = (data || []).map(item => ({
-          id: item._id || item.id,
-          title: item.title || item.item,
-          price: item.price,
-          category: item.category || "Others",
-          description: item.description || "",
-          image: item.img || item.imageUrl || "https://placehold.co/400x300?text=No+Image",
-          seller: item.sellerName || item.seller || "Unknown",
-          sellerId: item.sellerId || item.owner || "",
-          verified: item.verified || false,
-          rating: item.rating || (4 + Math.random()), // fallback random
-          reviews: item.reviews || Math.floor(Math.random() * 10) + 1,
-          date: item.date || "Recently"
-        }));
-        filteredItems = [...marketItems];
-        renderMarket(filteredItems);
-      } catch (err) {
-        document.getElementById('marketGrid').innerHTML = "<div class='col-span-3 text-center text-red-500 py-10'>Failed to load marketplace items. Please try again later.</div>";
-        document.getElementById('listingCount').textContent = "";
+// --- AUTH CHECK ---
+async function checkAuth() {
+  try {
+    const token = localStorage.getItem("token");
+    if (token) {
+      const res = await fetch(BACKEND+"/api/auth/me", { headers: { "Authorization": "Bearer " + token } });
+      if (res.ok) {
+        buyerProfile = await res.json();
+        return true;
       }
     }
+  } catch (e) {}
+  buyerProfile = null;
+  return false;
+}
 
-    // RENDER MARKETPLACE ITEMS
-    function renderMarket(items) {
-      const grid = document.getElementById('marketGrid');
-      if (!grid) return;
-      grid.innerHTML = "";
-      if (items.length === 0) {
-        grid.innerHTML = "<div class='col-span-3 text-center text-gray-500 py-10'>No items found for your search or filter.</div>";
-      }
-      items.forEach(item => {
-        grid.innerHTML += `
-        <div class="bg-white rounded-xl shadow p-4 flex flex-col hover:shadow-xl transition group relative">
-          <button onclick="toggleWishlist('${item.id}')" aria-label="Save to Wishlist" class="absolute top-3 right-3 text-2xl focus:outline-none transition">
-            <span class="${wishlist.has(item.id) ? 'text-yellow-500' : 'text-gray-300'}">&#10084;</span>
-          </button>
-          <img src="${item.image}" alt="${item.title}" class="market-img-full rounded-lg mb-3 group-hover:scale-105 transition" />
-          <div class="flex-1 flex flex-col">
-            <h3 class="font-bold text-blue-900 text-lg mb-1">${item.title}</h3>
-            <div class="flex items-center text-yellow-500 text-base font-bold mb-2">₦${(item.price||0).toLocaleString()}</div>
-            <div class="text-xs text-gray-400 mb-1">${item.category} &bull; ${item.date}</div>
-            <div class="flex flex-wrap gap-2 mb-2 items-center">
-              <span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs flex items-center gap-1">${item.seller} 
-                ${item.verified ? '<span class="ml-1 inline-block bg-blue-900 text-yellow-400 px-2 rounded-full text-xs font-bold">Verified</span>' : ''}
-              </span>
-              <span class="bg-blue-900 text-white px-2 py-1 rounded text-xs"><span class="font-bold">${item.rating.toFixed(1)}</span> <span class="text-yellow-400">★</span> (${item.reviews})</span>
-            </div>
-            <p class="text-gray-600 mb-3 line-clamp-2">${item.description}</p>
-            <div class="flex gap-2 flex-wrap">
-              <a href="sales/items.html?id=${item.id}" class="mt-auto bg-yellow-500 text-blue-900 px-3 py-2 rounded-lg font-bold hover:bg-blue-900 hover:text-yellow-400 transition">View & Chat</a>
-              <button onclick="openOfferModal('${item.id}')" class="bg-blue-900 text-yellow-400 px-3 py-2 rounded-lg font-bold hover:bg-yellow-500 hover:text-blue-900 transition">Send Offer</button>
-              <button onclick="openReportModal('${item.id}')" aria-label="Report Item" class="ml-auto text-red-600 hover:underline text-xs">Report</button>
-            </div>
-          </div>
-        </div>
-        `;
-      });
-      // Update listing count
-      document.getElementById('listingCount').textContent = `${items.length} listing${items.length !== 1 ? 's' : ''} shown`;
-    }
+// --- LOADING SPINNER HELPERS ---
+function showMarketLoader(show) {
+  document.getElementById('marketLoader').classList.toggle('hidden', !show);
+  document.getElementById('marketGrid').classList.toggle('opacity-40', show);
+}
+function showBtnLoader(btn, loadingText) {
+  if (!btn) return;
+  btn.dataset.oldText = btn.innerHTML;
+  btn.disabled = true;
+  btn.classList.add('btn-loader');
+  btn.innerHTML = `${loadingText || 'Loading...'} <span class="spinner"></span>`;
+}
+function hideBtnLoader(btn) {
+  if (!btn) return;
+  btn.disabled = false;
+  btn.classList.remove('btn-loader');
+  btn.innerHTML = btn.dataset.oldText || btn.innerText || "Action";
+}
 
-    // WISHLIST
-    function toggleWishlist(id) {
-      if (wishlist.has(id)) wishlist.delete(id); else wishlist.add(id);
-      renderMarket(filteredItems);
-    }
+// --- FETCH LISTINGS WITH PAGINATION ---
+async function fetchAllListings(page=1, cat="All", search="") {
+  showMarketLoader(true);
+  let url = BACKEND + `/api/blogger-dashboard/public/listings?page=${page}&limit=${pageLimit}`;
+  let params = [];
+  if (cat && cat !== "All") params.push(`category=${encodeURIComponent(cat)}`);
+  if (search) params.push(`search=${encodeURIComponent(search)}`);
+  if (params.length) url += "&" + params.join("&");
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    let items = data.listings || data;
+    if (Array.isArray(items) && data.total == null) totalItems = items.length;
+    else totalItems = data.total || items.length;
+    marketItems = (items || []).map(item => ({
+      id: item._id || item.id,
+      title: item.title || item.item,
+      price: item.price,
+      category: item.category || "Others",
+      description: item.description || "",
+      image: item.img || item.imageUrl || "https://placehold.co/400x300?text=No+Image",
+      seller: item.sellerName || item.seller || "Unknown",
+      sellerId: item.sellerId || item.owner || "",
+      verified: item.verified || false,
+      rating: item.rating || (4 + Math.random()),
+      reviews: item.reviews || Math.floor(Math.random() * 10) + 1,
+      date: item.date || "Recently"
+    }));
+    filteredItems = [...marketItems];
+    renderMarket(filteredItems);
+    renderPagination();
+  } catch (err) {
+    document.getElementById('marketGrid').innerHTML = "<div class='col-span-3 text-center text-red-500 py-10'>Failed to load marketplace items. Please try again later.</div>";
+    document.getElementById('listingCount').textContent = "";
+    document.getElementById('pagination').innerHTML = "";
+  }
+  showMarketLoader(false);
+}
 
-    // FILTER BY CATEGORY (with active styling)
-    function filterCategory(cat, btn) {
-      if (cat === 'All') {
-        filteredItems = [...marketItems];
-      } else {
-        filteredItems = marketItems.filter(item => item.category === cat);
-      }
-      renderMarket(filteredItems);
-
-      // Highlight the active tab
-      document.querySelectorAll('#categoryTabs button').forEach(b => {
-        b.classList.remove('category-tab-active');
-      });
-      if (btn) btn.classList.add('category-tab-active');
-      else {
-        // fallback: highlight the correct tab based on cat value
-        document.querySelectorAll('#categoryTabs button').forEach(b => {
-          if (b.textContent.trim() === cat) b.classList.add('category-tab-active');
-        });
-      }
-    }
-    // On load, highlight 'All' as active
-    window.addEventListener('DOMContentLoaded', function() {
-      document.querySelectorAll('#categoryTabs button')[0].classList.add('category-tab-active');
-    });
-
-    // SEARCH
-    document.getElementById('searchForm').addEventListener('submit', function(e) {
-      e.preventDefault();
-      const q = document.getElementById('searchInput').value.trim().toLowerCase();
-      if (!q) { renderMarket(filteredItems); return; }
-      const results = filteredItems.filter(item =>
-        item.title.toLowerCase().includes(q) ||
-        item.description.toLowerCase().includes(q)
-      );
-      renderMarket(results);
-    });
-
-    // SORTING
-    document.getElementById('sortSelect').addEventListener('change', function(e){
-      let sorted = [...filteredItems];
-      if (this.value === 'lowprice') sorted.sort((a, b) => a.price - b.price);
-      else if (this.value === 'highprice') sorted.sort((a, b) => b.price - a.price);
-      else sorted = sorted; // Newest, as is
-      renderMarket(sorted);
-    });
-
-    // POST ITEM MODAL DEMO
-    document.getElementById('postItemForm').addEventListener('submit', function(e) {
-      e.preventDefault();
-      alert("Your item will be posted after admin review. (Demo only)");
-      document.querySelector('[data-modal-hide="post-modal"]').click();
-    });
-
-    // ITEM DETAILS MODAL (Wishlist, Report, Offer)
-    let currentItemId = null;
-    function openItemModal(id) {
-      currentItemId = id;
-      const item = marketItems.find(i => i.id === id);
-      if (!item) return;
-      document.getElementById('modalItemContent').innerHTML = `
-        <div class="flex gap-2 items-center mb-2">
-          <img src="${item.image}" alt="${item.title}" class="market-img-full w-24 h-24 object-contain rounded-lg border" />
-          <div>
-            <h3 class="font-bold text-blue-900 text-xl mb-1">${item.title}</h3>
-            <div class="flex items-center text-yellow-500 text-lg font-bold mb-1">₦${item.price.toLocaleString()}</div>
-            <div class="flex gap-2 items-center mb-1">
-              <span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs flex items-center gap-1">${item.seller}
-                ${item.verified ? '<span class="ml-1 inline-block bg-blue-900 text-yellow-400 px-2 rounded-full text-xs font-bold">Verified</span>' : ''}
-              </span>
-              <span class="bg-blue-900 text-white px-2 py-1 rounded text-xs"><span class="font-bold">${item.rating}</span> <span class="text-yellow-400">★</span> (${item.reviews})</span>
-            </div>
-          </div>
-          <button onclick="toggleWishlist(${item.id})" aria-label="Save to Wishlist" class="ml-auto text-2xl focus:outline-none transition">
-            <span class="${wishlist.has(item.id) ? 'text-yellow-500' : 'text-gray-300'}">&#10084;</span>
-          </button>
-        </div>
+// --- RENDER LISTINGS ---
+function renderMarket(items) {
+  const grid = document.getElementById('marketGrid');
+  if (!grid) return;
+  grid.innerHTML = "";
+  if (items.length === 0) {
+    grid.innerHTML = "<div class='col-span-3 text-center text-gray-500 py-10'>No items found for your search or filter.</div>";
+  }
+  items.forEach(item => {
+    grid.innerHTML += `
+    <div class="bg-white rounded-xl shadow p-4 flex flex-col hover:shadow-xl transition group relative">
+      <button onclick="toggleWishlist('${item.id}')" aria-label="Save to Wishlist" class="absolute top-3 right-3 text-2xl focus:outline-none transition">
+        <span class="${wishlist.has(item.id) ? 'text-yellow-500' : 'text-gray-300'}">&#10084;</span>
+      </button>
+      <img src="${item.image}" alt="${item.title}" class="market-img-full rounded-lg mb-3 group-hover:scale-105 transition" />
+      <div class="flex-1 flex flex-col">
+        <h3 class="font-bold text-blue-900 text-lg mb-1">${item.title}</h3>
+        <div class="flex items-center text-yellow-500 text-base font-bold mb-2">₦${(item.price||0).toLocaleString()}</div>
         <div class="text-xs text-gray-400 mb-1">${item.category} &bull; ${item.date}</div>
-        <p class="text-gray-700 mb-3">${item.description}</p>
-        <div class="flex gap-2 mb-3">
-          <button onclick="openReportModal(${item.id})" class="bg-red-100 text-red-700 text-xs px-2 py-1 rounded hover:bg-red-200 transition">Report</button>
-          <button onclick="openOfferModal(${item.id})" class="bg-blue-900 text-yellow-400 text-xs px-2 py-1 rounded hover:bg-yellow-500 hover:text-blue-900 transition">Send Offer</button>
+        <div class="flex flex-wrap gap-2 mb-2 items-center">
+          <span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs flex items-center gap-1">${item.seller} 
+            ${item.verified ? '<span class="ml-1 inline-block bg-blue-900 text-yellow-400 px-2 rounded-full text-xs font-bold">Verified</span>' : ''}
+          </span>
+          <span class="bg-blue-900 text-white px-2 py-1 rounded text-xs"><span class="font-bold">${item.rating.toFixed(1)}</span> <span class="text-yellow-400">★</span> (${item.reviews})</span>
         </div>
-        <form id="itemChatForm" class="flex gap-2 mt-3">
-          <input type="text" placeholder="Message seller..." class="flex-1 px-3 py-2 border rounded" />
-          <button type="submit" class="bg-yellow-500 text-blue-900 px-4 py-2 rounded font-bold hover:bg-blue-900 hover:text-yellow-400 transition">Send</button>
-        </form>
-      `;
-      document.getElementById('item-modal').classList.remove('hidden');
-      document.getElementById('itemChatForm').addEventListener('submit', async function(e){
-        e.preventDefault();
-        await checkAuth();
-        if(!buyerProfile || !buyerProfile.user) {
-          alert("Please sign in to send a message to the seller.");
-          return;
+        <p class="text-gray-600 mb-3 line-clamp-2">${item.description}</p>
+        <div class="flex gap-2 flex-wrap">
+          <a href="sales/items.html?id=${item.id}" class="mt-auto bg-yellow-500 text-blue-900 px-3 py-2 rounded-lg font-bold hover:bg-blue-900 hover:text-yellow-400 transition">View & Chat</a>
+          <button onclick="openOfferModal('${item.id}', this)" class="bg-blue-900 text-yellow-400 px-3 py-2 rounded-lg font-bold hover:bg-yellow-500 hover:text-blue-900 transition offer-btn">Send Offer</button>
+          <button onclick="openReportModal('${item.id}', this)" aria-label="Report Item" class="ml-auto text-red-600 hover:underline text-xs report-btn">Report</button>
+        </div>
+      </div>
+    </div>
+    `;
+  });
+  document.getElementById('listingCount').textContent = `${items.length} listing${items.length !== 1 ? 's' : ''} shown`;
+}
+
+// --- PAGINATION ---
+function renderPagination() {
+  const pagDiv = document.getElementById('pagination');
+  pagDiv.innerHTML = "";
+  if (!totalItems || totalItems <= pageLimit) return;
+  const totalPages = Math.ceil(totalItems / pageLimit);
+  let html = "";
+  html += `<button onclick="gotoPage(${currentPage-1})" ${currentPage<=1?'disabled':''} class="px-3 py-2 rounded bg-blue-900 text-white font-bold hover:bg-yellow-600 hover:text-blue-900 transition disabled:opacity-50 disabled:pointer-events-none">Prev</button>`;
+  for (let i = 1; i <= totalPages; i++) {
+    html += `<button onclick="gotoPage(${i})" class="px-3 py-2 rounded ${i===currentPage ? 'bg-yellow-500 text-blue-900 font-bold' : 'bg-white border text-blue-900 hover:bg-yellow-100 transition'}">${i}</button>`;
+  }
+  html += `<button onclick="gotoPage(${currentPage+1})" ${currentPage>=totalPages?'disabled':''} class="px-3 py-2 rounded bg-blue-900 text-white font-bold hover:bg-yellow-600 hover:text-blue-900 transition disabled:opacity-50 disabled:pointer-events-none">Next</button>`;
+  pagDiv.innerHTML = html;
+}
+window.gotoPage = function(page) {
+  if (page < 1) return;
+  currentPage = page;
+  fetchAllListings(currentPage, pageCategory, pageSearch);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+// --- WISHLIST ---
+function toggleWishlist(id) {
+  if (wishlist.has(id)) wishlist.delete(id); else wishlist.add(id);
+  renderMarket(filteredItems);
+}
+
+// --- CATEGORY FILTER ---
+function filterCategory(cat, btn) {
+  pageCategory = cat;
+  currentPage = 1;
+  fetchAllListings(currentPage, pageCategory, pageSearch);
+  document.querySelectorAll('#categoryTabs button').forEach(b => b.classList.remove('category-tab-active'));
+  if (btn) btn.classList.add('category-tab-active');
+  else {
+    document.querySelectorAll('#categoryTabs button').forEach(b => {
+      if (b.textContent.trim() === cat) b.classList.add('category-tab-active');
+    });
+  }
+}
+window.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('#categoryTabs button')[0].classList.add('category-tab-active');
+});
+
+// --- SEARCH ---
+document.getElementById('searchForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
+  pageSearch = q;
+  currentPage = 1;
+  fetchAllListings(currentPage, pageCategory, pageSearch);
+});
+
+// --- SORTING ---
+document.getElementById('sortSelect').addEventListener('change', function(e){
+  let sorted = [...filteredItems];
+  if (this.value === 'lowprice') sorted.sort((a, b) => a.price - b.price);
+  else if (this.value === 'highprice') sorted.sort((a, b) => b.price - a.price);
+  renderMarket(sorted);
+});
+
+// --- POST ITEM MODAL DEMO ---
+document.getElementById('postItemForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  alert("Your item will be posted after admin review. (Demo only)");
+  document.querySelector('[data-modal-hide="post-modal"]').click();
+});
+
+// --- REPORT MODAL (with loader) ---
+function openReportModal(id, btn) {
+  document.getElementById('report-modal').classList.remove('hidden');
+  document.getElementById('reportForm').dataset.itemId = id;
+}
+document.getElementById('reportForm').addEventListener('submit', async function(e){
+  e.preventDefault();
+  const reportBtn = this.querySelector('button[type="submit"]');
+  showBtnLoader(reportBtn, "Reporting...");
+  setTimeout(() => { // Simulating network, replace with actual AJAX if you connect it
+    hideBtnLoader(reportBtn);
+    alert('Thank you for reporting. Our team will review this item.');
+    document.querySelector('[data-modal-hide="report-modal"]').click();
+  }, 1000);
+});
+document.querySelectorAll('[data-modal-hide="report-modal"]').forEach(btn => {
+  btn.addEventListener('click', () => document.getElementById('report-modal').classList.add('hidden'));
+});
+document.getElementById('report-modal').addEventListener('click', function(e){
+  if(e.target === this) this.classList.add('hidden');
+});
+
+// --- OFFER MODAL (with loader) ---
+let offerItemId = null;
+function openOfferModal(id, btn) {
+  offerItemId = id;
+  document.getElementById('offer-modal').classList.remove('hidden');
+  document.getElementById('offerForm').reset();
+  document.getElementById('offerResponse').classList.add('hidden');
+}
+document.getElementById('offerForm').addEventListener('submit', async function(e){
+  e.preventDefault();
+  await checkAuth();
+  if(!buyerProfile || !buyerProfile.user) {
+    alert("Please sign in to send an offer.");
+    return;
+  }
+  const offerPrice = document.getElementById('offerPriceInput').value;
+  const offerReason = document.getElementById('offerReasonInput').value.trim();
+  const offerMsg = document.getElementById('offerMsgInput').value.trim();
+  if (!offerPrice || !offerReason) {
+    alert("Please enter your offer and a reason for your offer.");
+    return;
+  }
+  const offerBtn = document.getElementById('offerSubmitBtn');
+  showBtnLoader(offerBtn, "Sending...");
+  const item = marketItems.find(i => i.id === offerItemId);
+  const token = localStorage.getItem("token");
+  const fullMessage = `Reason: ${offerReason}\n${offerMsg ? "Message: " + offerMsg : ""}`;
+  try {
+    const res = await fetch(BACKEND + "/api/offers", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + token
+      },
+      body: JSON.stringify({
+        productId: offerItemId,
+        offerPrice,
+        message: fullMessage,
+        buyer: {
+          id: buyerProfile.user._id,
+          name: buyerProfile.user.fullname || buyerProfile.user.username,
+          email: buyerProfile.user.email,
+          phone: buyerProfile.user.phone
         }
-        const msg = this.querySelector('input').value.trim();
-        if (!msg) return;
-        // Send chat message to backend (the backend endpoint would be similar to /api/blogger-dashboard/messages)
-        try {
-          const token = localStorage.getItem("token");
-          // Find sellerId for this item
-          const item = marketItems.find(i => i.id === currentItemId);
-          if (!item.sellerId) return alert("Seller not found for this item.");
-          const res = await fetch(BACKEND + "/api/blogger-dashboard/messages", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": "Bearer " + token
-            },
-            body: JSON.stringify({
-              sellerId: item.sellerId,
-              text: msg,
-              productId: currentItemId
-            })
-          });
-          if (res.ok) {
-            alert("Message sent to seller!");
-            this.reset();
-          } else {
-            alert("Failed to send message.");
-          }
-        } catch {
-          alert("Failed to send message.");
-        }
-      });
+      })
+    });
+    hideBtnLoader(offerBtn);
+    if (res.ok) {
+      document.getElementById('offerResponse').textContent = "Offer sent successfully!";
+      document.getElementById('offerResponse').classList.remove('hidden');
+      this.reset();
+      setTimeout(() => {
+        document.getElementById('offerResponse').classList.add('hidden');
+        document.querySelector('[data-modal-hide="offer-modal"]').click();
+      }, 1500);
+    } else {
+      document.getElementById('offerResponse').textContent = "Failed to send offer.";
+      document.getElementById('offerResponse').classList.remove('hidden');
     }
-    document.querySelectorAll('[data-modal-hide="item-modal"]').forEach(btn => {
-      btn.addEventListener('click', () => document.getElementById('item-modal').classList.add('hidden'));
-    });
+  } catch {
+    hideBtnLoader(offerBtn);
+    document.getElementById('offerResponse').textContent = "Failed to send offer.";
+    document.getElementById('offerResponse').classList.remove('hidden');
+  }
+});
+document.querySelectorAll('[data-modal-hide="offer-modal"]').forEach(btn => {
+  btn.addEventListener('click', () => document.getElementById('offer-modal').classList.add('hidden'));
+});
+document.getElementById('offer-modal').addEventListener('click', function(e){
+  if(e.target === this) this.classList.add('hidden');
+});
 
-    // REPORT MODAL
-    function openReportModal(id) {
-      document.getElementById('report-modal').classList.remove('hidden');
-    }
-    document.getElementById('reportForm').addEventListener('submit', function(e){
-      e.preventDefault();
-      alert('Thank you for reporting. Our team will review this item.');
-      document.querySelector('[data-modal-hide="report-modal"]').click();
-    });
-    document.querySelectorAll('[data-modal-hide="report-modal"]').forEach(btn => {
-      btn.addEventListener('click', () => document.getElementById('report-modal').classList.add('hidden'));
-    });
-    document.getElementById('report-modal').addEventListener('click', function(e){
-      if(e.target === this) this.classList.add('hidden');
-    });
+// --- LIVE CHAT WIDGET DEMO (unchanged) ---
+const chatToggle = document.getElementById('chatToggle');
+const chatWidget = document.getElementById('chatWidget');
+chatToggle.addEventListener('click', () => {
+  chatWidget.classList.toggle('hidden');
+});
+document.getElementById('chatForm').addEventListener('submit', function(e){
+  e.preventDefault();
+  const chatInput = document.getElementById('chatInput');
+  const chatBtn = this.querySelector('button[type="submit"]');
+  showBtnLoader(chatBtn, "Sending...");
+  setTimeout(() => {
+    const msgBox = chatWidget.querySelector('div.h-40');
+    msgBox.innerHTML += `<div class="mb-1"><span class="font-semibold text-blue-900">You:</span> ${chatInput.value}</div>`;
+    msgBox.scrollTop = msgBox.scrollHeight;
+    chatInput.value = "";
+    hideBtnLoader(chatBtn);
+  }, 800);
+});
 
-    // OFFER MODAL
-    let offerItemId = null;
-    function openOfferModal(id) {
-      offerItemId = id;
-      document.getElementById('offer-modal').classList.remove('hidden');
-      document.getElementById('offerForm').reset();
-      document.getElementById('offerResponse').classList.add('hidden');
-    }
-    document.getElementById('offerForm').addEventListener('submit', async function(e){
-      e.preventDefault();
-      await checkAuth();
-      if(!buyerProfile || !buyerProfile.user) {
-        alert("Please sign in to send an offer.");
-        return;
-      }
-      const offerPrice = document.getElementById('offerPriceInput').value;
-      const offerReason = document.getElementById('offerReasonInput').value.trim();
-      const offerMsg = document.getElementById('offerMsgInput').value.trim();
-      if (!offerPrice || !offerReason) {
-        alert("Please enter your offer and a reason for your offer.");
-        return;
-      }
-      const item = marketItems.find(i => i.id === offerItemId);
-      const token = localStorage.getItem("token");
-      const fullMessage = `Reason: ${offerReason}\n${offerMsg ? "Message: " + offerMsg : ""}`;
-      try {
-        const res = await fetch(BACKEND + "/api/offers", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer " + token
-          },
-          body: JSON.stringify({
-            productId: offerItemId,
-            offerPrice,
-            message: fullMessage,
-            buyer: {
-              id: buyerProfile.user._id,
-              name: buyerProfile.user.fullname || buyerProfile.user.username,
-              email: buyerProfile.user.email,
-              phone: buyerProfile.user.phone
-            }
-          })
-        });
-        if (res.ok) {
-          document.getElementById('offerResponse').textContent = "Offer sent successfully!";
-          document.getElementById('offerResponse').classList.remove('hidden');
-          this.reset();
-          setTimeout(() => {
-            document.getElementById('offerResponse').classList.add('hidden');
-            document.querySelector('[data-modal-hide="offer-modal"]').click();
-          }, 1500);
-        } else {
-          document.getElementById('offerResponse').textContent = "Failed to send offer.";
-          document.getElementById('offerResponse').classList.remove('hidden');
-        }
-      } catch {
-        document.getElementById('offerResponse').textContent = "Failed to send offer.";
-        document.getElementById('offerResponse').classList.remove('hidden');
-      }
-    });
-    document.querySelectorAll('[data-modal-hide="offer-modal"]').forEach(btn => {
-      btn.addEventListener('click', () => document.getElementById('offer-modal').classList.add('hidden'));
-    });
-    document.getElementById('offer-modal').addEventListener('click', function(e){
-      if(e.target === this) this.classList.add('hidden');
-    });
+// --- INIT: Auth check + Fetch listings on page load! ---
+window.addEventListener('DOMContentLoaded', async function() {
+  await checkAuth();
+  fetchAllListings();
+  document.querySelectorAll('#categoryTabs button')[0].classList.add('category-tab-active');
+});
 
-    // LIVE CHAT WIDGET DEMO
-    const chatToggle = document.getElementById('chatToggle');
-    const chatWidget = document.getElementById('chatWidget');
-    chatToggle.addEventListener('click', () => {
-      chatWidget.classList.toggle('hidden');
-    });
-    document.getElementById('chatForm').addEventListener('submit', function(e){
-      e.preventDefault();
-      const chatInput = document.getElementById('chatInput');
-      if (chatInput.value.trim()) {
-        const msgBox = chatWidget.querySelector('div.h-40');
-        msgBox.innerHTML += `<div class="mb-1"><span class="font-semibold text-blue-900">You:</span> ${chatInput.value}</div>`;
-        msgBox.scrollTop = msgBox.scrollHeight;
-        chatInput.value = "";
-      }
-    });
+// --- CLOSE MODALS ON BG CLICK ---
+document.querySelectorAll('[data-modal-hide="post-modal"]').forEach(btn => {
+  btn.addEventListener('click', () => document.getElementById('post-modal').classList.add('hidden'));
+});
+document.getElementById('post-modal').addEventListener('click', function(e){
+  if(e.target === this) this.classList.add('hidden');
+});
+document.getElementById('item-modal').addEventListener('click', function(e){
+  if(e.target === this) this.classList.add('hidden');
+});
 
-    // INIT: Auth check + Fetch listings on page load!
-    window.addEventListener('DOMContentLoaded', async function() {
-      await checkAuth();
-      fetchAllListings();
-      document.querySelectorAll('#categoryTabs button')[0].classList.add('category-tab-active');
-    });
-
-    // Close modals when background clicked (post, item, report, offer)
-    document.querySelectorAll('[data-modal-hide="post-modal"]').forEach(btn => {
-      btn.addEventListener('click', () => document.getElementById('post-modal').classList.add('hidden'));
-    });
-    document.getElementById('post-modal').addEventListener('click', function(e){
-      if(e.target === this) this.classList.add('hidden');
-    });
-    document.getElementById('item-modal').addEventListener('click', function(e){
-      if(e.target === this) this.classList.add('hidden');
-    });
-
-    // DARK MODE
-    document.getElementById('darkToggle').addEventListener('click', function() {
-      document.body.classList.toggle('dark');
-      document.body.classList.toggle('bg-gray-900');
-      document.body.classList.toggle('text-gray-100');
-    });
-
+// --- DARK MODE ---
+document.getElementById('darkToggle').addEventListener('click', function() {
+  document.body.classList.toggle('dark');
+  document.body.classList.toggle('bg-gray-900');
+  document.body.classList.toggle('text-gray-100');
+});
   </script>
 </body>
 </html>
