@@ -20,6 +20,28 @@
       .market-hero-bg { background-position: 60% center; }
     }
     .dark .dark-invert { filter: invert(1) hue-rotate(180deg); }
+    /* Ensure images show full content not cut */
+    .market-img-full {
+      object-fit: contain !important;
+      background: #f3f4f6;
+      min-height: 200px;
+      max-height: 300px;
+      width: 100%;
+      display: block;
+    }
+    .category-tab-active {
+      background-color: #1e293b !important;
+      color: #fff !important;
+    }
+    .category-tab {
+      background-color: #fef9c3;
+      color: #a16207;
+      transition: background 0.2s, color 0.2s;
+    }
+    .category-tab:hover {
+      background-color: #fde68a;
+      color: #1e293b;
+    }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900 transition-colors duration-300" id="marketbody">
@@ -58,13 +80,13 @@
         <input id="searchInput" type="text" placeholder="Search for books, gadgets, etc." class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-yellow-400" />
         <button type="submit" class="bg-yellow-500 text-blue-900 px-5 py-2 rounded-lg font-bold hover:bg-yellow-600 transition">Search</button>
       </form>
-      <div class="flex flex-wrap gap-2 mt-2 md:mt-0">
-        <button onclick="filterCategory('All')" class="bg-blue-900 text-white px-4 py-2 rounded hover:bg-yellow-500 hover:text-blue-900 transition">All</button>
-        <button onclick="filterCategory('Books')" class="bg-yellow-100 text-yellow-700 px-4 py-2 rounded hover:bg-yellow-200 transition">Books</button>
-        <button onclick="filterCategory('Gadgets')" class="bg-yellow-100 text-yellow-700 px-4 py-2 rounded hover:bg-yellow-200 transition">Gadgets</button>
-        <button onclick="filterCategory('Hostel')" class="bg-yellow-100 text-yellow-700 px-4 py-2 rounded hover:bg-yellow-200 transition">Hostel</button>
-        <button onclick="filterCategory('Tickets')" class="bg-yellow-100 text-yellow-700 px-4 py-2 rounded hover:bg-yellow-200 transition">Tickets</button>
-        <button onclick="filterCategory('Others')" class="bg-yellow-100 text-yellow-700 px-4 py-2 rounded hover:bg-yellow-200 transition">Others</button>
+      <div class="flex flex-wrap gap-2 mt-2 md:mt-0" id="categoryTabs">
+        <button onclick="filterCategory('All',this)" class="category-tab px-4 py-2 rounded transition">All</button>
+        <button onclick="filterCategory('Books',this)" class="category-tab px-4 py-2 rounded transition">Books</button>
+        <button onclick="filterCategory('Gadgets',this)" class="category-tab px-4 py-2 rounded transition">Gadgets</button>
+        <button onclick="filterCategory('Hostel',this)" class="category-tab px-4 py-2 rounded transition">Hostel</button>
+        <button onclick="filterCategory('Tickets',this)" class="category-tab px-4 py-2 rounded transition">Tickets</button>
+        <button onclick="filterCategory('Others',this)" class="category-tab px-4 py-2 rounded transition">Others</button>
       </div>
       <div class="flex items-center gap-1">
         <label for="sortSelect" class="hidden md:inline text-blue-900 font-medium">Sort:</label>
@@ -233,9 +255,14 @@
         <h3 class="text-lg font-bold text-blue-900 mb-3">Send Offer</h3>
         <form id="offerForm" class="space-y-3">
           <label class="block font-medium">Offer Price (₦)</label>
-          <input type="number" min="0" class="w-full px-3 py-2 border rounded" required />
+          <input type="number" min="0" class="w-full px-3 py-2 border rounded" id="offerPriceInput" required />
+          <label class="block font-medium mt-2">Reason for Offer</label>
+          <textarea class="w-full px-3 py-2 border rounded" id="offerReasonInput" placeholder="Explain why you chose this offer or add a note for seller..." rows="2" required></textarea>
+          <label class="block font-medium mt-2">Send Message (optional)</label>
+          <textarea class="w-full px-3 py-2 border rounded" id="offerMsgInput" placeholder="Extra message for seller..." rows="2"></textarea>
           <button type="submit" class="w-full py-2 bg-yellow-500 text-blue-900 font-bold rounded hover:bg-blue-900 hover:text-yellow-400 transition">Send Offer</button>
         </form>
+        <div id="offerResponse" class="p-3 text-center text-green-600 hidden"></div>
       </div>
     </div>
   </div>
@@ -245,13 +272,27 @@
     let marketItems = [];
     let filteredItems = [];
     const wishlist = new Set();
+    let buyerProfile = null;
+
+    // Auth check
+    async function checkAuth() {
+      try {
+        const token = localStorage.getItem("token");
+        if (token) {
+          const res = await fetch(BACKEND+"/api/auth/me", { headers: { "Authorization": "Bearer " + token } });
+          if (res.ok) {
+            buyerProfile = await res.json();
+            return true;
+          }
+        }
+      } catch (e) {}
+      buyerProfile = null;
+      return false;
+    }
 
     // Fetch all published/active items from all sellers
     async function fetchAllListings() {
       try {
-        // This endpoint should return all published/active listings from all sellers.
-        // If you implemented a public endpoint, e.g. /api/marketplace/listings-public, use it.
-        // Otherwise, this will aggregate from all dashboards (for demo, adjust as needed).
         const res = await fetch(BACKEND + "/api/blogger-dashboard/public/listings");
         if (!res.ok) throw new Error("Could not fetch listings");
         const data = await res.json();
@@ -264,6 +305,7 @@
           description: item.description || "",
           image: item.img || item.imageUrl || "https://placehold.co/400x300?text=No+Image",
           seller: item.sellerName || item.seller || "Unknown",
+          sellerId: item.sellerId || item.owner || "",
           verified: item.verified || false,
           rating: item.rating || (4 + Math.random()), // fallback random
           reviews: item.reviews || Math.floor(Math.random() * 10) + 1,
@@ -291,7 +333,7 @@
           <button onclick="toggleWishlist('${item.id}')" aria-label="Save to Wishlist" class="absolute top-3 right-3 text-2xl focus:outline-none transition">
             <span class="${wishlist.has(item.id) ? 'text-yellow-500' : 'text-gray-300'}">&#10084;</span>
           </button>
-          <img src="${item.image}" alt="${item.title}" class="h-48 w-full object-cover rounded-lg mb-3 group-hover:scale-105 transition" />
+          <img src="${item.image}" alt="${item.title}" class="market-img-full rounded-lg mb-3 group-hover:scale-105 transition" />
           <div class="flex-1 flex flex-col">
             <h3 class="font-bold text-blue-900 text-lg mb-1">${item.title}</h3>
             <div class="flex items-center text-yellow-500 text-base font-bold mb-2">₦${(item.price||0).toLocaleString()}</div>
@@ -304,7 +346,7 @@
             </div>
             <p class="text-gray-600 mb-3 line-clamp-2">${item.description}</p>
             <div class="flex gap-2 flex-wrap">
-              <button onclick="openItemModal('${item.id}')" class="mt-auto bg-yellow-500 text-blue-900 px-3 py-2 rounded-lg font-bold hover:bg-blue-900 hover:text-yellow-400 transition">View & Chat</button>
+              <a href="sales/items.html?id=${item.id}" class="mt-auto bg-yellow-500 text-blue-900 px-3 py-2 rounded-lg font-bold hover:bg-blue-900 hover:text-yellow-400 transition">View & Chat</a>
               <button onclick="openOfferModal('${item.id}')" class="bg-blue-900 text-yellow-400 px-3 py-2 rounded-lg font-bold hover:bg-yellow-500 hover:text-blue-900 transition">Send Offer</button>
               <button onclick="openReportModal('${item.id}')" aria-label="Report Item" class="ml-auto text-red-600 hover:underline text-xs">Report</button>
             </div>
@@ -322,15 +364,31 @@
       renderMarket(filteredItems);
     }
 
-    // FILTER BY CATEGORY
-    function filterCategory(cat) {
+    // FILTER BY CATEGORY (with active styling)
+    function filterCategory(cat, btn) {
       if (cat === 'All') {
         filteredItems = [...marketItems];
       } else {
         filteredItems = marketItems.filter(item => item.category === cat);
       }
       renderMarket(filteredItems);
+
+      // Highlight the active tab
+      document.querySelectorAll('#categoryTabs button').forEach(b => {
+        b.classList.remove('category-tab-active');
+      });
+      if (btn) btn.classList.add('category-tab-active');
+      else {
+        // fallback: highlight the correct tab based on cat value
+        document.querySelectorAll('#categoryTabs button').forEach(b => {
+          if (b.textContent.trim() === cat) b.classList.add('category-tab-active');
+        });
+      }
     }
+    // On load, highlight 'All' as active
+    window.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('#categoryTabs button')[0].classList.add('category-tab-active');
+    });
 
     // SEARCH
     document.getElementById('searchForm').addEventListener('submit', function(e) {
@@ -368,7 +426,7 @@
       if (!item) return;
       document.getElementById('modalItemContent').innerHTML = `
         <div class="flex gap-2 items-center mb-2">
-          <img src="${item.image}" alt="${item.title}" class="h-24 w-24 object-cover rounded-lg border" />
+          <img src="${item.image}" alt="${item.title}" class="market-img-full w-24 h-24 object-contain rounded-lg border" />
           <div>
             <h3 class="font-bold text-blue-900 text-xl mb-1">${item.title}</h3>
             <div class="flex items-center text-yellow-500 text-lg font-bold mb-1">₦${item.price.toLocaleString()}</div>
@@ -395,9 +453,42 @@
         </form>
       `;
       document.getElementById('item-modal').classList.remove('hidden');
-      document.getElementById('itemChatForm').addEventListener('submit', function(e){
+      document.getElementById('itemChatForm').addEventListener('submit', async function(e){
         e.preventDefault();
-        alert('Demo: Message sent to seller!');
+        await checkAuth();
+        if(!buyerProfile || !buyerProfile.user) {
+          alert("Please sign in to send a message to the seller.");
+          return;
+        }
+        const msg = this.querySelector('input').value.trim();
+        if (!msg) return;
+        // Send chat message to backend (the backend endpoint would be similar to /api/blogger-dashboard/messages)
+        try {
+          const token = localStorage.getItem("token");
+          // Find sellerId for this item
+          const item = marketItems.find(i => i.id === currentItemId);
+          if (!item.sellerId) return alert("Seller not found for this item.");
+          const res = await fetch(BACKEND + "/api/blogger-dashboard/messages", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": "Bearer " + token
+            },
+            body: JSON.stringify({
+              sellerId: item.sellerId,
+              text: msg,
+              productId: currentItemId
+            })
+          });
+          if (res.ok) {
+            alert("Message sent to seller!");
+            this.reset();
+          } else {
+            alert("Failed to send message.");
+          }
+        } catch {
+          alert("Failed to send message.");
+        }
       });
     }
     document.querySelectorAll('[data-modal-hide="item-modal"]').forEach(btn => {
@@ -421,13 +512,65 @@
     });
 
     // OFFER MODAL
+    let offerItemId = null;
     function openOfferModal(id) {
+      offerItemId = id;
       document.getElementById('offer-modal').classList.remove('hidden');
+      document.getElementById('offerForm').reset();
+      document.getElementById('offerResponse').classList.add('hidden');
     }
-    document.getElementById('offerForm').addEventListener('submit', function(e){
+    document.getElementById('offerForm').addEventListener('submit', async function(e){
       e.preventDefault();
-      alert('Demo: Offer sent to seller!');
-      document.querySelector('[data-modal-hide="offer-modal"]').click();
+      await checkAuth();
+      if(!buyerProfile || !buyerProfile.user) {
+        alert("Please sign in to send an offer.");
+        return;
+      }
+      const offerPrice = document.getElementById('offerPriceInput').value;
+      const offerReason = document.getElementById('offerReasonInput').value.trim();
+      const offerMsg = document.getElementById('offerMsgInput').value.trim();
+      if (!offerPrice || !offerReason) {
+        alert("Please enter your offer and a reason for your offer.");
+        return;
+      }
+      const item = marketItems.find(i => i.id === offerItemId);
+      const token = localStorage.getItem("token");
+      const fullMessage = `Reason: ${offerReason}\n${offerMsg ? "Message: " + offerMsg : ""}`;
+      try {
+        const res = await fetch(BACKEND + "/api/offers", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + token
+          },
+          body: JSON.stringify({
+            productId: offerItemId,
+            offerPrice,
+            message: fullMessage,
+            buyer: {
+              id: buyerProfile.user._id,
+              name: buyerProfile.user.fullname || buyerProfile.user.username,
+              email: buyerProfile.user.email,
+              phone: buyerProfile.user.phone
+            }
+          })
+        });
+        if (res.ok) {
+          document.getElementById('offerResponse').textContent = "Offer sent successfully!";
+          document.getElementById('offerResponse').classList.remove('hidden');
+          this.reset();
+          setTimeout(() => {
+            document.getElementById('offerResponse').classList.add('hidden');
+            document.querySelector('[data-modal-hide="offer-modal"]').click();
+          }, 1500);
+        } else {
+          document.getElementById('offerResponse').textContent = "Failed to send offer.";
+          document.getElementById('offerResponse').classList.remove('hidden');
+        }
+      } catch {
+        document.getElementById('offerResponse').textContent = "Failed to send offer.";
+        document.getElementById('offerResponse').classList.remove('hidden');
+      }
     });
     document.querySelectorAll('[data-modal-hide="offer-modal"]').forEach(btn => {
       btn.addEventListener('click', () => document.getElementById('offer-modal').classList.add('hidden'));
@@ -453,8 +596,12 @@
       }
     });
 
-    // INIT
-    renderMarket(marketItems);
+    // INIT: Auth check + Fetch listings on page load!
+    window.addEventListener('DOMContentLoaded', async function() {
+      await checkAuth();
+      fetchAllListings();
+      document.querySelectorAll('#categoryTabs button')[0].classList.add('category-tab-active');
+    });
 
     // Close modals when background clicked (post, item, report, offer)
     document.querySelectorAll('[data-modal-hide="post-modal"]').forEach(btn => {
