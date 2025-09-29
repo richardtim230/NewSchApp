@@ -86,34 +86,38 @@
     ];
 
     // Render Products
-    function renderProducts(products) {
+function renderProducts(products) {
   const list = document.getElementById("products-list");
   if (!products.length) {
-    list.innerHTML = `<div class="text-center col-span-3 text-lg text-gray-500 py-12">No products found.</div>`;
+    list.innerHTML = `<div class="text-center col-span-2 text-lg text-gray-500 py-12">No products found.</div>`;
     return;
   }
   list.innerHTML = products.map(p => `
-    <div class="bg-white rounded-xl shadow overflow-hidden">
-      <a href="sales/items.html?id=${p._id || p.id}">
+    <div class="bg-white rounded-lg shadow overflow-hidden flex flex-col" style="min-height: 320px;">
+      <a href="sales/items.html?id=${p._id || p.id}" class="block h-40 sm:h-48 w-full overflow-hidden">
         <img src="${p.img || p.imageUrl || (Array.isArray(p.images) && p.images[0]) || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(p.title || 'Product') + '&background=eee&color=263159&rounded=true'}"
-             class="h-auto w-full object-cover bg-gray-100" alt="${p.title}">
+             class="h-full w-full object-cover bg-gray-100" alt="${p.title}">
       </a>
-      <div class="p-4">
-        <h3 class="font-bold text-lg text-blue-800">
-          <a href="sales/items.html?id=${p._id || p.id}">${p.title}</a>
-        </h3>
-        <p class="text-yellow-600 font-semibold">${p.price}</p>
-        <p class="text-gray-500 text-sm">${p.category || ''} • ${p.posted || (p.date ? new Date(p.date).toLocaleDateString() : "")}</p>
-        <div class="flex items-center gap-2 mt-2">
-          <span class="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded">${p.seller || p.author || p.authorName || ""}</span>
-          <span class="flex items-center text-sm text-yellow-600">${p.rating || ("⭐ " + (p.likes || 0))}</span>
+      <div class="p-3 flex-1 flex flex-col justify-between">
+        <div>
+          <h3 class="font-bold text-base text-blue-800 leading-tight mb-1">
+            <a href="sales/items.html?id=${p._id || p.id}">${p.title}</a>
+          </h3>
+          <p class="text-yellow-600 font-semibold text-sm mb-1">${p.price}</p>
+          <p class="text-gray-500 text-xs">${p.category || ''} • ${p.posted || (p.date ? new Date(p.date).toLocaleDateString() : "")}</p>
         </div>
-        <p class="mt-2 text-gray-700 text-sm">${p.description || p.summary || ""}</p>
-        <div class="flex gap-3 mt-4">
-          <a href="sales/items.html?id=${p._id || p.id}" class="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-center">View Product</a>
-          <button type="button" onclick="openOfferModal('${p._id || p.id}', '${p.title}')" class="flex-1 px-3 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600">Send Offer</button>
+        <div>
+          <div class="flex items-center gap-2 mt-1">
+            <span class="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded">${p.seller || p.author || p.authorName || ""}</span>
+            <span class="flex items-center text-xs text-yellow-600">${p.rating || ("⭐ " + (p.likes || 0))}</span>
+          </div>
+          <p class="mt-2 text-gray-700 text-xs">${p.description || p.summary || ""}</p>
+          <div class="flex gap-2 mt-3">
+            <a href="sales/items.html?id=${p._id || p.id}" class="flex-1 px-2 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-center text-xs">View</a>
+            <button type="button" onclick="openOfferModal('${p._id || p.id}', '${p.title}')" class="flex-1 px-2 py-1 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 text-xs">Offer</button>
+          </div>
+          <a href="#" class="block text-right text-red-500 text-xs mt-2 hover:underline">Report</a>
         </div>
-        <a href="#" class="block text-right text-red-500 text-sm mt-2 hover:underline">Report</a>
       </div>
     </div>
   `).join("");
