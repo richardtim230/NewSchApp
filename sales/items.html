@@ -212,9 +212,9 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.5.1/flowbite.min.js"></script>
   <script>
-    // --- Constants ---
-    const BACKEND = "https://examguide.onrender.com";
-    let buyerProfile = null, currentProduct = null, allProducts = [];
+const BACKEND = "https://examguide.onrender.com";
+  let buyerProfile = null, currentProduct = null, allProducts = [];
+  let wishlistIds = []; // For wishlist server sync
 
     // --- Helper: Get Query Params ---
     function getQueryParam(name) {
@@ -420,47 +420,7 @@ document.querySelectorAll("#product-thumbs .thumb-img").forEach((thumb, idx) => 
       document.getElementById("lightbox-modal").classList.add("hidden");
     }
 
-    // --- Wishlist/Favorite Logic ---
-    function loadFavorites() {
-      return JSON.parse(localStorage.getItem("favorites")||"[]");
-    }
-    function saveFavorite(id) {
-      let favs = loadFavorites();
-      if (!favs.includes(id)) favs.push(id);
-      localStorage.setItem("favorites", JSON.stringify(favs));
-    }
-    function removeFavorite(id) {
-      let favs = loadFavorites().filter(f=>f!=id);
-      localStorage.setItem("favorites", JSON.stringify(favs));
-    }
-    function updateFavoriteBtn(id) {
-      const favs = loadFavorites();
-      const isFav = favs.includes(id);
-      document.getElementById("favorite-icon").textContent = isFav ? "♥" : "♡";
-    }
-    document.getElementById("favorite-btn").onclick = function() {
-      if (!currentProduct) return;
-      let id = currentProduct._id || currentProduct.id;
-      const favs = loadFavorites();
-      if (favs.includes(id)) removeFavorite(id); else saveFavorite(id);
-      updateFavoriteBtn(id);
-    };
 
-    // --- Report Modal ---
-    document.getElementById("report-btn").onclick = function() {
-      document.getElementById("reportModal").classList.remove("hidden");
-      document.getElementById("reportForm").reset();
-      document.getElementById("reportResponse").classList.add("hidden");
-    }
-    window.closeReportModal = function() {
-      document.getElementById("reportModal").classList.add("hidden");
-    }
-    document.getElementById("reportForm").onsubmit = function(e) {
-      e.preventDefault();
-      document.getElementById("reportResponse").textContent = "Thank you. Your report was submitted!";
-      document.getElementById("reportResponse").classList.remove("hidden");
-      setTimeout(closeReportModal, 1800);
-    };
 
     // --- Send Offer Modal Logic ---
     window.openOfferModal = function(){
@@ -684,23 +644,125 @@ ${offerMessage}
       `).join("");
     }
 
+  // --- Wishlist/Favorite Logic ---
+  async function fetchWishlist() {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      wishlistIds = [];
+      return;
+    }
+    try {
+      const res = await fetch(`${BACKEND}/api/blogger-dashboard/wishlist`, {
+        headers: { "Authorization": "Bearer " + token }
+      });
+      if (res.ok) {
+        const { wishlist } = await res.json();
+        wishlistIds = (wishlist || []).map(item => item._id || item.id);
+      } else {
+        wishlistIds = [];
+      }
+    } catch {
+      wishlistIds = [];
+    }
+  }
+  function isWishlisted(id) {
+    return wishlistIds.includes(id);
+  }
+  async function toggleWishlistServer(id) {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("Sign in to use wishlist!");
+      window.location.href = "/login";
+      return;
+    }
+    if (isWishlisted(id)) {
+      await fetch(`${BACKEND}/api/blogger-dashboard/wishlist/remove/${id}`, {
+        method: "DELETE",
+        headers: { "Authorization": "Bearer " + token }
+      });
+      wishlistIds = wishlistIds.filter(_id => _id !== id);
+    } else {
+      await fetch(`${BACKEND}/api/blogger-dashboard/wishlist/add/${id}`, {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + token }
+      });
+      wishlistIds.push(id);
+    }
+    updateFavoriteBtn(id);
+  }
+  function updateFavoriteBtn(id) {
+    document.getElementById("favorite-icon").textContent = isWishlisted(id) ? "♥" : "♡";
+  }
+  document.getElementById("favorite-btn").onclick = async function() {
+    if (!currentProduct) return;
+    let id = currentProduct._id || currentProduct.id;
+    await toggleWishlistServer(id);
+  };
+
+  // --- Report Modal ---
+  document.getElementById("report-btn").onclick = function() {
+    document.getElementById("reportModal").classList.remove("hidden");
+    document.getElementById("reportForm").reset();
+    document.getElementById("reportResponse").classList.add("hidden");
+  }
+  window.closeReportModal = function() {
+    document.getElementById("reportModal").classList.add("hidden");
+  }
+  document.getElementById("reportForm").onsubmit = async function(e) {
+    e.preventDefault();
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("Sign in to report an item!");
+      window.location.href = "/login";
+      return;
+    }
+    const reason = document.getElementById("reportMessage").value;
+    const productId = currentProduct._id || currentProduct.id;
+    try {
+      const res = await fetch(`${BACKEND}/api/blogger-dashboard/report/${productId}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + token
+        },
+        body: JSON.stringify({
+          reason: reason,
+          description: ""
+        })
+      });
+      if (res.ok) {
+        document.getElementById("reportResponse").textContent = "Thank you. Your report was submitted!";
+        document.getElementById("reportResponse").classList.remove("hidden");
+        setTimeout(closeReportModal, 1800);
+      } else {
+        document.getElementById("reportResponse").textContent = "Failed to submit report.";
+        document.getElementById("reportResponse").classList.remove("hidden");
+      }
+    } catch {
+      document.getElementById("reportResponse").textContent = "Failed to submit report.";
+      document.getElementById("reportResponse").classList.remove("hidden");
+    }
+  };
+
+  
     // --- On Load ---
     document.addEventListener("DOMContentLoaded", async function() {
-      await checkAuth();
-      const productId = getQueryParam("id");
-      if (!productId) {
-        document.getElementById("product-loading").textContent = "No product ID found!";
-        return;
-      }
-      allProducts = await fetchProducts();
-      const product = await fetchProduct(productId);
-      renderProduct(product);
-      updateFavoriteBtn(product._id||product.id);
-      renderOffersChart(product._id||product.id);
-      await renderReviews(product._id||product.id);
-      setupAddReview(product._id||product.id);
-      renderRelatedItems(product, allProducts);
-    });
+    await checkAuth();
+    await fetchWishlist(); // Load wishlist from server!
+    const productId = getQueryParam("id");
+    if (!productId) {
+      document.getElementById("product-loading").textContent = "No product ID found!";
+      return;
+    }
+    allProducts = await fetchProducts();
+    const product = await fetchProduct(productId);
+    renderProduct(product);
+    updateFavoriteBtn(product._id||product.id);
+    renderOffersChart(product._id||product.id);
+    await renderReviews(product._id||product.id);
+    setupAddReview(product._id||product.id);
+    renderRelatedItems(product, allProducts);
+  });
 
 
   // ========== ADD TO CART ==========
