@@ -425,11 +425,105 @@
       }
     }
 
-    // --- Messages/Notifications/Help: unchanged ---
-    async function loadMessages() {
-      document.getElementById('messages-list').innerHTML = '<div class="spinner mx-auto my-8"></div>';
-      document.getElementById('messages-list').innerHTML = '<div class="text-gray-400 text-center my-6">No messages yet. (Coming soon)</div>';
+async function loadMessages() {
+  const messagesList = document.getElementById('messages-list');
+  messagesList.innerHTML = '<div class="spinner mx-auto my-8"></div>';
+
+  try {
+    // Fetch all messages involving this buyer
+    const res = await fetch(BACKEND + "/api/blogger-dashboard/massages", { headers: authHeader() });
+    const allMessages = await res.json();
+
+    // Group messages by seller and product
+    const grouped = {};
+    allMessages.forEach(msg => {
+      if (!msg.receiverId || !msg.senderId || !msg.productId) return;
+      // Unique chat key: sellerId + productId
+      const otherId = msg.senderId === buyerProfile._id ? msg.receiverId : msg.senderId;
+      const chatKey = otherId + "_" + msg.productId;
+      if (!grouped[chatKey]) grouped[chatKey] = { sellerId: otherId, productId: msg.productId, messages: [] };
+      grouped[chatKey].messages.push(msg);
+    });
+
+    if (!Object.keys(grouped).length) {
+      messagesList.innerHTML = `<div class="text-gray-400 text-center my-6">No messages yet.</div>`;
+      return;
     }
+
+    // Render each seller+product chat thread
+    messagesList.innerHTML = await Promise.all(Object.values(grouped).map(async chat => {
+      const msgs = chat.messages;
+      const sellerName = msgs.find(m => m.senderId !== buyerProfile._id)?.senderName || msgs[0].receiverName || "Seller";
+      let productDetails = "";
+
+      // Fetch product details (show context at top)
+      try {
+        const prodRes = await fetch(BACKEND + `/api/blogger-dashboard/public/listings/${chat.productId}`, { headers: authHeader() });
+        if (prodRes.ok) {
+          const prod = await prodRes.json();
+          productDetails = `
+            <div class="flex items-center gap-3 mb-2">
+              <img src="${(prod.images?.[0] || prod.img || prod.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(prod.title || 'Product') + '&background=eee&color=263159&rounded=true')}" class="object-cover w-14 h-14 rounded" alt="Product"/>
+              <div>
+                <div class="font-semibold text-blue-900 text-sm">${prod.title}</div>
+                <div class="text-yellow-700 font-bold text-xs">&#8358;${Number(prod.price || 0).toLocaleString()}</div>
+              </div>
+            </div>
+          `;
+        }
+      } catch {}
+
+      return `
+      <div class="bg-white rounded-xl shadow mb-6 overflow-hidden">
+        <div class="px-4 py-3 border-b bg-blue-50 flex items-center gap-2">
+          <div class="w-9 h-9 rounded-full bg-blue-200 flex items-center justify-center font-bold text-blue-900">${sellerName[0]}</div>
+          <div class="font-semibold text-blue-900">${sellerName}</div>
+        </div>
+        <div class="px-4 pt-3 pb-1">${productDetails}</div>
+        <div class="p-3 bg-gray-50 min-h-[160px] max-h-[320px] overflow-y-auto whatsapp-chat">
+          ${msgs.map(msg => `
+            <div class="flex ${msg.senderId === buyerProfile._id ? 'justify-end' : 'justify-start'} mb-2">
+              <div class="${msg.senderId === buyerProfile._id ? 'bg-green-100 text-green-900' : 'bg-gray-200 text-gray-900'} px-4 py-2 rounded-2xl max-w-[70%] shadow">
+                ${msg.text}
+                <div class="text-xs text-gray-500 text-right mt-1">${new Date(msg.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+        <form class="flex gap-2 p-2 border-t bg-white" onsubmit="return sendChatMessage('${chat.sellerId}', '${chat.productId}', this)">
+          <input type="text" class="flex-1 border rounded px-3 py-2" name="chatBody" placeholder="Type a message..." required>
+          <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded font-bold">Send</button>
+        </form>
+      </div>
+      `;
+    })).then(htmlArr => htmlArr.join(''));
+  } catch (e) {
+    messagesList.innerHTML = `<div class="text-red-500 text-center my-6">Failed to load messages.</div>`;
+  }
+}
+
+// Helper for sending chat message (WhatsApp-style, with product context)
+window.sendChatMessage = async function(sellerId, productId, form) {
+  const input = form.chatBody;
+  const text = input.value.trim();
+  if (!text) return false;
+  try {
+    await fetch(BACKEND + "/api/blogger-dashboard/massages", {
+      method: "POST",
+      headers: { ...authHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sellerId,
+        text,
+        productId
+      })
+    });
+    input.value = "";
+    await loadMessages();
+  } catch (e) {
+    alert("Failed to send message.");
+  }
+  return false;
+}
     async function loadNotifications() {
       document.getElementById('notifications-list').innerHTML = '<div class="spinner mx-auto my-8"></div>';
       document.getElementById('notifications-list').innerHTML = '<div class="text-gray-400 text-center my-6">No notifications yet. (Coming soon)</div>';
