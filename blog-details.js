@@ -1,6 +1,6 @@
 // blog-details.js -- Fast loading blog details page, minimal data fetch
 
-const API_BASE = "https://examguide.onrender.com/api";
+const API_BASE = "https://examguard-jmvj.onrender.com/api";
 const DASHBOARD_API = API_BASE + "/blogger-dashboard";
 
 // Efficient endpoints for details page
