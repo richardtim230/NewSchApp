@@ -461,57 +461,71 @@ window.orderOfferProduct = async function(productId, offerPrice, offerId) {
 }
 
       
-    // --- Orders with payment action ---
-    async function loadOrders() {
-      document.getElementById('orders-list').innerHTML = '<div class="spinner mx-auto my-8"></div>';
-      let total = 0;
-      let pendingOrders = [];
-      try {
-        const res = await fetch(BACKEND + "/api/orders", { headers: authHeader() });
-        const { orders } = await res.json();
-        if (!orders || !orders.length) {
-          document.getElementById('orders-list').innerHTML = '<div class="text-gray-400 text-center my-6">No orders yet.</div>';
-          document.getElementById('orders-payment-section').innerHTML = "";
-          return;
-        }
-        document.getElementById('orders-list').innerHTML = orders.map(order => {
-          if (order.status === "pending_payment") {
-            total += (order.price || 0) * (order.quantity || 1);
-            pendingOrders.push(order);
-          }
-          return `
-            <div class="bg-green-50 p-3 rounded shadow flex flex-col sm:flex-row gap-2 items-center">
-              <div class="flex-1">
-                <div class="font-semibold text-green-700">${order.productTitle || 'Product'}</div>
-                <div class="text-gray-700">Qty: x${order.quantity || 1}</div>
-                <div class="text-gray-700">Status: ${order.status || "pending_payment"}</div>
-                <div class="text-yellow-700 font-bold">&#8358;${Number(order.price || 0).toLocaleString()}</div>
-                <div class="text-xs text-gray-500">${order.createdAt ? new Date(order.createdAt).toLocaleDateString() : ''}</div>
-              </div>
-            </div>
-          `;
-        }).join('');
-        // Payment section
-        if (pendingOrders.length) {
-          document.getElementById('orders-payment-section').innerHTML = `
-            <button id="proceed-payment-btn" class="px-6 py-3 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 font-bold text-lg transition">
-              Proceed to Payment (${total ? '&#8358;' + total.toLocaleString() : '₦0'})
-            </button>
-          `;
-          document.getElementById('proceed-payment-btn').onclick = function() {
-            // Here you would integrate your payment gateway, then on success mark orders as paid
-            alert("Proceeding to payment for ₦" + total.toLocaleString() + ". (Integrate payment gateway here.)");
-          };
-        } else {
-          document.getElementById('orders-payment-section').innerHTML = "";
-        }
-      } catch {
-        document.getElementById('orders-list').innerHTML = '<div class="text-red-500 text-center my-6">Failed to load orders.</div>';
-        document.getElementById('orders-payment-section').innerHTML = "";
-      }
+  async function loadOrders() {
+  document.getElementById('orders-list').innerHTML = '<div class="spinner mx-auto my-8"></div>';
+  let total = 0;
+  let pendingOrders = [];
+  try {
+    const res = await fetch(BACKEND + "/api/orders", { headers: authHeader() });
+    const { orders } = await res.json();
+    if (!orders || !orders.length) {
+      document.getElementById('orders-list').innerHTML = '<div class="text-gray-400 text-center my-6">No orders yet.</div>';
+      document.getElementById('orders-payment-section').innerHTML = "";
+      return;
     }
-    
+    document.getElementById('orders-list').innerHTML = orders.map(order => {
+      // Use order.price (offer-based orders have correct price!)
+      if (order.status === "pending_payment") {
+        total += (order.price || 0) * (order.quantity || 1);
+        pendingOrders.push(order);
+      }
+      return `
+        <div class="bg-green-50 p-3 rounded shadow flex flex-col sm:flex-row gap-2 items-center">
+          <div class="flex-1">
+            <div class="font-semibold text-green-700">${order.productTitle || 'Product'}</div>
+            <div class="text-gray-700">Qty: x${order.quantity || 1}</div>
+            <div class="text-gray-700">Status: ${order.status || "pending_payment"}</div>
+            <div class="text-yellow-700 font-bold">&#8358;${Number(order.price || 0).toLocaleString()}</div>
+            <div class="text-xs text-gray-500">${order.createdAt ? new Date(order.createdAt).toLocaleDateString() : ''}</div>
+          </div>
+          <div>
+            <button class="px-3 py-1 bg-red-100 text-red-600 font-semibold rounded hover:bg-red-200"
+              onclick="removeOrder('${order._id}')"
+              ${order.status === 'paid' ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>
+              Remove
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+    // Payment section
+    if (pendingOrders.length) {
+      document.getElementById('orders-payment-section').innerHTML = `
+        <button id="proceed-payment-btn" class="px-6 py-3 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 font-bold text-lg transition">
+          Proceed to Payment (${total ? '&#8358;' + total.toLocaleString() : '₦0'})
+        </button>
+      `;
+      document.getElementById('proceed-payment-btn').onclick = function() {
+        alert("Proceeding to payment for ₦" + total.toLocaleString() + ". (Integrate payment gateway here.)");
+      };
+    } else {
+      document.getElementById('orders-payment-section').innerHTML = "";
+    }
+  } catch {
+    document.getElementById('orders-list').innerHTML = '<div class="text-red-500 text-center my-6">Failed to load orders.</div>';
+    document.getElementById('orders-payment-section').innerHTML = "";
+  }
+}
 
+// Helper for removing/cancelling order
+window.removeOrder = async function(orderId) {
+  if (!confirm("Remove this order?")) return;
+  await fetch(BACKEND + `/api/orders/${orderId}`, {
+    method: "DELETE",
+    headers: authHeader()
+  });
+  loadOrders();
+};
 async function loadMessages() {
   const messagesList = document.getElementById('messages-list');
   messagesList.innerHTML = '<div class="spinner mx-auto my-8"></div>';
