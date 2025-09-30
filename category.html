@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>OAU ExamGuard Blog & Earn | Write, Read, Earn for OAU Students</title>
   <meta name="description" content="OAU ExamGuard Blog lets OAU students share campus stories, academic tips, and earn points for writing and reading. Join the leading OAU student content community!" />
-  <meta name="keywords" content="OAU blog, Class Notes, MTH101, OAU CHM101, Past Questions, OAU campus stories, OAU latest updates, OAU News, OAU post utme update, OAU student blog, OAU academic tips, write and earn OAU, OAU blogging, OAU student community" />
+  <meta name="keywords" content="OAU blog, Class Notes, MTH101, OAU CHM101, Past Questions, OAU campus stories, OAU latest updates, OAU News, OAU post utme update, OAU student blog, OAU academic tips, OAU category blog" />
   <meta name="robots" content="index,follow" />
   <meta name="google-adsense-account" content="ca-pub-8296874482515167">
   <link rel="canonical" href="https://oau.examguard.com.ng/oau-blog.html" />
@@ -26,7 +26,6 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.2.1/flowbite.min.css" rel="stylesheet"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.2.1/flowbite.min.js"></script>
-<script type='text/javascript' src='//pl27701590.revenuecpmgate.com/99/f1/63/99f16343d25148366fddf2905bfbfbc0.js'></script>
 </head>
 <body class="bg-gray-50 text-gray-900">
 
@@ -186,7 +185,9 @@
 
 <script>
 // -- CONFIGURE THIS FOR YOUR API BASE (no trailing slash) --
-const API_BASE = "https://examguard-jmvj.onrender.com/api/blogger-dashboard";
+const API_BASE = "https://examguard-jmvj.onrender.com/api";
+const TAXONOMY_API = API_BASE + "/taxonomy";
+const POSTS_API = API_BASE + "/posts";
 
 let taxonomy = { categories: [], subjects: [], topics: [] };
 let subjectList = []; // [{id, name}]
@@ -201,7 +202,7 @@ const articlesPerPage = 6;
 
 // 1. Fetch taxonomy and initialize dropdowns
 async function fetchTaxonomy() {
-  const res = await fetch(`${API_BASE}/taxonomy/all`);
+  const res = await fetch(`${TAXONOMY_API}/all`);
   if (!res.ok) throw new Error("Could not fetch taxonomy");
   taxonomy = await res.json();
 
@@ -228,18 +229,19 @@ async function fetchTopicsForSubject(subjectId) {
     renderTopicDropdown();
     return;
   }
-  const res = await fetch(`${API_BASE}/taxonomy/topics?subject=${encodeURIComponent(subjectId)}`);
+  const res = await fetch(`${TAXONOMY_API}/topics?subject=${encodeURIComponent(subjectId)}${currentArticleCategory?.id ? `&category=${encodeURIComponent(currentArticleCategory.id)}` : ''}`);
   const data = await res.json();
   topicsBySubject[subjectId] = (data && data.topics) ? data.topics.map(t => ({ id: t, name: t })) : [];
   renderTopicDropdown();
 }
 
-// 3. Fetch articles with filters
+// 3. Fetch articles with filters and pagination
 async function fetchArticles() {
-  let url = `${API_BASE}/posts/filter?`;
+  let url = `${POSTS_API}/filter?`;
   if (currentArticleCategory?.id) url += `category=${encodeURIComponent(currentArticleCategory.id)}&`;
   if (currentSubject?.id) url += `subject=${encodeURIComponent(currentSubject.id)}&`;
   if (currentTopic?.id) url += `topic=${encodeURIComponent(currentTopic.id)}&`;
+  url += `page=${currentPage}&limit=${articlesPerPage}`;
   const res = await fetch(url);
   if (!res.ok) {
     document.getElementById("articlesGrid").innerHTML = `<div class="col-span-full text-center text-gray-400 py-16">Could not load articles.</div>`;
@@ -249,19 +251,17 @@ async function fetchArticles() {
   return Array.isArray(articles) ? articles : [];
 }
 
-// 4. Fetch related articles (fallback: different subject/category)
+// 4. Fetch related articles (same category, exclude current, paginated)
 async function fetchRelatedArticles() {
-  let url = `${API_BASE}/posts/filter?`;
+  let url = `${POSTS_API}/filter?`;
   if (currentArticleCategory?.id) url += `category=${encodeURIComponent(currentArticleCategory.id)}&`;
   if (currentSubject?.id) url += `subject=${encodeURIComponent(currentSubject.id)}&`;
-  // omit topic for related posts, so we get more
+  url += `limit=3`;
   const res = await fetch(url);
   if (!res.ok) return [];
   let articles = await res.json();
   // Filter out current topic if set
-  return articles.filter(a =>
-    (currentTopic.id ? a.topic !== currentTopic.id : true)
-  ).slice(0, 3);
+  return articles.filter(a => (currentTopic.id ? a.topic !== currentTopic.id : true)).slice(0, 3);
 }
 
 // UI: Render dropdowns
@@ -298,7 +298,7 @@ function renderCategoryDropdown() {
   drawerMenu.innerHTML = '';
   articleCategories.forEach(cat => {
     const li = document.createElement('li');
-    li.innerHTML = `<a href="#" onclick="switchArticleCategory('${cat.id}'); event.preventDefault(); document.querySelector('[data-drawer-hide=drawer-menu]').click();" class="block px-3 py-2 text-sm hover:bg-blue-50">${cat.name}</a>`;
+    li.innerHTML = `<a href="#" onclick="switchArticleCategory('${cat.id}'); event.preventDefault(); document.querySelector('[data-drawer-hide=drawer-menu]').click();" class="block px-3 py-2 text-sm hover:bg-yellow-50">${cat.name}</a>`;
     drawerMenu.appendChild(li);
   });
 }
@@ -344,6 +344,8 @@ window.switchArticleCategory = async function(catId) {
   currentArticleCategory = articleCategories.find(c => c.id === catId) || { id: catId, name: catId };
   renderCategoryDropdown();
   currentPage = 1;
+  await fetchTopicsForSubject(currentSubject.id);
+  renderTopicDropdown();
   await doFetchAndRender();
   document.getElementById('dropdownCategory').classList.add('hidden');
 }
@@ -365,19 +367,15 @@ window.switchTopic = async function(topicId) {
 async function doFetchAndRender() {
   document.getElementById("articlesGrid").innerHTML = `<div class="col-span-full text-center text-gray-400 py-16" id="articlesLoading">Loading articles...</div>`;
   allArticles = await fetchArticles();
-  renderArticles();
+  renderArticles(allArticles);
   renderRelatedPosts();
 }
 
-function renderArticles() {
-  const filtered = allArticles;
+function renderArticles(articles) {
   const grid = document.getElementById('articlesGrid');
-  const startIdx = (currentPage - 1) * articlesPerPage;
-  const pageArticles = filtered.slice(startIdx, startIdx + articlesPerPage);
-
-  grid.innerHTML = pageArticles.length
-    ? pageArticles.map(article => `
-      <a href="campus-news-update?id=${article._id || article.id}" 
+  grid.innerHTML = articles.length
+    ? articles.map(article => `
+      <a href="blog-details.html?id=${article._id || article.id}" 
          class="bg-white rounded-2xl shadow hover:shadow-xl overflow-hidden flex flex-col transition transform hover:-translate-y-1 focus:ring-2 ring-yellow-400 outline-none"
          style="text-decoration: none;">
         <img src="${article.imageUrl || article.image || 'https://images.unsplash.com/photo-1503676382389-4809596d5290?auto=format&fit=crop&w=400&q=80'}" class="w-full h-40 object-cover" alt="${article.title}">
@@ -391,14 +389,11 @@ function renderArticles() {
     `).join('')
     : `<div class="col-span-full text-gray-400 italic">No articles for this selection yet.</div>`;
 
-  renderPagination(filtered.length);
+  renderPagination(articles.length);
 }
 
-
 async function renderRelatedPosts() {
-  const related = (await fetchRelatedArticles()).filter(a =>
-    (a._id || a.id) !== (allArticles[0]?._id || allArticles[0]?.id)
-  ).slice(0, 3);
+  const related = await fetchRelatedArticles();
   const grid = document.getElementById('relatedPostsGrid');
   grid.innerHTML = related.length
     ? related.map(article => `
@@ -407,7 +402,7 @@ async function renderRelatedPosts() {
         <div class="p-4 flex flex-col flex-1">
           <h4 class="font-bold text-blue-900 mb-1">${article.title}</h4>
           <div class="text-xs text-gray-400 mb-2">${article.authorName || article.author || "Anonymous"} • ${article.date ? new Date(article.date).toLocaleDateString() : ""}</div>
-          <a href="campus-news-update?id=${article._id || article.id}" class="text-yellow-600 hover:underline font-bold text-sm mt-auto">Read &rarr;</a>
+          <a href="blog-details.html?id=${article._id || article.id}" class="text-yellow-600 hover:underline font-bold text-sm mt-auto">Read &rarr;</a>
         </div>
       </div>
     `).join('')
@@ -416,26 +411,21 @@ async function renderRelatedPosts() {
 
 // Pagination rendering
 function renderPagination(totalArticles) {
-  const totalPages = Math.ceil(totalArticles / articlesPerPage);
+  // With backend pagination, just show previous/next and page numbers
   const nav = document.getElementById('paginationNav');
-  if (totalPages <= 1) {
-    nav.innerHTML = '';
-    return;
-  }
+  const totalPages = Math.max(1, Math.ceil(totalArticles / articlesPerPage));
   let html = '';
-  html += `<button onclick="gotoPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''} class="px-3 py-2 rounded-l bg-white border border-gray-200 text-blue-900 hover:bg-yellow-100 disabled:text-gray-400 disabled:cursor-not-allowed">&laquo;</button>`;
+  html += `<button onclick="gotoPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''} class="px-3 py-2 rounded-l bg-white border border-gray-200 text-blue-900 hover:bg-yellow-100 disabled:text-gray-300">Prev</button>`;
   for (let i = 1; i <= totalPages; i++) {
     html += `<button onclick="gotoPage(${i})" class="px-3 py-2 border border-gray-200 ${i === currentPage ? 'bg-yellow-400 text-blue-900 font-bold' : 'bg-white text-blue-900 hover:bg-yellow-50'}">${i}</button>`;
   }
-  html += `<button onclick="gotoPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''} class="px-3 py-2 rounded-r bg-white border border-gray-200 text-blue-900 hover:bg-yellow-100 disabled:text-gray-400 disabled:cursor-not-allowed">&raquo;</button>`;
+  html += `<button onclick="gotoPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''} class="px-3 py-2 rounded-r bg-white border border-gray-200 text-blue-900 hover:bg-yellow-100 disabled:text-gray-300">Next</button>`;
   nav.innerHTML = html;
 }
 window.gotoPage = function(pageNum) {
   if (pageNum < 1) return;
-  const totalPages = Math.ceil(allArticles.length / articlesPerPage);
-  if (pageNum > totalPages) return;
   currentPage = pageNum;
-  renderArticles();
+  doFetchAndRender();
 };
 
 // Drawer category collapse (toggle)
