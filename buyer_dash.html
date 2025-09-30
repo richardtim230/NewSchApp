@@ -32,6 +32,18 @@
         grid-template-columns: repeat(3, minmax(0, 1fr));
       }
     }
+    @media (min-width: 768px) {
+  #offers-list.grid-cards {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.25rem;
+  }
+}
+@media (min-width: 1024px) {
+  #offers-list.grid-cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+    }
   </style>
 </head>
 <body>
@@ -376,32 +388,77 @@
       loadWishlist();
     };
 
-    // --- Offers ---
     async function loadOffers() {
-      document.getElementById('offers-list').innerHTML = '<div class="spinner mx-auto my-8"></div>';
-      try {
-        const res = await fetch(BACKEND + "/api/offers/mine", { headers: authHeader() });
-        const { offers } = await res.json();
-        if (!offers || !offers.length) {
-          document.getElementById('offers-list').innerHTML = '<div class="text-gray-400 text-center my-6">No offers submitted yet.</div>';
-          return;
-        }
-        document.getElementById('offers-list').innerHTML = offers.map(offer => `
-          <div class="bg-yellow-50 p-3 rounded shadow flex flex-col sm:flex-row gap-2 items-center">
-            <div class="flex-1">
-              <div class="font-semibold text-yellow-700">${offer.productTitle || 'Product'}</div>
-              <div class="text-gray-700">₦${Number(offer.offerPrice||0).toLocaleString()}</div>
-              <div class="text-xs text-gray-500">${offer.createdAt ? new Date(offer.createdAt).toLocaleDateString() : ''}</div>
-            </div>
-            <div>
-              <span class="inline-block px-2 py-1 rounded text-xs font-bold ${offer.status === 'accepted' ? 'bg-green-100 text-green-700' : offer.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}">${offer.status || 'pending'}</span>
-            </div>
-          </div>
-        `).join('');
-      } catch {
-        document.getElementById('offers-list').innerHTML = '<div class="text-red-500 text-center my-6">Failed to load offers.</div>';
-      }
+  const offersList = document.getElementById('offers-list');
+  offersList.classList.add('grid-cards');
+  offersList.innerHTML = '<div class="spinner mx-auto my-8"></div>';
+  try {
+    const res = await fetch(BACKEND + "/api/offers/mine", { headers: authHeader() });
+    const { offers } = await res.json();
+    if (!offers || !offers.length) {
+      offersList.innerHTML = '<div class="text-gray-400 text-center my-6">No offers submitted yet.</div>';
+      return;
     }
+    offersList.innerHTML = await Promise.all(offers.map(async offer => {
+      // Fetch product details
+      let prod = {};
+      try {
+        const prodRes = await fetch(BACKEND + `/api/blogger-dashboard/public/listings/${offer.productId}`, { headers: authHeader() });
+        if (prodRes.ok) prod = await prodRes.json();
+      } catch {}
+
+      // Only enable order button if accepted
+      const orderBtnEnabled = offer.status === 'accepted';
+
+      return `
+      <div class="flex flex-col sm:flex-row gap-3 items-center bg-yellow-50 rounded-xl p-4 shadow border border-yellow-200">
+        <div class="flex-shrink-0 w-28 h-28 bg-gray-100 rounded-xl flex items-center justify-center overflow-hidden">
+          <img src="${(prod.images?.[0] || prod.img || prod.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(prod.title || 'Product') + '&background=eee&color=263159&rounded=true')}" class="object-cover w-full h-full rounded-xl" alt="Offer image"/>
+        </div>
+        <div class="flex-1 w-full flex flex-col gap-2 pl-0 sm:pl-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="font-semibold text-blue-800 text-lg">${prod.title || offer.productTitle || 'Product'}</div>
+              <div class="text-sm text-gray-700">Original price: <span class="text-yellow-700 font-bold">&#8358;${Number(prod.price||0).toLocaleString()}</span></div>
+              <div class="text-sm text-blue-700">Offer price: <span class="text-yellow-700 font-bold">&#8358;${Number(offer.offerPrice||0).toLocaleString()}</span></div>
+            </div>
+            <button class="px-4 py-2 bg-green-600 text-white rounded font-semibold shadow ${orderBtnEnabled ? 'hover:bg-green-700' : 'opacity-60 cursor-not-allowed'}" ${orderBtnEnabled ? `onclick="orderOfferProduct('${offer.productId}', '${offer.offerPrice}', '${offer._id}')"` : 'disabled'}>
+              Order
+            </button>
+          </div>
+          <div class="flex gap-3 text-xs text-gray-600">
+            <span>Date: ${offer.createdAt ? new Date(offer.createdAt).toLocaleDateString() : '-'}</span>
+            <span>Status: <span class="${offer.status === 'accepted' ? 'text-green-700 font-bold' : offer.status === 'rejected' ? 'text-red-700 font-bold' : 'text-yellow-700 font-bold'}">${offer.status || 'pending'}</span></span>
+          </div>
+        </div>
+      </div>
+      `;
+    })).then(htmlArr => htmlArr.join(''));
+  } catch {
+    offersList.innerHTML = '<div class="text-red-500 text-center my-6">Failed to load offers.</div>';
+  }
+}
+
+// Helper: order product with agreed price from offer
+window.orderOfferProduct = async function(productId, offerPrice, offerId) {
+  try {
+    await fetch(BACKEND + "/api/orders", {
+      method: "POST",
+      headers: { ...authHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        productId,
+        quantity: 1,
+        price: offerPrice,
+        offerId,
+        status: "pending_payment"
+      })
+    });
+    alert("Order placed at agreed price! Pending payment.");
+    loadOrders();
+  } catch {
+    alert("Failed to place order.");
+  }
+}
 
       
     // --- Orders with payment action ---
