@@ -1,23 +1,21 @@
-// blog-details.js -- Ultra-fast blog details page, always uses new endpoints
+// blog-details.js -- Fast loading blog details page, minimal data fetch
 
 const API_BASE = "https://examguard-jmvj.onrender.com/api";
-const POSTS_API = API_BASE + "/public/posts";
-const USERS_API = API_BASE + "/users";
-const COMMENTS_API = API_BASE + "/posts";
+const DASHBOARD_API = API_BASE + "/blogger-dashboard";
 
-// --- Efficient endpoints ---
+// Efficient endpoints for details page
 async function fetchMainPost(postId) {
-  const res = await fetch(`${POSTS_API}/${postId}`);
+  const res = await fetch(`${DASHBOARD_API}/public/posts/${postId}`);
   return res.ok ? await res.json() : null;
 }
 async function fetchRelatedPosts(postId, limit = 4) {
-  const res = await fetch(`${POSTS_API}/${postId}/related?limit=${limit}`);
+  const res = await fetch(`${DASHBOARD_API}/public/posts/${postId}/related?limit=${limit}`);
   return res.ok ? await res.json() : [];
 }
 async function fetchUserInfo(userId) {
   if (!userId) return {};
   try {
-    const res = await fetch(`${USERS_API}/${userId}`);
+    const res = await fetch(`${API_BASE}/users/${userId}`);
     if (!res.ok) return {};
     const data = await res.json();
     return data.user || data;
@@ -26,16 +24,16 @@ async function fetchUserInfo(userId) {
   }
 }
 async function likePost(postId) {
-  const res = await fetch(`${COMMENTS_API}/${postId}/like`, { method: "PATCH" });
+  const res = await fetch(`${DASHBOARD_API}/like/${postId}`, { method: "PATCH" });
   return res.ok ? (await res.json()).likes : null;
 }
 async function likeComment(postId, commentId) {
-  const res = await fetch(`${COMMENTS_API}/${postId}/comments/${commentId}/like`, { method: "PATCH" });
+  const res = await fetch(`${DASHBOARD_API}/like-comment/${postId}/${commentId}`, { method: "PATCH" });
   return res.ok ? (await res.json()).likes : null;
 }
-async function addCommentToBackend(postId, userId, name, text, parentId = null) {
+async function addCommentToBackend(postId, userId, name, text, parentId=null) {
   try {
-    const res = await fetch(`${COMMENTS_API}/${postId}/comments`, {
+    const res = await fetch(`${DASHBOARD_API}/add-comment/${postId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, text, user: userId, parentId })
@@ -47,13 +45,63 @@ async function addCommentToBackend(postId, userId, name, text, parentId = null) 
   }
 }
 
-// --- Utility ---
+// Utility: Parse post id from URL
 function getPostIdFromURL() {
   const params = new URLSearchParams(window.location.search);
   return params.get("id");
 }
 
-// --- Render comments (simple, no deep nesting for speed) ---
+// Utility: get user id for deduplication
+function getUserToken() {
+  return localStorage.token || sessionStorage.token || null;
+}
+function getUserFromToken() {
+  const token = getUserToken();
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload;
+  } catch {
+    return null;
+  }
+}
+function getCurrentUserIdOrVisitor() {
+  const user = getUserFromToken();
+  if (user && user.id) return user.id;
+  let visitorId = localStorage.getItem('visitor_id');
+  if (!visitorId) {
+    visitorId = 'guest_' + Math.random().toString(36).substr(2, 10) + '_' + Date.now();
+    localStorage.setItem('visitor_id', visitorId);
+  }
+  return visitorId;
+}
+function shouldCountBlogRead(postId) {
+  const key = 'blog_read_' + postId;
+  const lastRead = localStorage.getItem(key);
+  if (!lastRead) return true;
+  return (Date.now() - Number(lastRead)) > (2 * 60 * 60 * 1000); // 2 hours
+}
+function markBlogRead(postId) {
+  localStorage.setItem('blog_read_' + postId, Date.now().toString());
+}
+async function incrementBlogReadCount(postId) {
+  if (!shouldCountBlogRead(postId)) return;
+  const userOrVisitor = getCurrentUserIdOrVisitor();
+  try {
+    await fetch(`${DASHBOARD_API}/increment-views/${postId}`, {
+      method: "PATCH",
+      headers: { "x-visitor-id": userOrVisitor }
+    });
+    markBlogRead(postId);
+  } catch (e) {}
+}
+
+// Minimal notification modal
+function showNotificationModal(title, message, type = "info") {
+  alert(title + ": " + message);
+}
+
+// Render comments (simple, no deep nesting for speed)
 function renderComments(comments) {
   const list = document.getElementById("commentsList");
   if (!Array.isArray(comments) || comments.length === 0) {
@@ -137,13 +185,14 @@ function attachCommentActionListeners() {
   });
 }
 
-// --- Main load function ---
+// Main load function
 (async function(){
   const postId = getPostIdFromURL();
   if (!postId) {
     document.getElementById('blogContent').innerHTML = `<div class="text-center text-gray-500 py-20">Blog post not found.</div>`;
     return;
   }
+  incrementBlogReadCount(postId);
 
   // Fetch just the main post and related posts
   const mainPost = await fetchMainPost(postId);
@@ -168,7 +217,7 @@ function attachCommentActionListeners() {
   document.getElementById('blogContent').innerHTML = `
     <div class="relative w-full mb-4">
       <img src="${image}" alt="${title}" class="w-full h-auto object-cover rounded-lg shadow" />
-      <button id="likePostBtn" class="absolute top-3 right-4 bg-white/90 rounded-full border border-yellow-200 px-3 py-1 flex items-center gap-1 font-semibold like-btn transition hover:bg-yellow-50"> [...]
+      <button id="likePostBtn" class="absolute top-3 right-4 bg-white/90 rounded-full border border-yellow-200 px-3 py-1 flex items-center gap-1 font-semibold like-btn transition hover:bg-yellow-50">  
         <span id="likePostCount">${likes}</span>
       </button>
       <button id="sharePostBtn" class="flex items-center gap-2 px-4 py-2 bg-yellow-400 text-blue-900 font-bold rounded hover:bg-yellow-500 transition mb-2 mt-2">Share</button>
@@ -242,13 +291,13 @@ function attachCommentActionListeners() {
     }
   };
 
-  // Related posts
+  // Related posts (direct from API)
   const relatedGrid = document.getElementById('relatedPosts');
   if (related.length === 0) {
     relatedGrid.innerHTML = `<div class="text-gray-400">No related posts found.</div>`;
   } else {
     relatedGrid.innerHTML = related.map(blog => `
-      <a href="blog-details.html?id=${blog._id}" class="block bg-white rounded-xl shadow hover:shadow-xl overflow-hidden transition group">
+      <a href="campus-news-update?id=${blog._id}" class="block bg-white rounded-xl shadow hover:shadow-xl overflow-hidden transition group">
         <img src="${blog.imageUrl || "https://images.unsplash.com/photo-1503676382389-4809596d5290?auto=format&fit=crop&w=400&q=80"}"
              alt="${blog.title}" class="h-auto w-full object-cover group-hover:scale-105 transition" />
         <div class="p-4">
@@ -265,8 +314,7 @@ function attachCommentActionListeners() {
       </a>
     `).join('');
   }
-
-  // Inject Blog Post Schema Markup after mainPost is ready
+    // Inject Blog Post Schema Markup after mainPost is ready
   injectBlogPostJsonLD({
     title: mainPost.title,
     image: mainPost.imageUrl,
@@ -275,7 +323,10 @@ function attachCommentActionListeners() {
     description: mainPost.summary || (mainPost.content ? mainPost.content.substring(0, 120) + "..." : "")
   });
 
-})();
+  // Monitor and reward blog reading (AFTER everything loads and post is ready)
+  monitorAndRewardReading(postId);
+
+})();  
 
 // --- Inject Blog Post JSON-LD Schema
 function injectBlogPostJsonLD({ title, image, author, datePublished, description }) {
@@ -308,9 +359,4 @@ function injectBlogPostJsonLD({ title, image, author, datePublished, description
   script.id = 'blog-post-json-ld';
   script.textContent = JSON.stringify(jsonLd, null, 2);
   document.head.appendChild(script);
-}
-
-function showNotificationModal(title, message, type = "info") {
-  // Use your modal, or simply alert for now
-  alert(title + ": " + message);
 }
