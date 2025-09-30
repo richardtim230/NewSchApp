@@ -14,6 +14,24 @@
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     .menu-overlay { background: rgba(0,0,0,0.4); }
+    @media (min-width: 768px) {
+      #cart-items.grid-cards {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1.25rem;
+      }
+      #wishlist-items.grid-cards {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1.25rem;
+      }
+    }
+    @media (min-width: 1024px) {
+      #cart-items.grid-cards,
+      #wishlist-items.grid-cards {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
   </style>
 </head>
 <body>
@@ -88,19 +106,19 @@
     <!-- Tab Contents -->
     <section class="dashboard-section p-6 w-full" id="tab-cart">
       <h3 class="text-xl font-bold text-blue-700 mb-4">My Cart</h3>
-      <div id="cart-items" class="space-y-4"></div>
+      <div id="cart-items" class="grid-cards space-y-4"></div>
       <div class="flex flex-col sm:flex-row justify-between items-center mt-8 gap-4">
         <div class="font-bold text-lg text-green-700">
           Total: ₦<span id="cart-total">0</span>
         </div>
         <button id="pay-out-btn" class="px-6 py-3 bg-green-600 text-white rounded-lg shadow hover:bg-green-700 font-bold text-lg transition w-full sm:w-auto">
-          Pay Out
+          Pay Now
         </button>
       </div>
     </section>
     <section class="dashboard-section p-6 hidden w-full" id="tab-wishlist">
       <h3 class="text-xl font-bold text-pink-600 mb-4">Wishlist</h3>
-      <div id="wishlist-items" class="space-y-4"></div>
+      <div id="wishlist-items" class="grid-cards space-y-4"></div>
     </section>
     <section class="dashboard-section p-6 hidden w-full" id="tab-offers">
       <h3 class="text-xl font-bold text-yellow-600 mb-4">My Offers</h3>
@@ -132,6 +150,7 @@
     const BACKEND = "https://examguide.onrender.com";
     function getToken() { return localStorage.token || sessionStorage.token || ''; }
     function authHeader() { return { 'Authorization': 'Bearer ' + getToken() }; }
+
     // --- Tab switching ---
     document.querySelectorAll('.tab-btn').forEach(btn => {
       btn.addEventListener('click', function () {
@@ -200,20 +219,57 @@
     };
 
     // --- Cart ---
+    async function updateCartQuantity(productId, newQty) {
+      await fetch(BACKEND + "/api/cart/add", {
+        method: "POST",
+        headers: { ...authHeader(), "Content-Type": "application/json" },
+        body: JSON.stringify({ productId, quantity: newQty })
+      });
+      loadCart();
+    }
+
+    async function orderCartItems() {
+      const res = await fetch(BACKEND + "/api/cart", { headers: authHeader() });
+      const cart = await res.json();
+      if (!cart.items || !cart.items.length) {
+        alert("No items to order!");
+        return;
+      }
+      // Order all valid cart items
+      for (const item of cart.items) {
+        if (item.productId) {
+          await orderProduct(item.productId._id || item.productId.id, item.quantity);
+        }
+      }
+      alert("Order(s) placed! Pending payment.");
+      loadOrders();
+      // You may also want to clear the cart or keep items till payment
+    }
+
+    async function orderProduct(productId, quantity) {
+      // Call backend to create pending order for this product and quantity
+      await fetch(BACKEND + "/api/orders", {
+        method: "POST",
+        headers: { ...authHeader(), "Content-Type": "application/json" },
+        body: JSON.stringify({ productId, quantity, status: "pending_payment" })
+      });
+    }
+
     async function loadCart() {
-      document.getElementById('cart-items').innerHTML = '<div class="spinner mx-auto my-8"></div>';
+      const cartItemsDiv = document.getElementById('cart-items');
+      cartItemsDiv.classList.add('grid-cards');
+      cartItemsDiv.innerHTML = '<div class="spinner mx-auto my-8"></div>';
       let total = 0;
       try {
         const res = await fetch(BACKEND + "/api/cart", { headers: authHeader() });
         const cart = await res.json();
         if (!cart.items || !cart.items.length) {
-          document.getElementById('cart-items').innerHTML = '<div class="text-gray-400 text-center my-6">Your cart is empty.</div>';
+          cartItemsDiv.innerHTML = '<div class="text-gray-400 text-center my-6">Your cart is empty.</div>';
           document.getElementById('cart-total').textContent = "0";
           return;
         }
-        document.getElementById('cart-items').innerHTML = cart.items.map(item => {
+        cartItemsDiv.innerHTML = cart.items.map(item => {
           const prod = item.productId;
-          // Defensive fallback if product missing
           if (!prod) {
             return `
               <div class="flex flex-col sm:flex-row gap-4 items-center bg-red-50 rounded-lg p-3 shadow border border-red-200">
@@ -241,8 +297,10 @@
                 <div class="text-yellow-700 font-bold text-xl">&#8358;${price.toLocaleString()}</div>
                 <div class="text-sm text-gray-700">Date Carted: ${item.addedAt ? new Date(item.addedAt).toLocaleDateString() : "-"}</div>
                 <div class="text-sm text-gray-700">Seller: ${prod.sellerName || prod.seller || "Unknown"}</div>
-                <div class="flex items-center gap-2">
-                  <span class="font-bold text-gray-700">Qty: x${item.quantity}</span>
+                <div class="flex items-center gap-2 mt-2">
+                  <button class="bg-gray-200 p-2 rounded-full text-gray-900 font-bold text-xl" onclick="changeQty('${prod._id || prod.id}', -1)">-</button>
+                  <span class="font-bold text-gray-700 px-2">Qty: x${item.quantity}</span>
+                  <button class="bg-gray-200 p-2 rounded-full text-gray-900 font-bold text-xl" onclick="changeQty('${prod._id || prod.id}', 1)">+</button>
                 </div>
               </div>
             </div>
@@ -250,9 +308,19 @@
         }).join('');
         document.getElementById('cart-total').textContent = total.toLocaleString();
       } catch {
-        document.getElementById('cart-items').innerHTML = '<div class="text-red-500 text-center my-6">Failed to load cart.</div>';
+        cartItemsDiv.innerHTML = '<div class="text-red-500 text-center my-6">Failed to load cart.</div>';
         document.getElementById('cart-total').textContent = "0";
       }
+    }
+    window.changeQty = async function(productId, delta) {
+      // Get the current cart, find item, update quantity
+      const res = await fetch(BACKEND + "/api/cart", { headers: authHeader() });
+      const cart = await res.json();
+      const item = cart.items.find(i => i.productId && (i.productId._id === productId || i.productId.id === productId));
+      if (!item) return;
+      let newQty = (item.quantity || 1) + delta;
+      if (newQty < 1) newQty = 1;
+      await updateCartQuantity(productId, newQty - (item.quantity || 1));
     }
     window.removeCartItem = async function(productId) {
       await fetch(BACKEND + "/api/cart/remove", {
@@ -262,39 +330,41 @@
       });
       loadCart();
     };
-    document.getElementById('pay-out-btn').onclick = function() {
-      const total = document.getElementById('cart-total').textContent.replace(/,/g,'');
-      if (total === "0") {
-        alert("No items in cart to pay for!");
-        return;
-      }
-      alert("Proceeding to payment for ₦" + total + ". (Integrate payment gateway here.)");
+    document.getElementById('pay-out-btn').onclick = async function() {
+      await orderCartItems();
     };
 
     // --- Wishlist ---
     async function loadWishlist() {
-      document.getElementById('wishlist-items').innerHTML = '<div class="spinner mx-auto my-8"></div>';
+      const wishlistItemsDiv = document.getElementById('wishlist-items');
+      wishlistItemsDiv.classList.add('grid-cards');
+      wishlistItemsDiv.innerHTML = '<div class="spinner mx-auto my-8"></div>';
       try {
         const res = await fetch(BACKEND + "/api/blogger-dashboard/wishlist", { headers: authHeader() });
         const { wishlist } = await res.json();
         if (!wishlist || !wishlist.length) {
-          document.getElementById('wishlist-items').innerHTML = '<div class="text-gray-400 text-center my-6">No items in wishlist.</div>';
+          wishlistItemsDiv.innerHTML = '<div class="text-gray-400 text-center my-6">No items in wishlist.</div>';
           return;
         }
-        document.getElementById('wishlist-items').innerHTML = wishlist.map(item => `
-          <div class="flex gap-4 items-center bg-gray-50 rounded p-3 shadow">
-            <img src="${(item.images?.[0] || item.img || item.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(item.title || 'Product') + '&background=eee&color=263159&rounded=true')}" class="object-cover w-20 h-20 rounded" alt="Wishlist image"/>
-            <div class="flex-1">
-              <div class="font-semibold text-blue-800 truncate">${item.title}</div>
-              <div class="text-yellow-700 font-bold">&#8358;${Number(item.price||0).toLocaleString()}</div>
+        wishlistItemsDiv.innerHTML = wishlist.map(item => `
+          <div class="flex flex-col sm:flex-row gap-3 items-center bg-gray-50 rounded-xl p-4 shadow border border-gray-200">
+            <div class="flex-shrink-0 w-28 h-28 bg-gray-100 rounded-xl flex items-center justify-center overflow-hidden">
+              <img src="${(item.images?.[0] || item.img || item.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(item.title || 'Product') + '&background=eee&color=263159&rounded=true')}" class="object-cover w-full h-full rounded-xl" alt="Wishlist image"/>
             </div>
-            <div>
-              <button class="px-3 py-1 rounded bg-pink-100 text-pink-600 font-semibold" onclick="removeWishlistItem('${item._id||item.id}')">Remove</button>
+            <div class="flex-1 w-full flex flex-col gap-2 pl-0 sm:pl-4">
+              <div class="flex items-center justify-between">
+                <div class="font-semibold text-blue-800 text-lg">${item.title}</div>
+                <button class="px-3 py-1 bg-pink-100 text-pink-600 font-semibold rounded hover:bg-pink-200" onclick="removeWishlistItem('${item._id||item.id}')">Remove</button>
+              </div>
+              <div class="text-yellow-700 font-bold text-xl">&#8358;${Number(item.price||0).toLocaleString()}</div>
+              <div class="flex mt-2">
+                <button class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-semibold" onclick="orderProduct('${item._id||item.id}', 1)">Place Order</button>
+              </div>
             </div>
           </div>
         `).join('');
       } catch {
-        document.getElementById('wishlist-items').innerHTML = '<div class="text-red-500 text-center my-6">Failed to load wishlist.</div>';
+        wishlistItemsDiv.innerHTML = '<div class="text-red-500 text-center my-6">Failed to load wishlist.</div>';
       }
     }
     window.removeWishlistItem = async function(listingId) {
@@ -332,22 +402,38 @@
     // --- Orders (sample, needs backend support) ---
     async function loadOrders() {
       document.getElementById('orders-list').innerHTML = '<div class="spinner mx-auto my-8"></div>';
-      document.getElementById('orders-list').innerHTML = '<div class="text-gray-400 text-center my-6">No orders yet. (Coming soon)</div>';
+      // Fetch orders from backend and display them here (pending_payment status etc.)
+      try {
+        const res = await fetch(BACKEND + "/api/orders", { headers: authHeader() });
+        const { orders } = await res.json();
+        if (!orders || !orders.length) {
+          document.getElementById('orders-list').innerHTML = '<div class="text-gray-400 text-center my-6">No orders yet.</div>';
+          return;
+        }
+        document.getElementById('orders-list').innerHTML = orders.map(order => `
+          <div class="bg-green-50 p-3 rounded shadow flex flex-col sm:flex-row gap-2 items-center">
+            <div class="flex-1">
+              <div class="font-semibold text-green-700">${order.productTitle || 'Product'}</div>
+              <div class="text-gray-700">Qty: x${order.quantity || 1}</div>
+              <div class="text-gray-700">Status: ${order.status || "pending_payment"}</div>
+              <div class="text-xs text-gray-500">${order.createdAt ? new Date(order.createdAt).toLocaleDateString() : ''}</div>
+            </div>
+          </div>
+        `).join('');
+      } catch {
+        document.getElementById('orders-list').innerHTML = '<div class="text-red-500 text-center my-6">Failed to load orders.</div>';
+      }
     }
 
-    // --- Messages (sample, needs backend support) ---
+    // --- Messages/Notifications/Help: unchanged ---
     async function loadMessages() {
       document.getElementById('messages-list').innerHTML = '<div class="spinner mx-auto my-8"></div>';
       document.getElementById('messages-list').innerHTML = '<div class="text-gray-400 text-center my-6">No messages yet. (Coming soon)</div>';
     }
-
-    // --- Notifications (sample, needs backend support) ---
     async function loadNotifications() {
       document.getElementById('notifications-list').innerHTML = '<div class="spinner mx-auto my-8"></div>';
       document.getElementById('notifications-list').innerHTML = '<div class="text-gray-400 text-center my-6">No notifications yet. (Coming soon)</div>';
     }
-
-    // --- Help ---
     document.getElementById('helpForm').addEventListener('submit', function(e){
       e.preventDefault();
       const helpInput = document.getElementById('helpInput');
