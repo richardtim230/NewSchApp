@@ -329,17 +329,19 @@ window.editPost = function(id) {
     document.getElementById('postTopic').value = post.topic;
     document.getElementById('postSubject').value = post.subject;
     document.getElementById('postCategory').value = post.category || "";
-    if (quill) quill.setContents(quill.clipboard.convert(post.content));
+    // Set rich contents exactly as saved
+    if (quill) quill.root.innerHTML = post.content || "";
     editingPostId = id;
-    if (Array.isArray(post.images) && post.images.length) {
-      let html = "";
-      post.images.forEach(img => {
-        html += `<img src="${img}" class="w-14 h-14 rounded border object-cover">`;
-      });
-      document.getElementById("imagePreview").innerHTML = html;
-    } else {
-      document.getElementById("imagePreview").innerHTML = "";
-    }
+    // Load featured image URLs for preview and uploading
+    let html = "";
+    let previewImages = Array.isArray(post.images) && post.images.length
+      ? post.images
+      : post.imageUrl ? [post.imageUrl] : [];
+    previewImages.forEach(img => {
+      html += `<img src="${img}" class="w-14 h-14 rounded border object-cover">`;
+    });
+    document.getElementById("imagePreview").innerHTML = html;
+    uploadedImages = previewImages; // Ensure these are available for editing/publishing
   }, 100);
 };
 
