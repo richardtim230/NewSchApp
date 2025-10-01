@@ -1,5 +1,3 @@
-// --- JS Section: Blogger Dashboard using new endpoints ---
-
 const BACKEND = "https://examguard-jmvj.onrender.com";
 const POSTS_API = BACKEND + "/api/posts";
 const PROFILE_API = BACKEND + "/api/users/me";
@@ -170,16 +168,6 @@ function clearEditor() {
   document.getElementById("imagePreview").innerHTML = "";
 }
 
-// UTIL: Convert file to base64 string
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 document.getElementById("imageUpload").addEventListener("change", async function(evt) {
   const files = Array.from(evt.target.files);
   if (files.length > 3) {
@@ -224,14 +212,29 @@ async function uploadImageToCloudinary(file) {
   return data.url;
 }
 
-// SAVE DRAFT AND PUBLISH
+async function convertBase64ImagesToCloudinary(html) {
+  const imgRegex = /<img[^>]+src="(data:image\/[^;]+;base64,[^"]+)"[^>]*>/g;
+  const matches = Array.from(html.matchAll(imgRegex));
+  let newHtml = html;
+  for (const match of matches) {
+    const base64 = match[1];
+    const res = await fetch(base64);
+    const blob = await res.blob();
+    const file = new File([blob], "inline-image.png", { type: blob.type });
+    const imageUrl = await uploadImageToCloudinary(file);
+    newHtml = newHtml.replace(base64, imageUrl);
+  }
+  return newHtml;
+}
+
 document.getElementById('postEditorForm').onsubmit = async function(e){
   e.preventDefault();
+  let content = quill.root.innerHTML;
+  content = await convertBase64ImagesToCloudinary(content);
   const title = document.getElementById('postTitle').value;
   const topic = document.getElementById('postTopic').value;
   const subject = document.getElementById('postSubject').value;
   const category = document.getElementById('postCategory').value;
-  const content = quill.root.innerHTML;
   const saveBtn = document.getElementById('saveDraftBtn');
   const draftSpinner = document.getElementById('draftSpinner');
   saveBtn.disabled = true;
@@ -276,11 +279,12 @@ document.getElementById('publishBtn').onclick = async function() {
   const publishSpinner = document.getElementById('publishSpinner');
   publishBtn.disabled = true;
   publishSpinner.classList.remove('hidden');
+  let content = quill.root.innerHTML;
+  content = await convertBase64ImagesToCloudinary(content);
   const title = document.getElementById('postTitle').value;
   const topic = document.getElementById('postTopic').value;
   const subject = document.getElementById('postSubject').value;
   const category = document.getElementById('postCategory').value;
-  const content = quill.root.innerHTML;
   try {
     let body = {
       title,
@@ -316,24 +320,30 @@ document.getElementById('publishBtn').onclick = async function() {
   }
 };
 
-window.editPost = function(id) {
-  const post = posts.find(p => p._id === id);
-  if(!post) return;
+window.editPost = async function(id) {
+  const res = await fetch(`${POSTS_API}/${id}`, { headers: authHeader() });
+  if (!res.ok) {
+    alert("Could not fetch post details");
+    return;
+  }
+  const post = await res.json();
   tabSwitch('editor');
   setTimeout(() => {
     document.getElementById('postTitle').value = post.title;
     document.getElementById('postTopic').value = post.topic;
     document.getElementById('postSubject').value = post.subject;
     document.getElementById('postCategory').value = post.category || "";
-    if (quill) quill.setContents(quill.clipboard.convert(post.content));
+    if (quill) quill.root.innerHTML = post.content || ""; // preserves paragraphs, spacing, rich designs
     editingPostId = id;
+    let html = "";
     if (Array.isArray(post.images) && post.images.length) {
-      let html = "";
+      uploadedImages = post.images;
       post.images.forEach(img => {
         html += `<img src="${img}" class="w-14 h-14 rounded border object-cover">`;
       });
       document.getElementById("imagePreview").innerHTML = html;
     } else {
+      uploadedImages = [];
       document.getElementById("imagePreview").innerHTML = "";
     }
   }, 100);
