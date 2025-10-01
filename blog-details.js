@@ -173,9 +173,12 @@ function attachCommentActionListeners() {
         <img src="${image}" alt="${title}" class="w-full h-auto object-cover rounded-lg shadow" />
         <div class="absolute top-3 right-4 flex gap-2">
           <button id="likePostBtn" class="bg-white/90 rounded-full border border-yellow-200 px-3 py-1 flex items-center gap-1 font-semibold like-btn transition hover:bg-yellow-50">
-            <span id="likePostCount">${likes}</span>
-            <svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.159c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.539 1.118l-3.37-2.448a1 1 0 00-1.175 0l-3.37 2.448c-.783.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.174 9.384c-.783-.57-.38-1.81.588-1.81h4.159a1 1 0 00.95-.69l1.286-3.957z"></path></svg>
-          </button>
+  <span id="likePostCount">${likes}</span>
+  <svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+    <path d="M2 10.5a.5.5 0 01.5-.5h10.586l-2.293-2.293a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L13.086 11H2.5a.5.5 0 01-.5-.5z" />
+  </svg>
+</button>
+
           <button id="sharePostBtn" class="flex items-center gap-2 px-4 py-2 bg-yellow-400 text-blue-900 font-bold rounded hover:bg-yellow-500 transition mb-2 mt-2">Share</button>
         </div>
       </div>
