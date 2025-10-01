@@ -603,7 +603,7 @@ function closeChatModal() {
 async function loadChatHistory() {
   const token = localStorage.getItem("token");
   try {
-    const res = await fetch(BACKEND + `/api/blogger-dashboard/massages/${chatSellerId}`, {
+    const res = await fetch(BACKEND + `/api/massages/${chatSellerId}`, {
       headers: { "Authorization": "Bearer " + token }
     });
     const messages = res.ok ? await res.json() : [];
@@ -638,7 +638,7 @@ document.getElementById("chatForm").onsubmit = async function(e) {
   if (!text) return;
   const token = localStorage.getItem("token");
   try {
-    const res = await fetch(BACKEND + "/api/blogger-dashboard/massages", {
+    const res = await fetch(BACKEND + "/api/massages", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
