@@ -170,18 +170,19 @@ function attachCommentActionListeners() {
 
     document.getElementById('blogContent').innerHTML = `
       <div class="relative w-full mb-4">
-        <img src="${image}" alt="${title}" class="w-full h-auto object-cover rounded-lg shadow" />
-        <div class="absolute top-3 right-4 flex gap-2">
-          <button id="likePostBtn" class="bg-white/90 rounded-full border border-yellow-200 px-3 py-1 flex items-center gap-1 font-semibold like-btn transition hover:bg-yellow-50">
-  <span id="likePostCount">${likes}</span>
-  <svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
-    <path d="M2 10.5a.5.5 0 01.5-.5h10.586l-2.293-2.293a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L13.086 11H2.5a.5.5 0 01-.5-.5z" />
-  </svg>
-</button>
+  <img src="${image}" alt="${title}" class="w-full h-auto object-cover rounded-lg shadow" />
+  <div class="flex items-center gap-3 mt-3">
+    <button id="likePostBtn" class="flex items-center gap-2 px-4 py-2 bg-white border border-yellow-300 rounded-lg shadow-sm hover:bg-yellow-50 transition">
+      <svg class="w-7 h-7 text-blue-600" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M2 21h4V9H2v12zM22 11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L13 2 7.59 7.41C7.21 7.79 7 8.3 7 8.83V19c0 1.1.9 2 2 2h9c.82 0 1.54-.5 1.84-1.22l2.02-4.67c.09-.23.14-.47.14-.71V11z"/>
+      </svg>
+      <span id="likePostCount" class="font-semibold text-gray-700">${likes}</span>
+    </button>
+    <button id="sharePostBtn" class="flex items-center gap-2 px-4 py-2 bg-yellow-400 text-blue-900 font-bold rounded-lg hover:bg-yellow-500 transition">
+      Share
+    </button>
+  </div>
 
-          <button id="sharePostBtn" class="flex items-center gap-2 px-4 py-2 bg-yellow-400 text-blue-900 font-bold rounded hover:bg-yellow-500 transition mb-2 mt-2">Share</button>
-        </div>
-      </div>
       <h1 class="text-3xl font-extrabold text-blue-900 mb-2">${title}</h1>
       <div class="flex flex-wrap gap-2 text-sm text-gray-500 mb-2">
         <span class="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full font-medium">${category}</span>
