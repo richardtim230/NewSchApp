@@ -1,21 +1,22 @@
-// blog-details.js -- Fast loading blog details page, minimal data fetch
-
 const API_BASE = "https://examguard-jmvj.onrender.com/api";
-const DASHBOARD_API = API_BASE + "/blogger-dashboard";
+const POSTS_API = API_BASE + "/public/posts";
+const USER_API = API_BASE + "/users";
+const COMMENT_API = API_BASE + "/posts";
+const READS_API = API_BASE + "/posts";
 
-// Efficient endpoints for details page
+// Fetch endpoints
 async function fetchMainPost(postId) {
-  const res = await fetch(`${DASHBOARD_API}/public/posts/${postId}`);
+  const res = await fetch(`${POSTS_API}/${postId}`);
   return res.ok ? await res.json() : null;
 }
 async function fetchRelatedPosts(postId, limit = 4) {
-  const res = await fetch(`${DASHBOARD_API}/public/posts/${postId}/related?limit=${limit}`);
+  const res = await fetch(`${POSTS_API}/${postId}/related?limit=${limit}`);
   return res.ok ? await res.json() : [];
 }
 async function fetchUserInfo(userId) {
   if (!userId) return {};
   try {
-    const res = await fetch(`${API_BASE}/users/${userId}`);
+    const res = await fetch(`${USER_API}/${userId}`);
     if (!res.ok) return {};
     const data = await res.json();
     return data.user || data;
@@ -24,16 +25,16 @@ async function fetchUserInfo(userId) {
   }
 }
 async function likePost(postId) {
-  const res = await fetch(`${DASHBOARD_API}/like/${postId}`, { method: "PATCH" });
+  const res = await fetch(`${COMMENT_API}/${postId}/like`, { method: "PATCH" });
   return res.ok ? (await res.json()).likes : null;
 }
 async function likeComment(postId, commentId) {
-  const res = await fetch(`${DASHBOARD_API}/like-comment/${postId}/${commentId}`, { method: "PATCH" });
+  const res = await fetch(`${COMMENT_API}/${postId}/comments/${commentId}/like`, { method: "PATCH" });
   return res.ok ? (await res.json()).likes : null;
 }
 async function addCommentToBackend(postId, userId, name, text, parentId=null) {
   try {
-    const res = await fetch(`${DASHBOARD_API}/add-comment/${postId}`, {
+    const res = await fetch(`${COMMENT_API}/${postId}/comments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, text, user: userId, parentId })
@@ -44,64 +45,19 @@ async function addCommentToBackend(postId, userId, name, text, parentId=null) {
     return false;
   }
 }
+async function incrementBlogReadCount(postId) {
+  try {
+    await fetch(`${READS_API}/${postId}/views`, { method: "PATCH" });
+  } catch (e) {}
+}
 
-// Utility: Parse post id from URL
+// Parse post id from URL
 function getPostIdFromURL() {
   const params = new URLSearchParams(window.location.search);
   return params.get("id");
 }
 
-// Utility: get user id for deduplication
-function getUserToken() {
-  return localStorage.token || sessionStorage.token || null;
-}
-function getUserFromToken() {
-  const token = getUserToken();
-  if (!token) return null;
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    return payload;
-  } catch {
-    return null;
-  }
-}
-function getCurrentUserIdOrVisitor() {
-  const user = getUserFromToken();
-  if (user && user.id) return user.id;
-  let visitorId = localStorage.getItem('visitor_id');
-  if (!visitorId) {
-    visitorId = 'guest_' + Math.random().toString(36).substr(2, 10) + '_' + Date.now();
-    localStorage.setItem('visitor_id', visitorId);
-  }
-  return visitorId;
-}
-function shouldCountBlogRead(postId) {
-  const key = 'blog_read_' + postId;
-  const lastRead = localStorage.getItem(key);
-  if (!lastRead) return true;
-  return (Date.now() - Number(lastRead)) > (2 * 60 * 60 * 1000); // 2 hours
-}
-function markBlogRead(postId) {
-  localStorage.setItem('blog_read_' + postId, Date.now().toString());
-}
-async function incrementBlogReadCount(postId) {
-  if (!shouldCountBlogRead(postId)) return;
-  const userOrVisitor = getCurrentUserIdOrVisitor();
-  try {
-    await fetch(`${DASHBOARD_API}/increment-views/${postId}`, {
-      method: "PATCH",
-      headers: { "x-visitor-id": userOrVisitor }
-    });
-    markBlogRead(postId);
-  } catch (e) {}
-}
-
-// Minimal notification modal
-function showNotificationModal(title, message, type = "info") {
-  alert(title + ": " + message);
-}
-
-// Render comments (simple, no deep nesting for speed)
+// Comments rendering
 function renderComments(comments) {
   const list = document.getElementById("commentsList");
   if (!Array.isArray(comments) || comments.length === 0) {
@@ -185,150 +141,142 @@ function attachCommentActionListeners() {
   });
 }
 
-// Main load function
-(async function(){
+(function(){
   const postId = getPostIdFromURL();
   if (!postId) {
     document.getElementById('blogContent').innerHTML = `<div class="text-center text-gray-500 py-20">Blog post not found.</div>`;
     return;
   }
-  incrementBlogReadCount(postId);
 
-  // Fetch just the main post and related posts
-  const mainPost = await fetchMainPost(postId);
-  if (!mainPost) {
-    document.getElementById('blogContent').innerHTML = `<div class="text-center text-gray-500 py-20">Blog post not found.</div>`;
-    return;
-  }
-  const related = await fetchRelatedPosts(postId, 4);
-
-  // Format post details
-  const author = mainPost.authorName || "Anonymous";
-  const date = mainPost.date ? new Date(mainPost.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : "";
-  const image = mainPost.imageUrl || "oaugate-1140x570.jpg";
-  const category = mainPost.category || "General";
-  const views = mainPost.views ?? 0;
-  const likes = mainPost.likes ?? 0;
-  const comments = Array.isArray(mainPost.comments) ? mainPost.comments : [];
-  const content = mainPost.content || "";
-  const title = mainPost.title || "";
-  const authorId = mainPost.authorId || mainPost.user;
-
-  document.getElementById('blogContent').innerHTML = `
-    <div class="relative w-full mb-4">
-      <img src="${image}" alt="${title}" class="w-full h-auto object-cover rounded-lg shadow" />
-      <button id="likePostBtn" class="absolute top-3 right-4 bg-white/90 rounded-full border border-yellow-200 px-3 py-1 flex items-center gap-1 font-semibold like-btn transition hover:bg-yellow-50">  
-        <span id="likePostCount">${likes}</span>
-      </button>
-      <button id="sharePostBtn" class="flex items-center gap-2 px-4 py-2 bg-yellow-400 text-blue-900 font-bold rounded hover:bg-yellow-500 transition mb-2 mt-2">Share</button>
-    </div>
-    <h1 class="text-3xl font-extrabold text-blue-900 mb-2">${title}</h1>
-    <div class="flex flex-wrap gap-2 text-sm text-gray-500 mb-2">
-      <span class="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full font-medium">${category}</span>
-      <span>${author}</span>
-      <span>• ${date}</span>
-    </div>
-    <div class="flex gap-4 text-xs text-gray-400 mb-6">
-      <span>👁️ ${views} reads</span>
-      <span>⭐ <span id="likePostCount2">${likes}</span> likes</span>
-      <span>💬 ${comments.length} comments</span>
-    </div>
-    <div class="prose prose-lg max-w-none text-gray-900 mb-6">${content}</div>
-  `;
-  document.getElementById('sharePostBtn').onclick = function() {
-    const postUrl = window.location.href;
-    if (navigator.share) {
-      navigator.share({ title, url: postUrl });
-    } else {
-      navigator.clipboard.writeText(postUrl);
-      showNotificationModal('Link Copied', 'Post link copied to clipboard.', 'success');
+  (async function(){
+    incrementBlogReadCount(postId);
+    const mainPost = await fetchMainPost(postId);
+    if (!mainPost) {
+      document.getElementById('blogContent').innerHTML = `<div class="text-center text-gray-500 py-20">Blog post not found.</div>`;
+      return;
     }
-  };
-  document.getElementById('likePostBtn').addEventListener('click', async function() {
-    if (localStorage.getItem('liked_post_' + postId)) return;
-    this.disabled = true;
-    const newLikes = await likePost(postId);
-    if (newLikes !== null) {
-      localStorage.setItem('liked_post_' + postId, '1');
-      document.getElementById('likePostBtn').classList.add('liked');
-      document.getElementById('likePostCount').textContent = newLikes;
-      document.getElementById('likePostCount2').textContent = newLikes;
-    }
-    this.disabled = false;
-  });
+    const related = await fetchRelatedPosts(postId, 4);
 
-  // Author card
-  if (authorId) {
-    const authorData = await fetchUserInfo(authorId);
-    if (authorData && (authorData.fullname || authorData.username)) {
-      document.getElementById("authorCard").classList.remove("hidden");
-      document.getElementById("authorName").textContent = authorData.fullname || authorData.username || "Anonymous";
-      document.getElementById("authorDept").textContent = (authorData.department ? authorData.department + " Dept" : "") + (authorData.faculty ? ", " + authorData.faculty : "");
-      document.getElementById("authorBio").textContent = authorData.bio || "";
-      document.getElementById("authorAvatar").src = authorData.profilePic
-        ? (authorData.profilePic.startsWith("http") ? authorData.profilePic : authorData.profilePic)
-        : `https://ui-avatars.com/api/?name=${encodeURIComponent(authorData.fullname || authorData.username || "Author")}&background=ffda00&color=263159&rounded=true`;
-    }
-  }
+    const author = mainPost.authorName || "Anonymous";
+    const date = mainPost.date ? new Date(mainPost.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : "";
+    const image = mainPost.imageUrl || "oaugate-1140x570.jpg";
+    const category = mainPost.category || "General";
+    const views = mainPost.views ?? 0;
+    const likes = mainPost.likes ?? 0;
+    const comments = Array.isArray(mainPost.comments) ? mainPost.comments : [];
+    const content = mainPost.content || "";
+    const title = mainPost.title || "";
+    const authorId = mainPost.authorId || mainPost.user;
 
-  // Render comments
-  renderComments(comments);
-
-  // Comments submit handler
-  document.getElementById("commentForm").onsubmit = async function(e) {
-    e.preventDefault();
-    const name = document.getElementById("commentName").value.trim() || "Anonymous";
-    const text = document.getElementById("commentText").value.trim();
-    if (!text) return;
-    const userId = null;
-    const ok = await addCommentToBackend(postId, userId, name, text);
-    if (ok) {
-      const updated = await fetchMainPost(postId);
-      renderComments(updated && Array.isArray(updated.comments) ? updated.comments : []);
-      this.reset();
-    } else {
-      alert("Failed to add comment. Please try again.");
-    }
-  };
-
-  // Related posts (direct from API)
-  const relatedGrid = document.getElementById('relatedPosts');
-  if (related.length === 0) {
-    relatedGrid.innerHTML = `<div class="text-gray-400">No related posts found.</div>`;
-  } else {
-    relatedGrid.innerHTML = related.map(blog => `
-      <a href="campus-news-update?id=${blog._id}" class="block bg-white rounded-xl shadow hover:shadow-xl overflow-hidden transition group">
-        <img src="${blog.imageUrl || "https://images.unsplash.com/photo-1503676382389-4809596d5290?auto=format&fit=crop&w=400&q=80"}"
-             alt="${blog.title}" class="h-auto w-full object-cover group-hover:scale-105 transition" />
-        <div class="p-4">
-          <h3 class="font-bold text-blue-900 text-lg mb-1 line-clamp-2">${blog.title}</h3>
-          <div class="flex items-center text-yellow-500 text-base font-bold mb-1">${blog.category || "General"}</div>
-          <div class="text-xs text-gray-400 mb-2">${blog.authorName || "Anonymous"} • ${blog.date ? new Date(blog.date).toLocaleDateString() : ""}</div>
-          <p class="text-gray-600 mb-2 line-clamp-2">${blog.content ? blog.content.substring(0, 80) + "..." : ""}</p>
-          <div class="flex gap-2 text-xs text-gray-400">
-            <span>👁️ ${blog.views ?? 0}</span>
-            <span>⭐ ${blog.likes ?? 0}</span>
-            <span>💬 ${Array.isArray(blog.comments) ? blog.comments.length : 0}</span>
-          </div>
+    document.getElementById('blogContent').innerHTML = `
+      <div class="relative w-full mb-4">
+        <img src="${image}" alt="${title}" class="w-full h-auto object-cover rounded-lg shadow" />
+        <div class="absolute top-3 right-4 flex gap-2">
+          <button id="likePostBtn" class="bg-white/90 rounded-full border border-yellow-200 px-3 py-1 flex items-center gap-1 font-semibold like-btn transition hover:bg-yellow-50">
+            <span id="likePostCount">${likes}</span>
+            <svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.159c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.539 1.118l-3.37-2.448a1 1 0 00-1.175 0l-3.37 2.448c-.783.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.174 9.384c-.783-.57-.38-1.81.588-1.81h4.159a1 1 0 00.95-.69l1.286-3.957z"></path></svg>
+          </button>
+          <button id="sharePostBtn" class="flex items-center gap-2 px-4 py-2 bg-yellow-400 text-blue-900 font-bold rounded hover:bg-yellow-500 transition mb-2 mt-2">Share</button>
         </div>
-      </a>
-    `).join('');
-  }
-    // Inject Blog Post Schema Markup after mainPost is ready
-  injectBlogPostJsonLD({
-    title: mainPost.title,
-    image: mainPost.imageUrl,
-    author: mainPost.authorName || "Anonymous",
-    datePublished: mainPost.date,
-    description: mainPost.summary || (mainPost.content ? mainPost.content.substring(0, 120) + "..." : "")
-  });
+      </div>
+      <h1 class="text-3xl font-extrabold text-blue-900 mb-2">${title}</h1>
+      <div class="flex flex-wrap gap-2 text-sm text-gray-500 mb-2">
+        <span class="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full font-medium">${category}</span>
+        <span>${author}</span>
+        <span>• ${date}</span>
+      </div>
+      <div class="flex gap-4 text-xs text-gray-400 mb-6">
+        <span id="totalReads">👁️ ${views} reads</span>
+        <span>⭐ <span id="likePostCount2">${likes}</span> likes</span>
+        <span>💬 ${comments.length} comments</span>
+      </div>
+      <div class="prose prose-lg max-w-none text-gray-900 mb-6">${content}</div>
+    `;
+    document.getElementById('likePostBtn').addEventListener('click', async function() {
+      if (localStorage.getItem('liked_post_' + postId)) return;
+      this.disabled = true;
+      const newLikes = await likePost(postId);
+      if (newLikes !== null) {
+        localStorage.setItem('liked_post_' + postId, '1');
+        document.getElementById('likePostBtn').classList.add('liked');
+        document.getElementById('likePostCount').textContent = newLikes;
+        document.getElementById('likePostCount2').textContent = newLikes;
+      }
+      this.disabled = false;
+    });
+    document.getElementById('sharePostBtn').onclick = function() {
+      const postUrl = window.location.href;
+      if (navigator.share) {
+        navigator.share({ title, url: postUrl });
+      } else {
+        navigator.clipboard.writeText(postUrl);
+        alert('Link Copied: Post link copied to clipboard.');
+      }
+    };
 
-  // Monitor and reward blog reading (AFTER everything loads and post is ready)
-  monitorAndRewardReading(postId);
+    if (authorId) {
+      const authorData = await fetchUserInfo(authorId);
+      if (authorData && (authorData.fullname || authorData.username)) {
+        document.getElementById("authorCard").classList.remove("hidden");
+        document.getElementById("authorName").textContent = authorData.fullname || authorData.username || "Anonymous";
+        document.getElementById("authorDept").textContent = (authorData.department ? authorData.department + " Dept" : "") + (authorData.faculty ? ", " + authorData.faculty : "");
+        document.getElementById("authorBio").textContent = authorData.bio || "";
+        document.getElementById("authorAvatar").src = authorData.profilePic
+          ? (authorData.profilePic.startsWith("http") ? authorData.profilePic : authorData.profilePic)
+          : `https://ui-avatars.com/api/?name=${encodeURIComponent(authorData.fullname || authorData.username || "Author")}&background=ffda00&color=263159&rounded=true`;
+      }
+    }
 
-})();  
+    renderComments(comments);
 
-// --- Inject Blog Post JSON-LD Schema
+    document.getElementById("commentForm").onsubmit = async function(e) {
+      e.preventDefault();
+      const name = document.getElementById("commentName").value.trim() || "Anonymous";
+      const text = document.getElementById("commentText").value.trim();
+      if (!text) return;
+      const userId = null;
+      const ok = await addCommentToBackend(postId, userId, name, text);
+      if (ok) {
+        const updated = await fetchMainPost(postId);
+        renderComments(updated && Array.isArray(updated.comments) ? updated.comments : []);
+        this.reset();
+      } else {
+        alert("Failed to add comment. Please try again.");
+      }
+    };
+
+    const relatedGrid = document.getElementById('relatedPosts');
+    if (related.length === 0) {
+      relatedGrid.innerHTML = `<div class="text-gray-400">No related posts found.</div>`;
+    } else {
+      relatedGrid.innerHTML = related.map(blog => `
+        <a href="campus-news-update?id=${blog._id}" class="block bg-white rounded-xl shadow hover:shadow-xl overflow-hidden transition group">
+          <img src="${blog.imageUrl || "https://images.unsplash.com/photo-1503676382389-4809596d5290?auto=format&fit=crop&w=400&q=80"}"
+               alt="${blog.title}" class="h-auto w-full object-cover group-hover:scale-105 transition" />
+          <div class="p-4">
+            <h3 class="font-bold text-blue-900 text-lg mb-1 line-clamp-2">${blog.title}</h3>
+            <div class="flex items-center text-yellow-500 text-base font-bold mb-1">${blog.category || "General"}</div>
+            <div class="text-xs text-gray-400 mb-2">${blog.authorName || "Anonymous"} • ${blog.date ? new Date(blog.date).toLocaleDateString() : ""}</div>
+            <p class="text-gray-600 mb-2 line-clamp-2">${blog.content ? blog.content.substring(0, 80) + "..." : ""}</p>
+            <div class="flex gap-2 text-xs text-gray-400">
+              <span>👁️ ${blog.views ?? 0}</span>
+              <span>⭐ ${blog.likes ?? 0}</span>
+              <span>💬 ${Array.isArray(blog.comments) ? blog.comments.length : 0}</span>
+            </div>
+          </div>
+        </a>
+      `).join('');
+    }
+    injectBlogPostJsonLD({
+      title: mainPost.title,
+      image: mainPost.imageUrl,
+      author: mainPost.authorName || "Anonymous",
+      datePublished: mainPost.date,
+      description: mainPost.summary || (mainPost.content ? mainPost.content.substring(0, 120) + "..." : "")
+    });
+  })();
+})();
+
 function injectBlogPostJsonLD({ title, image, author, datePublished, description }) {
   const oldLd = document.getElementById('blog-post-json-ld');
   if (oldLd) oldLd.remove();
