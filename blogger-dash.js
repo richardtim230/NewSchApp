@@ -58,7 +58,7 @@ async function saveProfile(e) {
 async function fetchPosts() {
   showPostsLoading();
   try {
-    const res = await fetch(POSTS_API + "?author=me", { headers: authHeader() });
+    const res = await fetch(BACKEND + "/api/myposts", { headers: authHeader() });
     if (res.status === 401 || res.status === 403) return forceLogout();
     if (!res.ok) throw new Error("Failed to fetch posts.");
     posts = await res.json();
