@@ -272,7 +272,12 @@ async function fetchRelatedPostsByCategory(category, excludeId, excludeSubject =
       }
     };
   }
-
+async function incrementPostViews(postId) {
+  const res = await fetch(`https://examguard-jmvj.onrender.com/api/public/posts/${postId}/view`, { method: "PATCH" });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.views ?? null;
+}
   // --- Related posts section ---
   // If you want to exclude same subject, pass mainPost.subject as third argument below
   const related = await fetchRelatedPostsByCategory(mainPost.category, postId, null, 4);
