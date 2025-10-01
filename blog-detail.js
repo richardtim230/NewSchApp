@@ -168,12 +168,13 @@ function attachCommentActionListeners() {
   document.getElementById('blogContent').innerHTML = `
     <div class="relative w-full mb-4">
       <img src="${image}" alt="${title}" class="w-full h-auto object-cover rounded-lg shadow" />
-      <button id="likePostBtn" class="bg-white/90 rounded-full border border-yellow-200 px-3 py-1 flex items-center gap-1 font-semibold like-btn transition hover:bg-yellow-50">
+<button id="likePostBtn" class="bg-white/90 rounded-full border border-yellow-200 px-3 py-1 flex items-center gap-1 font-semibold like-btn transition hover:bg-yellow-50">
   <span id="likePostCount">${likes}</span>
   <svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
-    <path d="M2 10.5a.5.5 0 01.5-.5h10.586l-2.293-2.293a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L13.086 11H2.5a.5.5 0 01-.5-.5z" />
+    <path d="M2 10h4V8a4 4 0 014-4h1a1 1 0 011 1v2h3a2 2 0 012 2v1a7 7 0 01-7 7H6a2 2 0 01-2-2v-5z" />
   </svg>
 </button>
+
 
       <button id="sharePostBtn" class="flex items-center gap-2 px-4 py-2 bg-yellow-400 text-blue-900 font-bold rounded hover:bg-yellow-500 transition mb-2 mt-2">Share</button>
     </div>
