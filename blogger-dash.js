@@ -320,30 +320,24 @@ document.getElementById('publishBtn').onclick = async function() {
   }
 };
 
-window.editPost = async function(id) {
-  const res = await fetch(`${POSTS_API}/${id}`, { headers: authHeader() });
-  if (!res.ok) {
-    alert("Could not fetch post details");
-    return;
-  }
-  const post = await res.json();
+window.editPost = function(id) {
+  const post = posts.find(p => p._id === id);
+  if(!post) return;
   tabSwitch('editor');
   setTimeout(() => {
     document.getElementById('postTitle').value = post.title;
     document.getElementById('postTopic').value = post.topic;
     document.getElementById('postSubject').value = post.subject;
     document.getElementById('postCategory').value = post.category || "";
-    if (quill) quill.root.innerHTML = post.content || ""; // preserves paragraphs, spacing, rich designs
+    if (quill) quill.setContents(quill.clipboard.convert(post.content));
     editingPostId = id;
-    let html = "";
     if (Array.isArray(post.images) && post.images.length) {
-      uploadedImages = post.images;
+      let html = "";
       post.images.forEach(img => {
         html += `<img src="${img}" class="w-14 h-14 rounded border object-cover">`;
       });
       document.getElementById("imagePreview").innerHTML = html;
     } else {
-      uploadedImages = [];
       document.getElementById("imagePreview").innerHTML = "";
     }
   }, 100);
