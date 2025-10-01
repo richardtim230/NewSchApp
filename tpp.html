@@ -595,52 +595,39 @@
     await saveProgress();
     nextQuestion();
   }
-
-  async function submitExam() {
-    if (!examInSession || submitted) return;
-    if (!confirm('Submit exam?')) return;
-    clearInterval(timerInterval);
-    document.getElementById("submitBtn").disabled = true;
-    try {
-      const answersArray = questions.map(q => ({
-        questionId: q._id,
-        answer: answers[q._id] || null
-      }));
-      const payload = {
-        userId: user.regNo || user._id || "",
-        username: user.fullname,
-        answers: answersArray,
-        questionIds: questions.map(q=>q._id),
-        timeSpent: exam.duration - timer
-      };
-      const resp = await fetch(SUBMIT_API, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload)
-      });
-      const result = await resp.json();
-      // Save user answers, correct/wrong choices, time spent to backend for tracking
-      await fetch(ANSWER_API, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token},
-        body: JSON.stringify({
-          userId: user.regNo || user._id || "",
-          username: user.fullname,
-          answers: answersArray,
-          correctChoices: result.correctChoices || {},
-          wrongChoices: result.wrongChoices || {},
-          totalCorrect: result.score,
-          totalWrong: (answersArray.length - result.score),
-          timeSpent: exam.duration - timer
-        })
-      });
-      submitted = true;
-      showFeedback(result);
-      setFooterState();
-    } catch (e) {
-      document.getElementById("examCard").innerHTML = "<div class='text-red-600 text-center py-16 text-xl'>Error submitting exam.</div>";
-    }
+async function submitExam() {
+  if (!examInSession || submitted) return;
+  if (!confirm('Submit exam?')) return;
+  clearInterval(timerInterval);
+  document.getElementById("submitBtn").disabled = true;
+  try {
+    const answersArray = questions.map(q => ({
+      questionId: q._id,
+      answer: answers[q._id] || null
+    }));
+    const payload = {
+      userId: user.regNo || user._id || "",
+      username: user.fullname,
+      answers: answersArray,
+      questionIds: questions.map(q=>q._id),
+      timeSpent: exam.duration - timer
+    };
+    const resp = await fetch(SUBMIT_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(payload)
+    });
+    const result = await resp.json();
+    // Save also in localStorage for result page
+    localStorage.setItem("practiceResult", JSON.stringify(result));
+    localStorage.setItem("practiceQuestions", JSON.stringify(questions));
+    localStorage.setItem("practiceAnswers", JSON.stringify(answers));
+    window.location.href = "practice-result.html";
+  } catch (e) {
+    document.getElementById("examCard").innerHTML = "<div class='text-red-600 text-center py-16 text-xl'>Error submitting exam.</div>";
   }
+    }
+  
 
   function showFeedback(result) {
     // Hide exam card, show feedback section
