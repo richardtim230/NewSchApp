@@ -146,6 +146,15 @@ async function fetchRelatedPostsByCategory(category, excludeId, excludeSubject =
   return posts.slice(0, limit);
 }
 
+// --- Increment views count for consistency ---
+async function incrementPostViews(postId) {
+  // Use the public PATCH view endpoint
+  const res = await fetch(`${POSTS_API}/${postId}/view`, { method: "PATCH" });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.views ?? null;
+}
+
 // --- Main load function ---
 (async function(){
   const postId = getPostIdFromURL();
@@ -155,11 +164,17 @@ async function fetchRelatedPostsByCategory(category, excludeId, excludeSubject =
   }
 
   // Fetch the main post
-  const mainPost = await fetchMainPost(postId);
+  let mainPost = await fetchMainPost(postId);
   if (!mainPost) {
     document.getElementById('blogContent').innerHTML = `<div class="text-center text-gray-500 py-20">Blog post not found.</div>`;
     return;
   }
+
+  // Increment views count FIRST
+  await incrementPostViews(postId);
+
+  // Re-fetch the post to get the updated views count
+  mainPost = await fetchMainPost(postId) || mainPost;
 
   // Format post details
   const authorId = mainPost.authorId || mainPost.user || mainPost.author; // fallback
@@ -184,7 +199,7 @@ async function fetchRelatedPostsByCategory(category, excludeId, excludeSubject =
   <div class="flex items-center gap-3 mt-3">
     <button id="likePostBtn" class="flex items-center gap-2 px-4 py-2 bg-white border border-yellow-300 rounded-lg shadow-sm hover:bg-yellow-50 transition">
       <svg class="w-7 h-7 text-blue-600" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M2 21h4V9H2v12zM22 11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L13 2 7.59 7.41C7.21 7.79 7 8.3 7 8.83V19c0 1.1.9 2 2 2h9c.82 0 1.54-.5 1.84-1.22l2.02-4.67c.09-.23.14.47.14.47V13c0-.55-.45-1-1-1z"/>
+        <path d="M2 21h4V9H2v12zM22 11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L13 2 7.59 7.41C7.21 7.79 7 8.3 7 8.83V19c0 1.1.9 2 2 2h9c.82 0 1.54-.5 1.84-1.22l2.02-4.67c.09-.23.14[...]
       </svg>
       <span id="likePostCount" class="font-semibold text-gray-700">${likes}</span>
     </button>
@@ -272,12 +287,7 @@ async function fetchRelatedPostsByCategory(category, excludeId, excludeSubject =
       }
     };
   }
-async function incrementPostViews(postId) {
-  const res = await fetch(`https://examguard-jmvj.onrender.com/api/public/posts/${postId}/view`, { method: "PATCH" });
-  if (!res.ok) return null;
-  const data = await res.json();
-  return data.views ?? null;
-}
+
   // --- Related posts section ---
   // If you want to exclude same subject, pass mainPost.subject as third argument below
   const related = await fetchRelatedPostsByCategory(mainPost.category, postId, null, 4);
