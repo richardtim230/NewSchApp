@@ -6,6 +6,7 @@
   <title>Practice Result Summary</title>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.2.1/flowbite.min.css" rel="stylesheet"/>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     .result-card { border-left: 4px solid #2563eb; background: #fff; box-shadow: 0 2px 16px #2563eb22; margin-bottom: 2rem; }
     .option { background: #f8fafc; color: #222; }
@@ -47,7 +48,10 @@
   <main class="max-w-2xl mx-auto px-3 py-4">
     <div id="scoreSummary" class="mb-6"></div>
     <div id="cardsContainer"></div>
-    <button onclick="window.location.href='tpp.html'" class="mt-8 px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-semibold">Retake Practice</button>
+    <div class="flex flex-wrap gap-2 mt-8">
+      <button onclick="window.location.href='tpp.html'" class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-semibold">Retake Practice</button>
+      <button id="downloadPdfBtn" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold">Download PDF</button>
+    </div>
   </main>
   <script>
     const result = JSON.parse(localStorage.getItem("practiceResult") || "{}");
@@ -107,6 +111,83 @@
         </div>
       `;
     });
+
+    // ----------- PDF Download Logic -----------
+    document.getElementById("downloadPdfBtn").addEventListener("click", generatePDF);
+
+    function generatePDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: "pt", format: "a4" });
+      let x = 40, y = 50;
+      const lineHeight = 24;
+      const pageWidth = doc.internal.pageSize.getWidth() - 80; // 40px margin each side
+
+      // Title and summary
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(20);
+      doc.text("OAU ExamGuard Practice Result", x, y);
+      y += lineHeight;
+      doc.setFontSize(14);
+      doc.text(`Subject: ${result.subject || questions[0]?.subject || '-'}`, x, y);
+      y += lineHeight;
+      doc.text(`Course Code: ${result.courseCode || questions[0]?.courseCode || '-'}`, x, y);
+      y += lineHeight;
+      doc.text(`Year: ${result.year || questions[0]?.year || '-'}`, x, y);
+      y += lineHeight * 1.2;
+
+      doc.setFontSize(13);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Score: ${result.score || 0} / ${result.total || questions.length}`, x, y);
+      y += lineHeight;
+      doc.text(`Accuracy: ${Math.round(((result.score||0)/(result.total||questions.length))*100)}%`, x, y);
+      y += lineHeight;
+      doc.text(`Time Spent: ${result.timeSpent ? Math.round(result.timeSpent/60) + ' min' : '--'}`, x, y);
+      y += lineHeight * 1.2;
+
+      // Questions
+      questions.forEach((q, i) => {
+        if (y > 750) { doc.addPage(); y = 50; }
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(12);
+        doc.text(`Q${i + 1}: ${q.text || q.question || ""}`, x, y, { maxWidth: pageWidth });
+        y += lineHeight;
+
+        // Options
+        const opts = (q.options || q.choices || []);
+        opts.forEach((opt, idx) => {
+          let isCorrect = (opt === (result.correctChoices?.[q._id] || q.correctAnswer));
+          let marker = String.fromCharCode(65 + idx) + ". ";
+          doc.setFont("helvetica", isCorrect ? "bold" : "normal");
+          doc.setTextColor(isCorrect ? 34 : 0, isCorrect ? 197 : 0, isCorrect ? 94 : 0); // green if correct
+          doc.text(marker + opt, x + 14, y, { maxWidth: pageWidth - 20 });
+          y += lineHeight - 4;
+          doc.setTextColor(0, 0, 0);
+        });
+
+        // Correct answer
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(34, 197, 94); // green
+        doc.text("Correct Answer: " + (result.correctChoices?.[q._id] || q.correctAnswer || "-"), x, y);
+        doc.setTextColor(0, 0, 0);
+        y += lineHeight;
+
+        // Explanation
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(11);
+        let explanation = q.explanation || result.explanations?.[q._id] || "No explanation provided.";
+        let explanationLines = doc.splitTextToSize("Explanation: " + explanation, pageWidth);
+        doc.text(explanationLines, x, y);
+        y += lineHeight * explanationLines.length + 8;
+
+        y += 8;
+      });
+
+      doc.save("practice-result.pdf");
+    }
+
+    // // Uncomment below to trigger auto-download on page load:
+    window.addEventListener("DOMContentLoaded", generatePDF);
   </script>
 </body>
 </html>
