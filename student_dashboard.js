@@ -1253,32 +1253,33 @@ function renderHistoryTablePage(page) {
   buildPagination(resultsCache.length, page, HISTORY_PAGE_SIZE, 'renderHistoryTablePage', 'historyPagination');
 }
 function renderPastTestTable() {
-const tbody = document.querySelector("#pastTestTable tbody");
-if (!resultsCache.length) {
-  tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#888;">No practice tests taken yet.</td></tr>`;
-  return;
-}
-tbody.innerHTML = resultsCache.map(r => {
-  const title = r.examSetTitle || (r.examSet && r.examSet.title) || "-";
-  const subject = r.subject || "-";
-  const courseCode = r.courseCode || "-";
-  const year = r.year || "-";
-  const date = r.submittedAt ? new Date(r.submittedAt).toLocaleDateString() : "-";
-  const score = (typeof r.score === "number") ? r.score : "-";
-  const timeSpent = r.timeTaken ? Math.round(r.timeTaken / 60) + " min" : "-";
-  return `<tr>
-    <td>${title}</td>
-    <td>${subject}</td>
-    <td>${courseCode}</td>
-    <td>${year}</td>
-    <td>${date}</td>
-    <td>${score}</td>
-    <td>${timeSpent}</td>
-    <td>
-      <button class="btn" onclick="openReviewTab('${r._id}')">Review</button>
-    </td>
-  </tr>`;
-}).join("");
+  const tbody = document.querySelector("#pastTestTable tbody");
+  if (!resultsCache.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#888;">No practice tests taken yet.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = resultsCache.map(r => {
+    // Defensive: check fields
+    const examSet = typeof r.examSet === "object" ? r.examSet : {};
+    const subject = examSet.subject || examSet.title || "-";
+    const year = examSet.year || "-";
+    const date = r.submittedAt ? new Date(r.submittedAt).toLocaleDateString() : "-";
+    const score = r.score ?? "-";
+    const timeSpent = r.timeSpent ? Math.round(r.timeSpent/60) + " min" : "-";
+    const diff = r.difficulty || "-";
+    return `<tr>
+      <td>${subject}</td>
+      <td>${year}</td>
+      <td>${date}</td>
+      <td>${score}</td>
+      <td>${timeSpent}</td>
+      <td>${diff}</td>
+      <td>
+        <button class="btn" onclick="openReviewTab('${r._id}')">Review</button>
+      </td>
+    </tr>`;
+  }).join("");
+      }
 // ============ HISTORY FETCH ===========
 async function fetchHistory() {
   if (!student.id) return;
