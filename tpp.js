@@ -57,40 +57,27 @@ function showNotificationModal({ message, type = "info", icon = "" }) {
 }
 
 // ====== CONFIRMATION MODAL SYSTEM ======
-function showConfirmModal(message, onConfirm, onCancel) {
-  let confirmModal = document.getElementById("confirmModal");
-  if (!confirmModal) {
-    confirmModal = document.createElement("div");
-    confirmModal.id = "confirmModal";
-    confirmModal.className = "fixed inset-0 z-[100] flex items-center justify-center bg-black/30";
-    confirmModal.innerHTML = `
-      <div class="bg-white rounded-lg shadow-lg px-6 py-5 text-center max-w-sm w-full border border-gray-300">
-        <div class="text-2xl mb-3 font-bold text-gray-800">Confirm Submission</div>
-        <div id="confirmModalText" class="text-md text-gray-700 mb-4">${message}</div>
-        <div class="flex gap-4 justify-center">
-          <button id="confirmYesBtn" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-semibold">Yes, Submit</button>
-          <button id="confirmNoBtn" class="px-4 py-2 bg-gray-400 text-white rounded hover:bg-gray-500 font-semibold">Cancel</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(confirmModal);
-  } else {
+function showConfirmModal(message, onYes, onNo) {
+    const modal = document.getElementById("confirmModal");
     document.getElementById("confirmModalText").textContent = message;
-    confirmModal.classList.remove("hidden");
+    modal.classList.remove("hidden");
+    document.body.style.overflow = "hidden";
+    function cleanup() {
+      modal.classList.add("hidden");
+      document.body.style.overflow = "";
+      document.getElementById("confirmModalYes").onclick = null;
+      document.getElementById("confirmModalNo").onclick = null;
+    }
+    document.getElementById("confirmModalYes").onclick = function() {
+      cleanup();
+      if (typeof onYes === "function") onYes();
+    };
+    document.getElementById("confirmModalNo").onclick = function() {
+      cleanup();
+      if (typeof onNo === "function") onNo();
+    };
   }
-  confirmModal.classList.remove("hidden");
-  document.body.style.overflow = "hidden";
-  document.getElementById("confirmYesBtn").onclick = function() {
-    confirmModal.classList.add("hidden");
-    document.body.style.overflow = "";
-    if (typeof onConfirm === "function") onConfirm();
-  };
-  document.getElementById("confirmNoBtn").onclick = function() {
-    confirmModal.classList.add("hidden");
-    document.body.style.overflow = "";
-    if (typeof onCancel === "function") onCancel();
-  };
-}
+
 
 // ====== CONFIG FORM LOGIC ======
 document.getElementById("subject").addEventListener("change", function() {
