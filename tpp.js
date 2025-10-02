@@ -435,7 +435,7 @@ async function submitExam() {
         localStorage.setItem("practiceResult", JSON.stringify(result));
         localStorage.setItem("practiceQuestions", JSON.stringify(questions));
         localStorage.setItem("practiceAnswers", JSON.stringify(answers));
-        winndow.location.href = "practice-result.html";
+        window.location.href = "practice-result.html";
       } catch (e) {
         showNotificationModal({ message: "Error submitting exam!", type: "error" });
         document.getElementById("examCard").innerHTML = "<div class='text-red-600 text-center py-16 text-xl'>Error submitting exam.</div>";
