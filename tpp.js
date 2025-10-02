@@ -56,6 +56,42 @@ function showNotificationModal({ message, type = "info", icon = "" }) {
   }, 2500);
 }
 
+// ====== CONFIRMATION MODAL SYSTEM ======
+function showConfirmModal(message, onConfirm, onCancel) {
+  let confirmModal = document.getElementById("confirmModal");
+  if (!confirmModal) {
+    confirmModal = document.createElement("div");
+    confirmModal.id = "confirmModal";
+    confirmModal.className = "fixed inset-0 z-[100] flex items-center justify-center bg-black/30";
+    confirmModal.innerHTML = `
+      <div class="bg-white rounded-lg shadow-lg px-6 py-5 text-center max-w-sm w-full border border-gray-300">
+        <div class="text-2xl mb-3 font-bold text-gray-800">Confirm Submission</div>
+        <div id="confirmModalText" class="text-md text-gray-700 mb-4">${message}</div>
+        <div class="flex gap-4 justify-center">
+          <button id="confirmYesBtn" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-semibold">Yes, Submit</button>
+          <button id="confirmNoBtn" class="px-4 py-2 bg-gray-400 text-white rounded hover:bg-gray-500 font-semibold">Cancel</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(confirmModal);
+  } else {
+    document.getElementById("confirmModalText").textContent = message;
+    confirmModal.classList.remove("hidden");
+  }
+  confirmModal.classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+  document.getElementById("confirmYesBtn").onclick = function() {
+    confirmModal.classList.add("hidden");
+    document.body.style.overflow = "";
+    if (typeof onConfirm === "function") onConfirm();
+  };
+  document.getElementById("confirmNoBtn").onclick = function() {
+    confirmModal.classList.add("hidden");
+    document.body.style.overflow = "";
+    if (typeof onCancel === "function") onCancel();
+  };
+}
+
 // ====== CONFIG FORM LOGIC ======
 document.getElementById("subject").addEventListener("change", function() {
   const subject = this.value;
@@ -384,35 +420,44 @@ async function saveAnswer() {
 
 async function submitExam() {
   if (!examInSession || submitted) return;
-  showNotificationModal({ message: "Submitting your practice...", type: "info" });
-  clearInterval(timerInterval);
-  document.getElementById("submitBtn").disabled = true;
-  try {
-    const answersArray = questions.map(q => ({
-      questionId: q._id,
-      answer: answers[q._id] || null
-    }));
-    const payload = {
-      userId: user._id || "", // PATCH: Use ObjectId only!
-      username: user.fullname,
-      answers: answersArray,
-      questionIds: questions.map(q=>q._id),
-      timeSpent: exam.duration - timer
-    };
-    const resp = await fetch(SUBMIT_API, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify(payload)
-    });
-    const result = await resp.json();
-    localStorage.setItem("practiceResult", JSON.stringify(result));
-    localStorage.setItem("practiceQuestions", JSON.stringify(questions));
-    localStorage.setItem("practiceAnswers", JSON.stringify(answers));
-    wiindow.location.href = "practice-result.html";
-  } catch (e) {
-    showNotificationModal({ message: "Error submitting exam!", type: "error" });
-    document.getElementById("examCard").innerHTML = "<div class='text-red-600 text-center py-16 text-xl'>Error submitting exam.</div>";
-  }
+  // Show confirmation modal before proceed
+  showConfirmModal(
+    "Are you sure you want to submit your practice session? You won't be able to change your answers afterwards.",
+    async function onConfirm() {
+      showNotificationModal({ message: "Submitting your practice...", type: "info" });
+      clearInterval(timerInterval);
+      document.getElementById("submitBtn").disabled = true;
+      try {
+        const answersArray = questions.map(q => ({
+          questionId: q._id,
+          answer: answers[q._id] || null
+        }));
+        const payload = {
+          userId: user._id || "", // PATCH: Use ObjectId only!
+          username: user.fullname,
+          answers: answersArray,
+          questionIds: questions.map(q=>q._id),
+          timeSpent: exam.duration - timer
+        };
+        const resp = await fetch(SUBMIT_API, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify(payload)
+        });
+        const result = await resp.json();
+        localStorage.setItem("practiceResult", JSON.stringify(result));
+        localStorage.setItem("practiceQuestions", JSON.stringify(questions));
+        localStorage.setItem("practiceAnswers", JSON.stringify(answers));
+        window.location.href = "practice-result.html";
+      } catch (e) {
+        showNotificationModal({ message: "Error submitting exam!", type: "error" });
+        document.getElementById("examCard").innerHTML = "<div class='text-red-600 text-center py-16 text-xl'>Error submitting exam.</div>";
+      }
+    },
+    function onCancel() {
+      // Do nothing, just close the modal
+    }
+  );
 }
 
 function showFeedback(result) {
