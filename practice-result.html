@@ -54,11 +54,6 @@
     </div>
   </main>
   <script>
-    // Load NotoSans-Regular as a base64 font (shortened here for demo; use full base64 for production)
-    // This sample uses a small subset. For full Unicode, use the full NotoSans-Regular base64 from Google Fonts or similar.
-    // You can generate the font file using jsPDF's fontconverter.
-    const NOTO_SANS_REGULAR = 'AAEAAAALAIAAAwAwT1MvMg8SBwAA...'; // <-- Replace with full base64 TTF!
-
     const result = JSON.parse(localStorage.getItem("practiceResult") || "{}");
     const questions = JSON.parse(localStorage.getItem("practiceQuestions") || "[]");
     const answers = JSON.parse(localStorage.getItem("practiceAnswers") || "{}");
@@ -117,29 +112,36 @@
       `;
     });
 
-    // ----------- PDF Download Logic with Unicode font -----------
+    // ----------- PDF Download Logic with Unicode-friendly built-in font -----------
     document.getElementById("downloadPdfBtn").addEventListener("click", generatePDF);
+
+    function cleanText(str) {
+      // Optionally replace HTML tags and unsupported symbols with plain equivalents
+      return (str || "")
+        .replace(/<sup>(.*?)<\/sup>/g, (_, s) => s) // remove tags
+        .replace(/<sub>(.*?)<\/sub>/g, (_, s) => s)
+        .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+        .replace(/&amp;/g, "&");
+        // You can add more replacements as needed
+    }
 
     function generatePDF() {
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF({ unit: "pt", format: "a4" });
 
-      // Register Noto Sans
-      doc.addFileToVFS("NotoSans-Regular.ttf", NOTO_SANS_REGULAR);
-      doc.addFont("NotoSans-Regular.ttf", "NotoSans", "normal");
-      doc.setFont("NotoSans", "normal");
+      // Use built-in 'helvetica' font (good Unicode coverage for most Western/Latin scripts and basic symbols)
+      doc.setFont("helvetica", "normal");
 
       let x = 40, y = 50;
       const lineHeight = 24;
       const pageWidth = doc.internal.pageSize.getWidth() - 80; // 40px margin each side
 
-      // Title and summary
-      doc.setFont("NotoSans", "bold");
+      doc.setFont("helvetica", "bold");
       doc.setFontSize(20);
       doc.text("OAU ExamGuard Practice Result", x, y);
       y += lineHeight;
       doc.setFontSize(14);
-      doc.setFont("NotoSans", "normal");
+      doc.setFont("helvetica", "normal");
       doc.text(`Subject: ${result.subject || questions[0]?.subject || '-'}`, x, y);
       y += lineHeight;
       doc.text(`Course Code: ${result.courseCode || questions[0]?.courseCode || '-'}`, x, y);
@@ -155,24 +157,12 @@
       doc.text(`Time Spent: ${result.timeSpent ? Math.round(result.timeSpent/60) + ' min' : '--'}`, x, y);
       y += lineHeight * 1.2;
 
-      // Helper function to clean text if needed (optional, you can add more replacements)
-      function cleanText(str) {
-        return (str || "")
-          .replace(/<sup>(.*?)<\/sup>/g, (_, s) => s) // Remove HTML tags
-          .replace(/<sub>(.*?)<\/sub>/g, (_, s) => s)
-          .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-          .replace(/&amp;/g, "&")
-          .replace(/\u2013|\u2014/g, "-");
-      }
-
-      // Questions
       questions.forEach((q, i) => {
         if (y > 750) { doc.addPage(); y = 50; }
-
         let questionText = cleanText(q.text || q.question || "");
         let wrappedQ = doc.splitTextToSize(`Q${i + 1}: ${questionText}`, pageWidth);
 
-        doc.setFont("NotoSans", "bold");
+        doc.setFont("helvetica", "bold");
         doc.setFontSize(12);
         doc.text(wrappedQ, x, y);
         y += lineHeight * wrappedQ.length;
@@ -182,7 +172,7 @@
           let isCorrect = (opt === (result.correctChoices?.[q._id] || q.correctAnswer));
           let marker = String.fromCharCode(65 + idx) + ". ";
           let textOpt = marker + cleanText(opt);
-          doc.setFont("NotoSans", isCorrect ? "bold" : "normal");
+          doc.setFont("helvetica", isCorrect ? "bold" : "normal");
           doc.setTextColor(isCorrect ? 34 : 0, isCorrect ? 197 : 0, isCorrect ? 94 : 0);
           let wrappedOpt = doc.splitTextToSize(textOpt, pageWidth - 20);
           doc.text(wrappedOpt, x + 14, y);
@@ -191,14 +181,14 @@
         });
 
         // Correct answer
-        doc.setFont("NotoSans", "bold");
+        doc.setFont("helvetica", "bold");
         doc.setTextColor(34, 197, 94);
         doc.text("Correct Answer: " + cleanText(result.correctChoices?.[q._id] || q.correctAnswer || "-"), x, y);
         doc.setTextColor(0, 0, 0);
         y += lineHeight;
 
         // Explanation
-        doc.setFont("NotoSans", "normal");
+        doc.setFont("helvetica", "normal");
         doc.setFontSize(11);
         let explanation = cleanText(q.explanation || result.explanations?.[q._id] || "No explanation provided.");
         let explanationLines = doc.splitTextToSize("Explanation: " + explanation, pageWidth);
