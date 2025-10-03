@@ -315,15 +315,21 @@ async function deleteProductFromBackend(id) {
   });
   if (!res.ok) throw new Error("Could not delete product");
 }
-window.deleteProduct = async function (id) {
-  if (showConfirmModal("Are you sure you want to delete this product?")) {
-    try {
-      await deleteProductFromBackend(id);
-      await fetchProductsAndOffers();
-    } catch (err) {
-      alert("Failed to delete product.");
+window.deleteProduct = function (id) {
+  showConfirmModal(
+    "Are you sure you want to delete this product?",
+    async function() {
+      try {
+        await deleteProductFromBackend(id);
+        await fetchProductsAndOffers();
+      } catch (err) {
+        alert("Failed to delete product.");
+      }
+    },
+    function() {
+      // Optional: Action if "No" is clicked (can be left empty)
     }
-  }
+  );
 };
 window.editProduct = function (id) {
   const prod = products.find(p => p.id === id);
