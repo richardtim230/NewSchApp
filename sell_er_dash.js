@@ -1,3 +1,24 @@
+function showConfirmModal(message, onYes, onNo) {
+    const modal = document.getElementById("confirmModal");
+    document.getElementById("confirmModalText").textContent = message;
+    modal.classList.remove("hidden");
+    document.body.style.overflow = "hidden";
+    function cleanup() {
+      modal.classList.add("hidden");
+      document.body.style.overflow = "";
+      document.getElementById("confirmModalYes").onclick = null;
+      document.getElementById("confirmModalNo").onclick = null;
+    }
+    document.getElementById("confirmModalYes").onclick = function() {
+      cleanup();
+      if (typeof onYes === "function") onYes();
+    };
+    document.getElementById("confirmModalNo").onclick = function() {
+      cleanup();
+      if (typeof onNo === "function") onNo();
+    };
+  }
+
 const BACKEND = "https://examguide.onrender.com";
 let products = [];
 let offersByProduct = {};
@@ -295,7 +316,7 @@ async function deleteProductFromBackend(id) {
   if (!res.ok) throw new Error("Could not delete product");
 }
 window.deleteProduct = async function (id) {
-  if (confirm("Are you sure you want to delete this product?")) {
+  if (showConfirmModal("Are you sure you want to delete this product?")) {
     try {
       await deleteProductFromBackend(id);
       await fetchProductsAndOffers();
