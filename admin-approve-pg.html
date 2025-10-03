@@ -269,13 +269,66 @@ window.closePostModal = function() {
       showListingsLoader(false);
       return res.ok ? await res.json() : [];
     }
-    async function fetchAllSellers() {
-      showSellersLoader(true);
-      const res = await fetch(BACKEND + "/api/users?role=seller", { headers: authHeader() });
-      showSellersLoader(false);
-      const data = await res.json();
-      return Array.isArray(data.users) ? data.users : Array.isArray(data) ? data : [];
-    }
+    // Fetch both 'marketer' and 'pending_both' users
+async function fetchAllSellers() {
+  showSellersLoader(true);
+  // Fetch both roles in parallel
+  const [marketerRes, pendingBothRes] = await Promise.all([
+    fetch(BACKEND + "/api/users?role=marketer", { headers: authHeader() }),
+    fetch(BACKEND + "/api/users?role=pending_both", { headers: authHeader() })
+  ]);
+  showSellersLoader(false);
+
+  let marketers = [];
+  let pendingBoth = [];
+  try {
+    const data1 = await marketerRes.json();
+    const data2 = await pendingBothRes.json();
+    marketers = Array.isArray(data1.users) ? data1.users : Array.isArray(data1) ? data1 : [];
+    pendingBoth = Array.isArray(data2.users) ? data2.users : Array.isArray(data2) ? data2 : [];
+  } catch {}
+
+  // Merge and deduplicate by _id
+  const all = [...marketers, ...pendingBoth];
+  const seen = new Set();
+  return all.filter(s => {
+    if (seen.has(s._id)) return false;
+    seen.add(s._id);
+    return true;
+  });
+}
+
+// Approve seller, set role appropriately
+window.approveUser = async function(userId, approve) {
+  showSpinner();
+  let user = allSellers.find(s => s._id === userId);
+  if (!user) {
+    hideSpinner();
+    alert("User not found.");
+    return;
+  }
+
+  // Determine new role based on current pending role
+  let newRole = user.role;
+  if (approve) {
+    if (user.role === "pending_marketer") newRole = "marketer";
+    else if (user.role === "pending_both") newRole = "both";
+    // else leave as is or set as marketer by default
+  }
+  const res = await fetch(BACKEND + `/api/blogger/approve/${userId}`, {
+    method: "PATCH",
+    headers: authHeader(),
+    body: JSON.stringify({
+      role: approve ? newRole : user.role, // only update role if approving
+      approved: approve,
+      active: approve,
+      status: approve ? "active" : "pending"
+    })
+  });
+  hideSpinner();
+  if (!res.ok) alert("Failed to update user approval.");
+  await loadSellersTab();
+};
 // Fetch both 'blogger' and 'pending_blogger' users
 async function fetchAllBloggers() {
   showBloggersLoader(true);
