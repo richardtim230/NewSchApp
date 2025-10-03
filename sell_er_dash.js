@@ -19,7 +19,7 @@ function showConfirmModal(message, onYes, onNo) {
     };
   }
 
-const BACKEND = "https://examguide.onrender.com";
+const BACKEND = "https://examguard-jmvj.onrender.com";
 let products = [];
 let offersByProduct = {};
 let userId = "";
