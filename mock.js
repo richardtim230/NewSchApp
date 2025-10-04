@@ -1,4 +1,3 @@
-
 (function() {
     const params = new URLSearchParams(window.location.search);
     const ref = params.get('ref');
@@ -7,128 +6,128 @@
     }
 })();
 
-    // Faculties and Departments (OAU)
-    const facultyDepartments = {
-        "Administration": [
-            "Management and Accounting",
-            "Public Administration",
-            "Local Government and Development Studies",
-            "International Relations"
-        ],
-        "Agriculture": [
-            "Agricultural Economics",
-            "Animal Science",
-            "Crop Production and Protection",
-            "Family, Nutrition and Consumer Sciences",
-            "Soil Science",
-            "Agricultural Extension and Rural Development"
-        ],
-        "Arts": [
-            "African Languages and Literatures",
-            "Dramatic Arts",
-            "English Language",
-            "Foreign Languages",
-            "History",
-            "Linguistics and African Languages",
-            "Music",
-            "Philosophy",
-            "Religious Studies"
-        ],
-        "Basic Medical Sciences": [
-            "Anatomy and Cell Biology",
-            "Human Nutrition and Dietetics",
-            "Medical Microbiology and Parasitology",
-            "Chemical Pathology",
-            "Haematology and Immunology",
-            "Morbid Anatomy and Forensic Medicine",
-            "Physiology"
-        ],
-        "Clinical Sciences": [
-            "Community Health",
-            "Medicine",
-            "Nursing Science",
-            "Obstetrics, Gynaecology and Perinatology",
-            "Paediatrics and Child Health",
-            "Psychiatry",
-            "Radiology",
-            "Surgery"
-        ],
-        "Dentistry": [
-            "Child Dental Health",
-            "Oral and Maxillofacial Surgery and Oral Pathology",
-            "Preventive and Community Dentistry",
-            "Restorative Dentistry"
-        ],
-        "Education": [
-            "Adult Education and Lifelong Learning",
-            "Educational Foundations and Counselling",
-            "Educational Management",
-            "Educational Technology",
-            "Fine and Applied Arts Education",
-            "Institute of Education",
-            "Physical and Health Education",
-            "Science and Technology Education",
-            "Social Sciences Education"
-        ],
-        "Environmental Design and Management": [
-            "Architecture",
-            "Building",
-            "Estate Management",
-            "Fine and Applied Arts",
-            "Quantity Surveying",
-            "Urban and Regional Planning"
-        ],
-        "Law": [
-            "Business Law",
-            "International Law",
-            "Jurisprudence and Private Law",
-            "Public Law"
-        ],
-        "Pharmacy": [
-            "Clinical Pharmacy and Pharmacy Administration",
-            "Pharmaceutical Chemistry",
-            "Pharmaceutical Microbiology",
-            "Pharmaceutics",
-            "Pharmacognosy",
-            "Pharmacology"
-        ],
-        "Science": [
-            "Biochemistry and Molecular Biology",
-            "Botany",
-            "Chemistry",
-            "Computer Science and Engineering",
-            "Geology",
-            "Mathematics",
-            "Microbiology",
-            "Physics",
-            "Statistics",
-            "Zoology"
-        ],
-        "Social Sciences": [
-            "Demography and Social Statistics",
-            "Economics",
-            "Geography",
-            "Political Science",
-            "Psychology",
-            "Sociology and Anthropology"
-        ],
-        "Technology": [
-            "Agricultural and Environmental Engineering",
-            "Chemical Engineering",
-            "Civil Engineering",
-            "Computer Science and Engineering",
-            "Electronic and Electrical Engineering",
-            "Food Science and Technology",
-            "Materials Science and Engineering",
-            "Mechanical Engineering"
-        ],
-        "Health Sciences": [
-            "Medical Rehabilitation",
-            "Nursing Science"
-        ]
-    };
+// Faculties and Departments (OAU)
+const facultyDepartments = {
+    "Administration": [
+        "Management and Accounting",
+        "Public Administration",
+        "Local Government and Development Studies",
+        "International Relations"
+    ],
+    "Agriculture": [
+        "Agricultural Economics",
+        "Animal Science",
+        "Crop Production and Protection",
+        "Family, Nutrition and Consumer Sciences",
+        "Soil Science",
+        "Agricultural Extension and Rural Development"
+    ],
+    "Arts": [
+        "African Languages and Literatures",
+        "Dramatic Arts",
+        "English Language",
+        "Foreign Languages",
+        "History",
+        "Linguistics and African Languages",
+        "Music",
+        "Philosophy",
+        "Religious Studies"
+    ],
+    "Basic Medical Sciences": [
+        "Anatomy and Cell Biology",
+        "Human Nutrition and Dietetics",
+        "Medical Microbiology and Parasitology",
+        "Chemical Pathology",
+        "Haematology and Immunology",
+        "Morbid Anatomy and Forensic Medicine",
+        "Physiology"
+    ],
+    "Clinical Sciences": [
+        "Community Health",
+        "Medicine",
+        "Nursing Science",
+        "Obstetrics, Gynaecology and Perinatology",
+        "Paediatrics and Child Health",
+        "Psychiatry",
+        "Radiology",
+        "Surgery"
+    ],
+    "Dentistry": [
+        "Child Dental Health",
+        "Oral and Maxillofacial Surgery and Oral Pathology",
+        "Preventive and Community Dentistry",
+        "Restorative Dentistry"
+    ],
+    "Education": [
+        "Adult Education and Lifelong Learning",
+        "Educational Foundations and Counselling",
+        "Educational Management",
+        "Educational Technology",
+        "Fine and Applied Arts Education",
+        "Institute of Education",
+        "Physical and Health Education",
+        "Science and Technology Education",
+        "Social Sciences Education"
+    ],
+    "Environmental Design and Management": [
+        "Architecture",
+        "Building",
+        "Estate Management",
+        "Fine and Applied Arts",
+        "Quantity Surveying",
+        "Urban and Regional Planning"
+    ],
+    "Law": [
+        "Business Law",
+        "International Law",
+        "Jurisprudence and Private Law",
+        "Public Law"
+    ],
+    "Pharmacy": [
+        "Clinical Pharmacy and Pharmacy Administration",
+        "Pharmaceutical Chemistry",
+        "Pharmaceutical Microbiology",
+        "Pharmaceutics",
+        "Pharmacognosy",
+        "Pharmacology"
+    ],
+    "Science": [
+        "Biochemistry and Molecular Biology",
+        "Botany",
+        "Chemistry",
+        "Computer Science and Engineering",
+        "Geology",
+        "Mathematics",
+        "Microbiology",
+        "Physics",
+        "Statistics",
+        "Zoology"
+    ],
+    "Social Sciences": [
+        "Demography and Social Statistics",
+        "Economics",
+        "Geography",
+        "Political Science",
+        "Psychology",
+        "Sociology and Anthropology"
+    ],
+    "Technology": [
+        "Agricultural and Environmental Engineering",
+        "Chemical Engineering",
+        "Civil Engineering",
+        "Computer Science and Engineering",
+        "Electronic and Electrical Engineering",
+        "Food Science and Technology",
+        "Materials Science and Engineering",
+        "Mechanical Engineering"
+    ],
+    "Health Sciences": [
+        "Medical Rehabilitation",
+        "Nursing Science"
+    ]
+};
 
-// Populate faculties and departments
+// Populate faculties
 const facultySelect = document.getElementById('reg-faculty');
 const deptSelect = document.getElementById('reg-department');
 function populateFaculties() {
@@ -285,7 +284,7 @@ async function setRegLoading(isLoading) {
     }
 }
 
-// LOGIN HANDLING
+// LOGIN HANDLING (with verification check)
 forms.login.addEventListener('submit', async function(e) {
     e.preventDefault();
     const username = document.getElementById('login-username').value.trim();
@@ -295,69 +294,176 @@ forms.login.addEventListener('submit', async function(e) {
         return;
     }
     showLoadingModal("Logging in...","Please wait while we log you in.");
-    setLoginLoading(true);
+    await setLoginLoading(true);
+
     try {
-        const res = await fetch('https://yourbackend.com/api/auth/login', { // replace with your backend URL
-            method: 'POST',
+        let loginResponse = await fetch("https://examguide.onrender.com/api/auth/login", {
+            method: "POST",
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ username, password })
+            body: JSON.stringify({username, password})
         });
-        const data = await res.json();
-        setLoginLoading(false);
-        if (res.ok) {
-            // Successful login, store token as needed (e.g. localStorage/sessionStorage)
-            // For security, do NOT store token if user is not verified
-            if (data.token) {
-                // You may use localStorage.setItem('auth_token', data.token);
-                showStatusModal('success', 'Login Successful', data.message);
-                // Redirect or update UI as needed
-            } else {
-                showStatusModal('error', 'Login Failed', 'No token received.');
+        let loginData = await loginResponse.json();
+
+        await setLoginLoading(false);
+
+        if (loginResponse.ok) {
+            // Check for verification error in the backend response
+            if (loginData.message && loginData.message.toLowerCase().includes("email not verified")) {
+                showStatusModal("error","Email Not Verified",loginData.message);
+                return;
             }
-        } else {
-            if (data.message && data.message.includes('Email not verified')) {
-                showStatusModal('error', 'Email Not Verified', 'Please check your email and click the verification link.');
-            } else {
-                showStatusModal('error', 'Login Failed', data.message || 'Login failed.');
+            localStorage.setItem('token', loginData.token);
+            // Get user role and redirect accordingly
+            try {
+                let profileResp = await fetch("https://examguide.onrender.com/api/auth/me", {
+                    headers: { 'Authorization': 'Bearer ' + loginData.token }
+                });
+                let profileData = await profileResp.json();
+                if (profileResp.ok && profileData.user) {
+                    const role = profileData.user.role;
+                    let roleMsg = "Welcome!";
+                    switch (role) {
+                        case 'superadmin': roleMsg = "Welcome, Superadmin!"; break;
+                        case 'admin': roleMsg = "Welcome, Admin!"; break;
+                        case 'uploader': roleMsg = "Welcome, Uploader!"; break;
+                        case 'pq-uploader': roleMsg = "Welcome, PQ-Uploader!"; break;
+                        case 'blogger': roleMsg = "Welcome, Blogger!"; break;
+                        default: roleMsg = "Welcome, Student!";
+                    }
+                    showStatusModal("success", "Login Successful", roleMsg, false);
+                    setTimeout(() => { window.location.href = (role === 'superadmin') ? "supaadmin.html" : "loader.html"; }, 1300);
+                    return;
+                }
+            } catch {
+                showStatusModal("success", "Login Successful", "You have been logged in!", false);
+                setTimeout(() => { window.location.href = "loader.html"; }, 1200);
             }
+            return;
         }
+        showStatusModal("error","Login Failed",loginData.message || "Login failed");
     } catch (err) {
-        setLoginLoading(false);
-        showStatusModal('error', 'Network Error', 'Could not reach the server.');
+        showStatusModal("error","Network Error","Network or server error. Please try again.");
     }
+    await setLoginLoading(false);
 });
 
-// REGISTRATION HANDLING
+// REGISTRATION HANDLING (with confirmation modal, no auto-login)
 forms.register.addEventListener('submit', async function(e) {
     e.preventDefault();
-    const payload = {
-        fullname: document.getElementById('reg-fullname').value,
-        username: document.getElementById('reg-username').value,
-        password: document.getElementById('reg-password').value,
-        email: document.getElementById('reg-email').value,
-        faculty: document.getElementById('reg-faculty').value,
-        department: document.getElementById('reg-department').value,
-        level: document.getElementById('reg-level').value,
-        phone: document.getElementById('reg-phone').value
-        // add referral, profilePic etc if needed
-    };
-    setRegLoading(true);
-    try {
-        const res = await fetch('https://yourbackend.com/api/auth/register', { // replace with your backend URL
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        setRegLoading(false);
-        if (res.ok) {
-            showStatusModal('success', 'Registration Successful', "Registration complete! Please check your email to verify your account before logging in.");
-            // DO NOT log the user in automatically or store any token here.
-        } else {
-            showStatusModal('error', 'Registration Failed', data.message || data.error || 'Registration failed.');
-        }
-    } catch (err) {
-        setRegLoading(false);
-        showStatusModal('error', 'Network Error', 'Could not reach the server.');
+    // Collect all registration details
+    const fullName = document.getElementById('reg-fullname').value.trim();
+    const username = document.getElementById('reg-username').value.trim();
+    const password = document.getElementById('reg-password').value;
+    const email = document.getElementById('reg-email').value.trim();
+    const faculty = document.getElementById('reg-faculty').value.trim();
+    const department = document.getElementById('reg-department').value.trim();
+    const level = document.getElementById('reg-level').value;
+    const phone = document.getElementById('reg-phone').value.trim();
+
+    if (!fullName || !username || !password || !email || !faculty || !department || !level || !phone) {
+        showStatusModal("error", "Registration Error", "All fields are required!");
+        return;
     }
+
+    // Get referral code from localStorage if user landed via referral link
+    const referralCode = localStorage.getItem('pendingReferral') || "";
+
+    // Show confirmation modal
+    showConfirmationModal({
+        "Full Name": fullName,
+        "Username": username,
+        "Email": email,
+        "Faculty": faculty,
+        "Department": department,
+        "Level": level,
+        "Phone": phone,
+        ...(referralCode ? { "Referral Code": referralCode } : {})
+    }, async function proceedReg() {
+        showLoadingModal("Registering...", "Please wait while we create your account.");
+        await setRegLoading(true);
+        try {
+            let registerResponse = await fetch("https://examguide.onrender.com/api/auth/register", {
+                method: "POST",
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username,
+                    password,
+                    email,
+                    fullname: fullName,
+                    faculty,
+                    department,
+                    level,
+                    phone,
+                    ref: referralCode // Pass referral code if present
+                })
+            });
+            let registerData = await registerResponse.json();
+            await setRegLoading(false);
+            if (registerResponse.ok) {
+                // DO NOT log in the user automatically!
+                localStorage.removeItem('pendingReferral');
+                showStatusModal("success", "Registration Successful", "Registered successfully! Please check your email for a verification link before logging in.", false);
+            } else {
+                showStatusModal("error", "Registration Failed", registerData.message || "Registration failed");
+            }
+        } catch (err) {
+            showStatusModal("error", "Network Error", "Network or server error. Please try again.");
+        }
+    }, function cancelReg() { });
 });
+
+// Social Login/Register (Simulated)
+document.querySelectorAll('.social-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        showStatusModal("error","Feature Unavailable","Social login/registration is yet to be implemented.");
+    });
+});
+
+// Forgot Password (confirmation modal)
+document.getElementById('forgotPassword').addEventListener('click', async function(e) {
+    e.preventDefault();
+    let username = prompt("Enter your username for password reset:");
+    if (username === null) return;
+    username = username.trim();
+    if (!validateUsername(username)) {
+        showStatusModal("error","Password Reset Error","Username cannot be empty.");
+        return;
+    }
+    let newPass = prompt("Enter your new password:");
+    if (!newPass) {
+        showStatusModal("error","Password Reset Error","Password cannot be empty.");
+        return;
+    }
+    // Confirm details before proceeding
+    showConfirmationModal({
+        "Username": username,
+        "New Password": newPass.replace(/./g,"*") // Mask password
+    }, async function proceedReset(){
+        showLoadingModal("Resetting Password...","Please wait while we reset your password.");
+        await setLoginLoading(true);
+        try {
+            let resp = await fetch("https://examguide.onrender.com/api/auth/reset", {
+                method: "POST",
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({username, password: newPass})
+            });
+            let data = await resp.json();
+            if (resp.ok) {
+                showStatusModal("success","Password Reset","Password reset successful!");
+            } else {
+                showStatusModal("error","Password Reset Failed",data.message || "Password reset failed");
+            }
+        } catch (err) {
+            showStatusModal("error","Network Error","Network or server error. Please try again.");
+        }
+        await setLoginLoading(false);
+    }, function cancelReset(){});
+});
+
+// Responsive: scroll to top of form on mobile when switching
+function onTabSwitchScroll() {
+    if (window.innerWidth < 700) {
+        setTimeout(() => window.scrollTo({top: 0, behavior: "smooth"}), 100);
+    }
+}
+tabBtns.forEach(btn => btn.addEventListener('click', onTabSwitchScroll));
