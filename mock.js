@@ -1,7 +1,132 @@
-// Faculties and Departments (OAU)
-const facultyDepartments = {
-    // ... your facultyDepartments object ...
-};
+
+(function() {
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get('ref');
+    if (ref) {
+        localStorage.setItem('pendingReferral', ref);
+    }
+})();
+
+    // Faculties and Departments (OAU)
+    const facultyDepartments = {
+        "Administration": [
+            "Management and Accounting",
+            "Public Administration",
+            "Local Government and Development Studies",
+            "International Relations"
+        ],
+        "Agriculture": [
+            "Agricultural Economics",
+            "Animal Science",
+            "Crop Production and Protection",
+            "Family, Nutrition and Consumer Sciences",
+            "Soil Science",
+            "Agricultural Extension and Rural Development"
+        ],
+        "Arts": [
+            "African Languages and Literatures",
+            "Dramatic Arts",
+            "English Language",
+            "Foreign Languages",
+            "History",
+            "Linguistics and African Languages",
+            "Music",
+            "Philosophy",
+            "Religious Studies"
+        ],
+        "Basic Medical Sciences": [
+            "Anatomy and Cell Biology",
+            "Human Nutrition and Dietetics",
+            "Medical Microbiology and Parasitology",
+            "Chemical Pathology",
+            "Haematology and Immunology",
+            "Morbid Anatomy and Forensic Medicine",
+            "Physiology"
+        ],
+        "Clinical Sciences": [
+            "Community Health",
+            "Medicine",
+            "Nursing Science",
+            "Obstetrics, Gynaecology and Perinatology",
+            "Paediatrics and Child Health",
+            "Psychiatry",
+            "Radiology",
+            "Surgery"
+        ],
+        "Dentistry": [
+            "Child Dental Health",
+            "Oral and Maxillofacial Surgery and Oral Pathology",
+            "Preventive and Community Dentistry",
+            "Restorative Dentistry"
+        ],
+        "Education": [
+            "Adult Education and Lifelong Learning",
+            "Educational Foundations and Counselling",
+            "Educational Management",
+            "Educational Technology",
+            "Fine and Applied Arts Education",
+            "Institute of Education",
+            "Physical and Health Education",
+            "Science and Technology Education",
+            "Social Sciences Education"
+        ],
+        "Environmental Design and Management": [
+            "Architecture",
+            "Building",
+            "Estate Management",
+            "Fine and Applied Arts",
+            "Quantity Surveying",
+            "Urban and Regional Planning"
+        ],
+        "Law": [
+            "Business Law",
+            "International Law",
+            "Jurisprudence and Private Law",
+            "Public Law"
+        ],
+        "Pharmacy": [
+            "Clinical Pharmacy and Pharmacy Administration",
+            "Pharmaceutical Chemistry",
+            "Pharmaceutical Microbiology",
+            "Pharmaceutics",
+            "Pharmacognosy",
+            "Pharmacology"
+        ],
+        "Science": [
+            "Biochemistry and Molecular Biology",
+            "Botany",
+            "Chemistry",
+            "Computer Science and Engineering",
+            "Geology",
+            "Mathematics",
+            "Microbiology",
+            "Physics",
+            "Statistics",
+            "Zoology"
+        ],
+        "Social Sciences": [
+            "Demography and Social Statistics",
+            "Economics",
+            "Geography",
+            "Political Science",
+            "Psychology",
+            "Sociology and Anthropology"
+        ],
+        "Technology": [
+            "Agricultural and Environmental Engineering",
+            "Chemical Engineering",
+            "Civil Engineering",
+            "Computer Science and Engineering",
+            "Electronic and Electrical Engineering",
+            "Food Science and Technology",
+            "Materials Science and Engineering",
+            "Mechanical Engineering"
+        ],
+        "Health Sciences": [
+            "Medical Rehabilitation",
+            "Nursing Science"
+        ]
+    };
 
 // Populate faculties and departments
 const facultySelect = document.getElementById('reg-faculty');
