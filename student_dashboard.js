@@ -1888,6 +1888,7 @@ async function renderTasksCenter() {
         </div>
       `;
     }
+    
     // Attach event listeners to task buttons
     setTimeout(() => {
       cardsContainer.querySelectorAll("button[data-taskid]").forEach(btn => {
@@ -1897,7 +1898,7 @@ async function renderTasksCenter() {
           const task = tasks.find(t => t.id === taskId);
           if (!task) return;
           if (type === "post") {
-            window.open(task.url, "_blank");
+            showAdModal(task.url);
             btn.disabled = true;
             btn.textContent = "Reading...";
             setTimeout(async () => {
@@ -1906,11 +1907,11 @@ async function renderTasksCenter() {
               renderTasksCenter();
             }, 2 * 60 * 1000);
           } else if (type === "listing") {
-            window.open(task.url, "_blank");
+            showAdModal(task.url);
             await markTaskDoneOnServer(student.id, task.id);
             renderTasksCenter();
           } else if (type === "quiz") {
-            window.location.href = task.url;
+            showAdModal(task.url);
             // For quiz, ensure you mark as done on completion and call markTaskDoneOnServer
           }
         };
@@ -1960,6 +1961,44 @@ window.addEventListener("DOMContentLoaded", function() {
     renderTasksCenter();
   }
 });
+
+// --- Ad Modal Logic ---
+let adModalTimer = null, adModalCountdown = 20, adModalTargetUrl = "";
+
+function showAdModal(targetUrl) {
+  adModalTargetUrl = targetUrl;
+  adModalCountdown = 20;
+  document.getElementById("adIframe").src = "https://nevillequery.com/xkmiipsb95?key=c142cd8ea33df4e4c0306d63269aef0c";
+  document.getElementById("adModal").style.display = "flex";
+  document.getElementById("adCountdown").textContent = adModalCountdown;
+  document.getElementById("adCancelBtn").style.display = "none";
+  // Start countdown
+  clearInterval(adModalTimer);
+  adModalTimer = setInterval(() => {
+    adModalCountdown--;
+    document.getElementById("adCountdown").textContent = adModalCountdown;
+    if (adModalCountdown <= 10) {
+      document.getElementById("adCancelBtn").style.display = "block";
+    }
+    if (adModalCountdown <= 0) {
+      closeAdModal(true); // Proceed to destination
+    }
+  }, 1000);
+}
+
+function closeAdModal(proceed) {
+  clearInterval(adModalTimer);
+  document.getElementById("adModal").style.display = "none";
+  document.getElementById("adIframe").src = "";
+  if (proceed && adModalTargetUrl) {
+    window.open(adModalTargetUrl, "_blank");
+    adModalTargetUrl = "";
+  }
+}
+
+document.getElementById("adCancelBtn").onclick = function() {
+  closeAdModal(false);
+};  
 // Utility: build Week/Day dropdown (if needed)
 function buildWeekDayDropdown(selectId) {
   const select = document.getElementById(selectId);
