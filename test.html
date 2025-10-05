@@ -23,7 +23,6 @@
   </script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-
     body {
       font-family: 'Segoe UI', sans-serif;
       background: #0B0B45;
@@ -32,7 +31,6 @@
       display: flex;
       flex-direction: column;
     }
-
     header {
       background: linear-gradient(120deg, #141E30 0%, #2d6a99 100%);
       padding: 0;
@@ -40,7 +38,6 @@
       margin-bottom: 16px;
       box-shadow: 0 4px 18px 0 #001c3c44;
     }
-
     .header-inner {
       max-width: 1050px;
       margin: 0 auto;
@@ -52,7 +49,6 @@
       min-height: 110px;
       position: relative;
     }
-
     .header-left {
       display: flex;
       flex-direction: column;
@@ -81,7 +77,6 @@
       margin-bottom: 10px;
       display: inline-block;
     }
-
     .header-center {
       flex: 1 0 0;
       display: flex;
@@ -121,7 +116,6 @@
       font-weight: 500;
       text-shadow: 0 1px 5px #001c3c44;
     }
-
     #timer {
       font-weight: bold;
       font-size: 1.01rem;
@@ -138,7 +132,6 @@
       right: 0;
       top: 13px;
     }
-
     .container {
       flex: 1;
       max-width: 700px;
@@ -147,23 +140,19 @@
       background: rgba(255, 255, 255, 0.05);
       border-radius: 10px;
     }
-
     .question-box {
       margin-bottom: 20px;
     }
-
     .question {
       font-size: 18px;
       font-weight: bold;
       margin-bottom: 15px;
     }
-
     .options {
       display: flex;
       flex-direction: column;
       gap: 10px;
     }
-
     .options button {
       padding: 12px 18px;
       background: rgba(255, 255, 255, 0.15);
@@ -175,24 +164,20 @@
       cursor: pointer;
       transition: 0.2s ease;
     }
-
     .options button:hover {
       background: #00c6ff;
       color: #000;
     }
-
     .options button.selected {
       background: #00c6ff;
       color: #000;
       border-color: #0072ff;
     }
-
     .nav-buttons {
       margin-top: 20px;
       display: flex;
       justify-content: space-between;
     }
-
     .nav-buttons button {
       padding: 10px 20px;
       font-size: 15px;
@@ -202,12 +187,10 @@
       color: #fff;
       cursor: pointer;
     }
-
     .nav-buttons button:disabled {
       background: #555;
       cursor: not-allowed;
     }
-
     @media(max-width: 900px) {
       .header-inner {
         flex-direction: column;
@@ -226,7 +209,6 @@
         align-self: center;
       }
     }
-
     @media(max-width: 850px) {
       .container {
         max-width: 96vw;
@@ -262,7 +244,6 @@
       font-size: 1.2rem;
       margin-top: 40px;
     }
-
     /* Instruction Modal Styles */
     .modal-overlay {
       position: fixed;
@@ -340,7 +321,6 @@
     .modal-box .modal-btn:hover {
       background: linear-gradient(90deg,#0072ff 0%, #00c6ff 100%);
     }
-
     /* --- Exam Selection Modal Styles --- */
     .exam-selection-modal {
       position: fixed;
@@ -569,8 +549,10 @@
   <script>
     // === CONFIG ===
     const API_URL = "https://examguide.onrender.com/api/";
+    const BACKEND_URL = "https://examguard-jmjv.onrender.com";
     const token = localStorage.getItem("token");
     let currentUser = "Guest";
+    let currentUserId = null;
     let examSet = "";
 
     // --- Parse examSetId from URL ---
@@ -593,6 +575,7 @@
         const data = await resp.json();
         if (resp.ok && data.user && data.user.username) {
           currentUser = data.user.username;
+          currentUserId = data.user._id || data.user.id;
           document.getElementById('candidateName').innerText = "CANDIDATE: " + currentUser;
         } else {
           localStorage.removeItem('token');
@@ -604,6 +587,22 @@
       }
     }
     fetchCurrentUser();
+
+    // Utility: mark quiz task as done for today
+    async function markQuizTaskDoneOnServer(userId, quizId) {
+      const today = new Date();
+      const dateStr = `${today.getFullYear()}-${(today.getMonth()+1).toString().padStart(2,"0")}-${today.getDate().toString().padStart(2,"0")}`;
+      try {
+        await fetch(`${BACKEND_URL}/api/users/${userId}/daily-tasks`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: 'Bearer ' + (localStorage.getItem("token") || "")
+          },
+          body: JSON.stringify({ date: dateStr, taskId: `quiz-${quizId}` })
+        });
+      } catch (e) { /* fail silently */ }
+    }
 
     // Modal logic
     function closeInstructionModal() {
@@ -803,64 +802,42 @@
       }
       const timeTaken = SESSION_TIME_LIMIT - timeRemaining;
 
-      // Show confirmation modal
-      showConfirmModal(score, questions.length, timeTaken, async function onConfirm() {
-        // Actually submit to backend
-        const payload = {
-          examSet: examSetId,
-          answers: userAnswers,
-          score,
-          timeTaken,
-          questions: questions.map(q => ({
-            id: q.id,
-            question: q.question,
-            answer: q.answer,
-            options: q.options,
-            explanation: q.explanation,
-            questionImage: q.questionImage || null
-          }))
-        };
-        try {
-          const response = await fetch(API_URL + "results", {
-            method: "POST",
-            headers: {
-              Authorization: "Bearer " + token,
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify(payload)
-          });
-          if (!response.ok) {
-            alert("Failed to save result. Please try again.");
-            return;
-          }
-          window.location.href = `result-summary?examSet=${encodeURIComponent(examSetId)}`;
-        } catch (err) {
-          alert("Network error. Please try again.");
+      // Submit to backend and redirect to summary (don't show modal or results)
+      const payload = {
+        examSet: examSetId,
+        answers: userAnswers,
+        score,
+        timeTaken,
+        questions: questions.map(q => ({
+          id: q.id,
+          question: q.question,
+          answer: q.answer,
+          options: q.options,
+          explanation: q.explanation,
+          questionImage: q.questionImage || null
+        }))
+      };
+      try {
+        const response = await fetch(API_URL + "results", {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + token,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+        if (!response.ok) {
+          alert("Failed to save result. Please try again.");
+          return;
         }
-      });
-    }
-
-    function showConfirmModal(score, total, timeTaken, onConfirm) {
-      const mins = Math.floor(timeTaken / 60);
-      const secs = timeTaken % 60;
-      document.getElementById("confirmModal").innerHTML = `
-        <div class="confirm-modal-overlay">
-          <div class="confirm-modal-box">
-            <div class="score-main">${score} / ${total}</div>
-            <div class="score-label">Your Score</div>
-            <div class="summary-row"><span>Total Questions:</span><span>${total}</span></div>
-            <div class="summary-row"><span>Answered:</span><span>${Object.keys(userAnswers).length}</span></div>
-            <div class="summary-row"><span>Time Taken:</span><span>${mins}m ${secs}s</span></div>
-            <div style="margin-top:18px; font-size:0.96em; color:#444;">Are you sure you want to submit?<br/>You can't change your answers afterward.</div>
-            <button onclick="closeConfirmModal(true)">Yes, Submit</button>
-            <button style="margin-top:8px; background:#ff5050;" onclick="closeConfirmModal(false)">Cancel</button>
-          </div>
-        </div>
-      `;
-      document.getElementById("confirmModal").style.display = "";
-      window.closeConfirmModal = function(confirm) {
-        document.getElementById("confirmModal").style.display = "none";
-        if (confirm && typeof onConfirm === "function") onConfirm();
+        // Mark the quiz task as done for today
+        if (currentUserId && examSetId) {
+          try { await markQuizTaskDoneOnServer(currentUserId, examSetId); } catch(e) {}
+        }
+        // Immediately redirect to summary page (no result shown here)
+        window.location.href = `result-summary?examSet=${encodeURIComponent(examSetId)}`;
+      } catch (err) {
+        alert("Network error. Please try again.");
       }
     }
 
