@@ -1952,10 +1952,6 @@ async function awardPointsForPost(postId) {
   } catch (e) {}
 }
 
-// --- For quizzes, in test.html after completion, call: ---
-// await markTaskDoneOnServer(student.id, `quiz-${quizId}`);
-
-
 // --- Init Tasks Center on Tab Activation ---
 document.querySelector('a[data-tab="tasks-center"]').addEventListener("click", function() {
   renderTasksCenter();
