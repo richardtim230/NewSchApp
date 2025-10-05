@@ -335,73 +335,73 @@
       fetchAcademicBlogs();
     });
 
-    // Blog Section Logic (fetch blogs like category.html, only "academics" category)
-    const API_BASE = "https://examguard-jmvj.onrender.com/api";
-    const POSTS_API = API_BASE + "/posts";
-    const USER_API = API_BASE + "/users/";
+    // --- Blog Section Logic (efficient backend filtering/sorting for Academics) ---
+const API_BASE = "https://examguard-jmvj.onrender.com/api";
+const ACADEMICS_POSTS_API = API_BASE + "/public/posts/academics";
+const USER_API = API_BASE + "/users/";
 
-    async function fetchAuthorName(userId) {
-      if (!userId) return "Anonymous";
-      if (window.authorCache && window.authorCache[userId]) return window.authorCache[userId];
-      try {
-        const res = await fetch(USER_API + userId);
-        if (!res.ok) return userId;
-        const data = await res.json();
-        const name = data.user?.fullname || data.user?.username || userId;
-        window.authorCache = window.authorCache || {};
-        window.authorCache[userId] = name;
-        return name;
-      } catch {
-        return userId;
-      }
+async function fetchAuthorName(userId) {
+  if (!userId) return "Anonymous";
+  if (window.authorCache && window.authorCache[userId]) return window.authorCache[userId];
+  try {
+    const res = await fetch(USER_API + userId);
+    if (!res.ok) return userId;
+    const data = await res.json();
+    const name = data.user?.fullname || data.user?.username || userId;
+    window.authorCache = window.authorCache || {};
+    window.authorCache[userId] = name;
+    return name;
+  } catch {
+    return userId;
+  }
+}
+
+async function fetchAcademicBlogs() {
+  const blogList = document.getElementById("blog-list");
+  const blogLoader = document.getElementById("blog-loader");
+  blogLoader.style.display = "";
+  blogList.innerHTML = blogLoader.outerHTML;
+
+  try {
+    let url = `${ACADEMICS_POSTS_API}?limit=6&sortBy=date&order=desc`;
+    const res = await fetch(url);
+    let articles = [];
+    if (res.ok) {
+      articles = await res.json();
     }
-
-    async function fetchAcademicBlogs() {
-      const blogList = document.getElementById("blog-list");
-      const blogLoader = document.getElementById("blog-loader");
-      blogLoader.style.display = "";
-      blogList.innerHTML = blogLoader.outerHTML;
-
-      try {
-        // Fetch only blogs in "academics" category, limit to latest 6
-        let url = `${POSTS_API}/filter?category=academics&limit=6`;
-        const res = await fetch(url);
-        let articles = [];
-        if (res.ok) {
-          articles = await res.json();
-        }
-        blogList.innerHTML = "";
-        if (!articles || !articles.length) {
-          blogList.innerHTML = `<div class="col-span-full text-center text-gray-400 py-10">No academic articles found.</div>`;
-          return;
-        }
-        // Unique author IDs
-        const authorIds = [...new Set(articles.map(a => a.author?.toString() || a.authorId || a.author).filter(Boolean))];
-        const authorNames = {};
-        await Promise.all(authorIds.map(async uid => {
-          if (!authorNames[uid]) authorNames[uid] = await fetchAuthorName(uid);
-        }));
-
-        articles.forEach(blog => {
-          const authorId = blog.author?.toString() || blog.authorId || blog.author;
-          const authorName = blog.authorName || authorNames[authorId] || "Anonymous";
-          const maxLen = 120;
-          let content = blog.summary || (blog.content && blog.content.slice(0, maxLen)) || "";
-          if (content.length > maxLen) content = content.slice(0, maxLen) + "...";
-          blogList.innerHTML += `
-            <div class="bg-white rounded-xl shadow p-6 hover:ring-2 hover:ring-blue-400 cursor-pointer transition flex flex-col h-full">
-              <img src="${blog.imageUrl || blog.image || 'https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&w=400&q=80'}" class="rounded-lg mb-4 w-full h-24 object-cover" alt="${blog.title}">
-              <h3 class="font-bold text-lg mb-2">${blog.title}</h3>
-              <div class="text-xs text-gray-500 mb-2">${authorName} • ${blog.date ? new Date(blog.date).toLocaleDateString() : ""}</div>
-              <p class="text-gray-700 text-sm mb-2 flex-1">${content}</p>
-              <a href="../campus-news-update?id=${blog._id || blog.id}" class="text-blue-600 font-semibold hover:underline mt-auto block">Read More</a>
-            </div>
-          `;
-        });
-      } catch(e) {
-        blogList.innerHTML = `<div class="col-span-full text-center text-gray-400 py-10">Error loading academic articles.</div>`;
-      }
+    blogList.innerHTML = "";
+    if (!articles || !articles.length) {
+      blogList.innerHTML = `<div class="col-span-full text-center text-gray-400 py-10">No academic articles found.</div>`;
+      return;
     }
+    // Unique author IDs
+    const authorIds = [...new Set(articles.map(a => a.author?._id || a.author || a.authorId).filter(Boolean))];
+    const authorNames = {};
+    await Promise.all(authorIds.map(async uid => {
+      if (!authorNames[uid]) authorNames[uid] = await fetchAuthorName(uid);
+    }));
+
+    articles.forEach(blog => {
+      const authorId = blog.author?._id || blog.author || blog.authorId;
+      const authorName = blog.authorName || authorNames[authorId] || "Anonymous";
+      const maxLen = 120;
+      let content = blog.summary || (blog.content && blog.content.slice(0, maxLen)) || "";
+      if (content.length > maxLen) content = content.slice(0, maxLen) + "...";
+      blogList.innerHTML += `
+        <div class="bg-white rounded-xl shadow p-6 hover:ring-2 hover:ring-blue-400 cursor-pointer transition flex flex-col h-full">
+          <img src="${blog.imageUrl || blog.image || 'https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&w=400&q=80'}" class="rounded-lg mb-4 w-full h-24 object-cover" alt="${blog.title}">
+          <h3 class="font-bold text-lg mb-2">${blog.title}</h3>
+          <div class="text-xs text-gray-500 mb-2">${authorName} • ${blog.date ? new Date(blog.date).toLocaleDateString() : ""}</div>
+          <p class="text-gray-700 text-sm mb-2 flex-1">${content}</p>
+          <a href="../campus-news-update?id=${blog._id || blog.id}" class="text-blue-600 font-semibold hover:underline mt-auto block">Read More</a>
+        </div>
+      `;
+    });
+  } catch(e) {
+    blogList.innerHTML = `<div class="col-span-full text-center text-gray-400 py-10">Error loading academic articles.</div>`;
+  }
+    }
+    
   </script>
 </body>
 </html>
