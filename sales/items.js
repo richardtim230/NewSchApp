@@ -204,7 +204,6 @@ window.closeLightbox = function() {
   document.getElementById("lightbox-modal").classList.add("hidden");
 }
 
-                                                           }
 // --- Send Offer Modal Logic ---
 window.openOfferModal = function(){
   document.getElementById('sendOfferModal').classList.remove('hidden');
@@ -380,30 +379,28 @@ function setupAddReview(productId) {
   }
   // Submit review handler
   document.getElementById("reviewForm").onsubmit = async function(e) {
-  e.preventDefault();
-  if (selectedRating < 1) {
-    alert("Please select a rating!");
-    return;
-  }
-  const comment = document.getElementById("reviewMessage").value;
-  const ok = await addReview(productId, selectedRating, comment);
-  const resp = document.getElementById("reviewResponse");
-  if (ok) {
-    // Award points for review in the background with no user alert
-    awardPointsForReview(productId, 2);
-
-    resp.textContent = "Review submitted!";
-    resp.classList.remove("hidden");
-    this.reset();
-    selectedRating = 0;
-    for(let j=0;j<5;j++) ratingStars.children[j].classList.remove("text-yellow-400");
-    await renderReviews(productId);
-  } else {
-    resp.textContent = "Failed to submit review.";
-    resp.classList.remove("hidden");
-  }
-  setTimeout(()=>resp.classList.add("hidden"), 2000);
-};
+    e.preventDefault();
+    if (selectedRating < 1) {
+      alert("Please select a rating!");
+      return;
+    }
+    const comment = document.getElementById("reviewMessage").value;
+    const ok = await addReview(productId, selectedRating, comment);
+    const resp = document.getElementById("reviewResponse");
+    if (ok) {
+      resp.textContent = "Review submitted!";
+      resp.classList.remove("hidden");
+      this.reset();
+      selectedRating = 0;
+      for(let j=0;j<5;j++) ratingStars.children[j].classList.remove("text-yellow-400");
+      await renderReviews(productId);
+    } else {
+      resp.textContent = "Failed to submit review.";
+      resp.classList.remove("hidden");
+    }
+    setTimeout(()=>resp.classList.add("hidden"), 2000);
+  };
+}
 
 // --- Related Items ---
 function renderRelatedItems(product, products) {
