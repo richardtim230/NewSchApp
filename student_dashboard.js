@@ -1709,9 +1709,262 @@ function buildCalendarEvents() {
   return events;
 }
 
-// Assignment submission logic: send to "Prof Richard Timothy" by username, fullname, email, role, or fallback to known ID
-// Assignment submission logic: send to "Prof Richard Timothy" by username, fullname, email, role, or fallback to known ID
+const BACKEND_URL = "https://examguard-jmjv.onrender.com";
 
+// --- Util for date key (YYYY-MM-DD) ---
+function getTodayDateStr() {
+  const now = new Date();
+  return `${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2,"0")}-${now.getDate().toString().padStart(2,"0")}`;
+}
+
+// --- Fetch/Save daily task state to server ---
+async function fetchUserTaskState(userId) {
+  // GET /api/users/:id/daily-tasks?date=YYYY-MM-DD
+  const resp = await fetch(`${BACKEND_URL}/api/users/${userId}/daily-tasks?date=${getTodayDateStr()}`, {
+    headers: { Authorization: 'Bearer ' + (localStorage.getItem("token") || "") }
+  });
+  if (!resp.ok) return { done: [] };
+  return await resp.json(); // { done: [taskId, ...] }
+}
+
+async function markTaskDoneOnServer(userId, taskId) {
+  // POST /api/users/:id/daily-tasks { date, taskId }
+  await fetch(`${BACKEND_URL}/api/users/${userId}/daily-tasks`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: 'Bearer ' + (localStorage.getItem("token") || "")
+    },
+    body: JSON.stringify({ date: getTodayDateStr(), taskId })
+  });
+}
+
+// --- Fetch random posts for tasks (from /api/posts/public/posts) ---
+async function fetchRandomTaskPosts() {
+  // Fetch more than needed, pick 2 at random
+  const resp = await fetch(`${BACKEND_URL}/api/posts/public/posts?limit=10&page=${Math.floor(Math.random()*5)+1}`);
+  const posts = await resp.json();
+  const filtered = posts.filter(p => p._id && p.title && p.content);
+  // Shuffle and pick 2
+  for (let i = filtered.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [filtered[i], filtered[j]] = [filtered[j], filtered[i]];
+  }
+  return filtered.slice(0, 2);
+}
+
+// --- Fetch random listings for tasks (from /api/bloggerDashboard/public/listings) ---
+async function fetchRandomTaskListings() {
+  const resp = await fetch(`${BACKEND_URL}/api/bloggerDashboard/public/listings`);
+  const listings = await resp.json();
+  const filtered = listings.filter(l => l._id && l.title);
+  for (let i = filtered.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [filtered[i], filtered[j]] = [filtered[j], filtered[i]];
+  }
+  return filtered.slice(0, 2);
+}
+
+// --- Fetch up to 2 active quizzes (from availableSchedulesCache) ---
+async function fetchActiveQuizTasks() {
+  if (!Array.isArray(availableSchedulesCache) || availableSchedulesCache.length === 0) {
+    await fetchAvailableTests();
+  }
+  const now = Date.now();
+  const quizzes = (availableSchedulesCache || [])
+    .filter(s => {
+      const set = s.examSet;
+      if (!set || set.status !== "ACTIVE") return false;
+      const end = s.end ? new Date(s.end).getTime() : Infinity;
+      return now <= end && !isScheduleCompleted(s, set);
+    })
+    .sort(() => 0.5 - Math.random())
+    .slice(0, 2);
+  return quizzes;
+}
+
+// --- Render the Tasks Center Section ---
+async function renderTasksCenter() {
+  const section = document.getElementById("tasks-center");
+  if (!section || !student?.id) return;
+  const cardsContainer = section.querySelector(".grid");
+  const historyBody = section.querySelector("#task-history-body");
+
+  // 1. Get/randomize today's tasks, but save them to localStorage for repeatability (per day)
+  let cacheKey = `tasks-center-tasks-${getTodayDateStr()}`;
+  let taskList = localStorage.getItem(cacheKey);
+  let tasks = taskList ? JSON.parse(taskList) : null;
+  if (!tasks) {
+    const [posts, listings, quizzes] = await Promise.all([
+      fetchRandomTaskPosts(),
+      fetchRandomTaskListings(),
+      fetchActiveQuizTasks()
+    ]);
+    tasks = [];
+    for (const post of posts) {
+      tasks.push({
+        id: `post-${post._id}`,
+        type: "post",
+        title: post.title,
+        postId: post._id,
+        url: `/blog-details.html?id=${post._id}`,
+        desc: "Read this post within 2 mins and earn 5 credit points!",
+        points: 5
+      });
+    }
+    for (const listing of listings) {
+      tasks.push({
+        id: `listing-${listing._id}`,
+        type: "listing",
+        title: listing.title,
+        listingId: listing._id,
+        url: `/sales/items.html?id=${listing._id}`,
+        desc: "A new item just got listed, check it out for an offer!",
+        points: 2
+      });
+    }
+    for (const quiz of quizzes) {
+      const set = quiz.examSet;
+      tasks.push({
+        id: `quiz-${set._id}`,
+        type: "quiz",
+        title: set.title,
+        quizId: set._id,
+        url: `test.html?examSet=${set._id}`,
+        desc: "Complete today's quiz and earn 3 credit points!",
+        points: 3
+      });
+    }
+    localStorage.setItem(cacheKey, JSON.stringify(tasks));
+  }
+
+  // 2. Fetch user's daily done state from backend
+  const userTaskState = await fetchUserTaskState(student.id);
+  const doneSet = new Set(userTaskState.done || []);
+
+  // 3. Render cards
+  if (cardsContainer) {
+    cardsContainer.innerHTML = "";
+    for (const task of tasks) {
+      const done = doneSet.has(task.id);
+      let icon = "";
+      let colorClass = "";
+      if (task.type === "post") {
+        icon = '<i class="bi bi-lightbulb-fill text-xl"></i>';
+        colorClass = "text-indigo-600";
+      } else if (task.type === "listing") {
+        icon = '<i class="bi bi-bag-heart-fill text-xl"></i>';
+        colorClass = "text-yellow-600";
+      } else if (task.type === "quiz") {
+        icon = '<i class="bi bi-check2-square text-xl"></i>';
+        colorClass = "text-green-700";
+      }
+      cardsContainer.innerHTML += `
+        <div class="flowbite-card bg-white border border-gray-100 rounded-lg shadow-sm p-6 flex flex-col justify-between h-full transition-transform hover:-translate-y-1 hover:shadow-lg">
+          <div>
+            <div class="flex items-center gap-2 mb-2 font-bold ${colorClass}">
+              ${icon}
+              ${task.type === "post" ? "New Task!" : task.type === "listing" ? "Special Offer!" : "Quick Challenge"}
+            </div>
+            <h3 class="text-lg font-semibold mb-2">${task.title}</h3>
+            <p class="text-gray-700 mb-4">${task.desc}</p>
+          </div>
+          <button 
+            class="w-full mt-2 px-4 py-2 rounded-lg font-semibold transition-all focus:ring-2 focus:outline-none
+              ${done 
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                : task.type === 'post'
+                  ? 'bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-400'
+                  : task.type === 'listing'
+                    ? 'bg-yellow-400 text-indigo-900 hover:bg-yellow-300 focus:ring-yellow-400'
+                    : 'bg-green-600 text-white hover:bg-green-700 focus:ring-green-400'
+              }"
+            ${done ? 'disabled' : ''}
+            data-taskid="${task.id}"
+            data-type="${task.type}"
+          >
+            ${done ? 'Completed' : task.type === 'post' ? 'Read Now' : task.type === 'listing' ? 'View Offer' : 'Take Quiz'}
+          </button>
+        </div>
+      `;
+    }
+    // Attach event listeners to task buttons
+    setTimeout(() => {
+      cardsContainer.querySelectorAll("button[data-taskid]").forEach(btn => {
+        btn.onclick = async function() {
+          const taskId = btn.getAttribute('data-taskid');
+          const type = btn.getAttribute('data-type');
+          const task = tasks.find(t => t.id === taskId);
+          if (!task) return;
+          if (type === "post") {
+            window.open(task.url, "_blank");
+            btn.disabled = true;
+            btn.textContent = "Reading...";
+            setTimeout(async () => {
+              await awardPointsForPost(task.postId);
+              await markTaskDoneOnServer(student.id, task.id);
+              renderTasksCenter();
+            }, 2 * 60 * 1000);
+          } else if (type === "listing") {
+            window.open(task.url, "_blank");
+            await markTaskDoneOnServer(student.id, task.id);
+            renderTasksCenter();
+          } else if (type === "quiz") {
+            window.location.href = task.url;
+            // For quiz, ensure you mark as done on completion and call markTaskDoneOnServer
+          }
+        };
+      });
+    }, 80);
+  }
+
+  // 4. Render task history table
+  if (historyBody) {
+    let html = "";
+    for (const task of tasks) {
+      const done = doneSet.has(task.id);
+      html += `<tr>
+        <td>${task.title}</td>
+        <td>
+          ${done 
+            ? '<span class="inline-block px-2 py-1 bg-green-100 text-green-700 rounded">Completed</span>' 
+            : '<span class="inline-block px-2 py-1 bg-yellow-100 text-yellow-700 rounded">Pending</span>'}
+        </td>
+        <td>+${task.points}</td>
+        <td>${done ? getTodayDateStr() : '-'}</td>
+      </tr>`;
+    }
+    historyBody.innerHTML = html;
+  }
+}
+
+// --- Award points for post (call backend for reward) ---
+async function awardPointsForPost(postId) {
+  try {
+    await fetch(`${BACKEND_URL}/api/posts/award-points`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: 'Bearer ' + (localStorage.getItem("token") || "")
+      },
+      body: JSON.stringify({ postId })
+    });
+  } catch (e) {}
+}
+
+// --- For quizzes, in test.html after completion, call: ---
+// await markTaskDoneOnServer(student.id, `quiz-${quizId}`);
+
+
+// --- Init Tasks Center on Tab Activation ---
+document.querySelector('a[data-tab="tasks-center"]').addEventListener("click", function() {
+  renderTasksCenter();
+});
+window.addEventListener("DOMContentLoaded", function() {
+  if (document.getElementById("tasks-center")?.classList.contains("active")) {
+    renderTasksCenter();
+  }
+});
 // Utility: build Week/Day dropdown (if needed)
 function buildWeekDayDropdown(selectId) {
   const select = document.getElementById(selectId);
