@@ -203,22 +203,7 @@ window.openLightbox = function() {
 window.closeLightbox = function() {
   document.getElementById("lightbox-modal").classList.add("hidden");
 }
-// --- Call this after a successful review submission ---
-async function awardPointsForReview(listingId, points = 3) {
-  try {
-    const token = localStorage.getItem("token");
-    await fetch("https://examguard-jmjv.onrender.com/api/rewards/review-product", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + token
-      },
-      body: JSON.stringify({ listingId, points })
-    });
-    // No alert, no UI disruption
-  } catch (e) {
-    // Optionally log error, but do not alert user
-  }
+
                                                            }
 // --- Send Offer Modal Logic ---
 window.openOfferModal = function(){
