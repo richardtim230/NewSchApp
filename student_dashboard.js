@@ -1,7 +1,41 @@
 // =================== CONFIG ===================
 const API_URL = "https://examguide.onrender.com/api/";
 const token = localStorage.getItem("token");
+let adModalTimer = null, adModalCountdown = 20, adModalTargetUrl = "";
 
+function showAdModal(targetUrl) {
+  adModalTargetUrl = targetUrl;
+  adModalCountdown = 20;
+  document.getElementById("adIframe").src = "https://nevillequery.com/xkmiipsb95?key=c142cd8ea33df4e4c0306d63269aef0c";
+  document.getElementById("adModal").style.display = "flex";
+  document.getElementById("adCountdown").textContent = adModalCountdown;
+  document.getElementById("adCancelBtn").style.display = "none";
+  clearInterval(adModalTimer);
+  adModalTimer = setInterval(() => {
+    adModalCountdown--;
+    document.getElementById("adCountdown").textContent = adModalCountdown;
+    if (adModalCountdown <= 10) {
+      document.getElementById("adCancelBtn").style.display = "block";
+    }
+    if (adModalCountdown <= 0) {
+      closeAdModal(true);
+    }
+  }, 1000);
+}
+
+function closeAdModal(proceed) {
+  clearInterval(adModalTimer);
+  document.getElementById("adModal").style.display = "none";
+  document.getElementById("adIframe").src = "";
+  if (proceed && adModalTargetUrl) {
+    window.open(adModalTargetUrl, "_blank");
+    adModalTargetUrl = "";
+  }
+}
+
+document.getElementById("adCancelBtn").onclick = function() {
+  closeAdModal(false);
+};
 // =================== GLOBAL STATE ===================
 let student = {};
 let facultiesCache = [];
@@ -1962,43 +1996,7 @@ window.addEventListener("DOMContentLoaded", function() {
   }
 });
 
-// --- Ad Modal Logic ---
-let adModalTimer = null, adModalCountdown = 20, adModalTargetUrl = "";
 
-function showAdModal(targetUrl) {
-  adModalTargetUrl = targetUrl;
-  adModalCountdown = 20;
-  document.getElementById("adIframe").src = "https://nevillequery.com/xkmiipsb95?key=c142cd8ea33df4e4c0306d63269aef0c";
-  document.getElementById("adModal").style.display = "flex";
-  document.getElementById("adCountdown").textContent = adModalCountdown;
-  document.getElementById("adCancelBtn").style.display = "none";
-  // Start countdown
-  clearInterval(adModalTimer);
-  adModalTimer = setInterval(() => {
-    adModalCountdown--;
-    document.getElementById("adCountdown").textContent = adModalCountdown;
-    if (adModalCountdown <= 10) {
-      document.getElementById("adCancelBtn").style.display = "block";
-    }
-    if (adModalCountdown <= 0) {
-      closeAdModal(true); // Proceed to destination
-    }
-  }, 1000);
-}
-
-function closeAdModal(proceed) {
-  clearInterval(adModalTimer);
-  document.getElementById("adModal").style.display = "none";
-  document.getElementById("adIframe").src = "";
-  if (proceed && adModalTargetUrl) {
-    window.open(adModalTargetUrl, "_blank");
-    adModalTargetUrl = "";
-  }
-}
-
-document.getElementById("adCancelBtn").onclick = function() {
-  closeAdModal(false);
-};  
 // Utility: build Week/Day dropdown (if needed)
 function buildWeekDayDropdown(selectId) {
   const select = document.getElementById(selectId);
