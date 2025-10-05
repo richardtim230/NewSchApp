@@ -1709,7 +1709,7 @@ function buildCalendarEvents() {
   return events;
 }
 
-const BACKEND_URL = "https://examguard-jmjv.onrender.com";
+const BACKEND_URL = "https://examguard-jmvj.onrender.com";
 
 // --- Util for date key (YYYY-MM-DD) ---
 function getTodayDateStr() {
