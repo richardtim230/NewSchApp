@@ -1938,16 +1938,15 @@ async function renderTasksCenter() {
   }
 }
 
-// --- Award points for post (call backend for reward) ---
 async function awardPointsForPost(postId) {
   try {
-    await fetch(`${BACKEND_URL}/api/posts/award-points`, {
+    await fetch(`${BACKEND_URL}/api/rewards/reading`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: 'Bearer ' + (localStorage.getItem("token") || "")
       },
-      body: JSON.stringify({ postId })
+      body: JSON.stringify({ postId, points: 5 })
     });
   } catch (e) {}
 }
