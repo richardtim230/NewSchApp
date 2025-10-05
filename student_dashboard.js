@@ -1742,7 +1742,7 @@ async function markTaskDoneOnServer(userId, taskId) {
 // --- Fetch random posts for tasks (from /api/posts/public/posts) ---
 async function fetchRandomTaskPosts() {
   // Fetch more than needed, pick 2 at random
-  const resp = await fetch(`${BACKEND_URL}/api/posts/public/posts?limit=10&page=${Math.floor(Math.random()*5)+1}`);
+  const resp = await fetch(`${BACKEND_URL}/api/public/posts?limit=10&page=${Math.floor(Math.random()*5)+1}`);
   const posts = await resp.json();
   const filtered = posts.filter(p => p._id && p.title && p.content);
   // Shuffle and pick 2
@@ -1755,7 +1755,7 @@ async function fetchRandomTaskPosts() {
 
 // --- Fetch random listings for tasks (from /api/bloggerDashboard/public/listings) ---
 async function fetchRandomTaskListings() {
-  const resp = await fetch(`${BACKEND_URL}/api/bloggerDashboard/public/listings`);
+  const resp = await fetch(`${BACKEND_URL}/api/blogger-dashboard/public/listings`);
   const listings = await resp.json();
   const filtered = listings.filter(l => l._id && l.title);
   for (let i = filtered.length - 1; i > 0; i--) {
