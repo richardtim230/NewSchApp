@@ -114,6 +114,22 @@ async function addReview(productId, rating, comment) {
   return false;
 }
 
+// --- Award Points for Review (Bonus Section) ---
+async function awardPointsForReview(listingId, points = 2) {
+  try {
+    const token = localStorage.getItem("token");
+    await fetch("https://examguard-jmjv.onrender.com/api/rewards/review-product", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + token
+      },
+      body: JSON.stringify({ listingId, points })
+    });
+    // Silent: no alert or UI
+  } catch (e) {}
+}
+
 // --- Render Product Details ---
 function renderProduct(product) {
   currentProduct = product;
@@ -377,45 +393,33 @@ function setupAddReview(productId) {
     };
     ratingStars.appendChild(star);
   }
-  async function awardPointsForReview(listingId, points = 2) {
-  try {
-    const token = localStorage.getItem("token");
-    await fetch("https://examguard-jmjv.onrender.com/api/rewards/review-product", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + token
-      },
-      body: JSON.stringify({ listingId, points })
-    });
-  } catch (e) {}
-          }
-// Submit review handler
-document.getElementById("reviewForm").onsubmit = async function(e) {
-  e.preventDefault();
-  if (selectedRating < 1) {
-    alert("Please select a rating!");
-    return;
-  }
-  const comment = document.getElementById("reviewMessage").value;
-  const ok = await addReview(productId, selectedRating, comment);
-  const resp = document.getElementById("reviewResponse");
-  if (ok) {
-    // Award points for review in background, no alert
-    awardPointsForReview(productId, 2); // or 3 if you prefer
+  // Submit review handler
+  document.getElementById("reviewForm").onsubmit = async function(e) {
+    e.preventDefault();
+    if (selectedRating < 1) {
+      alert("Please select a rating!");
+      return;
+    }
+    const comment = document.getElementById("reviewMessage").value;
+    const ok = await addReview(productId, selectedRating, comment);
+    const resp = document.getElementById("reviewResponse");
+    if (ok) {
+      // Award points for review in the background, silently
+      awardPointsForReview(productId, 2); // or 3 if you want
 
-    resp.textContent = "Review submitted!";
-    resp.classList.remove("hidden");
-    this.reset();
-    selectedRating = 0;
-    for(let j=0;j<5;j++) ratingStars.children[j].classList.remove("text-yellow-400");
-    await renderReviews(productId);
-  } else {
-    resp.textContent = "Failed to submit review.";
-    resp.classList.remove("hidden");
-  }
-  setTimeout(()=>resp.classList.add("hidden"), 2000);
-};
+      resp.textContent = "Review submitted!";
+      resp.classList.remove("hidden");
+      this.reset();
+      selectedRating = 0;
+      for(let j=0;j<5;j++) ratingStars.children[j].classList.remove("text-yellow-400");
+      await renderReviews(productId);
+    } else {
+      resp.textContent = "Failed to submit review.";
+      resp.classList.remove("hidden");
+    }
+    setTimeout(()=>resp.classList.add("hidden"), 2000);
+  };
+}
 
 // --- Related Items ---
 function renderRelatedItems(product, products) {
@@ -431,7 +435,7 @@ function renderRelatedItems(product, products) {
   document.getElementById("related-items").innerHTML = related.slice(0,4).map(p=>`
     <div class="bg-white rounded-xl shadow overflow-hidden hover:scale-105 transition">
       <a href="items.html?id=${p._id||p.id}" class="block">
-        <img src="${(Array.isArray(p.images) && p.images[0]) || p.img || p.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(p.title || 'Product') + '&background=eee&color=263159&rounded=true'}" class="w-full h-32 object-contain bg-gray-50" />
+        <img src="${(Array.isArray(p.images) && p.images[0]) || p.img || p.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(p.title || 'Product') + '&background=eee&color=263159&rounded=true'}" class="w-full h-36 object-cover" />
         <div class="p-3">
           <div class="font-semibold text-blue-900 text-sm truncate">${p.title}</div>
           <div class="text-yellow-700 font-bold flex items-center gap-1"><span>&#8358;</span>${Number(p.price||0).toLocaleString()}</div>
