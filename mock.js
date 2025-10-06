@@ -491,7 +491,7 @@ document.getElementById('resendVerifyForm').addEventListener('submit', async fun
   msgSpan.textContent = 'Sending...';
 
   try {
-    const resp = await fetch('https://examguard-jmjv.onrender.com/api/auth/resend-verification', {
+    const resp = await fetch('https://examguide.onrender.com/api/auth/resend-verification', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ usernameOrEmail })
