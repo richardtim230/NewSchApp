@@ -467,3 +467,29 @@ function onTabSwitchScroll() {
     }
 }
 tabBtns.forEach(btn => btn.addEventListener('click', onTabSwitchScroll));
+
+document.getElementById('showResendForm').addEventListener('click', function(e) {
+  e.preventDefault();
+  document.getElementById('resendVerifyForm').style.display = 'block';
+});
+
+document.getElementById('resendVerifyForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const usernameOrEmail = document.getElementById('resendUsername').value.trim();
+  const msgSpan = document.getElementById('resendVerifyMsg');
+  msgSpan.textContent = 'Sending...';
+
+  try {
+    const resp = await fetch('https://examguard-jmjv.onrender.com/api/auth/resend-verification', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ usernameOrEmail })
+    });
+    const data = await resp.json();
+    msgSpan.textContent = data.message || 'Check your email inbox!';
+    msgSpan.style.color = resp.ok ? 'green' : 'var(--error)';
+  } catch (err) {
+    msgSpan.textContent = 'Could not send verification email. Please try again.';
+    msgSpan.style.color = 'var(--error)';
+  }
+});
