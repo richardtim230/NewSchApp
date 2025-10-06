@@ -283,14 +283,14 @@ async function setRegLoading(isLoading) {
         registerBtnText.style.display = "inline";
     }
 }
-
-// LOGIN HANDLING (with verification check)
+// LOGIN HANDLING (with verification check and resend option)
 forms.login.addEventListener('submit', async function(e) {
     e.preventDefault();
     const username = document.getElementById('login-username').value.trim();
     const password = document.getElementById('login-password').value;
     if (!validateUsername(username) || !password) {
         showStatusModal("error","Login Error","Both fields are required!");
+        document.getElementById('resendVerifyBox').style.display = 'none';
         return;
     }
     showLoadingModal("Logging in...","Please wait while we log you in.");
@@ -306,47 +306,58 @@ forms.login.addEventListener('submit', async function(e) {
 
         await setLoginLoading(false);
 
-        if (loginResponse.ok) {
-            // Check for verification error in the backend response
-            if (loginData.message && loginData.message.toLowerCase().includes("email not verified")) {
-                showStatusModal("error","Email Not Verified",loginData.message);
-                return;
-            }
-            localStorage.setItem('token', loginData.token);
-            // Get user role and redirect accordingly
-            try {
-                let profileResp = await fetch("https://examguide.onrender.com/api/auth/me", {
-                    headers: { 'Authorization': 'Bearer ' + loginData.token }
-                });
-                let profileData = await profileResp.json();
-                if (profileResp.ok && profileData.user) {
-                    const role = profileData.user.role;
-                    let roleMsg = "Welcome!";
-                    switch (role) {
-                        case 'superadmin': roleMsg = "Welcome, Superadmin!"; break;
-                        case 'admin': roleMsg = "Welcome, Admin!"; break;
-                        case 'uploader': roleMsg = "Welcome, Uploader!"; break;
-                        case 'pq-uploader': roleMsg = "Welcome, PQ-Uploader!"; break;
-                        case 'blogger': roleMsg = "Welcome, Blogger!"; break;
-                        default: roleMsg = "Welcome, Student!";
-                    }
-                    showStatusModal("success", "Login Successful", roleMsg, false);
-                    setTimeout(() => { window.location.href = (role === 'superadmin') ? "supaadmin.html" : "loader.html"; }, 1300);
-                    return;
-                }
-            } catch {
-                showStatusModal("success", "Login Successful", "You have been logged in!", false);
-                setTimeout(() => { window.location.href = "loader.html"; }, 1200);
+        // Handle login failure
+        if (!loginResponse.ok) {
+            showStatusModal("error","Login Failed",loginData.message || "Login failed");
+            // Show resend box if error is due to non-verified email
+            if (loginData.message && (
+                loginData.message.toLowerCase().includes("verify your email") ||
+                loginData.message.toLowerCase().includes("email not verified")
+            )) {
+                document.getElementById('resendVerifyBox').style.display = 'block';
+                document.getElementById('resendUsername').value = username; // prefill
+            } else {
+                document.getElementById('resendVerifyBox').style.display = 'none';
             }
             return;
         }
-        showStatusModal("error","Login Failed",loginData.message || "Login failed");
+
+        // Hide resend box on any other outcome
+        document.getElementById('resendVerifyBox').style.display = 'none';
+
+        // Handle login success
+        localStorage.setItem('token', loginData.token);
+        // Get user role and redirect accordingly
+        try {
+            let profileResp = await fetch("https://examguide.onrender.com/api/auth/me", {
+                headers: { 'Authorization': 'Bearer ' + loginData.token }
+            });
+            let profileData = await profileResp.json();
+            if (profileResp.ok && profileData.user) {
+                const role = profileData.user.role;
+                let roleMsg = "Welcome!";
+                switch (role) {
+                    case 'superadmin': roleMsg = "Welcome, Superadmin!"; break;
+                    case 'admin': roleMsg = "Welcome, Admin!"; break;
+                    case 'uploader': roleMsg = "Welcome, Uploader!"; break;
+                    case 'pq-uploader': roleMsg = "Welcome, PQ-Uploader!"; break;
+                    case 'blogger': roleMsg = "Welcome, Blogger!"; break;
+                    default: roleMsg = "Welcome, Student!";
+                }
+                showStatusModal("success", "Login Successful", roleMsg, false);
+                setTimeout(() => { window.location.href = (role === 'superadmin') ? "supaadmin.html" : "loader.html"; }, 1300);
+                return;
+            }
+        } catch {
+            showStatusModal("success", "Login Successful", "You have been logged in!", false);
+            setTimeout(() => { window.location.href = "loader.html"; }, 1200);
+        }
     } catch (err) {
         showStatusModal("error","Network Error","Network or server error. Please try again.");
+        document.getElementById('resendVerifyBox').style.display = 'none';
     }
     await setLoginLoading(false);
 });
-
 // REGISTRATION HANDLING (with confirmation modal, no auto-login)
 forms.register.addEventListener('submit', async function(e) {
     e.preventDefault();
