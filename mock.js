@@ -284,23 +284,27 @@ async function setRegLoading(isLoading) {
     }
 }
 
+
 forms.login.addEventListener('submit', async function(e) {
     e.preventDefault();
     const username = document.getElementById('login-username').value.trim();
     const password = document.getElementById('login-password').value;
+
     if (!validateUsername(username) || !password) {
-        showStatusModal("error","Login Error","Both fields are required!");
-        document.getElementById('showResendModal').style.display = 'none';
+        showStatusModal("error", "Login Error", "Both fields are required!");
+        // Hide resend link/modal if visible
+        if (document.getElementById('showResendModal')) document.getElementById('showResendModal').style.display = 'none';
         return;
     }
-    showLoadingModal("Logging in...","Please wait while we log you in.");
+
+    showLoadingModal("Logging in...", "Please wait while we log you in.");
     await setLoginLoading(true);
 
     try {
         let loginResponse = await fetch("https://examguide.onrender.com/api/auth/login", {
             method: "POST",
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({username, password})
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
         });
         let loginData = await loginResponse.json();
 
@@ -308,22 +312,62 @@ forms.login.addEventListener('submit', async function(e) {
 
         // Handle login failure
         if (!loginResponse.ok) {
-            showStatusModal("error","Login Failed",loginData.message || "Login failed");
-            // Show resend box if error is due to non-verified email
-            if (loginData.message && (
-                loginData.message.toLowerCase().includes("verify your email") ||
-                loginData.message.toLowerCase().includes("email not verified")
-            )) {
-                document.getElementById('showResendModal').style.display = 'block';
-                document.getElementById('resendUsername').value = username; // prefill
+            showStatusModal("error", "Login Failed", loginData.message || "Login failed");
+
+            // Show "resend verification" modal link if error is due to non-verified email
+            if (
+                loginData.message &&
+                (
+                    loginData.message.toLowerCase().includes("verify your email") ||
+                    loginData.message.toLowerCase().includes("email not verified")
+                )
+            ) {
+                // Show the modal trigger link
+                const resendLink = document.getElementById('showResendModal');
+                if (resendLink) {
+                    resendLink.style.display = 'block';
+                    resendLink.onclick = function(ev) {
+                        ev.preventDefault();
+                        openModal(`
+                            <div class="modal-title">Resend Verification Email</div>
+                            <form id="resendVerifyFormModal" autocomplete="off">
+                                <input type="text" id="resendUsernameModal" value="${username}" placeholder="Enter username or email" required style="padding:.6rem; border-radius:7px; border:1.5px solid #d6e0ef; width:80%; margin-bottom:1rem;">
+                                <button type="submit" style="padding:.6rem 1.2rem; border-radius:7px; background:var(--primary); color:#fff; border:none; font-weight:600;">Send</button>
+                                <span id="resendVerifyMsgModal" style="display:block; margin-top:0.5rem; font-size:0.96rem;"></span>
+                            </form>
+                        `, true);
+
+                        document.getElementById('resendVerifyFormModal').addEventListener('submit', async function(ev2) {
+                            ev2.preventDefault();
+                            const usernameOrEmail = document.getElementById('resendUsernameModal').value.trim();
+                            const msgSpan = document.getElementById('resendVerifyMsgModal');
+                            msgSpan.textContent = 'Sending...';
+                            msgSpan.style.color = '';
+                            try {
+                                const resp = await fetch('https://examguard-jmjv.onrender.com/api/auth/resend-verification', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ usernameOrEmail })
+                                });
+                                const data = await resp.json();
+                                msgSpan.textContent = data.message || 'Check your email inbox!';
+                                msgSpan.style.color = resp.ok ? 'green' : 'var(--error)';
+                            } catch (err) {
+                                msgSpan.textContent = 'Could not send verification email. Please try again.';
+                                msgSpan.style.color = 'var(--error)';
+                            }
+                        });
+                    };
+                }
             } else {
-                document.getElementById('showResendModal').style.display = 'none';
+                // Hide the resend link/modal if not a verification error
+                if (document.getElementById('showResendModal')) document.getElementById('showResendModal').style.display = 'none';
             }
             return;
         }
 
-        // Hide resend box on any other outcome
-        document.getElementById('showResendModal').style.display = 'none';
+        // Hide resend link/modal on successful login
+        if (document.getElementById('showResendModal')) document.getElementById('showResendModal').style.display = 'none';
 
         // Handle login success
         localStorage.setItem('token', loginData.token);
@@ -353,8 +397,8 @@ forms.login.addEventListener('submit', async function(e) {
             setTimeout(() => { window.location.href = "loader.html"; }, 1200);
         }
     } catch (err) {
-        showStatusModal("error","Network Error","Network or server error. Please try again.");
-        document.getElementById('resendVerifyBox').style.display = 'none';
+        showStatusModal("error", "Network Error", "Network or server error. Please try again.");
+        if (document.getElementById('showResendModal')) document.getElementById('showResendModal').style.display = 'none';
     }
     await setLoginLoading(false);
 });
@@ -479,37 +523,3 @@ function onTabSwitchScroll() {
 }
 tabBtns.forEach(btn => btn.addEventListener('click', onTabSwitchScroll));
 
-// Show the modal when link is clicked
-document.getElementById('showResendModal').addEventListener('click', function(e) {
-  e.preventDefault();
-  openModal(`
-    <div class="modal-title">Resend Verification Email</div>
-    <form id="resendVerifyFormModal" autocomplete="off">
-      <input type="text" id="resendUsernameModal" placeholder="Enter username or email" required style="padding:.6rem; border-radius:7px; border:1.5px solid #d6e0ef; width:80%; margin-bottom:1rem;">
-      <button type="submit" style="padding:.6rem 1.2rem; border-radius:7px; background:var(--primary); color:#fff; border:none; font-weight:600;">Send</button>
-      <span id="resendVerifyMsgModal" style="display:block; margin-top:0.5rem; font-size:0.96rem;"></span>
-    </form>
-  `, true);
-
-  // Add submit handler for the modal form
-  document.getElementById('resendVerifyFormModal').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    const usernameOrEmail = document.getElementById('resendUsernameModal').value.trim();
-    const msgSpan = document.getElementById('resendVerifyMsgModal');
-    msgSpan.textContent = 'Sending...';
-    msgSpan.style.color = '';
-    try {
-      const resp = await fetch('https://examguard-jmjv.onrender.com/api/auth/resend-verification', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ usernameOrEmail })
-      });
-      const data = await resp.json();
-      msgSpan.textContent = data.message || 'Check your email inbox!';
-      msgSpan.style.color = resp.ok ? 'green' : 'var(--error)';
-    } catch (err) {
-      msgSpan.textContent = 'Could not send verification email. Please try again.';
-      msgSpan.style.color = 'var(--error)';
-    }
-  });
-});
