@@ -283,7 +283,7 @@ async function setRegLoading(isLoading) {
         registerBtnText.style.display = "inline";
     }
 }
-// LOGIN HANDLING (with verification check and resend option)
+
 forms.login.addEventListener('submit', async function(e) {
     e.preventDefault();
     const username = document.getElementById('login-username').value.trim();
