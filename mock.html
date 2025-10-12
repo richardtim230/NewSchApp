@@ -701,24 +701,6 @@
         <div id="modalContent"></div>
     </div>
 </div>
-<div class="modal-backdrop" id="resetModalBackdrop">
-  <div class="custom-modal" id="resetModal">
-    <button class="close-modal" id="closeResetModalBtn" aria-label="Close modal">&times;</button>
-    <div class="modal-title">Password Reset</div>
-    <form id="resetPasswordForm">
-      <div class="form-group">
-        <label for="reset-studentid">Student ID</label>
-        <input type="text" id="reset-studentid" required>
-      </div>
-      <div class="form-group">
-        <label for="reset-new-password">New Password</label>
-        <input type="password" id="reset-new-password" required minlength="8">
-      </div>
-      <button type="submit" class="btn-primary">Reset Password</button>
-    </form>
-    <div id="resetStatusMsg" class="message" style="display:none"></div>
-  </div>
-</div>
 <script>
 (function() {
     const params = new URLSearchParams(window.location.search);
@@ -1138,60 +1120,61 @@
         });
     });
 
-    // Modal helpers
-function openResetModal() {
-  document.getElementById('resetModalBackdrop').classList.add('show');
-  document.getElementById('resetStatusMsg').style.display = 'none';
-}
-function closeResetModal() {
-  document.getElementById('resetModalBackdrop').classList.remove('show');
-  document.getElementById('resetPasswordForm').reset();
-  document.getElementById('resetStatusMsg').style.display = 'none';
-}
-document.getElementById('forgotPassword').onclick = function(e) {
-  e.preventDefault();
-  openResetModal();
-};
-document.getElementById('closeResetModalBtn').onclick = closeResetModal;
-document.getElementById('resetModalBackdrop').onclick = function(e) {
-  if (e.target === this) closeResetModal();
-};
+    document.getElementById('forgotPassword').addEventListener('click', function(e) {
+    e.preventDefault();
+    openModal(`
+        <div class="modal-title">Reset Your Password</div>
+        <div class="modal-message">Enter your Student ID and new password below.</div>
+        <form id="resetPasswordForm" style="margin-top:1em;">
+            <div class="form-group">
+                <label for="reset-studentid">Student ID</label>
+                <input type="text" id="reset-studentid" name="studentId" autocomplete="off" required style="width:100%;padding:.6em;margin-top:.3em;">
+            </div>
+            <div class="form-group">
+                <label for="reset-newpass">New Password</label>
+                <input type="password" id="reset-newpass" name="newPassword" autocomplete="new-password" required minlength="8" style="width:100%;padding:.6em;margin-top:.3em;">
+            </div>
+            <div class="form-group">
+                <label for="reset-confirmpass">Confirm Password</label>
+                <input type="password" id="reset-confirmpass" name="confirmPassword" autocomplete="new-password" required minlength="8" style="width:100%;padding:.6em;margin-top:.3em;">
+            </div>
+            <button type="submit" class="btn-primary" style="width:100%;margin-top:.7em;">Reset Password</button>
+        </form>
+    `, true);
 
-// Submit handler
-document.getElementById('resetPasswordForm').onsubmit = async function(e) {
-  e.preventDefault();
-  const studentId = document.getElementById('reset-studentid').value.trim();
-  const password = document.getElementById('reset-new-password').value;
+    // Attach form submission handler after modal content is injected
+    document.getElementById('resetPasswordForm').onsubmit = async function(ev) {
+        ev.preventDefault();
+        const studentId = document.getElementById('reset-studentid').value.trim();
+        const newPass = document.getElementById('reset-newpass').value;
+        const confirmPass = document.getElementById('reset-confirmpass').value;
 
-  if (!studentId || !password) {
-    showResetStatus("error", "Both fields are required.");
-    return;
-  }
-  showResetStatus("info", "Processing...");
-
-  try {
-    const resp = await fetch("https://examguide.onrender.com/api/auth/reset", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ studentId, password })
-    });
-    const data = await resp.json();
-    if (resp.ok) {
-      showResetStatus("success", data.message || "Password reset successful. You can now log in.");
-      setTimeout(closeResetModal, 2200);
-    } else {
-      showResetStatus("error", data.message || "Password reset failed.");
-    }
-  } catch (err) {
-    showResetStatus("error", "An error occurred. Please try again.");
-  }
-};
-function showResetStatus(type, msg) {
-  const box = document.getElementById('resetStatusMsg');
-  box.className = "message " + (type === "success" ? "success" : type === "error" ? "error" : "");
-  box.innerText = msg;
-  box.style.display = 'block';
-}
+        if (!studentId || !newPass || !confirmPass) {
+            showStatusModal("error", "Reset Error", "All fields are required.", true);
+            return;
+        }
+        if (newPass !== confirmPass) {
+            showStatusModal("error", "Reset Error", "Passwords do not match.", true);
+            return;
+        }
+        showLoadingModal("Resetting Password...", "Please wait...");
+        try {
+            const resp = await fetch('/api/auth/reset', {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ studentId, password: newPass })
+            });
+            const data = await resp.json();
+            if (resp.ok) {
+                showStatusModal("success", "Success", data.message || "Password reset successful.", true);
+            } else {
+                showStatusModal("error", "Reset Error", data.message || "Failed to reset password.", true);
+            }
+        } catch (err) {
+            showStatusModal("error", "Reset Error", "Server error. Please try again.", true);
+        }
+    };
+});
 
     // Responsive: scroll to top of form on mobile when switching
     function onTabSwitchScroll() {
