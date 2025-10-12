@@ -1120,46 +1120,61 @@
         });
     });
 
-    // Forgot Password (now with confirmation modal)
-    document.getElementById('forgotPassword').addEventListener('click', async function(e) {
-        e.preventDefault();
-        let username = prompt("Enter your username for password reset:");
-        if (username === null) return;
-        username = username.trim();
-        if (!validateUsername(username)) {
-            showStatusModal("error","Password Reset Error","Username cannot be empty.");
+    document.getElementById('forgotPassword').addEventListener('click', function(e) {
+    e.preventDefault();
+    openModal(`
+        <div class="modal-title">Reset Your Password</div>
+        <div class="modal-message">Enter your Student ID and new password below.</div>
+        <form id="resetPasswordForm" autocomplete="off">
+            <div class="form-group">
+                <label for="reset-studentid">Student ID</label>
+                <input type="text" id="reset-studentid" name="reset-studentid" required>
+            </div>
+            <div class="form-group">
+                <label for="reset-newpass">New Password</label>
+                <input type="password" id="reset-newpass" name="reset-newpass" required minlength="8">
+            </div>
+            <div class="form-group">
+                <label for="reset-confirmpass">Confirm New Password</label>
+                <input type="password" id="reset-confirmpass" name="reset-confirmpass" required minlength="8">
+            </div>
+            <button type="submit" class="btn-primary" id="doResetBtn">Reset Password</button>
+        </form>
+    `, true);
+
+    // Add submit handler for the new form
+    document.getElementById('resetPasswordForm').onsubmit = async function(ev) {
+        ev.preventDefault();
+        const studentId = document.getElementById('reset-studentid').value.trim();
+        const newPass = document.getElementById('reset-newpass').value;
+        const confirmPass = document.getElementById('reset-confirmpass').value;
+
+        if (!studentId || !newPass || !confirmPass) {
+            showStatusModal("error", "Reset Error", "All fields are required.", true);
             return;
         }
-        let newPass = prompt("Enter your new password:");
-        if (!newPass) {
-            showStatusModal("error","Password Reset Error","Password cannot be empty.");
+        if (newPass !== confirmPass) {
+            showStatusModal("error", "Reset Error", "Passwords do not match.", true);
             return;
         }
-        // Confirm details before proceeding
-        showConfirmationModal({
-            "Username": username,
-            "New Password": newPass.replace(/./g,"*") // Mask password
-        }, async function proceedReset(){
-            showLoadingModal("Resetting Password...","Please wait while we reset your password.");
-            await setLoginLoading(true);
-            try {
-                let resp = await fetch("https://examguide.onrender.com/api/auth/reset", {
-                    method: "POST",
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({username, password: newPass})
-                });
-                let data = await resp.json();
-                if (resp.ok) {
-                    showStatusModal("success","Password Reset","Password reset successful!");
-                } else {
-                    showStatusModal("error","Password Reset Failed",data.message || "Password reset failed");
-                }
-            } catch (err) {
-                showStatusModal("error","Network Error","Network or server error. Please try again.");
+        showLoadingModal("Resetting Password...", "Please wait...");
+        try {
+            const resp = await fetch('/api/auth/reset', {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ studentId, password: newPass })
+            });
+            const data = await resp.json();
+            if (resp.ok) {
+                showStatusModal("success", "Success", data.message || "Password reset successful.", true);
+            } else {
+                showStatusModal("error", "Reset Error", data.message || "Failed to reset password.", true);
             }
-            await setLoginLoading(false);
-        }, function cancelReset(){});
-    });
+        } catch (err) {
+            showStatusModal("error", "Reset Error", "Server error. Please try again.", true);
+        }
+    };
+});
 
     // Responsive: scroll to top of form on mobile when switching
     function onTabSwitchScroll() {
