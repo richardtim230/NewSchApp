@@ -2391,7 +2391,78 @@ window.closeBroadcastModal = closeBroadcastModal;
 window.openScheduledExamModal = openScheduledExamModal;
 window.closeScheduledExamModal = closeScheduledExamModal;
 
+// === Notification Badge Logic ===
 
+// Helper: show/hide badge
+function setNotificationBadge(id, show) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (show) {
+    el.classList.remove('hidden');
+  } else {
+    el.classList.add('hidden');
+  }
+}
+
+// Check for new messages, broadcasts, schedules
+async function checkNotifications() {
+  // --- 1. Messages ---
+  try {
+    const resp = await fetchWithAuth(API_URL + "messages/chats");
+    const chats = await resp.json();
+    // Suppose the backend provides an "unreadCount" or similar. If not, check last message read, etc.
+    const hasUnread = chats.some(chat => chat.unreadCount && chat.unreadCount > 0);
+    setNotificationBadge("notif-messages", hasUnread);
+  } catch { setNotificationBadge("notif-messages", false); }
+
+  // --- 2. Broadcasts ---
+  try {
+    const resp = await fetchWithAuth(API_URL + "broadcasts");
+    const broadcasts = await resp.json();
+    // You may need to track last seen broadcast in localStorage
+    const lastSeen = localStorage.getItem("lastSeenBroadcastId");
+    const newBroadcast = broadcasts.length && broadcasts[0]._id !== lastSeen;
+    setNotificationBadge("notif-broadcasts", newBroadcast);
+  } catch { setNotificationBadge("notif-broadcasts", false); }
+
+  // --- 3. Schedules/Mock Tests ---
+  try {
+    if (!student.faculty || !student.department || !student.level) {
+      setNotificationBadge("notif-schedules", false);
+      return;
+    }
+    const resp = await fetchWithAuth(
+      API_URL + `schedules?faculty=${student.faculty}&department=${student.department}&level=${student.level}`
+    );
+    const schedules = await resp.json();
+    // Find if any new schedules (not completed and not previously seen)
+    const lastSeen = localStorage.getItem("lastSeenScheduleId");
+    const newSchedule = Array.isArray(schedules) &&
+      schedules.some(s => s.examSet && s.examSet._id !== lastSeen && s.examSet.status === "ACTIVE");
+    setNotificationBadge("notif-schedules", newSchedule);
+  } catch { setNotificationBadge("notif-schedules", false); }
+}
+
+// Call on dashboard load and periodically
+window.addEventListener("DOMContentLoaded", () => {
+  checkNotifications();
+  setInterval(checkNotifications, 60 * 1000); // every 1 min, adjust as needed
+});
+
+// When user visits messages, broadcasts, or mock-tests, clear the badge and update "last seen" in localStorage
+document.querySelector('a[data-tab="messages"]').addEventListener("click", () => setNotificationBadge("notif-messages", false));
+document.querySelector('a[data-tab="mock-tests"]').addEventListener("click", () => setNotificationBadge("notif-schedules", false));
+document.querySelector('a[onclick*="openBroadcastModal"]').addEventListener("click", () => {
+  setNotificationBadge("notif-broadcasts", false);
+  // Store the last seen broadcast ID
+  fetchWithAuth(API_URL + "broadcasts")
+    .then(r => r.json())
+    .then(broadcasts => {
+      if (Array.isArray(broadcasts) && broadcasts.length) {
+        localStorage.setItem("lastSeenBroadcastId", broadcasts[0]._id);
+      }
+    });
+});
 
 // ============ INIT ===========
 async function initDashboard() {
