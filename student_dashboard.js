@@ -1995,7 +1995,68 @@ window.addEventListener("DOMContentLoaded", function() {
     renderTasksCenter();
   }
 });
+// Show the scheduled assessment modal if there is an active or new scheduled mock test
+async function showScheduledAssessmentModalIfNeeded() {
+  // Fetch schedules as you normally do
+  let schedules = [];
+  try {
+    const resp = await fetchWithAuth(API_URL + `schedules?faculty=${student.faculty}&department=${student.department}&level=${student.level}`);
+    schedules = await resp.json();
+  } catch {
+    return;
+  }
 
+  // Find the most relevant "Available" or "Scheduled" mock test (for now: status ACTIVE, and not completed)
+  let relevant = null;
+  const now = Date.now();
+  for (const sched of schedules) {
+    if (!sched.examSet) continue;
+    const set = sched.examSet;
+    const start = sched.start ? new Date(sched.start) : null;
+    const end = sched.end ? new Date(sched.end) : null;
+    const status = set.status || sched.status || "";
+    const completed = isScheduleCompleted(sched, set);
+    if (!completed && status === "ACTIVE" && start && now >= start.getTime() && (!end || now <= end.getTime())) {
+      relevant = { set, sched, start, end };
+      break;
+    }
+  }
+
+  if (!relevant) {
+    document.getElementById("scheduledAssessmentModal").classList.add("hidden");
+    return;
+  }
+
+  // Fill modal fields
+  document.getElementById("scheduledAssessmentTitle").textContent = relevant.set.title || "Untitled Assessment";
+  document.getElementById("scheduledAssessmentDesc").textContent = relevant.set.description || "No description provided.";
+  document.getElementById("scheduledAssessmentStart").textContent = relevant.start ? relevant.start.toLocaleString() : "-";
+  document.getElementById("scheduledAssessmentEnd").textContent = relevant.end ? relevant.end.toLocaleString() : "-";
+  document.getElementById("scheduledAssessmentStatus").textContent = "Available";
+  // Save the examSetId for use
+  document.getElementById("startAssessmentBtn").dataset.examSetId = relevant.set._id;
+
+  // Show modal
+  document.getElementById("scheduledAssessmentModal").classList.remove("hidden");
+}
+
+// Handler for the start button
+function onStartAssessmentModalBtn() {
+  const examSetId = document.getElementById("startAssessmentBtn").dataset.examSetId;
+  if (examSetId) {
+    window.location.href = `test.html?examSet=${encodeURIComponent(examSetId)}`;
+  }
+}
+
+// Handler for closing the modal
+function closeScheduledAssessmentModal() {
+  document.getElementById("scheduledAssessmentModal").classList.add("hidden");
+}
+
+// Call this after student/schedules are loaded (e.g., in initDashboard or after fetching schedules)
+window.addEventListener("DOMContentLoaded", () => {
+  setTimeout(showScheduledAssessmentModalIfNeeded, 1000); // delay to ensure data loaded
+});
 
 // Utility: build Week/Day dropdown (if needed)
 function buildWeekDayDropdown(selectId) {
