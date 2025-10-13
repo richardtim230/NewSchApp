@@ -2056,10 +2056,6 @@ function closeScheduledAssessmentModal() {
   document.getElementById("scheduledAssessmentModal").classList.add("hidden");
 }
 
-// Call this after student/schedules are loaded (e.g., in initDashboard or after fetching schedules)
-window.addEventListener("DOMContentLoaded", () => {
-  setTimeout(showScheduledAssessmentModalIfNeeded, 1000); // delay to ensure data loaded
-});
 
 // Utility: build Week/Day dropdown (if needed)
 function buildWeekDayDropdown(selectId) {
