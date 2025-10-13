@@ -2541,4 +2541,8 @@ async function initDashboard() {
   
 }
 
+
+window.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('scheduledAssessmentModal').classList.remove('hidden');
+});
 window.addEventListener("DOMContentLoaded", initDashboard);
