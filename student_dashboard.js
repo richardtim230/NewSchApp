@@ -2016,6 +2016,7 @@ async function showScheduledAssessmentModalIfNeeded() {
     const end = sched.end ? new Date(sched.end) : null;
     const status = set.status || sched.status || "";
     const completed = isScheduleCompleted(sched, set);
+    console.log("Schedule: ", set.title, {status, start, end, completed, now});
     if (!completed && status === "ACTIVE" && start && now >= start.getTime() && (!end || now <= end.getTime())) {
       relevant = { set, sched, start, end };
       break;
@@ -2023,6 +2024,7 @@ async function showScheduledAssessmentModalIfNeeded() {
   }
 
   if (!relevant) {
+    console.log("No eligible scheduled assessment found, modal will not show");
     document.getElementById("scheduledAssessmentModal").classList.add("hidden");
     return;
   }
@@ -2037,6 +2039,7 @@ async function showScheduledAssessmentModalIfNeeded() {
   document.getElementById("startAssessmentBtn").dataset.examSetId = relevant.set._id;
 
   // Show modal
+  console.log("Showing modal for:", relevant.set.title);
   document.getElementById("scheduledAssessmentModal").classList.remove("hidden");
 }
 
@@ -2539,8 +2542,6 @@ async function initDashboard() {
   await fetchAvailableTests();
   await showScheduledAssessmentModalIfNeeded();
   hidePreloaderSpinner();
-
-  // <-- ADD THIS HERE
   
 }
 
