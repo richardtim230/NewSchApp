@@ -2537,12 +2537,11 @@ async function initDashboard() {
   await fetchAnnouncements();
   await fetchInbox();
   await fetchAvailableTests();
+  await showScheduledAssessmentModalIfNeeded();
   hidePreloaderSpinner();
+
+  // <-- ADD THIS HERE
   
 }
 
-
-window.addEventListener('DOMContentLoaded', function() {
-  document.getElementById('scheduledAssessmentModal').classList.remove('hidden');
-});
 window.addEventListener("DOMContentLoaded", initDashboard);
