@@ -2549,12 +2549,10 @@ window.addEventListener("DOMContentLoaded", function() {
     let btn = e.target.closest("button");
     if (
       btn &&
-      // Exempt hamburger menu button
       btn.id !== "menu-toggle" &&
-      // Exempt all close/cancel/ad modal buttons
-      !btn.id.startsWith("adCancelBtn") &&
-      !btn.id.startsWith("close") && // this matches closeScheduledAssessmentModal, closeWelcomeModal, etc.
-      !btn.classList.contains("close-modal") && // for flexibility
+      !(btn.id && btn.id.startsWith("adCancelBtn")) &&
+      !(btn.id && btn.id.startsWith("close")) &&
+      !btn.classList.contains("close-modal") &&
       !btn.classList.contains("modal-close")
     ) {
       e.preventDefault();
