@@ -751,6 +751,40 @@ async function fetchAllUsers() {
 
 
 // =================== PROFILE EDIT SAVE ===================
+// Get references to elements
+const API_URL = "https://examguide.onrender.com/api/";
+const token = localStorage.getItem("token");
+
+// Show preview when a new profile picture is selected
+document.getElementById("editProfilePic").addEventListener("change", function(e) {
+  const file = e.target.files[0];
+  const preview = document.getElementById("profilePicPreview");
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+      preview.src = ev.target.result;
+      preview.style.display = "block";
+    };
+    reader.readAsDataURL(file);
+  } else {
+    preview.src = "";
+    preview.style.display = "none";
+  }
+});
+
+// Helper to upload profile pic to Cloudinary
+async function uploadProfilePicToCloudinary(file) {
+  const formData = new FormData();
+  formData.append("image", file); // Cloudinary expects "image" field
+  const resp = await fetch(API_URL + "images", {
+    method: "POST",
+    body: formData
+  });
+  if (!resp.ok) throw new Error("Failed to upload image");
+  const data = await resp.json();
+  return data.url; // Cloudinary URL
+}
+
 document.getElementById("saveProfileBtn").onclick = async function() {
   const btn = this;
   document.getElementById("profileSaveText").style.display = "none";
@@ -762,7 +796,22 @@ document.getElementById("saveProfileBtn").onclick = async function() {
   const faculty = document.getElementById("editFaculty").value || "";
   const department = document.getElementById("editDepartment").value || "";
   const level = document.getElementById("editLevel").value || "";
-const religion = document.getElementById("editReligion").value || "";
+  const religion = document.getElementById("editReligion").value || "";
+  const profilePicInput = document.getElementById("editProfilePic");
+  let profilePicUrl = student.profilePic || "";
+
+  // Step 1: Upload profile picture if a new one was selected
+  if (profilePicInput.files && profilePicInput.files[0]) {
+    try {
+      profilePicUrl = await uploadProfilePicToCloudinary(profilePicInput.files[0]);
+    } catch (err) {
+      alert("Failed to upload profile picture.");
+      document.getElementById("profileSaveLoader").style.display = "none";
+      document.getElementById("profileSaveText").style.display = "";
+      return;
+    }
+  }
+
   if (!fullname || !email) {
     alert("Full name and email are required.");
     document.getElementById("profileSaveText").style.display = "";
@@ -770,11 +819,14 @@ const religion = document.getElementById("editReligion").value || "";
     return;
   }
 
-  // Use the correct API route for updating a student's own profile!
-  const resp = await fetchWithAuth(API_URL + "users/" + student.id, {
+  // Step 2: Save profile data including profilePic
+  const resp = await fetch(API_URL + "users/" + student.id, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ fullname, email, phone, faculty, department, level, religion })
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer " + token
+    },
+    body: JSON.stringify({ fullname, email, phone, faculty, department, level, religion, profilePic: profilePicUrl })
   });
 
   if (!resp.ok) {
