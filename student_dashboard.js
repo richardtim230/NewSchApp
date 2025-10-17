@@ -751,10 +751,6 @@ async function fetchAllUsers() {
 
 
 // =================== PROFILE EDIT SAVE ===================
-// Get references to elements
-const API_URL = "https://examguide.onrender.com/api/";
-const token = localStorage.getItem("token");
-
 // Show preview when a new profile picture is selected
 document.getElementById("editProfilePic").addEventListener("change", function(e) {
   const file = e.target.files[0];
