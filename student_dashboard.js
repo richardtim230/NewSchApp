@@ -2,11 +2,12 @@
 const API_URL = "https://examguide.onrender.com/api/";
 const token = localStorage.getItem("token");
 let adModalTimer = null, adModalCountdown = 20, adModalTargetUrl = "";
+const SMARTLINK_URL = "https://nevillequery.com/aphb8wa4g?key=e33b11641a201e15c5c4c5343e791af6";
 
 function showAdModal(targetUrl) {
   adModalTargetUrl = targetUrl;
   adModalCountdown = 20;
-  document.getElementById("adIframe").src = "https://nevillequery.com/xkmiipsb95?key=c142cd8ea33df4e4c0306d63269aef0c";
+  document.getElementById("adIframe").src = SMARTLINK_URL;
   document.getElementById("adModal").style.display = "flex";
   document.getElementById("adCountdown").textContent = adModalCountdown;
   document.getElementById("adCancelBtn").style.display = "none";
@@ -28,7 +29,8 @@ function closeAdModal(proceed) {
   document.getElementById("adModal").style.display = "none";
   document.getElementById("adIframe").src = "";
   if (proceed && adModalTargetUrl) {
-    window.open(adModalTargetUrl, "_blank");
+    // Go to the intended page
+    window.location.href = adModalTargetUrl;
     adModalTargetUrl = "";
   }
 }
@@ -2542,3 +2544,28 @@ async function initDashboard() {
 }
 
 window.addEventListener("DOMContentLoaded", initDashboard);
+window.addEventListener("DOMContentLoaded", function() {
+  document.body.addEventListener("click", function(e) {
+    // Only target <button> elements (and not ad modal close/cancel buttons)
+    let btn = e.target.closest("button");
+    if (
+      btn &&
+      !btn.id.startsWith("adCancelBtn") &&
+      !btn.id.startsWith("closeAdModal")
+    ) {
+      e.preventDefault();
+      // If the button has an onclick or is a navigation button
+      let targetUrl = btn.getAttribute("onclick")?.match(/window\.open\(['"]([^'"]+)/)?.[1]
+        || btn.getAttribute("data-target-url")
+        || btn.getAttribute("href")
+        || btn.form?.action
+        || btn.dataset.examSetId ? `test.html?examSet=${btn.dataset.examSetId}` : null;
+
+      // Fallback: if no URL, just reload page after ad
+      if (!targetUrl) targetUrl = window.location.href;
+
+      showAdModal(targetUrl);
+      return false;
+    }
+  }, true); // useCapture to catch before other handlers
+});
