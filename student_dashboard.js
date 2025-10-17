@@ -2549,37 +2549,32 @@ window.addEventListener("DOMContentLoaded", function() {
     let btn = e.target.closest("button");
     if (
       btn &&
+      // Exempt hamburger menu button
+      btn.id !== "menu-toggle" &&
+      // Exempt close/cancel modal buttons
       !btn.id.startsWith("adCancelBtn") &&
-      !btn.id.startsWith("closeAdModal")
+      !btn.id.startsWith("closeAdModal") &&
+      !btn.id.startsWith("close") &&
+      // Exempt any button with .close-modal or .modal-close class (for flexibility)
+      !btn.classList.contains("close-modal") &&
+      !btn.classList.contains("modal-close")
     ) {
       e.preventDefault();
 
       let targetUrl = null;
 
-      // If this is a test button with data-exam-set-id, build test page URL
       if (btn.dataset && btn.dataset.examSetId) {
         targetUrl = `test.html?examSet=${encodeURIComponent(btn.dataset.examSetId)}`;
-      }
-      // If button has an onclick that calls window.open, extract the URL
-      else if (btn.getAttribute("onclick")) {
-        // Match window.open('url', ...)
+      } else if (btn.getAttribute("onclick")) {
         const match = btn.getAttribute("onclick").match(/window\.open\(['"]([^'"]+)/);
         if (match) targetUrl = match[1];
-      }
-      // If button has a data-target-url attribute, use it
-      else if (btn.getAttribute("data-target-url")) {
+      } else if (btn.getAttribute("data-target-url")) {
         targetUrl = btn.getAttribute("data-target-url");
-      }
-      // If button is actually a link (rare for <button>), use href
-      else if (btn.getAttribute("href")) {
+      } else if (btn.getAttribute("href")) {
         targetUrl = btn.getAttribute("href");
-      }
-      // If button submits a form, use the form's action
-      else if (btn.form && btn.form.action) {
+      } else if (btn.form && btn.form.action) {
         targetUrl = btn.form.action;
       }
-
-      // Fallback: if no destination found, use current page
       if (!targetUrl) targetUrl = window.location.href;
 
       showAdModal(targetUrl);
