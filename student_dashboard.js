@@ -2484,7 +2484,7 @@ document.getElementById("practice-config-form").onsubmit = function(e) {
     topic: document.getElementById("topic").value
   };
   localStorage.setItem("tppConfig", JSON.stringify(config));
-  window.location.href = "tpp.html";
+  showAdModal("tpp.html");
 };
 
 // ============ TEST START ===========
