@@ -2484,7 +2484,7 @@ document.getElementById("practice-config-form").onsubmit = function(e) {
     topic: document.getElementById("topic").value
   };
   localStorage.setItem("tppConfig", JSON.stringify(config));
-  showAdModal(window.location.protocol + "//" + window.location.host + "/tpp.html");
+  window.location.href = "tpp.html"; // <-- Direct navigation, NO ad modal!
 };
 
 // ============ TEST START ===========
@@ -2598,6 +2598,8 @@ window.addEventListener("DOMContentLoaded", function() {
     if (
       btn &&
       btn.id !== "menu-toggle" &&
+      // Exempt Start Practice button by form
+      !(btn.form && btn.form.id === "practice-config-form") &&
       !(btn.id && btn.id.startsWith("adCancelBtn")) &&
       !(btn.id && btn.id.startsWith("close")) &&
       !btn.classList.contains("close-modal") &&
