@@ -4,7 +4,43 @@ const USER_API = API_BASE + "/auth/me";
 const ANSWER_API = API_BASE + "/past-questions/save-answers";
 const SUBMIT_API = API_BASE + "/past-questions/submit";
 let token = localStorage.getItem("token") || "";
+// === Ad Modal Logic ===
+let adModalTimer = null, adModalCountdown = 20, adModalProceedCallback = null;
+const SMARTLINK_URL = "https://nevillequery.com/aphb8wa4g?key=e33b11641a201e15c5c4c5343e791af6";
 
+function showAdModal(proceedCallback) {
+  adModalProceedCallback = proceedCallback;
+  adModalCountdown = 20;
+  document.getElementById("adIframe").src = SMARTLINK_URL;
+  document.getElementById("adModal").style.display = "flex";
+  document.getElementById("adCountdown").textContent = adModalCountdown;
+  document.getElementById("adCancelBtn").style.display = "none";
+  clearInterval(adModalTimer);
+  adModalTimer = setInterval(() => {
+    adModalCountdown--;
+    document.getElementById("adCountdown").textContent = adModalCountdown;
+    if (adModalCountdown <= 10) {
+      document.getElementById("adCancelBtn").style.display = "block";
+    }
+    if (adModalCountdown <= 0) {
+      closeAdModal(true);
+    }
+  }, 1000);
+}
+
+function closeAdModal(proceed) {
+  clearInterval(adModalTimer);
+  document.getElementById("adModal").style.display = "none";
+  document.getElementById("adIframe").src = "";
+  if (proceed && typeof adModalProceedCallback === "function") {
+    adModalProceedCallback();
+    adModalProceedCallback = null;
+  }
+}
+
+document.getElementById("adCancelBtn").onclick = function() {
+  closeAdModal(false);
+};
 // ====== COURSE CODES MAP ======
 const courseCodes = {
   "Mathematics": ["MTH101", "MTH102", "MTH105", "MTH201", "MTH202"],
@@ -407,44 +443,47 @@ async function saveAnswer() {
 
 async function submitExam() {
   if (!examInSession || submitted) return;
-  // Show confirmation modal before proceed
-  showConfirmModal(
-    "Are you sure you want to submit your practice session? You won't be able to change your answers afterwards.",
-    async function onConfirm() {
-      showNotificationModal({ message: "Submitting your practice...", type: "info" });
-      clearInterval(timerInterval);
-      document.getElementById("submitBtn").disabled = true;
-      try {
-        const answersArray = questions.map(q => ({
-          questionId: q._id,
-          answer: answers[q._id] || null
-        }));
-        const payload = {
-          userId: user._id || "", // PATCH: Use ObjectId only!
-          username: user.fullname,
-          answers: answersArray,
-          questionIds: questions.map(q=>q._id),
-          timeSpent: exam.duration - timer
-        };
-        const resp = await fetch(SUBMIT_API, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify(payload)
-        });
-        const result = await resp.json();
-        localStorage.setItem("practiceResult", JSON.stringify(result));
-        localStorage.setItem("practiceQuestions", JSON.stringify(questions));
-        localStorage.setItem("practiceAnswers", JSON.stringify(answers));
-        window.location.href = "practice-result.html";
-      } catch (e) {
-        showNotificationModal({ message: "Error submitting exam!", type: "error" });
-        document.getElementById("examCard").innerHTML = "<div class='text-red-600 text-center py-16 text-xl'>Error submitting exam.</div>";
+  // Show ad modal first, then continue with confirmation and submission
+  showAdModal(() => {
+    // After ad finishes, show confirmation modal
+    showConfirmModal(
+      "Are you sure you want to submit your practice session? You won't be able to change your answers afterwards.",
+      async function onConfirm() {
+        showNotificationModal({ message: "Submitting your practice...", type: "info" });
+        clearInterval(timerInterval);
+        document.getElementById("submitBtn").disabled = true;
+        try {
+          const answersArray = questions.map(q => ({
+            questionId: q._id,
+            answer: answers[q._id] || null
+          }));
+          const payload = {
+            userId: user._id || "", // PATCH: Use ObjectId only!
+            username: user.fullname,
+            answers: answersArray,
+            questionIds: questions.map(q=>q._id),
+            timeSpent: exam.duration - timer
+          };
+          const resp = await fetch(SUBMIT_API, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify(payload)
+          });
+          const result = await resp.json();
+          localStorage.setItem("practiceResult", JSON.stringify(result));
+          localStorage.setItem("practiceQuestions", JSON.stringify(questions));
+          localStorage.setItem("practiceAnswers", JSON.stringify(answers));
+          window.location.href = "practice-result.html";
+        } catch (e) {
+          showNotificationModal({ message: "Error submitting exam!", type: "error" });
+          document.getElementById("examCard").innerHTML = "<div class='text-red-600 text-center py-16 text-xl'>Error submitting exam.</div>";
+        }
+      },
+      function onCancel() {
+        // Do nothing, just close the modal
       }
-    },
-    function onCancel() {
-      // Do nothing, just close the modal
-    }
-  );
+    );
+  });
 }
 
 function showFeedback(result) {
