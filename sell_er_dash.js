@@ -259,17 +259,21 @@ function renderImagePreviews(urls) {
 }
 
 document.addEventListener("DOMContentLoaded", function() {
-  // Image upload logic
   const prodImageFileInput = document.getElementById('prodImageFile');
   const productImgPreviewDiv = document.getElementById('product-img-preview');
+  uploadedImageUrls = [];
+  uploading = false;
+
   if (prodImageFileInput) {
     prodImageFileInput.addEventListener('change', async function(event) {
-      const files = Array.from(event.target.files).slice(0, 8);
+      // Reset previews and URLs on every new selection
       uploadedImageUrls = [];
       productImgPreviewDiv.innerHTML = '';
+      const files = Array.from(event.target.files).slice(0, 8);
       if (!files.length) return;
       uploading = true;
-      for (const file of files) {
+      // Upload all files in parallel (faster)
+      await Promise.all(files.map(async (file) => {
         // Show thumbnail preview while uploading
         const thumb = document.createElement('div');
         thumb.className = "w-14 h-14 bg-gray-100 rounded flex items-center justify-center relative";
@@ -306,7 +310,7 @@ document.addEventListener("DOMContentLoaded", function() {
           spinner.remove();
           thumb.title = "Upload failed";
         }
-      }
+      }));
       uploading = false;
     });
   }
