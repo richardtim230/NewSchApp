@@ -29,7 +29,8 @@ function closeAdModal(proceed) {
   document.getElementById("adModal").style.display = "none";
   document.getElementById("adIframe").src = "";
   if (proceed && adModalTargetUrl) {
-    window.location.assign(adModalTargetUrl); // or replace
+    console.log("Navigating to:", adModalTargetUrl);
+    window.location.assign(adModalTargetUrl);
     adModalTargetUrl = "";
   }
 }
@@ -2483,7 +2484,7 @@ document.getElementById("practice-config-form").onsubmit = function(e) {
     topic: document.getElementById("topic").value
   };
   localStorage.setItem("tppConfig", JSON.stringify(config));
-  showAdModal(window.location.origin + "/tpp.html");
+  showAdModal(window.location.protocol + "//" + window.location.host + "/tpp.html");
 };
 
 // ============ TEST START ===========
