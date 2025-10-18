@@ -244,6 +244,23 @@
       font-size: 1.2rem;
       margin-top: 40px;
     }
+    <!-- Add this CSS in your <style> section if not present -->
+
+  .spinner-border {
+    display: inline-block;
+    width: 1.1em;
+    height: 1.1em;
+    vertical-align: -0.15em;
+    border: 0.18em solid #fff;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spinner-border .65s linear infinite;
+    margin-right: 0.7em;
+  }
+  @keyframes spinner-border {
+    100% { transform: rotate(360deg); }
+  }
+
     /* Instruction Modal Styles */
     .modal-overlay {
       position: fixed;
@@ -793,53 +810,70 @@
       updateTimerDisplay();
     }
 
-    async function submitTest() {
-      clearInterval(timerInterval);
-      let score = 0;
-      for (const q of questions) {
-        const userAns = userAnswers[q.id];
-        if (typeof userAns !== "undefined" && userAns === q.answer) score++;
-      }
-      const timeTaken = SESSION_TIME_LIMIT - timeRemaining;
+    // Add this to your script block in test.html
 
-      // Submit to backend and redirect to summary (don't show modal or results)
-      const payload = {
-        examSet: examSetId,
-        answers: userAnswers,
-        score,
-        timeTaken,
-        questions: questions.map(q => ({
-          id: q.id,
-          question: q.question,
-          answer: q.answer,
-          options: q.options,
-          explanation: q.explanation,
-          questionImage: q.questionImage || null
-        }))
-      };
-      try {
-        const response = await fetch(API_URL + "results", {
-          method: "POST",
-          headers: {
-            Authorization: "Bearer " + token,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(payload)
-        });
-        if (!response.ok) {
-          alert("Failed to save result. Please try again.");
-          return;
-        }
-        // Mark the quiz task as done for today
-        if (currentUserId && examSetId) {
-          try { await markQuizTaskDoneOnServer(currentUserId, examSetId); } catch(e) {}
-        }
-        // Immediately redirect to summary page (no result shown here)
-        window.location.href = `result-summary?examSet=${encodeURIComponent(examSetId)}`;
-      } catch (err) {
-        alert("Network error. Please try again.");
+async function submitTest() {
+  clearInterval(timerInterval);
+
+  // Show spinner on the submit button and disable it
+  const nextBtn = document.getElementById("nextBtn");
+  if (nextBtn) {
+    nextBtn.disabled = true;
+    nextBtn.innerHTML = `<span class="spinner-border"></span>Submitting...`;
+  }
+
+  let score = 0;
+  for (const q of questions) {
+    const userAns = userAnswers[q.id];
+    if (typeof userAns !== "undefined" && userAns === q.answer) score++;
+  }
+  const timeTaken = SESSION_TIME_LIMIT - timeRemaining;
+
+  const payload = {
+    examSet: examSetId,
+    answers: userAnswers,
+    score,
+    timeTaken,
+    questions: questions.map(q => ({
+      id: q.id,
+      question: q.question,
+      answer: q.answer,
+      options: q.options,
+      explanation: q.explanation,
+      questionImage: q.questionImage || null
+    }))
+  };
+  try {
+    const response = await fetch(API_URL + "results", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+      alert("Failed to save result. Please try again.");
+      // Restore button
+      if (nextBtn) {
+        nextBtn.disabled = false;
+        nextBtn.innerHTML = 'Submit';
       }
+      return;
     }
+    if (currentUserId && examSetId) {
+      try { await markQuizTaskDoneOnServer(currentUserId, examSetId); } catch(e) {}
+    }
+    window.location.href = `result-summary?examSet=${encodeURIComponent(examSetId)}`;
+  } catch (err) {
+    alert("Network error. Please try again.");
+    // Restore button
+    if (nextBtn) {
+      nextBtn.disabled = false;
+      nextBtn.innerHTML = 'Submit';
+    }
+  }
+}
 
     function shuffle(arr) {
       for (let i = arr.length - 1; i > 0; i--) {
