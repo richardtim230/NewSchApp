@@ -1,28 +1,14 @@
-function showConfirmModal(message, onYes, onNo) {
-    const modal = document.getElementById("confirmModal");
-    document.getElementById("confirmModalText").textContent = message;
-    modal.classList.remove("hidden");
-    document.body.style.overflow = "hidden";
-    function cleanup() {
-      modal.classList.add("hidden");
-      document.body.style.overflow = "";
-      document.getElementById("confirmModalYes").onclick = null;
-      document.getElementById("confirmModalNo").onclick = null;
-    }
-    document.getElementById("confirmModalYes").onclick = function() {
-      cleanup();
-      if (typeof onYes === "function") onYes();
-    };
-    document.getElementById("confirmModalNo").onclick = function() {
-      cleanup();
-      if (typeof onNo === "function") onNo();
-    };
-  }
+// SELLER DASHBOARD SCRIPT - FULLY BACKEND INTEGRATED, NO DEMO DATA, WITH IMAGE UPLOAD SUPPORT
 
 const BACKEND = "https://examguard-jmvj.onrender.com";
+const CLOUDINARY_UPLOAD_ENDPOINT = `${BACKEND}/api/images`;
 let products = [];
 let offersByProduct = {};
 let userId = "";
+let uploadedImageUrls = [];
+let uploading = false;
+let editingProductId = null;
+
 function getToken() {
   return localStorage.token || sessionStorage.token || '';
 }
@@ -102,23 +88,16 @@ function renderProducts() {
   }
   el.innerHTML = "";
   products.forEach(prod => {
-    // Multi-image: show all as thumbs, fallback to old
     let imagesArr = Array.isArray(prod.images) && prod.images.length > 0 ? prod.images : [];
     if (!imagesArr.length && (prod.img || prod.imageUrl)) imagesArr = [prod.img || prod.imageUrl];
-
     const prodOffers = offersByProduct[prod._id] || [];
-
-    // Thumbnails
     let thumbsHtml = '';
     if (imagesArr.length) {
       thumbsHtml = `<div class="product-thumb-list">` +
         imagesArr.map(url => `<img src="${url}" alt="thumb" />`).join('') +
         `</div>`;
     }
-
-    // Main preview (first image)
     let mainImg = imagesArr[0] || '';
-
     el.innerHTML += `
       <div class="prod-card-gradient rounded-2xl shadow p-4 flex flex-col md:flex-row gap-4 items-center border border-yellow-200 relative group">
         <div class="relative w-full md:w-40 flex-shrink-0 flex flex-col items-center justify-center">
@@ -193,75 +172,154 @@ window.updateOfferStatus = async function (offerId, status) {
   }
 };
 
+function showConfirmModal(message, onYes, onNo) {
+  const modal = document.getElementById("confirmModal");
+  document.getElementById("confirmModalText").textContent = message;
+  modal.classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+  function cleanup() {
+    modal.classList.add("hidden");
+    document.body.style.overflow = "";
+    document.getElementById("confirmModalYes").onclick = null;
+    document.getElementById("confirmModalNo").onclick = null;
+  }
+  document.getElementById("confirmModalYes").onclick = function() {
+    cleanup();
+    if (typeof onYes === "function") onYes();
+  };
+  document.getElementById("confirmModalNo").onclick = function() {
+    cleanup();
+    if (typeof onNo === "function") onNo();
+  };
+}
+
+window.deleteProduct = function (id) {
+  showConfirmModal(
+    "Are you sure you want to delete this product?",
+    async function() {
+      try {
+        await deleteProductFromBackend(id);
+        await fetchProductsAndOffers();
+      } catch (err) {
+        alert("Failed to delete product.");
+      }
+    }
+  );
+};
+
+window.editProduct = function (id) {
+  const prod = products.find(p => p.id === id);
+  if (!prod) return;
+  document.getElementById('addProductModal').classList.remove('hidden');
+  document.getElementById('addProductForm').reset();
+  document.getElementById('prodTitle').value = prod.title;
+  document.getElementById('prodCategory').value = prod.category || '';
+  document.getElementById('prodPrice').value = prod.price || '';
+  document.getElementById('prodDesc').value = prod.desc || prod.description || '';
+  uploadedImageUrls = Array.isArray(prod.images) ? prod.images :
+    (prod.img || prod.imageUrl ? [prod.img || prod.imageUrl] : []);
+  renderImagePreviews(uploadedImageUrls);
+  editingProductId = id;
+};
+
+window.unpublishProduct = async function (id) {
+  const prod = products.find(p => p.id === id);
+  if (!prod) return;
+  try {
+    await updateProductInBackend(id, { status: prod.status === "Unpublished" ? "Active" : "Unpublished" });
+    await fetchProductsAndOffers();
+  } catch (err) {
+    alert("Could not update product status.");
+  }
+};
+
 document.getElementById('addProductBtn').addEventListener('click', function () {
   document.getElementById('addProductModal').classList.remove('hidden');
   document.getElementById('addProductForm').reset();
-  setImageFields(); // always reset image fields to one empty field
+  uploadedImageUrls = [];
+  renderImagePreviews([]);
   editingProductId = null;
 });
 document.getElementById('closeAddModal').addEventListener('click', function () {
   document.getElementById('addProductModal').classList.add('hidden');
 });
-let editingProductId = null;
 
-// --- Dynamic multi-image logic ---
-function createImageField(value = "", idx = null) {
-  const div = document.createElement("div");
-  div.className = "flex gap-2 items-center";
-  const input = document.createElement("input");
-  input.type = "url";
-  input.placeholder = "Image URL";
-  input.required = true;
-  input.className = "flex-1 px-3 py-2 border rounded";
-  input.value = value || "";
-  input.name = "prodImageInput";
-  if (idx !== null) input.dataset.idx = idx;
-  const removeBtn = document.createElement("button");
-  removeBtn.type = "button";
-  removeBtn.className = "text-red-400 hover:text-red-700 text-lg font-bold px-1";
-  removeBtn.innerHTML = "&times;";
-  removeBtn.onclick = () => {
-    div.remove();
-  };
-  div.appendChild(input);
-  div.appendChild(removeBtn);
-  return div;
-}
-
-function getAllImageFieldValues() {
-  return Array.from(document.querySelectorAll('#product-img-fields input[name="prodImageInput"]'))
-    .map(i => i.value.trim()).filter(Boolean);
-}
-
-function setImageFields(urls = []) {
-  const fieldsDiv = document.getElementById('product-img-fields');
-  fieldsDiv.innerHTML = "";
-  if (!Array.isArray(urls) || urls.length === 0) urls = [""];
-  urls.forEach((url, i) => {
-    fieldsDiv.appendChild(createImageField(url, i));
+function renderImagePreviews(urls) {
+  const previewDiv = document.getElementById('product-img-preview');
+  previewDiv.innerHTML = '';
+  (urls || []).forEach(url => {
+    const thumb = document.createElement('div');
+    thumb.className = "w-14 h-14 bg-gray-100 rounded flex items-center justify-center";
+    const img = document.createElement('img');
+    img.className = "max-w-full max-h-full rounded";
+    img.src = url;
+    thumb.appendChild(img);
+    previewDiv.appendChild(thumb);
   });
 }
 
 document.addEventListener("DOMContentLoaded", function() {
-  // On modal open, ensure at least one field
-  document.getElementById('addProductBtn').addEventListener('click', function () {
-    setImageFields();
-  });
+  // Image upload logic
+  const prodImageFileInput = document.getElementById('prodImageFile');
+  const productImgPreviewDiv = document.getElementById('product-img-preview');
+  if (prodImageFileInput) {
+    prodImageFileInput.addEventListener('change', async function(event) {
+      const files = Array.from(event.target.files).slice(0, 8);
+      uploadedImageUrls = [];
+      productImgPreviewDiv.innerHTML = '';
+      if (!files.length) return;
+      uploading = true;
+      for (const file of files) {
+        // Show thumbnail preview while uploading
+        const thumb = document.createElement('div');
+        thumb.className = "w-14 h-14 bg-gray-100 rounded flex items-center justify-center relative";
+        const img = document.createElement('img');
+        img.className = "max-w-full max-h-full rounded";
+        img.src = URL.createObjectURL(file);
+        thumb.appendChild(img);
+        // Loading spinner
+        const spinner = document.createElement('span');
+        spinner.className = "absolute top-1 right-1 bg-yellow-300 rounded-full w-3 h-3 animate-pulse";
+        thumb.appendChild(spinner);
+        productImgPreviewDiv.appendChild(thumb);
 
-  // Plus button to add more fields
-  document.getElementById('add-img-field-btn').onclick = function() {
-    const fieldsDiv = document.getElementById('product-img-fields');
-    if (fieldsDiv.children.length < 8) {
-      fieldsDiv.appendChild(createImageField());
-    }
-  };
+        // Upload to cloudinary via backend
+        const fd = new FormData();
+        fd.append('image', file);
+        try {
+          const res = await fetch(CLOUDINARY_UPLOAD_ENDPOINT, {
+            method: 'POST',
+            body: fd
+          });
+          const data = await res.json();
+          if (data.url) {
+            uploadedImageUrls.push(data.url);
+            img.src = data.url; // replace preview with real
+            spinner.remove();
+          } else {
+            thumb.style.opacity = "0.5";
+            spinner.remove();
+            thumb.title = "Upload failed";
+          }
+        } catch (e) {
+          thumb.style.opacity = "0.5";
+          spinner.remove();
+          thumb.title = "Upload failed";
+        }
+      }
+      uploading = false;
+    });
+  }
 });
 
 document.getElementById('addProductForm').addEventListener('submit', async function (e) {
   e.preventDefault();
-  const imagesArr = getAllImageFieldValues();
-  if (imagesArr.length === 0) {
-    alert("Please provide at least one product image.");
+  if (uploading) {
+    alert("Please wait for images to finish uploading.");
+    return;
+  }
+  if (!uploadedImageUrls.length) {
+    alert("Please upload at least one product image.");
     return;
   }
   const prod = {
@@ -269,8 +327,8 @@ document.getElementById('addProductForm').addEventListener('submit', async funct
     category: document.getElementById('prodCategory').value,
     price: Number(document.getElementById('prodPrice').value),
     description: document.getElementById('prodDesc').value,
-    images: imagesArr,
-    img: imagesArr[0] || '',
+    images: uploadedImageUrls,
+    img: uploadedImageUrls[0] || '',
     status: "Active",
     sales: 0
   };
@@ -283,7 +341,8 @@ document.getElementById('addProductForm').addEventListener('submit', async funct
     await fetchProductsAndOffers();
     document.getElementById('addProductModal').classList.add('hidden');
     this.reset();
-    setImageFields();
+    uploadedImageUrls = [];
+    renderImagePreviews([]);
     editingProductId = null;
   } catch (err) {
     alert("Error saving product: " + err.message);
@@ -315,46 +374,11 @@ async function deleteProductFromBackend(id) {
   });
   if (!res.ok) throw new Error("Could not delete product");
 }
-window.deleteProduct = function (id) {
-  showConfirmModal(
-    "Are you sure you want to delete this product?",
-    async function() {
-      try {
-        await deleteProductFromBackend(id);
-        await fetchProductsAndOffers();
-      } catch (err) {
-        alert("Failed to delete product.");
-      }
-    },
-    function() {
-      // Optional: Action if "No" is clicked (can be left empty)
-    }
-  );
-};
-window.editProduct = function (id) {
-  const prod = products.find(p => p.id === id);
-  if (!prod) return;
-  document.getElementById('addProductModal').classList.remove('hidden');
-  document.getElementById('prodTitle').value = prod.title;
-  document.getElementById('prodCategory').value = prod.category || '';
-  document.getElementById('prodPrice').value = prod.price || '';
-  document.getElementById('prodDesc').value = prod.desc || prod.description || '';
-  setImageFields(Array.isArray(prod.images) ? prod.images : (prod.img || prod.imageUrl ? [prod.img || prod.imageUrl] : [""]));
-  editingProductId = id;
-};
-window.unpublishProduct = async function (id) {
-  const prod = products.find(p => p.id === id);
-  if (!prod) return;
-  try {
-    await updateProductInBackend(id, { status: prod.status === "Unpublished" ? "Active" : "Unpublished" });
-    await fetchProductsAndOffers();
-  } catch (err) {
-    alert("Could not update product status.");
-  }
-};
+
 document.getElementById('point-badge').textContent = 72;
 document.getElementById('point-badge-mobile').textContent = 72;
 document.getElementById('rewardTotal').textContent = 72;
+
 function tabSwitch(tabName) {
   document.querySelectorAll('[data-tab]').forEach(b => b.classList.remove('tab-btn-active'));
   document.querySelector(`[data-tab="${tabName}"]`).classList.add('tab-btn-active');
@@ -381,4 +405,5 @@ document.getElementById('helpForm').addEventListener('submit', function (e) {
     helpInput.value = "";
   }
 });
+
 window.addEventListener('DOMContentLoaded', checkAuth);
