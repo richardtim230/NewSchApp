@@ -29,8 +29,7 @@ function closeAdModal(proceed) {
   document.getElementById("adModal").style.display = "none";
   document.getElementById("adIframe").src = "";
   if (proceed && adModalTargetUrl) {
-    console.log("Navigating to:", adModalTargetUrl);
-    window.location.assign(adModalTargetUrl);
+    window.open(adModalTargetUrl, "_blank"); // <-- new tab!
     adModalTargetUrl = "";
   }
 }
