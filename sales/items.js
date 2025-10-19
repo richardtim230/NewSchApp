@@ -1,6 +1,6 @@
 // --- Marketplace Product Details Page JavaScript ---
 
-const BACKEND = "https://examguard-jmvj.onrender.com";
+const BACKEND = "https://examguide.onrender.com";
 let buyerProfile = null, currentProduct = null, allProducts = [];
 let wishlistIds = []; // For wishlist server sync
 
@@ -114,22 +114,6 @@ async function addReview(productId, rating, comment) {
   return false;
 }
 
-// --- Award Points for Review (Bonus Section) ---
-async function awardPointsForReview(listingId, points = 2) {
-  try {
-    const token = localStorage.getItem("token");
-    await fetch("https://examguard-jmvj.onrender.com/api/rewards/review-product", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + token
-      },
-      body: JSON.stringify({ listingId, points })
-    });
-    // Silent: no alert or UI
-  } catch (e) {}
-}
-
 // --- Render Product Details ---
 function renderProduct(product) {
   currentProduct = product;
@@ -223,7 +207,7 @@ window.closeLightbox = function() {
 // --- Send Offer Modal Logic ---
 window.openOfferModal = function(){
   document.getElementById('sendOfferModal').classList.remove('hidden');
-  document.getElementById('offerProductId').value = currentProduct && currentProduct._id;
+  document.getElementById('offerProductId').value = currentProduct._id || currentProduct.id;
   if (buyerProfile) {
     const u = buyerProfile;
     document.getElementById('buyerDetails').innerHTML = `
@@ -404,9 +388,6 @@ function setupAddReview(productId) {
     const ok = await addReview(productId, selectedRating, comment);
     const resp = document.getElementById("reviewResponse");
     if (ok) {
-      // Award points for review in the background, silently
-      awardPointsForReview(productId, 2); // or 3 if you want
-
       resp.textContent = "Review submitted!";
       resp.classList.remove("hidden");
       this.reset();
@@ -435,7 +416,7 @@ function renderRelatedItems(product, products) {
   document.getElementById("related-items").innerHTML = related.slice(0,4).map(p=>`
     <div class="bg-white rounded-xl shadow overflow-hidden hover:scale-105 transition">
       <a href="items.html?id=${p._id||p.id}" class="block">
-        <img src="${(Array.isArray(p.images) && p.images[0]) || p.img || p.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(p.title || 'Product') + '&background=eee&color=263159&rounded=true'}" class="w-full h-32 object-cover" />
+        <img src="${(Array.isArray(p.images) && p.images[0]) || p.img || p.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(p.title || 'Product') + '&background=eee&color=263159&rounded=true'}" class="w-full h-32 object-contain bg-gray-50" />
         <div class="p-3">
           <div class="font-semibold text-blue-900 text-sm truncate">${p.title}</div>
           <div class="text-yellow-700 font-bold flex items-center gap-1"><span>&#8358;</span>${Number(p.price||0).toLocaleString()}</div>
@@ -496,7 +477,7 @@ function updateFavoriteBtn(id) {
 }
 document.getElementById("favorite-btn").onclick = async function() {
   if (!currentProduct) return;
-  let id = currentProduct && currentProduct._id;
+  let id = currentProduct._id || currentProduct.id;
   await toggleWishlistServer(id);
 };
 
@@ -518,7 +499,7 @@ document.getElementById("reportForm").onsubmit = async function(e) {
     return;
   }
   const reason = document.getElementById("reportMessage").value;
-  const productId = currentProduct && currentProduct._id;
+  const productId = currentProduct._id || currentProduct.id;
   try {
     const res = await fetch(`${BACKEND}/api/blogger-dashboard/report/${productId}`, {
       method: "POST",
@@ -557,10 +538,10 @@ document.addEventListener("DOMContentLoaded", async function() {
   allProducts = await fetchProducts();
   const product = await fetchProduct(productId);
   renderProduct(product);
-  updateFavoriteBtn(product._id);
-  renderOffersChart(product._id);
-  await renderReviews(product._id);
-  setupAddReview(product._id);
+  updateFavoriteBtn(product._id||product.id);
+  renderOffersChart(product._id||product.id);
+  await renderReviews(product._id||product.id);
+  setupAddReview(product._id||product.id);
   renderRelatedItems(product, allProducts);
 });
 
@@ -572,13 +553,7 @@ document.getElementById('add-to-cart-btn').onclick = async function() {
     return;
   }
   const token = localStorage.getItem("token");
-  const productId = currentProduct && currentProduct._id;
-  console.log("Add to cart: currentProduct", currentProduct);
-  console.log("Add to cart: productId", productId);
-  if (!productId) {
-    alert("Could not determine product ID!");
-    return;
-  }
+  const productId = currentProduct._id || currentProduct.id;
   try {
     const res = await fetch(BACKEND + "/api/cart/add", {
       method: "POST",
@@ -594,9 +569,7 @@ document.getElementById('add-to-cart-btn').onclick = async function() {
     if (res.ok) {
       alert("Item added to cart!");
     } else {
-      // Show actual backend error
-      const error = await res.json();
-      alert(error.error || "Failed to add to cart.");
+      alert("Failed to add to cart.");
     }
   } catch (e) {
     alert("Failed to add to cart.");
@@ -674,7 +647,7 @@ document.getElementById("chatForm").onsubmit = async function(e) {
       body: JSON.stringify({
         sellerId: chatSellerId,
         text,
-        productId: currentProduct && currentProduct._id
+        productId: currentProduct._id || currentProduct.id
       })
     });
     if (res.ok) {
