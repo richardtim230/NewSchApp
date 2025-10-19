@@ -223,7 +223,7 @@ window.closeLightbox = function() {
 // --- Send Offer Modal Logic ---
 window.openOfferModal = function(){
   document.getElementById('sendOfferModal').classList.remove('hidden');
-  document.getElementById('offerProductId').value = currentProduct._id || currentProduct.id;
+  document.getElementById('offerProductId').value = currentProduct && currentProduct._id;
   if (buyerProfile) {
     const u = buyerProfile;
     document.getElementById('buyerDetails').innerHTML = `
@@ -435,7 +435,7 @@ function renderRelatedItems(product, products) {
   document.getElementById("related-items").innerHTML = related.slice(0,4).map(p=>`
     <div class="bg-white rounded-xl shadow overflow-hidden hover:scale-105 transition">
       <a href="items.html?id=${p._id||p.id}" class="block">
-        <img src="${(Array.isArray(p.images) && p.images[0]) || p.img || p.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(p.title || 'Product') + '&background=eee&color=263159&rounded=true'}" class="w-full h-36 object-cover" />
+        <img src="${(Array.isArray(p.images) && p.images[0]) || p.img || p.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(p.title || 'Product') + '&background=eee&color=263159&rounded=true'}" class="w-full h-32 object-cover" />
         <div class="p-3">
           <div class="font-semibold text-blue-900 text-sm truncate">${p.title}</div>
           <div class="text-yellow-700 font-bold flex items-center gap-1"><span>&#8358;</span>${Number(p.price||0).toLocaleString()}</div>
@@ -496,7 +496,7 @@ function updateFavoriteBtn(id) {
 }
 document.getElementById("favorite-btn").onclick = async function() {
   if (!currentProduct) return;
-  let id = currentProduct._id || currentProduct.id;
+  let id = currentProduct && currentProduct._id;
   await toggleWishlistServer(id);
 };
 
@@ -518,7 +518,7 @@ document.getElementById("reportForm").onsubmit = async function(e) {
     return;
   }
   const reason = document.getElementById("reportMessage").value;
-  const productId = currentProduct._id || currentProduct.id;
+  const productId = currentProduct && currentProduct._id;
   try {
     const res = await fetch(`${BACKEND}/api/blogger-dashboard/report/${productId}`, {
       method: "POST",
@@ -557,10 +557,10 @@ document.addEventListener("DOMContentLoaded", async function() {
   allProducts = await fetchProducts();
   const product = await fetchProduct(productId);
   renderProduct(product);
-  updateFavoriteBtn(product._id||product.id);
-  renderOffersChart(product._id||product.id);
-  await renderReviews(product._id||product.id);
-  setupAddReview(product._id||product.id);
+  updateFavoriteBtn(product._id);
+  renderOffersChart(product._id);
+  await renderReviews(product._id);
+  setupAddReview(product._id);
   renderRelatedItems(product, allProducts);
 });
 
@@ -572,7 +572,13 @@ document.getElementById('add-to-cart-btn').onclick = async function() {
     return;
   }
   const token = localStorage.getItem("token");
-  const productId = currentProduct._id || currentProduct.id;
+  const productId = currentProduct && currentProduct._id;
+  console.log("Add to cart: currentProduct", currentProduct);
+  console.log("Add to cart: productId", productId);
+  if (!productId) {
+    alert("Could not determine product ID!");
+    return;
+  }
   try {
     const res = await fetch(BACKEND + "/api/cart/add", {
       method: "POST",
@@ -666,7 +672,7 @@ document.getElementById("chatForm").onsubmit = async function(e) {
       body: JSON.stringify({
         sellerId: chatSellerId,
         text,
-        productId: currentProduct._id || currentProduct.id
+        productId: currentProduct && currentProduct._id
       })
     });
     if (res.ok) {
