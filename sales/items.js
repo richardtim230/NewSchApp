@@ -118,7 +118,7 @@ async function addReview(productId, rating, comment) {
 async function awardPointsForReview(listingId, points = 2) {
   try {
     const token = localStorage.getItem("token");
-    await fetch("https://examguard-jmjv.onrender.com/api/rewards/review-product", {
+    await fetch("https://examguard-jmvj.onrender.com/api/rewards/review-product", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
