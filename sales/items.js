@@ -1,6 +1,6 @@
 // --- Marketplace Product Details Page JavaScript ---
 
-const BACKEND = "https://examguard-jmjv.onrender.com";
+const BACKEND = "https://examguard-jmvj.onrender.com";
 let buyerProfile = null, currentProduct = null, allProducts = [];
 let wishlistIds = []; // For wishlist server sync
 
