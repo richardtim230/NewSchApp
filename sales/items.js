@@ -1,6 +1,6 @@
 // --- Marketplace Product Details Page JavaScript ---
 
-const BACKEND = "https://examguide.onrender.com";
+const BACKEND = "https://examguard-jmjv.onrender.com";
 let buyerProfile = null, currentProduct = null, allProducts = [];
 let wishlistIds = []; // For wishlist server sync
 
@@ -118,7 +118,7 @@ async function addReview(productId, rating, comment) {
 async function awardPointsForReview(listingId, points = 2) {
   try {
     const token = localStorage.getItem("token");
-    await fetch("https://examguide.onrender.com/api/rewards/review-product", {
+    await fetch("https://examguard-jmjv.onrender.com/api/rewards/review-product", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
