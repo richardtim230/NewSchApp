@@ -594,7 +594,9 @@ document.getElementById('add-to-cart-btn').onclick = async function() {
     if (res.ok) {
       alert("Item added to cart!");
     } else {
-      alert("Failed to add to cart.");
+      // Show actual backend error
+      const error = await res.json();
+      alert(error.error || "Failed to add to cart.");
     }
   } catch (e) {
     alert("Failed to add to cart.");
