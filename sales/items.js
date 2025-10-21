@@ -10,6 +10,14 @@ function getQueryParam(name) {
   return url.searchParams.get(name);
 }
 
+function getProductId() {
+  // Normalize product id usage across the page
+  // Prefer _id (Mongo style), then id, then fallback to query param
+  const qid = getQueryParam("id");
+  const pid = (currentProduct && (currentProduct._id || currentProduct.id)) || qid || null;
+  return pid ? String(pid) : null;
+}
+
 async function checkAuth() {
   try {
     const token = localStorage.getItem("token");
@@ -416,7 +424,7 @@ function renderRelatedItems(product, products) {
   document.getElementById("related-items").innerHTML = related.slice(0,4).map(p=>`
     <div class="bg-white rounded-xl shadow overflow-hidden hover:scale-105 transition">
       <a href="items.html?id=${p._id||p.id}" class="block">
-        <img src="${(Array.isArray(p.images) && p.images[0]) || p.img || p.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(p.title || 'Product') + '&background=eee&color=263159&rounded=true'}" class="w-full h-32 object-contain bg-gray-50" />
+        <img src="${(Array.isArray(p.images) && p.images[0]) || p.img || p.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(p.title || 'Product') + '&background=eee&color=263159&ro[...]
         <div class="p-3">
           <div class="font-semibold text-blue-900 text-sm truncate">${p.title}</div>
           <div class="text-yellow-700 font-bold flex items-center gap-1"><span>&#8358;</span>${Number(p.price||0).toLocaleString()}</div>
@@ -553,25 +561,34 @@ document.getElementById('add-to-cart-btn').onclick = async function() {
     return;
   }
   const token = localStorage.getItem("token");
-  const productId = currentProduct._id || currentProduct.id;
+  const productId = getProductId();
+  if (!productId) {
+    alert("Could not determine product id. Please try again.");
+    return;
+  }
   try {
     const res = await fetch(BACKEND + "/api/cart/add", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": "Bearer " + token
+        ...(token ? { "Authorization": "Bearer " + token } : {})
       },
       body: JSON.stringify({
-        productId,
+        productId: String(productId),
         quantity: 1
       })
     });
     if (res.ok) {
-      alert("Item added to cart!");
+      // Optionally parse server response for better UX
+      const body = await res.json().catch(()=>null);
+      alert(body && body.message ? body.message : "Item added to cart!");
     } else {
+      const err = await res.text().catch(()=>"");
+      console.error("Add to cart failed:", res.status, err);
       alert("Failed to add to cart.");
     }
   } catch (e) {
+    console.error("Add to cart error:", e);
     alert("Failed to add to cart.");
   }
 };
