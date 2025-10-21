@@ -18,22 +18,53 @@ function getProductId() {
   return pid ? String(pid) : null;
 }
 
+// Safe DOM setters to avoid uncaught exceptions if an element is missing
+function safeSetText(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+  else console.warn(`Missing element for safeSetText: ${id}`);
+}
+function safeSetHTML(id, html) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = html;
+  else console.warn(`Missing element for safeSetHTML: ${id}`);
+}
+function safeSetAttr(id, attr, val) {
+  const el = document.getElementById(id);
+  if (el) el[attr] = val;
+  else console.warn(`Missing element for safeSetAttr: ${id}`);
+}
+function safeClassList(id) {
+  const el = document.getElementById(id);
+  return el ? el.classList : null;
+}
+
 async function checkAuth() {
   try {
     const token = localStorage.getItem("token");
     if (token) {
       const res = await fetch(BACKEND+"/api/auth/me", { headers: { "Authorization": "Bearer " + token } });
       if (res.ok) {
-        document.getElementById("account-btn").textContent = "My Dashboard";
-        document.getElementById("account-btn").href = "/dashboard";
+        const accountBtn = document.getElementById("account-btn");
+        if (accountBtn) {
+          accountBtn.textContent = "My Dashboard";
+          accountBtn.href = "/dashboard";
+        }
         const data = await res.json();
         buyerProfile = data.user || data; // Support both {user:..} and direct user
         return true;
+      } else {
+        console.warn("Auth check failed, status:", res.status);
       }
     }
-  } catch (e) {}
-  document.getElementById("account-btn").textContent = "Sign In";
-  document.getElementById("account-btn").href = "/login";
+  } catch (e) {
+    console.error("checkAuth error:", e);
+  }
+  const accountBtn = document.getElementById("account-btn");
+  if (accountBtn) {
+    accountBtn.textContent = "Sign In";
+    accountBtn.href = "/login";
+  }
   buyerProfile = null;
   return false;
 }
@@ -42,30 +73,51 @@ async function checkAuth() {
 async function fetchProducts() {
   try {
     let res = await fetch(BACKEND + "/api/blogger-dashboard/public/listings");
-    if (!res.ok) throw new Error("Not found");
+    if (!res.ok) {
+      console.warn("/public/listings returned", res.status);
+      throw new Error("Not found");
+    }
     let products = await res.json();
     // Only show published/active/approved
     products = products.filter(
       p => (p.status && (p.status === "Published" || p.status === "Active")) || p.approved
     );
     return products;
-  } catch (e) { return []; }
+  } catch (e) {
+    console.error("fetchProducts error:", e);
+    return [];
+  }
 }
 async function fetchProduct(id) {
+  if (!id) {
+    console.warn("fetchProduct called without id");
+    return null;
+  }
   // Try backend call for single product
   try {
     let res = await fetch(BACKEND + `/api/blogger-dashboard/public/listings/${id}`);
     if (res.ok) {
       let prod = await res.json();
       return prod;
+    } else {
+      // Helpful logging for debugging network/API issues
+      let text = await res.text().catch(()=>null);
+      console.warn(`fetchProduct backend returned ${res.status} for id=${id}`, text);
     }
-  } catch(e){}
+  } catch(e){
+    console.error("fetchProduct network/error:", e);
+  }
   // Fallback: try allProducts
-  if (!allProducts.length) allProducts = await fetchProducts();
-  let prod = allProducts.find(p => p._id === id || p.id == id);
-  if (prod) return prod;
-  // Fallback - minimal
+  try {
+    if (!allProducts.length) allProducts = await fetchProducts();
+    let prod = allProducts.find(p => String(p._id) === String(id) || String(p.id) == String(id));
+    if (prod) return prod;
+  } catch (e) {
+    console.error("fetchProduct fallback error:", e);
+  }
+  // Fallback - minimal (still return an object to avoid infinite loader)
   return {
+    _id: id,
     id,
     title: "Sample Product",
     price: "10000",
@@ -87,22 +139,34 @@ async function fetchProduct(id) {
 // --- Offers loading (for chart) ---
 async function fetchOffers(productId) {
   try {
+    if (!productId) return [];
     let res = await fetch(BACKEND + `/api/offers/product/${productId}`);
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.warn("fetchOffers returned", res.status);
+      return [];
+    }
     let { offers=[] } = await res.json();
     return offers;
-  } catch { return []; }
+  } catch (e) {
+    console.error("fetchOffers error:", e);
+    return [];
+  }
 }
 
 // --- Reviews APIs ---
 async function fetchReviews(productId) {
   try {
+    if (!productId) return [];
     const res = await fetch(BACKEND + `/api/reviews/product/${productId}`);
     if (res.ok) {
       const { reviews=[] } = await res.json();
       return reviews;
+    } else {
+      console.warn("fetchReviews returned", res.status);
     }
-  } catch {}
+  } catch (e) {
+    console.error("fetchReviews error:", e);
+  }
   return [];
 }
 
@@ -118,70 +182,101 @@ async function addReview(productId, rating, comment) {
       body: JSON.stringify({ rating, comment })
     });
     if (res.ok) return true;
-  } catch {}
+    console.warn("addReview failed:", res.status, await res.text().catch(()=>""));
+  } catch (e) {
+    console.error("addReview error:", e);
+  }
   return false;
 }
 
 // --- Render Product Details ---
 function renderProduct(product) {
-  currentProduct = product;
-  document.getElementById("breadcrumb-title").textContent = product.title || "";
-  document.getElementById("product-title").textContent = product.title || "";
-  document.getElementById("product-category").textContent = product.category || "";
-  document.getElementById("product-posted").textContent = product.posted 
-    || (product.date ? new Date(product.date).toLocaleString() : "");
-  // Price formatting with naira sign
-  let priceNum = product.price;
-  if (typeof priceNum === "string") priceNum = priceNum.replace(/[^\d.]/g,"");
-  document.getElementById("product-price-value").textContent = Number(priceNum || 0).toLocaleString();
-  // Rating
-  document.getElementById("product-rating").innerHTML = getStarRating(product.rating || product.likes || 0, true);
-  document.getElementById("product-description").textContent = product.description || product.summary || "";
-  document.getElementById("stock-indicator").textContent = (product.inStock !== false) ? "In Stock" : "Sold";
-  document.getElementById("stock-indicator").className = "text-xs px-2 py-1 rounded font-medium " + (product.inStock !== false ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-500");
-  document.getElementById("product-views").textContent = product.views ? `${product.views} views` : "";
-  // Tags
-  let tags = Array.isArray(product.tags) ? product.tags : [];
-  document.getElementById("product-tags").innerHTML = tags.map(t=>`<span class="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs">${t}</span>`).join("");
+  try {
+    if (!product) {
+      safeSetText("product-loading", "Product not found.");
+      return;
+    }
+    currentProduct = product;
+    safeSetText("breadcrumb-title", product.title || "");
+    safeSetText("product-title", product.title || "");
+    safeSetText("product-category", product.category || "");
+    safeSetText("product-posted", product.posted || (product.date ? new Date(product.date).toLocaleString() : ""));
 
-  // Seller
-  const sName = product.seller || product.authorName || product.author || "Seller";
-  document.getElementById("seller-name").textContent = sName;
-  document.getElementById("seller-avatar").textContent = (typeof sName === "string" && sName[0]) ? sName[0].toUpperCase() : "?";
-  document.getElementById("seller-meta").textContent = product.sellerMeta || "";
-  document.getElementById("seller-profile-link").href = `mart.html?seller=${encodeURIComponent(sName)}`;
+    // Price formatting with naira sign
+    let priceNum = product.price;
+    if (typeof priceNum === "string") priceNum = priceNum.replace(/[^\d.]/g,"");
+    safeSetText("product-price-value", Number(priceNum || 0).toLocaleString());
 
-  // --- Images and Thumbnails ---
-  let imgs = [];
-  if (Array.isArray(product.images) && product.images.length > 0) imgs = product.images;
-  else if (product.img) imgs = [product.img];
-  else if (product.imageUrl) imgs = [product.imageUrl];
-  else imgs = ["https://ui-avatars.com/api/?name=" + encodeURIComponent(product.title || 'Product') + "&background=eee&color=263159&rounded=true"];
+    // Rating
+    const ratingEl = document.getElementById("product-rating");
+    if (ratingEl) ratingEl.innerHTML = getStarRating(product.rating || product.likes || 0, true);
 
-  let mainImg = imgs[0];
-  document.getElementById("product-main-img").src = mainImg;
-  document.getElementById("product-main-img").alt = product.title;
+    safeSetText("product-description", product.description || product.summary || "");
+    const stockText = (product.inStock !== false) ? "In Stock" : "Sold";
+    safeSetText("stock-indicator", stockText);
+    const stockClassList = safeClassList("stock-indicator");
+    if (stockClassList) {
+      stockClassList.value = "text-xs px-2 py-1 rounded font-medium " + (product.inStock !== false ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-500");
+    }
 
-  // Render thumbnails and handle selection
-  let thumbsHtml = "";
-  imgs.forEach((url, i) => {
-    thumbsHtml += `<img src="${url}" alt="Thumb ${i+1}" 
-      class="h-16 w-16 rounded border-2 border-gray-200 cursor-pointer object-cover thumb-img ${i===0?'ring-2 ring-blue-400':''}" 
-      data-img-idx="${i}" />`;
-  });
-  document.getElementById("product-thumbs").innerHTML = thumbsHtml;
+    safeSetText("product-views", product.views ? `${product.views} views` : "");
 
-  // Handle thumbnail selection: update main image and highlight
-  document.querySelectorAll("#product-thumbs .thumb-img").forEach((thumb, idx) => {
-    thumb.onclick = function() {
-      document.getElementById("product-main-img").src = imgs[idx];
-      document.querySelectorAll("#product-thumbs .thumb-img").forEach(e => e.classList.remove("ring-2","ring-blue-400"));
-      this.classList.add("ring-2","ring-blue-400");
-    };
-  });
-  // Hide loader, show details
-  document.getElementById("product-loading").classList.add("hidden");
-  document.getElementById("product-details").classList.remove("hidden");
+    // Tags
+    let tags = Array.isArray(product.tags) ? product.tags : [];
+    safeSetHTML("product-tags", tags.map(t=>`<span class="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs">${t}</span>`).join(""));
+
+    // Seller
+    const sName = product.seller || product.authorName || product.author || "Seller";
+    safeSetText("seller-name", sName);
+    const sellerAvatar = document.getElementById("seller-avatar");
+    if (sellerAvatar) sellerAvatar.textContent = (typeof sName === "string" && sName[0]) ? sName[0].toUpperCase() : "?";
+    safeSetText("seller-meta", product.sellerMeta || "");
+    const sellerLink = document.getElementById("seller-profile-link");
+    if (sellerLink) sellerLink.href = `mart.html?seller=${encodeURIComponent(sName)}`;
+
+    // --- Images and Thumbnails ---
+    let imgs = [];
+    if (Array.isArray(product.images) && product.images.length > 0) imgs = product.images;
+    else if (product.img) imgs = [product.img];
+    else if (product.imageUrl) imgs = [product.imageUrl];
+    else imgs = ["https://ui-avatars.com/api/?name=" + encodeURIComponent(product.title || 'Product') + "&background=eee&color=263159&rounded=true"];
+
+    let mainImg = imgs[0];
+    const mainImgEl = document.getElementById("product-main-img");
+    if (mainImgEl) {
+      mainImgEl.src = mainImg;
+      mainImgEl.alt = product.title || "";
+    }
+
+    // Render thumbnails and handle selection
+    let thumbsHtml = "";
+    imgs.forEach((url, i) => {
+      thumbsHtml += `<img src="${url}" alt="Thumb ${i+1}" 
+        class="h-16 w-16 rounded border-2 border-gray-200 cursor-pointer object-cover thumb-img ${i===0?'ring-2 ring-blue-400':''}" 
+        data-img-idx="${i}" />`;
+    });
+    safeSetHTML("product-thumbs", thumbsHtml);
+
+    // Handle thumbnail selection: update main image and highlight
+    document.querySelectorAll("#product-thumbs .thumb-img").forEach((thumb, idx) => {
+      thumb.onclick = function() {
+        const main = document.getElementById("product-main-img");
+        if (main) main.src = imgs[idx];
+        document.querySelectorAll("#product-thumbs .thumb-img").forEach(e => e.classList.remove("ring-2","ring-blue-400"));
+        this.classList.add("ring-2","ring-blue-400");
+      };
+    });
+
+    // Hide loader, show details
+    const loaderCl = safeClassList("product-loading");
+    if (loaderCl) loaderCl.add("hidden");
+    const detailsCl = safeClassList("product-details");
+    if (detailsCl) detailsCl.remove("hidden");
+  } catch (e) {
+    console.error("renderProduct error:", e, "product:", product);
+    const loaderEl = document.getElementById("product-loading");
+    if (loaderEl) loaderEl.textContent = "Failed to render product.";
+  }
 }
 
 // --- Star Rating Helper ---
@@ -198,47 +293,54 @@ function getStarRating(rating, showValue) {
 
 // --- Image preview logic ---
 window.selectImg = function(url, el) {
-  document.getElementById("product-main-img").src = url;
+  const main = document.getElementById("product-main-img");
+  if (main) main.src = url;
   document.querySelectorAll("#product-thumbs img").forEach(e=>e.classList.remove("ring-2","ring-blue-400"));
-  el.classList.add("ring-2","ring-blue-400");
+  if (el) el.classList.add("ring-2","ring-blue-400");
 };
 // Lightbox
 window.openLightbox = function() {
-  let src = document.getElementById("product-main-img").src;
-  document.getElementById("lightbox-img").src = src;
-  document.getElementById("lightbox-modal").classList.remove("hidden");
+  let src = document.getElementById("product-main-img")?.src;
+  const lb = document.getElementById("lightbox-img");
+  if (lb && src) lb.src = src;
+  document.getElementById("lightbox-modal")?.classList.remove("hidden");
 }
 window.closeLightbox = function() {
-  document.getElementById("lightbox-modal").classList.add("hidden");
+  document.getElementById("lightbox-modal")?.classList.add("hidden");
 }
 
 // --- Send Offer Modal Logic ---
 window.openOfferModal = function(){
-  document.getElementById('sendOfferModal').classList.remove('hidden');
-  document.getElementById('offerProductId').value = currentProduct._id || currentProduct.id;
+  document.getElementById('sendOfferModal')?.classList.remove('hidden');
+  const opid = getProductId() || (currentProduct && (currentProduct._id||currentProduct.id));
+  const offerInput = document.getElementById('offerProductId');
+  if (offerInput) offerInput.value = opid || "";
   if (buyerProfile) {
     const u = buyerProfile;
-    document.getElementById('buyerDetails').innerHTML = `
+    const buyerDetailsEl = document.getElementById('buyerDetails');
+    if (buyerDetailsEl) buyerDetailsEl.innerHTML = `
       <strong>Your Details for Seller:</strong><br>
       Name: ${u.fullname || u.username}<br>
       Email: ${u.email || ''}<br>
       Phone: ${u.phone || ''}
     `;
   } else {
-    document.getElementById('buyerDetails').innerHTML = `<span class="block text-red-600">You must sign in for communication and offer follow-up.</span>`;
+    const buyerDetailsEl = document.getElementById('buyerDetails');
+    if (buyerDetailsEl) buyerDetailsEl.innerHTML = `<span class="block text-red-600">You must sign in for communication and offer follow-up.</span>`;
   }
 }
 window.closeOfferModal = function(){
-  document.getElementById('sendOfferModal').classList.add('hidden');
-  document.getElementById('offerForm').reset();
-  document.getElementById('offerResponse').classList.add('hidden');
+  document.getElementById('sendOfferModal')?.classList.add('hidden');
+  const f = document.getElementById('offerForm');
+  if (f) f.reset();
+  document.getElementById('offerResponse')?.classList.add('hidden');
 }
-document.getElementById('send-offer-btn').onclick = openOfferModal;
-document.getElementById('offerForm').onsubmit = async function(e) {
+document.getElementById('send-offer-btn')?.onclick = openOfferModal;
+document.getElementById('offerForm')?.onsubmit = async function(e) {
   e.preventDefault();
-  const productId = document.getElementById('offerProductId').value;
-  const offerPrice = document.getElementById('offerPrice').value;
-  const offerMessage = document.getElementById('offerMessage').value;
+  const productId = document.getElementById('offerProductId')?.value;
+  const offerPrice = document.getElementById('offerPrice')?.value;
+  const offerMessage = document.getElementById('offerMessage')?.value;
   const token = localStorage.getItem("token");
   let buyerDetails = "";
   if(buyerProfile){
@@ -254,9 +356,9 @@ document.getElementById('offerForm').onsubmit = async function(e) {
 Offer from: ${buyerDetails.name || "Guest"}
 Email: ${buyerDetails.email || "N/A"}
 Phone: ${buyerDetails.phone || "N/A"}
-Product: ${currentProduct.title || ""}
+Product: ${currentProduct?.title || ""}
 ---
-${offerMessage}
+${offerMessage || ""}
   `.trim();
 
   try {
@@ -274,19 +376,28 @@ ${offerMessage}
       })
     });
     if (res.ok) {
-      document.getElementById('offerResponse').textContent = "Offer sent successfully!";
-      document.getElementById('offerResponse').classList.remove('hidden');
-      document.getElementById('offerForm').reset();
+      const respEl = document.getElementById('offerResponse');
+      if (respEl) {
+        respEl.textContent = "Offer sent successfully!";
+        respEl.classList.remove('hidden');
+      }
+      document.getElementById('offerForm')?.reset();
       setTimeout(closeOfferModal, 1500);
-    } else throw new Error();
-  } catch {
-    document.getElementById('offerResponse').textContent = "Could not send offer. Please try again.";
-    document.getElementById('offerResponse').classList.remove('hidden');
+    } else {
+      throw new Error(`status ${res.status}`);
+    }
+  } catch (err) {
+    console.error("Offer send error:", err);
+    const respEl = document.getElementById('offerResponse');
+    if (respEl) {
+      respEl.textContent = "Could not send offer. Please try again.";
+      respEl.classList.remove('hidden');
+    }
   }
 }
 
 // --- Chat Seller Button ---
-document.getElementById('chat-seller-btn').onclick = function(){
+document.getElementById('chat-seller-btn')?.onclick = function(){
   if(!buyerProfile){
     alert("Sign in to chat with seller!");
     window.location.href = "/login";
@@ -296,10 +407,10 @@ document.getElementById('chat-seller-btn').onclick = function(){
 };
 
 // --- Share Button ---
-document.getElementById('share-btn').onclick = function(){
+document.getElementById('share-btn')?.onclick = function(){
   if (navigator.share) {
     navigator.share({
-      title: currentProduct.title,
+      title: currentProduct?.title,
       url: window.location.href
     }).catch(()=>{});
   } else {
@@ -310,55 +421,65 @@ document.getElementById('share-btn').onclick = function(){
 
 // --- Chart Rendering ---
 async function renderOffersChart(productId) {
-  const offers = await fetchOffers(productId);
-  if (!offers || !offers.length) return;
-  document.getElementById('offers-chart-section').classList.remove('hidden');
-  const sorted = offers.slice().sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt));
-  const labels = sorted.map(o=>new Date(o.createdAt).toLocaleDateString());
-  const data = sorted.map(o=>parseInt(o.offerPrice,10));
-  new Chart(document.getElementById('offersChart'), {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [{
-        label: "Offer Price (₦)",
-        data,
-        fill: true,
-        borderColor: "#2563eb",
-        backgroundColor: "rgba(37,99,235,0.1)",
-        tension: 0.3
-      }]
-    },
-    options: { responsive: true, plugins: { legend: { display: false } } }
-  });
+  try {
+    const offers = await fetchOffers(productId);
+    if (!offers || !offers.length) return;
+    document.getElementById('offers-chart-section')?.classList.remove('hidden');
+    const sorted = offers.slice().sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt));
+    const labels = sorted.map(o=>new Date(o.createdAt).toLocaleDateString());
+    const data = sorted.map(o=>parseInt(o.offerPrice,10));
+    new Chart(document.getElementById('offersChart'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: "Offer Price (₦)",
+          data,
+          fill: true,
+          borderColor: "#2563eb",
+          backgroundColor: "rgba(37,99,235,0.1)",
+          tension: 0.3
+        }]
+      },
+      options: { responsive: true, plugins: { legend: { display: false } } }
+    });
+  } catch (e) {
+    console.error("renderOffersChart error:", e);
+  }
 }
 
 // --- Reviews Rendering ---
 async function renderReviews(productId) {
-  const reviews = await fetchReviews(productId);
-  const reviewsList = document.getElementById('reviews-list');
-  reviewsList.innerHTML = "";
-  if (reviews && reviews.length) {
-    reviewsList.innerHTML = reviews.map(r=>`
-      <div class="bg-white rounded-lg p-3 shadow flex gap-3 items-start">
-        <div class="w-10 h-10 rounded-full bg-yellow-50 flex items-center justify-center text-lg">
-          ${r.avatar ? `<img src="${r.avatar}" class="w-full h-full object-cover rounded-full"/>` : (r.user && r.user[0] ? r.user[0].toUpperCase() : "U")}
+  try {
+    const reviews = await fetchReviews(productId);
+    const reviewsList = document.getElementById('reviews-list');
+    if (!reviewsList) return console.warn("No reviews-list element found");
+    reviewsList.innerHTML = "";
+    if (reviews && reviews.length) {
+      reviewsList.innerHTML = reviews.map(r=>`
+        <div class="bg-white rounded-lg p-3 shadow flex gap-3 items-start">
+          <div class="w-10 h-10 rounded-full bg-yellow-50 flex items-center justify-center text-lg">
+            ${r.avatar ? `<img src="${r.avatar}" class="w-full h-full object-cover rounded-full"/>` : (r.user && r.user[0] ? r.user[0].toUpperCase() : "U")}
+          </div>
+          <div class="flex-1">
+            <div class="font-semibold text-sm">${r.username ||r.fullname || "User"} <span class="text-yellow-500">${getStarRating(r.rating)}</span></div>
+            <div class="text-gray-700 text-sm">${r.comment}</div>
+            <div class="text-xs text-gray-400 mt-1">${r.date ? new Date(r.date).toLocaleString() : ""}</div>
+          </div>
         </div>
-        <div class="flex-1">
-          <div class="font-semibold text-sm">${r.username ||r.fullname || "User"} <span class="text-yellow-500">${getStarRating(r.rating)}</span></div>
-          <div class="text-gray-700 text-sm">${r.comment}</div>
-          <div class="text-xs text-gray-400 mt-1">${r.date ? new Date(r.date).toLocaleString() : ""}</div>
-        </div>
-      </div>
-    `).join("");
-  } else {
-    reviewsList.innerHTML = `<div class="text-gray-500 text-center py-6">No reviews yet.</div>`;
+      `).join("");
+    } else {
+      reviewsList.innerHTML = `<div class="text-gray-500 text-center py-6">No reviews yet.</div>`;
+    }
+  } catch (e) {
+    console.error("renderReviews error:", e);
   }
 }
 
 // --- Add Review Form Logic ---
 function setupAddReview(productId) {
   const addReviewCard = document.getElementById("add-review-card");
+  if (!addReviewCard) return;
   if (buyerProfile) {
     addReviewCard.classList.remove("hidden");
   } else {
@@ -367,6 +488,7 @@ function setupAddReview(productId) {
   }
   // Star rating - interactive
   const ratingStars = document.getElementById("rating-stars");
+  if (!ratingStars) return;
   ratingStars.innerHTML = "";
   let selectedRating = 0;
   for(let i=1;i<=5;i++) {
@@ -386,52 +508,58 @@ function setupAddReview(productId) {
     ratingStars.appendChild(star);
   }
   // Submit review handler
-  document.getElementById("reviewForm").onsubmit = async function(e) {
+  const reviewForm = document.getElementById("reviewForm");
+  if (!reviewForm) return;
+  reviewForm.onsubmit = async function(e) {
     e.preventDefault();
     if (selectedRating < 1) {
       alert("Please select a rating!");
       return;
     }
-    const comment = document.getElementById("reviewMessage").value;
+    const comment = document.getElementById("reviewMessage")?.value;
     const ok = await addReview(productId, selectedRating, comment);
     const resp = document.getElementById("reviewResponse");
     if (ok) {
-      resp.textContent = "Review submitted!";
-      resp.classList.remove("hidden");
+      if (resp) { resp.textContent = "Review submitted!"; resp.classList.remove("hidden"); }
       this.reset();
       selectedRating = 0;
       for(let j=0;j<5;j++) ratingStars.children[j].classList.remove("text-yellow-400");
       await renderReviews(productId);
     } else {
-      resp.textContent = "Failed to submit review.";
-      resp.classList.remove("hidden");
+      if (resp) { resp.textContent = "Failed to submit review."; resp.classList.remove("hidden"); }
     }
-    setTimeout(()=>resp.classList.add("hidden"), 2000);
+    setTimeout(()=>resp?.classList.add("hidden"), 2000);
   };
 }
 
 // --- Related Items ---
 function renderRelatedItems(product, products) {
-  let related = products.filter(p=>p._id !== product._id && p.category === product.category);
-  if (related.length < 4) {
-    const others = products.filter(p=>p._id !== product._id && !related.includes(p));
-    for (let i=related.length; i<4 && others.length; i++) {
-      const idx = Math.floor(Math.random()*others.length);
-      related.push(others[idx]);
-      others.splice(idx,1);
+  try {
+    let related = products.filter(p=>p._id !== product._id && p.category === product.category);
+    if (related.length < 4) {
+      const others = products.filter(p=>p._id !== product._id && !related.includes(p));
+      for (let i=related.length; i<4 && others.length; i++) {
+        const idx = Math.floor(Math.random()*others.length);
+        related.push(others[idx]);
+        others.splice(idx,1);
+      }
     }
+    const container = document.getElementById("related-items");
+    if (!container) return;
+    container.innerHTML = related.slice(0,4).map(p=>`
+      <div class="bg-white rounded-xl shadow overflow-hidden hover:scale-105 transition">
+        <a href="items.html?id=${p._id||p.id}" class="block">
+          <img src="${(Array.isArray(p.images) && p.images[0]) || p.img || p.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(p.title || 'Product') + '&background=eee&color=263159&rounded=true'}" class="w-full h-40 object-cover"/>
+          <div class="p-3">
+            <div class="font-semibold text-blue-900 text-sm truncate">${p.title}</div>
+            <div class="text-yellow-700 font-bold flex items-center gap-1"><span>&#8358;</span>${Number(p.price||0).toLocaleString()}</div>
+          </div>
+        </a>
+      </div>
+    `).join("");
+  } catch (e) {
+    console.error("renderRelatedItems error:", e);
   }
-  document.getElementById("related-items").innerHTML = related.slice(0,4).map(p=>`
-    <div class="bg-white rounded-xl shadow overflow-hidden hover:scale-105 transition">
-      <a href="items.html?id=${p._id||p.id}" class="block">
-        <img src="${(Array.isArray(p.images) && p.images[0]) || p.img || p.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(p.title || 'Product') + '&background=eee&color=263159&ro[...]
-        <div class="p-3">
-          <div class="font-semibold text-blue-900 text-sm truncate">${p.title}</div>
-          <div class="text-yellow-700 font-bold flex items-center gap-1"><span>&#8358;</span>${Number(p.price||0).toLocaleString()}</div>
-        </div>
-      </a>
-    </div>
-  `).join("");
 }
 
 // --- Wishlist/Favorite Logic ---
@@ -450,8 +578,10 @@ async function fetchWishlist() {
       wishlistIds = (wishlist || []).map(item => item._id || item.id);
     } else {
       wishlistIds = [];
+      console.warn("fetchWishlist returned", res.status);
     }
-  } catch {
+  } catch (e) {
+    console.error("fetchWishlist error:", e);
     wishlistIds = [];
   }
 }
@@ -465,40 +595,45 @@ async function toggleWishlistServer(id) {
     window.location.href = "/login";
     return;
   }
-  if (isWishlisted(id)) {
-    await fetch(`${BACKEND}/api/blogger-dashboard/wishlist/remove/${id}`, {
-      method: "DELETE",
-      headers: { "Authorization": "Bearer " + token }
-    });
-    wishlistIds = wishlistIds.filter(_id => _id !== id);
-  } else {
-    await fetch(`${BACKEND}/api/blogger-dashboard/wishlist/add/${id}`, {
-      method: "POST",
-      headers: { "Authorization": "Bearer " + token }
-    });
-    wishlistIds.push(id);
+  try {
+    if (isWishlisted(id)) {
+      await fetch(`${BACKEND}/api/blogger-dashboard/wishlist/remove/${id}`, {
+        method: "DELETE",
+        headers: { "Authorization": "Bearer " + token }
+      });
+      wishlistIds = wishlistIds.filter(_id => _id !== id);
+    } else {
+      await fetch(`${BACKEND}/api/blogger-dashboard/wishlist/add/${id}`, {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + token }
+      });
+      wishlistIds.push(id);
+    }
+    updateFavoriteBtn(id);
+  } catch (e) {
+    console.error("toggleWishlistServer error:", e);
   }
-  updateFavoriteBtn(id);
 }
 function updateFavoriteBtn(id) {
-  document.getElementById("favorite-icon").textContent = isWishlisted(id) ? "♥" : "♡";
+  const icon = document.getElementById("favorite-icon");
+  if (icon) icon.textContent = isWishlisted(id) ? "♥" : "♡";
 }
-document.getElementById("favorite-btn").onclick = async function() {
+document.getElementById("favorite-btn")?.onclick = async function() {
   if (!currentProduct) return;
   let id = currentProduct._id || currentProduct.id;
   await toggleWishlistServer(id);
 };
 
 // --- Report Modal ---
-document.getElementById("report-btn").onclick = function() {
-  document.getElementById("reportModal").classList.remove("hidden");
-  document.getElementById("reportForm").reset();
-  document.getElementById("reportResponse").classList.add("hidden");
+document.getElementById("report-btn")?.onclick = function() {
+  document.getElementById("reportModal")?.classList.remove("hidden");
+  document.getElementById("reportForm")?.reset();
+  document.getElementById("reportResponse")?.classList.add("hidden");
 }
 window.closeReportModal = function() {
-  document.getElementById("reportModal").classList.add("hidden");
+  document.getElementById("reportModal")?.classList.add("hidden");
 }
-document.getElementById("reportForm").onsubmit = async function(e) {
+document.getElementById("reportForm")?.onsubmit = async function(e) {
   e.preventDefault();
   const token = localStorage.getItem("token");
   if (!token) {
@@ -506,8 +641,8 @@ document.getElementById("reportForm").onsubmit = async function(e) {
     window.location.href = "/login";
     return;
   }
-  const reason = document.getElementById("reportMessage").value;
-  const productId = currentProduct._id || currentProduct.id;
+  const reason = document.getElementById("reportMessage")?.value;
+  const productId = currentProduct?._id || currentProduct?.id;
   try {
     const res = await fetch(`${BACKEND}/api/blogger-dashboard/report/${productId}`, {
       method: "POST",
@@ -521,40 +656,61 @@ document.getElementById("reportForm").onsubmit = async function(e) {
       })
     });
     if (res.ok) {
-      document.getElementById("reportResponse").textContent = "Thank you. Your report was submitted!";
-      document.getElementById("reportResponse").classList.remove("hidden");
+      const resp = document.getElementById("reportResponse");
+      if (resp) { resp.textContent = "Thank you. Your report was submitted!"; resp.classList.remove("hidden"); }
       setTimeout(closeReportModal, 1800);
     } else {
-      document.getElementById("reportResponse").textContent = "Failed to submit report.";
-      document.getElementById("reportResponse").classList.remove("hidden");
+      const resp = document.getElementById("reportResponse");
+      if (resp) { resp.textContent = "Failed to submit report."; resp.classList.remove("hidden"); }
     }
-  } catch {
-    document.getElementById("reportResponse").textContent = "Failed to submit report.";
-    document.getElementById("reportResponse").classList.remove("hidden");
+  } catch (e) {
+    console.error("report submit error:", e);
+    const resp = document.getElementById("reportResponse");
+    if (resp) { resp.textContent = "Failed to submit report."; resp.classList.remove("hidden"); }
   }
 };
 
 // --- On Load ---
 document.addEventListener("DOMContentLoaded", async function() {
-  await checkAuth();
-  await fetchWishlist(); // Load wishlist from server!
-  const productId = getQueryParam("id");
-  if (!productId) {
-    document.getElementById("product-loading").textContent = "No product ID found!";
-    return;
+  // Main load flow with trapping to avoid "keeps loading"
+  try {
+    await checkAuth();
+    await fetchWishlist(); // Load wishlist from server!
+    const productId = getQueryParam("id");
+    if (!productId) {
+      safeSetText("product-loading", "No product ID found!");
+      safeClassList("product-details")?.add("hidden");
+      return;
+    }
+
+    // Preload products list (non-fatal)
+    allProducts = await fetchProducts().catch(e => {
+      console.warn("fetchProducts failed during load:", e);
+      return [];
+    });
+
+    const product = await fetchProduct(productId);
+    if (!product) {
+      safeSetText("product-loading", "Failed to load product. Please try again later.");
+      safeClassList("product-details")?.add("hidden");
+      return;
+    }
+
+    renderProduct(product);
+    updateFavoriteBtn(product._id||product.id);
+    renderOffersChart(product._id||product.id);
+    await renderReviews(product._id||product.id);
+    setupAddReview(product._id||product.id);
+    renderRelatedItems(product, allProducts);
+  } catch (e) {
+    console.error("DOMContentLoaded main flow error:", e);
+    safeSetText("product-loading", "An error occurred while loading this page.");
+    safeClassList("product-details")?.add("hidden");
   }
-  allProducts = await fetchProducts();
-  const product = await fetchProduct(productId);
-  renderProduct(product);
-  updateFavoriteBtn(product._id||product.id);
-  renderOffersChart(product._id||product.id);
-  await renderReviews(product._id||product.id);
-  setupAddReview(product._id||product.id);
-  renderRelatedItems(product, allProducts);
 });
 
 // ========== ADD TO CART ==========
-document.getElementById('add-to-cart-btn').onclick = async function() {
+document.getElementById('add-to-cart-btn')?.onclick = async function() {
   if (!buyerProfile) {
     alert("Sign in to add to cart!");
     window.location.href = "/login";
@@ -595,49 +751,54 @@ document.getElementById('add-to-cart-btn').onclick = async function() {
 
 // ========== CHAT SELLER ==========
 let chatSellerId = null;
-document.getElementById('chat-seller-btn').onclick = async function(){
+document.getElementById('chat-seller-btn')?.onclick = async function(){
   if(!buyerProfile){
     alert("Sign in to chat with seller!");
     window.location.href = "/login";
     return;
   }
-  chatSellerId = currentProduct.sellerId || currentProduct.seller || currentProduct.authorId;
+  chatSellerId = currentProduct?.sellerId || currentProduct?.seller || currentProduct?.authorId;
   openChatModal();
   await loadChatHistory();
 };
 
 function openChatModal() {
-  document.getElementById("chatSellerModal").classList.remove("hidden");
-  document.getElementById("chatMessages").innerHTML = '<div class="text-gray-400 text-center my-4">Loading chat...</div>';
-  document.getElementById("chatResponse").classList.add("hidden");
+  document.getElementById("chatSellerModal")?.classList.remove("hidden");
+  const chatMessages = document.getElementById("chatMessages");
+  if (chatMessages) chatMessages.innerHTML = '<div class="text-gray-400 text-center my-4">Loading chat...</div>';
+  document.getElementById("chatResponse")?.classList.add("hidden");
 }
 function closeChatModal() {
-  document.getElementById("chatSellerModal").classList.add("hidden");
-  document.getElementById("chatInput").value = "";
+  document.getElementById("chatSellerModal")?.classList.add("hidden");
+  const input = document.getElementById("chatInput");
+  if (input) input.value = "";
 }
 
 // Fetch chat history with this seller from backend
 async function loadChatHistory() {
   const token = localStorage.getItem("token");
   try {
+    if (!chatSellerId) return renderChatMessages([]);
     const res = await fetch(BACKEND + `/api/massages/${chatSellerId}`, {
       headers: { "Authorization": "Bearer " + token }
     });
     const messages = res.ok ? await res.json() : [];
     renderChatMessages(messages);
-  } catch {
+  } catch (e) {
+    console.error("loadChatHistory error:", e);
     renderChatMessages([]);
   }
 }
 function renderChatMessages(messages) {
   const box = document.getElementById("chatMessages");
+  if (!box) return;
   if (!messages.length) {
     box.innerHTML = '<div class="text-gray-400 text-center my-4">No messages yet. Start the conversation!</div>';
     return;
   }
   box.innerHTML = messages.map(msg => `
-    <div class="mb-2 flex ${msg.senderId === buyerProfile._id ? 'justify-end' : 'justify-start'}">
-      <div class="rounded px-3 py-2 ${msg.senderId === buyerProfile._id ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-900'} max-w-[80%]">
+    <div class="mb-2 flex ${msg.senderId === buyerProfile?._id ? 'justify-end' : 'justify-start'}">
+      <div class="rounded px-3 py-2 ${msg.senderId === buyerProfile?._id ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-900'} max-w-[80%]">
         <span class="block text-xs text-gray-100/90">${msg.senderName || ''}</span>
         ${msg.text}
         <div class="text-[10px] text-gray-200/80 text-right">${msg.date ? new Date(msg.date).toLocaleTimeString() : ''}</div>
@@ -648,10 +809,10 @@ function renderChatMessages(messages) {
 }
 
 // Send chat message to backend
-document.getElementById("chatForm").onsubmit = async function(e) {
+document.getElementById("chatForm")?.onsubmit = async function(e) {
   e.preventDefault();
   const input = document.getElementById("chatInput");
-  const text = input.value.trim();
+  const text = input?.value.trim();
   if (!text) return;
   const token = localStorage.getItem("token");
   try {
@@ -664,18 +825,19 @@ document.getElementById("chatForm").onsubmit = async function(e) {
       body: JSON.stringify({
         sellerId: chatSellerId,
         text,
-        productId: currentProduct._id || currentProduct.id
+        productId: currentProduct?._id || currentProduct?.id
       })
     });
     if (res.ok) {
-      input.value = "";
+      if (input) input.value = "";
       await loadChatHistory();
-      document.getElementById("chatResponse").classList.add("hidden");
+      document.getElementById("chatResponse")?.classList.add("hidden");
     } else {
       document.getElementById("chatResponse").textContent = "Failed to send message.";
       document.getElementById("chatResponse").classList.remove("hidden");
     }
-  } catch {
+  } catch (e) {
+    console.error("chat send error:", e);
     document.getElementById("chatResponse").textContent = "Failed to send message.";
     document.getElementById("chatResponse").classList.remove("hidden");
   }
