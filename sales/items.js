@@ -3,7 +3,6 @@
 const BACKEND = "https://examguide.onrender.com";
 let buyerProfile = null, currentProduct = null, allProducts = [];
 let wishlistIds = []; // For wishlist server sync
-let pageProductId = null; // Ensures we use the id from the URL as the canonical product id
 
 // --- Helper: Get Query Params ---
 function getQueryParam(name) {
@@ -208,8 +207,7 @@ window.closeLightbox = function() {
 // --- Send Offer Modal Logic ---
 window.openOfferModal = function(){
   document.getElementById('sendOfferModal').classList.remove('hidden');
-  // Prefer URL id (pageProductId) to ensure consistent id usage
-  document.getElementById('offerProductId').value = pageProductId || currentProduct._id || currentProduct.id;
+  document.getElementById('offerProductId').value = currentProduct._id || currentProduct.id;
   if (buyerProfile) {
     const u = buyerProfile;
     document.getElementById('buyerDetails').innerHTML = `
@@ -418,7 +416,7 @@ function renderRelatedItems(product, products) {
   document.getElementById("related-items").innerHTML = related.slice(0,4).map(p=>`
     <div class="bg-white rounded-xl shadow overflow-hidden hover:scale-105 transition">
       <a href="items.html?id=${p._id||p.id}" class="block">
-        <img src="${(Array.isArray(p.images) && p.images[0]) || p.img || p.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(p.title || 'Product') + '&background=eee&color=263159&ro[...]
+        <img src="${(Array.isArray(p.images) && p.images[0]) || p.img || p.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(p.title || 'Product') + '&background=eee&color=263159&rounded=true'}" class="w-full h-32 object-contain bg-gray-50" />
         <div class="p-3">
           <div class="font-semibold text-blue-900 text-sm truncate">${p.title}</div>
           <div class="text-yellow-700 font-bold flex items-center gap-1"><span>&#8358;</span>${Number(p.price||0).toLocaleString()}</div>
@@ -478,8 +476,8 @@ function updateFavoriteBtn(id) {
   document.getElementById("favorite-icon").textContent = isWishlisted(id) ? "♥" : "♡";
 }
 document.getElementById("favorite-btn").onclick = async function() {
-  if (!currentProduct && !pageProductId) return;
-  let id = pageProductId || currentProduct._id || currentProduct.id;
+  if (!currentProduct) return;
+  let id = currentProduct._id || currentProduct.id;
   await toggleWishlistServer(id);
 };
 
@@ -501,7 +499,7 @@ document.getElementById("reportForm").onsubmit = async function(e) {
     return;
   }
   const reason = document.getElementById("reportMessage").value;
-  const productId = pageProductId || currentProduct._id || currentProduct.id;
+  const productId = currentProduct._id || currentProduct.id;
   try {
     const res = await fetch(`${BACKEND}/api/blogger-dashboard/report/${productId}`, {
       method: "POST",
@@ -537,24 +535,13 @@ document.addEventListener("DOMContentLoaded", async function() {
     document.getElementById("product-loading").textContent = "No product ID found!";
     return;
   }
-
-  // set canonical page product id from URL
-  pageProductId = productId;
-
   allProducts = await fetchProducts();
   const product = await fetchProduct(productId);
   renderProduct(product);
-
-  // Ensure currentProduct has canonical id values from URL to avoid mismatches
-  currentProduct = currentProduct || product;
-  currentProduct._id = currentProduct._id || pageProductId;
-  currentProduct.id = currentProduct.id || pageProductId;
-
-  // Use pageProductId (URL id) for all subsequent actions to avoid saving wrong ids
-  updateFavoriteBtn(pageProductId);
-  renderOffersChart(pageProductId);
-  await renderReviews(pageProductId);
-  setupAddReview(pageProductId);
+  updateFavoriteBtn(product._id||product.id);
+  renderOffersChart(product._id||product.id);
+  await renderReviews(product._id||product.id);
+  setupAddReview(product._id||product.id);
   renderRelatedItems(product, allProducts);
 });
 
@@ -566,8 +553,7 @@ document.getElementById('add-to-cart-btn').onclick = async function() {
     return;
   }
   const token = localStorage.getItem("token");
-  // Prefer URL id as canonical product id
-  const productId = pageProductId || currentProduct._id || currentProduct.id;
+  const productId = currentProduct._id || currentProduct.id;
   try {
     const res = await fetch(BACKEND + "/api/cart/add", {
       method: "POST",
@@ -661,7 +647,7 @@ document.getElementById("chatForm").onsubmit = async function(e) {
       body: JSON.stringify({
         sellerId: chatSellerId,
         text,
-        productId: pageProductId || currentProduct._id || currentProduct.id
+        productId: currentProduct._id || currentProduct.id
       })
     });
     if (res.ok) {
