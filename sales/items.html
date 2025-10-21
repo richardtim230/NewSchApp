@@ -13,6 +13,7 @@
     .thumbnail-ring:hover { transform: translateY(-3px); }
     .sticky-action { top: 96px; } /* below header */
     .clamp-4 { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+    .cart-badge { font-size: .65rem; line-height: 1; min-width: 18px; height: 18px; }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900 antialiased">
@@ -28,13 +29,14 @@
           <nav class="hidden md:flex gap-4 text-sm text-gray-600">
             <a href="/mart.html" class="hover:text-blue-600">Home</a>
             <a href="/mart.html#products-section" class="hover:text-blue-600">Shop</a>
-            <a href="/mart.html#popular" class="hover:text-blue-600">Categories</a>
           </nav>
         </div>
         <div class="flex items-center gap-3">
-          <button id="shareBtn" class="hidden sm:inline-flex items-center gap-2 px-3 py-1.5 border rounded text-sm text-gray-700 hover:bg-gray-50">
-            Share
-          </button>
+          <a id="cart-link" href="/buyer_dash.html" class="relative inline-flex items-center gap-2 px-3 py-1.5 border rounded text-sm text-gray-700 hover:bg-gray-50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 3h2l.4 2M7 13h10l4-8H5.4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="10" cy="20" r="1" /><circle cx="18" cy="20" r="1" /></svg>
+            <span class="text-sm">Cart</span>
+            <span id="cart-badge" class="absolute -top-2 -right-2 bg-red-600 text-white rounded-full px-1.5 cart-badge hidden">0</span>
+          </a>
           <a id="account-btn" href="/login" class="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">Sign In</a>
         </div>
       </div>
@@ -128,7 +130,7 @@
             </div>
 
             <div class="mt-4 grid gap-2">
-              <button id="buy-now" class="w-full px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700">Buy Now</button>
+              <button id="add-to-cart" class="w-full px-4 py-2 bg-green-600 text-white rounded-lg shadow hover:bg-green-700 transition">Add to Cart</button>
               <button id="offer-btn" class="w-full px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600">Send Offer</button>
               <button id="message-seller" class="w-full px-4 py-2 border rounded-lg hover:bg-gray-50">Message Seller</button>
             </div>
@@ -172,7 +174,7 @@
     </section>
   </main>
 
-  <!-- Offer Modal -->
+  <!-- Offer Modal (unchanged) -->
   <div id="offerModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4">
     <div class="bg-white rounded-lg shadow w-full max-w-lg">
       <div class="flex items-center justify-between px-4 py-3 border-b">
@@ -199,15 +201,14 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.5.1/flowbite.min.js"></script>
   <script>
-    // Modern item page client script
-// Designed to work with backend routes already present in your API.
+    // Modern item page client script with Add to Cart integration
+// Designed to work with your backend endpoints: /api/blogger-dashboard/public/listings, /api/auth/me, /api/cart/add, /api/cart, /api/reviews, /api/offers
 
 (async function () {
-  const API_BASE = "https://examguard-jmvj.onrender.com"; // relative to origin: uses same domain + CORS as configured on server
+  const API_BASE = "https://examguard-jmvj.onrender.com"; // relative path to your backend (server must accept same-origin or CORS)
 
   // DOM helpers
   const $ = sel => document.querySelector(sel);
-  const $$ = sel => Array.from(document.querySelectorAll(sel));
   const byId = id => document.getElementById(id);
   const formatDate = d => { try { return new Date(d).toLocaleString(); } catch { return d; } };
 
@@ -222,7 +223,7 @@
 
   function safeStr(v){ return v == null ? '' : String(v); }
 
-  // fetch faculties & departments for readable names
+  // fetch faculties & departments
   async function fetchFacultiesAndDepartments(){
     try {
       const [fRes, dRes] = await Promise.all([
@@ -246,7 +247,7 @@
     return found ? found.name : d;
   }
 
-  // auth check
+  // auth
   async function checkAuth(){
     try {
       const token = localStorage.getItem('token');
@@ -256,7 +257,7 @@
       const data = await res.json();
       buyerProfile = data.user || data;
       const btn = byId('account-btn');
-      if(btn){ btn.textContent = "My Dashboard"; btn.href = "/dashboard"; }
+      if(btn){ btn.textContent = "My Dashboard"; btn.href = "/buyer_dash.html"; }
       return true;
     } catch (e) {
       const btn = byId('account-btn');
@@ -306,7 +307,54 @@
     return [];
   }
 
-  // Render helpers
+  // Cart helpers
+  function authHeader() {
+    const token = localStorage.getItem('token');
+    return token ? { Authorization: 'Bearer ' + token } : {};
+  }
+
+  async function fetchCart() {
+    try {
+      const res = await fetch(API_BASE + '/api/cart', { headers: { ...authHeader() } });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function updateCartBadge() {
+    const badge = byId('cart-badge');
+    if (!badge) return;
+    const cart = await fetchCart();
+    let count = 0;
+    if (cart && Array.isArray(cart.items)) {
+      count = cart.items.reduce((s,i)=> s + (i.quantity||0), 0);
+    }
+    if (count > 0) {
+      badge.textContent = count;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+  }
+
+  async function addToCartAPI(productId, quantity = 1) {
+    const payload = { productId, quantity };
+    try {
+      const res = await fetch(API_BASE + '/api/cart/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeader() },
+        body: JSON.stringify(payload)
+      });
+      return res;
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  // Render helpers (gallery, meta, reviews, related) - unchanged core logic (omitted for brevity in this block)
+  // ... (We still include the essential rendering functions used below)
   function renderBreadcrumb(product){
     const bc = [];
     bc.push(`<a href="/mart.html" class="hover:underline">Home</a>`);
@@ -321,19 +369,16 @@
       gallery.innerHTML = `<div class="h-[420px] md:h-[520px] flex items-center justify-center text-gray-400 bg-gray-100">No images</div>`;
       return;
     }
-    // build carousel + thumbnails
     const slides = images.map((src, idx) => `
       <div class="${idx===0 ? 'block' : 'hidden'} duration-700 ease-in-out" data-carousel-item>
         <img src="${src}" alt="${title}" class="w-full h-[420px] md:h-[520px] object-cover">
       </div>
     `).join('');
-
     const thumbs = images.map((src, idx) => `
       <button data-thumb-index="${idx}" class="thumbnail-ring border rounded overflow-hidden h-14 w-14 md:h-16 md:w-16 ${idx===0 ? 'ring-2 ring-blue-500' : ''}">
         <img src="${src}" alt="thumb ${idx+1}" class="w-full h-full object-cover">
       </button>
     `).join('');
-
     gallery.innerHTML = `
       <div id="item-carousel" class="relative" data-carousel="slide" data-carousel-interval="6000">
         <div class="relative h-[420px] md:h-[520px] overflow-hidden rounded">
@@ -357,15 +402,12 @@
         ${thumbs}
       </div>
     `;
-
-    // hook thumbnail clicks to carousel controls (Flowbite handles main carousel; we'll simulate click on nav buttons)
     const thumbButtons = gallery.querySelectorAll('[data-thumb-index]');
     thumbButtons.forEach(btn => btn.addEventListener('click', (e) => {
       const idx = Number(btn.getAttribute('data-thumb-index'));
       const slideBtns = gallery.querySelectorAll('[data-carousel-slide-to]');
       const target = slideBtns[idx];
       if (target) target.click();
-      // update rings
       thumbButtons.forEach(t => t.classList.remove('ring-2','ring-blue-500'));
       btn.classList.add('ring-2','ring-blue-500');
     }));
@@ -380,10 +422,8 @@
     byId('product-rating').textContent = product.rating || (product.likes ? `⭐ ${product.likes}` : '');
     byId('product-submeta').textContent = product.summary || (product.posted ? `Posted: ${product.posted}` : '');
 
-    // description
     byId('product-description').innerHTML = product.description ? `<div class="whitespace-pre-line">${product.description}</div>` : (product.summary || '');
 
-    // specs
     const specs = [];
     ['condition','brand','model','sku','location','color','warranty'].forEach(k => {
       if (product[k]) specs.push(`<li><strong class="text-slate-700">${k.charAt(0).toUpperCase() + k.slice(1)}:</strong> ${product[k]}</li>`);
@@ -391,7 +431,6 @@
     if (product.createdAt) specs.push(`<li><strong>Posted:</strong> ${formatDate(product.createdAt)}</li>`);
     byId('product-specs').innerHTML = specs.join('') || '<li>No additional specifications provided.</li>';
 
-    // seller meta
     const seller = product.seller || product.author || product.authorName || {};
     const sellerName = seller.fullname || seller.name || seller.username || safeStr(product.sellerName) || 'Seller';
     byId('seller-name').textContent = sellerName;
@@ -402,13 +441,11 @@
     if (product.condition && product.condition.toLowerCase().includes('new')) badges.push('<span class="inline-block bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs">New</span>');
     byId('seller-badges').innerHTML = badges.join(' ');
 
-    // seller contact
     const contacts = [];
     if (seller.email) contacts.push(`<div><strong>Email:</strong> <a href="mailto:${seller.email}" class="text-blue-600">${seller.email}</a></div>`);
     if (seller.phone) contacts.push(`<div><strong>Phone:</strong> <a href="tel:${seller.phone}" class="text-blue-600">${seller.phone}</a></div>`);
     byId('seller-contact').innerHTML = contacts.join('') || `<div class="text-gray-500">Contact via Marketplace</div>`;
 
-    // seller details panel
     const fac = getFacultyName(product.sellerFaculty || product.faculty || product.seller?.faculty || seller.faculty);
     const dept = getDepartmentName(product.sellerDepartment || product.department || product.seller?.department || seller.department);
     byId('seller-details').innerHTML = `
@@ -417,15 +454,49 @@
       ${seller.bio ? `<div class="mt-2 text-gray-700 text-sm">${seller.bio}</div>` : ''}
     `;
 
-    byId('offerListingId').value = product._id || product.id || '';
+    // wire actions
+    const addBtn = byId('add-to-cart');
+    if (addBtn) {
+      addBtn.onclick = async () => {
+        // disable button while adding
+        addBtn.disabled = true;
+        addBtn.classList.add('opacity-70', 'cursor-not-allowed');
+        // require auth
+        if (!buyerProfile) {
+          // restore button and redirect to login
+          addBtn.disabled = false;
+          addBtn.classList.remove('opacity-70', 'cursor-not-allowed');
+          if (confirm("You must sign in to add items to cart. Sign in now?")) window.location.href = "/login";
+          return;
+        }
+        try {
+          const resp = await addToCartAPI(product._id || product.id || listingId, 1);
+          if (resp.ok) {
+            // show inline success
+            addBtn.textContent = "Added ✓";
+            setTimeout(()=> addBtn.textContent = "Add to Cart", 1500);
+            await updateCartBadge();
+          } else {
+            const j = await resp.json().catch(()=>({}));
+            alert(j.message || 'Could not add to cart');
+          }
+        } catch (e) {
+          alert('Network error. Try again later.');
+        } finally {
+          addBtn.disabled = false;
+          addBtn.classList.remove('opacity-70', 'cursor-not-allowed');
+        }
+      };
+    }
+
+    byId('offerListingId')?.value = product._id || product.id || '';
     byId('offer-btn').onclick = () => openOfferModal(product);
     byId('message-seller').onclick = () => {
       if (seller.email) window.location.href = `mailto:${seller.email}?subject=Question about ${encodeURIComponent(product.title || product.name)}`;
       else alert('Seller contact not available.');
     };
-    byId('buy-now').onclick = () => alert('Buy flow not implemented in this demo. Use message or send offer.');
+    byId('buy-now')?.remove?.(); // in case legacy element exists
 
-    // Breadcrumb
     renderBreadcrumb(product);
   }
 
@@ -482,7 +553,7 @@
     `).join('');
   }
 
-  // Offer modal
+  // Offer modal handlers (same as previous)
   function openOfferModal(product){
     byId('offerListingId').value = product._id || product.id || '';
     byId('offerAmount').value = '';
@@ -502,7 +573,7 @@
   }
   function closeOffer(){ document.getElementById('offerModal').classList.add('hidden'); }
 
-  // Submit review
+  // Form handlers
   async function submitReviewHandler(e){
     e.preventDefault();
     if(!listingId) return alert('Missing listing id.');
@@ -528,7 +599,6 @@
     } catch(e){ alert('Network error'); }
   }
 
-  // Submit offer
   async function submitOfferHandler(e){
     e.preventDefault();
     const listingIdVal = byId('offerListingId').value;
@@ -571,6 +641,7 @@
   // Initialization
   await fetchFacultiesAndDepartments();
   await checkAuth();
+  await updateCartBadge();
 
   if (!listingId) {
     const main = document.getElementById('product-main');
@@ -598,7 +669,6 @@
   // fetch reviews and related
   renderReviews(listingId);
 
-  // Fetch all listings to compute related items (category)
   try {
     const allRes = await fetch(API_BASE + '/api/blogger-dashboard/public/listings');
     if (allRes.ok) {
@@ -619,11 +689,8 @@
   const offerForm = byId('offerFormModal');
   if (offerForm) offerForm.addEventListener('submit', submitOfferHandler);
 
-  // Flowbite tabs initialization: ensure first tab selected on load
-  // (Flowbite script included on page; fallback simple select)
-  try {
-    document.querySelector('[data-tabs-toggle] button').click();
-  } catch(e){}
+  // Make sure tabs show description by default
+  try { document.querySelector('[data-tabs-toggle] button')?.click(); } catch(e){}
 })();
   </script>
 </body>
