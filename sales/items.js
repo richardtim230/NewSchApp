@@ -3,6 +3,7 @@
 const BACKEND = "https://examguard-jmvj.onrender.com";
 let buyerProfile = null, currentProduct = null, allProducts = [];
 let wishlistIds = []; // For wishlist server sync
+let pageProductId = null; // canonical id from URL
 
 // --- Helper: Get Query Params ---
 function getQueryParam(name) {
@@ -207,7 +208,8 @@ window.closeLightbox = function() {
 // --- Send Offer Modal Logic ---
 window.openOfferModal = function(){
   document.getElementById('sendOfferModal').classList.remove('hidden');
-  document.getElementById('offerProductId').value = currentProduct._id || currentProduct.id;
+  // use canonical URL id whenever possible
+  document.getElementById('offerProductId').value = pageProductId || currentProduct?._id || currentProduct?.id || "";
   if (buyerProfile) {
     const u = buyerProfile;
     document.getElementById('buyerDetails').innerHTML = `
@@ -246,7 +248,7 @@ document.getElementById('offerForm').onsubmit = async function(e) {
 Offer from: ${buyerDetails.name || "Guest"}
 Email: ${buyerDetails.email || "N/A"}
 Phone: ${buyerDetails.phone || "N/A"}
-Product: ${currentProduct.title || ""}
+Product: ${currentProduct?.title || ""}
 ---
 ${offerMessage}
   `.trim();
@@ -291,7 +293,7 @@ document.getElementById('chat-seller-btn').onclick = function(){
 document.getElementById('share-btn').onclick = function(){
   if (navigator.share) {
     navigator.share({
-      title: currentProduct.title,
+      title: currentProduct?.title,
       url: window.location.href
     }).catch(()=>{});
   } else {
@@ -302,6 +304,7 @@ document.getElementById('share-btn').onclick = function(){
 
 // --- Chart Rendering ---
 async function renderOffersChart(productId) {
+  if (!productId) return;
   const offers = await fetchOffers(productId);
   if (!offers || !offers.length) return;
   document.getElementById('offers-chart-section').classList.remove('hidden');
@@ -327,6 +330,7 @@ async function renderOffersChart(productId) {
 
 // --- Reviews Rendering ---
 async function renderReviews(productId) {
+  if (!productId) return;
   const reviews = await fetchReviews(productId);
   const reviewsList = document.getElementById('reviews-list');
   reviewsList.innerHTML = "";
@@ -350,6 +354,7 @@ async function renderReviews(productId) {
 
 // --- Add Review Form Logic ---
 function setupAddReview(productId) {
+  if (!productId) return;
   const addReviewCard = document.getElementById("add-review-card");
   if (buyerProfile) {
     addReviewCard.classList.remove("hidden");
@@ -416,7 +421,7 @@ function renderRelatedItems(product, products) {
   document.getElementById("related-items").innerHTML = related.slice(0,4).map(p=>`
     <div class="bg-white rounded-xl shadow overflow-hidden hover:scale-105 transition">
       <a href="items.html?id=${p._id||p.id}" class="block">
-        <img src="${(Array.isArray(p.images) && p.images[0]) || p.img || p.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(p.title || 'Product') + '&background=eee&color=263159&rounded=true'}" class="w-full h-32 object-contain bg-gray-50" />
+        <img src="${(Array.isArray(p.images) && p.images[0]) || p.img || p.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(p.title || 'Product') + '&background=eee&color=263159&rounded=true'}" class="w-full h-36 object-cover"/>
         <div class="p-3">
           <div class="font-semibold text-blue-900 text-sm truncate">${p.title}</div>
           <div class="text-yellow-700 font-bold flex items-center gap-1"><span>&#8358;</span>${Number(p.price||0).toLocaleString()}</div>
@@ -476,8 +481,11 @@ function updateFavoriteBtn(id) {
   document.getElementById("favorite-icon").textContent = isWishlisted(id) ? "♥" : "♡";
 }
 document.getElementById("favorite-btn").onclick = async function() {
-  if (!currentProduct) return;
-  let id = currentProduct._id || currentProduct.id;
+  const id = pageProductId || currentProduct?._id || currentProduct?.id;
+  if (!id) {
+    alert("Product not loaded yet.");
+    return;
+  }
   await toggleWishlistServer(id);
 };
 
@@ -499,7 +507,7 @@ document.getElementById("reportForm").onsubmit = async function(e) {
     return;
   }
   const reason = document.getElementById("reportMessage").value;
-  const productId = currentProduct._id || currentProduct.id;
+  const productId = pageProductId || currentProduct?._id || currentProduct?.id;
   try {
     const res = await fetch(`${BACKEND}/api/blogger-dashboard/report/${productId}`, {
       method: "POST",
@@ -530,18 +538,30 @@ document.getElementById("reportForm").onsubmit = async function(e) {
 document.addEventListener("DOMContentLoaded", async function() {
   await checkAuth();
   await fetchWishlist(); // Load wishlist from server!
+
+  // canonical id from URL
   const productId = getQueryParam("id");
   if (!productId) {
     document.getElementById("product-loading").textContent = "No product ID found!";
     return;
   }
+  pageProductId = productId;
+
   allProducts = await fetchProducts();
-  const product = await fetchProduct(productId);
+  const product = await fetchProduct(pageProductId);
   renderProduct(product);
-  updateFavoriteBtn(product._id||product.id);
-  renderOffersChart(product._id||product.id);
-  await renderReviews(product._id||product.id);
-  setupAddReview(product._id||product.id);
+
+  // Ensure currentProduct uses the canonical URL id to avoid mismatches
+  currentProduct = currentProduct || product;
+  if (pageProductId) {
+    currentProduct._id = currentProduct._id || pageProductId;
+    currentProduct.id = currentProduct.id || pageProductId;
+  }
+
+  updateFavoriteBtn(pageProductId || currentProduct._id || currentProduct.id);
+  renderOffersChart(pageProductId || currentProduct._id || currentProduct.id);
+  await renderReviews(pageProductId || currentProduct._id || currentProduct.id);
+  setupAddReview(pageProductId || currentProduct._id || currentProduct.id);
   renderRelatedItems(product, allProducts);
 });
 
@@ -553,7 +573,12 @@ document.getElementById('add-to-cart-btn').onclick = async function() {
     return;
   }
   const token = localStorage.getItem("token");
-  const productId = currentProduct._id || currentProduct.id;
+  // Prefer canonical URL id
+  const productId = pageProductId || currentProduct?._id || currentProduct?.id;
+  if (!productId) {
+    alert("Product not loaded. Please wait a moment and try again.");
+    return;
+  }
   try {
     const res = await fetch(BACKEND + "/api/cart/add", {
       method: "POST",
@@ -569,9 +594,12 @@ document.getElementById('add-to-cart-btn').onclick = async function() {
     if (res.ok) {
       alert("Item added to cart!");
     } else {
+      const txt = await res.text().catch(()=>null);
+      console.error("Add to cart failed:", res.status, txt);
       alert("Failed to add to cart.");
     }
   } catch (e) {
+    console.error("Add to cart error:", e);
     alert("Failed to add to cart.");
   }
 };
@@ -584,7 +612,7 @@ document.getElementById('chat-seller-btn').onclick = async function(){
     window.location.href = "/login";
     return;
   }
-  chatSellerId = currentProduct.sellerId || currentProduct.seller || currentProduct.authorId;
+  chatSellerId = currentProduct?.sellerId || currentProduct?.seller || currentProduct?.authorId;
   openChatModal();
   await loadChatHistory();
 };
@@ -647,7 +675,7 @@ document.getElementById("chatForm").onsubmit = async function(e) {
       body: JSON.stringify({
         sellerId: chatSellerId,
         text,
-        productId: currentProduct._id || currentProduct.id
+        productId: pageProductId || currentProduct?._id || currentProduct?.id
       })
     });
     if (res.ok) {
