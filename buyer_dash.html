@@ -306,12 +306,17 @@
       }
       // Order all valid cart items
       for (const item of cart.items) {
-        if (item.productId) {
-          await orderProduct(item.productId._id || item.productId.id, item.quantity);
-        }
-      }
-      showNotification({message: "Order(s) placed! Pending payment.", type: "success"});
-      loadOrders();
+  if (item.productId) {
+    await orderProduct(item.productId, item.quantity);
+  }
+}
+      await fetch(BACKEND + "/api/cart/clear", {
+  method: "POST",
+  headers: authHeader()
+});
+showNotification({message: "Order(s) placed! Pending payment.", type: "success"});
+loadOrders();
+loadCart();
       // You may also want to clear the cart or keep items till payment
     }
 
@@ -373,15 +378,21 @@
   }
 }
     window.changeQty = async function(productId, delta) {
-      // Get the current cart, find item, update quantity
-      const res = await fetch(BACKEND + "/api/cart", { headers: authHeader() });
-      const cart = await res.json();
-      const item = cart.items.find(i => i.productId && (i.productId._id === productId || i.productId.id === productId));
-      if (!item) return;
-      let newQty = (item.quantity || 1) + delta;
-      if (newQty < 1) newQty = 1;
-      await updateCartQuantity(productId, newQty - (item.quantity || 1));
-    }
+  // Get the current cart, find item, update quantity
+  const res = await fetch(BACKEND + "/api/cart", { headers: authHeader() });
+  const cart = await res.json();
+  const item = cart.items.find(i => i.productId && i.productId === productId);
+  if (!item) return;
+  let newQty = (item.quantity || 1) + delta;
+  if (newQty < 1) newQty = 1;
+  // Set the new quantity directly
+  await fetch(BACKEND + "/api/cart/update", {
+    method: "POST",
+    headers: { ...authHeader(), "Content-Type": "application/json" },
+    body: JSON.stringify({ productId, quantity: newQty })
+  });
+  loadCart();
+};
     window.removeCartItem = async function(productId) {
       await fetch(BACKEND + "/api/cart/remove", {
         method: "POST",
