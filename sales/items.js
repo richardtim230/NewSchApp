@@ -594,12 +594,13 @@ document.getElementById('add-to-cart-btn').onclick = async function() {
     return;
   }
   let qty = 1;
+console.log("Add to cart productId:", productId, "currentProduct._id:", currentProduct._id, "currentProduct.id:", currentProduct.id, "listingId:", listingId, "pageProductId:", pageProductId);
   const qtyInput = document.getElementById("qty-input");
   if (qtyInput && Number(qtyInput.value) > 0) {
     qty = Number(qtyInput.value);
   }
   const addBtn = this;
-  console.log("Add to cart productId:", currentProduct._id, currentProduct.id, listingId, pageProductId);
+
   try {
     const resp = await addToCartAPI(productId, qty);
     if (resp.ok) {
