@@ -582,7 +582,6 @@ document.addEventListener("DOMContentLoaded", async function() {
 
 // ========== ADD TO CART ==========
 document.getElementById('add-to-cart-btn').onclick = async function() {
-document.getElementById('add-to-cart-btn').onclick = async function() {
   if (!buyerProfile) {
     alert("Sign in to add to cart!");
     window.location.href = "/login";
