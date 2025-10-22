@@ -539,9 +539,12 @@ document.getElementById("reportForm").onsubmit = async function(e) {
 };
 async function addToCartAPI(productId, quantity = 1) {
     try {
-      const res = await fetch(API_BASE + "/api/cart/add", {
+      const res = await fetch(BACKEND + "/api/cart/add", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeader() },
+        headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + token
+      },
         body: JSON.stringify({ productId, quantity })
       });
       return res;
