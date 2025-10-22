@@ -540,12 +540,12 @@ document.addEventListener("DOMContentLoaded", async function() {
   await fetchWishlist(); // Load wishlist from server!
 
   // canonical id from URL
-  const productId = getQueryParam("id");
+  const productId = product._id ;
   if (!productId) {
     document.getElementById("product-loading").textContent = "No product ID found!";
     return;
   }
-  pageProductId = productId;
+  pageProductId = product._id;
 
   allProducts = await fetchProducts();
   const product = await fetchProduct(pageProductId);
