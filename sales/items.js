@@ -30,6 +30,10 @@ async function checkAuth() {
   buyerProfile = null;
   return false;
 }
+function authHeader() {
+    const token = localStorage.getItem("token");
+    return token ? { "Authorization": "Bearer " + token } : {};
+  }
 
 // --- Product Loading ---
 async function fetchProducts() {
