@@ -587,18 +587,25 @@ document.getElementById('add-to-cart-btn').onclick = async function() {
     window.location.href = "/login";
     return;
   }
-  // Use your preferred ID logic
-  const productId = currentProduct._id || currentProduct.id || listingId;
+  // Consistently resolve productId from current product or fallback variables
+  const productId = (currentProduct && (currentProduct._id || currentProduct.id)) || (typeof listingId !== "undefined" ? listingId : undefined);
   if (!productId) {
     alert("Product not loaded. Please wait a moment and try again.");
     return;
   }
+  // Quantity (defaults to 1 if no input field)
   let qty = 1;
-console.log("Add to cart productId:", productId, "currentProduct._id:", currentProduct._id, "currentProduct.id:", currentProduct.id, "listingId:", listingId, "pageProductId:", pageProductId);
   const qtyInput = document.getElementById("qty-input");
   if (qtyInput && Number(qtyInput.value) > 0) {
     qty = Number(qtyInput.value);
   }
+  // Log all ID sources for debugging
+  console.log("Add to cart productId:", productId, {
+    "_id": currentProduct && currentProduct._id,
+    "id": currentProduct && currentProduct.id,
+    "listingId": typeof listingId !== "undefined" ? listingId : null,
+    "pageProductId": typeof pageProductId !== "undefined" ? pageProductId : null
+  });
   const addBtn = this;
 
   try {
