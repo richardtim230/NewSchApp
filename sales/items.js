@@ -585,29 +585,35 @@ document.addEventListener("DOMContentLoaded", async function() {
 
 // ========== ADD TO CART ==========
 document.getElementById('add-to-cart-btn').onclick = async function() {
+document.getElementById('add-to-cart-btn').onclick = async function() {
   if (!buyerProfile) {
     alert("Sign in to add to cart!");
     window.location.href = "/login";
     return;
   }
-  const token = localStorage.getItem("token");
-  // Prefer canonical URL id
-  const productId = pageProductId || currentProduct?._id || currentProduct?.id;
+  // Use your preferred ID logic
+  const productId = currentProduct._id || currentProduct.id || listingId;
   if (!productId) {
     alert("Product not loaded. Please wait a moment and try again.");
     return;
   }
+  let qty = 1;
+  const qtyInput = document.getElementById("qty-input");
+  if (qtyInput && Number(qtyInput.value) > 0) {
+    qty = Number(qtyInput.value);
+  }
+  const addBtn = this;
   try {
-        const resp = await addToCartAPI(product._id || product.id || listingId, qty);
-        if (resp.ok) {
-          addBtn.textContent = "Added ✓";
-          setTimeout(() => addBtn.textContent = "Add to Cart", 1400);
-          await updateCartBadge();
-        } else {
-          const j = await resp.json().catch(()=>({}));
-          alert(j.message || "Could not add to cart");
-        }
-      }catch (e) {
+    const resp = await addToCartAPI(productId, qty);
+    if (resp.ok) {
+      addBtn.textContent = "Added ✓";
+      setTimeout(() => addBtn.textContent = "Add to Cart", 1400);
+      if (typeof updateCartBadge === "function") await updateCartBadge();
+    } else {
+      const j = await resp.json().catch(()=>({}));
+      alert(j.message || "Could not add to cart");
+    }
+  } catch (e) {
     console.error("Add to cart error:", e);
     alert("Failed to add to cart.");
   }
