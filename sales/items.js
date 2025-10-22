@@ -541,10 +541,7 @@ async function addToCartAPI(productId, quantity = 1) {
     try {
       const res = await fetch(BACKEND + "/api/cart/add", {
         method: "POST",
-        headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + token
-      },
+        headers: { "Content-Type": "application/json", ...authHeader() },
         body: JSON.stringify({ productId, quantity })
       });
       return res;
