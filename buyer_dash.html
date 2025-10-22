@@ -297,37 +297,41 @@
       loadCart();
     }
 
-    async function orderCartItems() {
-      const res = await fetch(BACKEND + "/api/cart", { headers: authHeader() });
-      const cart = await res.json();
-      if (!cart.items || !cart.items.length) {
-        showNotification({message: "No items to order!", type: "info"});
+  async function orderCartItems() {
+  const res = await fetch(BACKEND + "/api/cart", { headers: authHeader() });
+  const cart = await res.json();
+  if (!cart.items || !cart.items.length) {
+    showNotification({message: "No items to order!", type: "info"});
+    return;
+  }
+  // Place orders for each item
+  for (const item of cart.items) {
+    if (item.productId) {
+      const resp = await orderProduct(item.productId, item.quantity);
+      if (!resp.ok) {
+        const err = await resp.json();
+        showNotification({message: "Order failed: " + (err.error || resp.statusText), type: "error"});
         return;
       }
-      // Order all valid cart items
-      for (const item of cart.items) {
-  if (item.productId) {
-    await orderProduct(item.productId, item.quantity);
-  }
-}
-      await fetch(BACKEND + "/api/cart/clear", {
-  method: "POST",
-  headers: authHeader()
-});
-showNotification({message: "Order(s) placed! Pending payment.", type: "success"});
-loadOrders();
-loadCart();
-      // You may also want to clear the cart or keep items till payment
     }
+  }
+  // Clear cart after all orders placed
+  await fetch(BACKEND + "/api/cart/clear", {
+    method: "POST",
+    headers: authHeader()
+  });
+  showNotification({message: "Order(s) placed! Pending payment.", type: "success"});
+  loadOrders();
+  loadCart();
+}
 
     async function orderProduct(productId, quantity) {
-      // Call backend to create pending order for this product and quantity
-      await fetch(BACKEND + "/api/orders", {
-        method: "POST",
-        headers: { ...authHeader(), "Content-Type": "application/json" },
-        body: JSON.stringify({ productId, quantity, status: "pending_payment" })
-      });
-    }
+  return await fetch(BACKEND + "/api/orders", {
+    method: "POST",
+    headers: { ...authHeader(), "Content-Type": "application/json" },
+    body: JSON.stringify({ productId, quantity })
+  });
+}
 
     async function loadCart() {
   const cartItemsDiv = document.getElementById('cart-items');
