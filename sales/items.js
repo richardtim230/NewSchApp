@@ -533,7 +533,18 @@ document.getElementById("reportForm").onsubmit = async function(e) {
     document.getElementById("reportResponse").classList.remove("hidden");
   }
 };
-
+async function addToCartAPI(productId, quantity = 1) {
+    try {
+      const res = await fetch(API_BASE + "/api/cart/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader() },
+        body: JSON.stringify({ productId, quantity })
+      });
+      return res;
+    } catch (e) {
+      throw e;
+    }
+  }
 // --- On Load ---
 document.addEventListener("DOMContentLoaded", async function() {
   await checkAuth();
@@ -580,25 +591,16 @@ document.getElementById('add-to-cart-btn').onclick = async function() {
     return;
   }
   try {
-    const res = await fetch(BACKEND + "/api/cart/add", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + token
-      },
-      body: JSON.stringify({
-        productId,
-        quantity: 1
-      })
-    });
-    if (res.ok) {
-      alert("Item added to cart!");
-    } else {
-      const txt = await res.text().catch(()=>null);
-      console.error("Add to cart failed:", res.status, txt);
-      alert("Failed to add to cart.");
-    }
-  } catch (e) {
+        const resp = await addToCartAPI(product._id || product.id || listingId, qty);
+        if (resp.ok) {
+          addBtn.textContent = "Added ✓";
+          setTimeout(() => addBtn.textContent = "Add to Cart", 1400);
+          await updateCartBadge();
+        } else {
+          const j = await resp.json().catch(()=>({}));
+          alert(j.message || "Could not add to cart");
+        }
+      }catch (e) {
     console.error("Add to cart error:", e);
     alert("Failed to add to cart.");
   }
