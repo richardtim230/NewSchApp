@@ -545,7 +545,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     document.getElementById("product-loading").textContent = "No product ID found!";
     return;
   }
-  pageProductId = product._id;
+  pageProductId = productId;
 
   allProducts = await fetchProducts();
   const product = await fetchProduct(pageProductId);
