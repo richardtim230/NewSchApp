@@ -599,6 +599,7 @@ document.getElementById('add-to-cart-btn').onclick = async function() {
     qty = Number(qtyInput.value);
   }
   const addBtn = this;
+  console.log("Add to cart productId:", currentProduct._id, currentProduct.id, listingId, pageProductId);
   try {
     const resp = await addToCartAPI(productId, qty);
     if (resp.ok) {
