@@ -411,36 +411,46 @@
 
     // --- Wishlist ---
     async function loadWishlist() {
-      const wishlistItemsDiv = document.getElementById('wishlist-items');
-      wishlistItemsDiv.classList.add('grid-cards');
-      wishlistItemsDiv.innerHTML = '<div class="spinner mx-auto my-8"></div>';
+  const wishlistItemsDiv = document.getElementById('wishlist-items');
+  wishlistItemsDiv.classList.add('grid-cards');
+  wishlistItemsDiv.innerHTML = '<div class="spinner mx-auto my-8"></div>';
+  try {
+    const res = await fetch(BACKEND + "/api/blogger-dashboard/wishlist", { headers: authHeader() });
+    const { wishlist } = await res.json();
+    if (!wishlist || !wishlist.length) {
+      wishlistItemsDiv.innerHTML = '<div class="text-gray-400 text-center my-6">No items in wishlist.</div>';
+      return;
+    }
+    // Fetch each product details by ID
+    const itemsHtml = await Promise.all(wishlist.map(async id => {
+      let item = {};
       try {
-        const res = await fetch(BACKEND + "/api/blogger-dashboard/wishlist", { headers: authHeader() });
-        const { wishlist } = await res.json();
-        if (!wishlist || !wishlist.length) {
-          wishlistItemsDiv.innerHTML = '<div class="text-gray-400 text-center my-6">No items in wishlist.</div>';
-          return;
-        }
-        wishlistItemsDiv.innerHTML = wishlist.map(item => `
-          <div class="flex flex-col sm:flex-row gap-3 items-center bg-gray-50 rounded-xl p-4 shadow border border-gray-200">
-            <div class="flex-shrink-0 w-28 h-28 bg-gray-100 rounded-xl flex items-center justify-center overflow-hidden">
-              <img src="${(item.images?.[0] || item.img || item.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(item.title || 'Product') + '&background=eee&color=263159&rounded=true')}" class="object-cover w-full h-full rounded-xl" alt="Wishlist image"/>
+        const prodRes = await fetch(BACKEND + `/api/blogger-dashboard/public/listings/${id}`, { headers: authHeader() });
+        if (prodRes.ok) item = await prodRes.json();
+      } catch {}
+      return `
+        <div class="flex flex-col sm:flex-row gap-3 items-center bg-gray-50 rounded-xl p-4 shadow border border-gray-200">
+          <div class="flex-shrink-0 w-28 h-28 bg-gray-100 rounded-xl flex items-center justify-center overflow-hidden">
+            <img src="${(item.images?.[0] || item.img || item.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(item.title || 'Product') + '&background=eee&color=263159&rounded=true')}" class="w-full h-full object-cover" />
+          </div>
+          <div class="flex-1 w-full flex flex-col gap-2 pl-0 sm:pl-4">
+            <div class="flex items-center justify-between">
+              <div class="font-semibold text-blue-800 text-lg">${item.title || 'Product'}</div>
+              <button class="px-3 py-1 bg-pink-100 text-pink-600 font-semibold rounded hover:bg-pink-200" onclick="removeWishlistItem('${item._id||item.id||id}')">Remove</button>
             </div>
-            <div class="flex-1 w-full flex flex-col gap-2 pl-0 sm:pl-4">
-              <div class="flex items-center justify-between">
-                <div class="font-semibold text-blue-800 text-lg">${item.title}</div>
-                <button class="px-3 py-1 bg-pink-100 text-pink-600 font-semibold rounded hover:bg-pink-200" onclick="removeWishlistItem('${item._id||item.id}')">Remove</button>
-              </div>
-              <div class="text-yellow-700 font-bold text-xl">&#8358;${Number(item.price||0).toLocaleString()}</div>
-              <div class="flex mt-2">
-                <button class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-semibold" onclick="placeOrderFromWishlist('${item._id||item.id}')">Place Order</button>      </div>
+            <div class="text-yellow-700 font-bold text-xl">&#8358;${Number(item.price||0).toLocaleString()}</div>
+            <div class="flex mt-2">
+              <button class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-semibold" onclick="placeOrderFromWishlist('${item._id||item.id||id}')">Place Order</button>
             </div>
           </div>
-        `).join('');
-      } catch {
-        wishlistItemsDiv.innerHTML = '<div class="text-red-500 text-center my-6">Failed to load wishlist.</div>';
-      }
-    }
+        </div>
+      `;
+    }));
+    wishlistItemsDiv.innerHTML = itemsHtml.join('');
+  } catch {
+    wishlistItemsDiv.innerHTML = '<div class="text-red-500 text-center my-6">Failed to load wishlist.</div>';
+  }
+}
     // Wishlist removal with feedback
 window.removeWishlistItem = async function(listingId) {
   try {
