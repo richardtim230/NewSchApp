@@ -221,43 +221,92 @@
     const PAGE_SIZE = 12;
     let students = [], filtered = [], page = 1;
 
-    // --- Load summary analytics
+    
     async function loadSummary() {
-      try {
-        // Assuming backend provides these endpoints:
-        // (You may need to adjust endpoint names / keys for your backend.)
-        const [studentsRes, withdrawalsRes] = await Promise.all([
-          fetch(API_BASE + "/api/users?role=student", { headers: { "Authorization": "Bearer " + (localStorage.getItem("token") || "") }}),
-          fetch(API_BASE + "/api/withdrawals?status=pending", { headers: { "Authorization": "Bearer " + (localStorage.getItem("token") || "") }})
-        ]);
-        const studentsData = await studentsRes.json();
-        students = Array.isArray(studentsData) ? studentsData : [];
-        filtered = students;
-        document.getElementById("total-students").textContent = students.length;
+  try {
+    // Fetch both students and withdrawals in parallel
+    const [studentsRes, withdrawalsRes] = await Promise.all([
+      fetch(API_BASE + "/api/users?role=student", {
+        headers: { "Authorization": "Bearer " + (localStorage.getItem("token") || "") }
+      }),
+      fetch(API_BASE + "/api/withdrawals?status=pending", {
+        headers: { "Authorization": "Bearer " + (localStorage.getItem("token") || "") }
+      })
+    ]);
 
-        // Total points and amount
-        let totalPts = 0, totalAmt = 0;
-        for (const u of students) {
-          const pts = typeof u.points === "number" ? u.points : 0;
-          totalPts += pts;
-          totalAmt += pts; // 1 point = ₦1
-        }
-        document.getElementById("total-points").textContent = totalPts;
-        document.getElementById("total-amount").textContent = formatNaira(totalAmt);
-
-        // Withdrawals
-        const withdrawalsData = await withdrawalsRes.json();
-        const pendingCount = Array.isArray(withdrawalsData) ? withdrawalsData.length : 0;
-        document.getElementById("pending-withdrawals").textContent = pendingCount;
-
-        // Last updated timestamp
-        document.getElementById("last-updated").textContent = new Date().toLocaleString();
-
-        renderTable();
-      } catch (err) {
-        alert("Error loading dashboard data.");
-      }
+    // Check HTTP status for both requests
+    if (!studentsRes.ok) {
+      const errText = await studentsRes.text();
+      console.error("Students API error:", studentsRes.status, errText);
+      throw new Error("Students API error: " + studentsRes.status + " " + errText);
     }
+    if (!withdrawalsRes.ok) {
+      const errText = await withdrawalsRes.text();
+      console.error("Withdrawals API error:", withdrawalsRes.status, errText);
+      throw new Error("Withdrawals API error: " + withdrawalsRes.status + " " + errText);
+    }
+
+    // Parse JSON responses
+    let studentsData;
+    try {
+      studentsData = await studentsRes.json();
+    } catch (e) {
+      console.error("Failed to parse students JSON:", e);
+      throw new Error("Could not parse students data");
+    }
+    let withdrawalsData;
+    try {
+      withdrawalsData = await withdrawalsRes.json();
+    } catch (e) {
+      console.error("Failed to parse withdrawals JSON:", e);
+      throw new Error("Could not parse withdrawals data");
+    }
+
+    // Handle array or object response for students
+    if (Array.isArray(studentsData)) {
+      students = studentsData;
+    } else if (Array.isArray(studentsData.users)) {
+      students = studentsData.users;
+    } else {
+      console.error("Unexpected students data format:", studentsData);
+      students = [];
+    }
+    filtered = students;
+    document.getElementById("total-students").textContent = students.length;
+
+    // Calculate total points and amount
+    let totalPts = 0, totalAmt = 0;
+    for (const u of students) {
+      const pts = typeof u.points === "number" ? u.points : 0;
+      totalPts += pts;
+      totalAmt += pts; // 1 point = ₦1
+    }
+    document.getElementById("total-points").textContent = totalPts;
+    document.getElementById("total-amount").textContent = formatNaira(totalAmt);
+
+    // Handle array or object response for withdrawals
+    let pendingCount = 0;
+    if (Array.isArray(withdrawalsData)) {
+      pendingCount = withdrawalsData.length;
+    } else if (Array.isArray(withdrawalsData.withdrawals)) {
+      pendingCount = withdrawalsData.withdrawals.length;
+    } else {
+      console.error("Unexpected withdrawals data format:", withdrawalsData);
+      pendingCount = 0;
+    }
+    document.getElementById("pending-withdrawals").textContent = pendingCount;
+
+    // Last updated timestamp
+    document.getElementById("last-updated").textContent = new Date().toLocaleString();
+
+    renderTable();
+
+  } catch (err) {
+    console.error("Dashboard load error:", err);
+    // Show error details for debugging
+    alert("Error loading dashboard data: " + (err.message || err));
+  }
+}
 
     // --- Table rendering
     function renderTable() {
