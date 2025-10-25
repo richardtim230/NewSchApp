@@ -835,39 +835,72 @@
         ]
     };
 
-    // Populate faculties
-    const facultySelect = document.getElementById('reg-faculty');
-    const deptSelect = document.getElementById('reg-department');
-    function populateFaculties() {
+// Helper: show a loading spinner inside a <select>
+function showSelectSpinner(selectElem, text = "Loading...") {
+    selectElem.innerHTML = `<option value="" disabled selected>${text} &#x21bb;</option>`;
+    selectElem.disabled = true;
+}
+
+// 1. Fetch faculties on page load
+const facultySelect = document.getElementById('reg-faculty');
+const deptSelect = document.getElementById('reg-department');
+let facultyList = [];
+let departmentList = [];
+
+async function fetchFaculties() {
+    showSelectSpinner(facultySelect, "Loading faculties");
+    facultyList = [];
+    try {
+        const res = await fetch('https://examguard-jmvj.onrender.com/api/faculties');
+        facultyList = await res.json();
         facultySelect.innerHTML = `<option value="">Select Faculty</option>`;
-        Object.keys(facultyDepartments).forEach(faculty => {
+        facultyList.forEach(fac => {
             const opt = document.createElement("option");
-            opt.value = faculty;
-            opt.textContent = faculty;
+            opt.value = fac._id; // use ObjectId
+            opt.textContent = fac.name;
             facultySelect.appendChild(opt);
         });
+        facultySelect.disabled = false;
+    } catch (err) {
+        facultySelect.innerHTML = `<option value="" disabled selected>Error loading faculties</option>`;
+        facultySelect.disabled = true;
     }
-    function populateDepartments(faculty) {
+}
+
+async function fetchDepartments(facultyId) {
+    showSelectSpinner(deptSelect, "Loading departments");
+    departmentList = [];
+    if (!facultyId) {
         deptSelect.innerHTML = `<option value="">Select Department</option>`;
-        if (facultyDepartments[faculty]) {
-            facultyDepartments[faculty].forEach(dept => {
-                const opt = document.createElement("option");
-                opt.value = dept;
-                opt.textContent = dept;
-                deptSelect.appendChild(opt);
-            });
-            deptSelect.disabled = false;
-        } else {
-            deptSelect.disabled = true;
-        }
-    }
-    facultySelect.addEventListener('change', function() {
-        populateDepartments(this.value);
-    });
-    document.addEventListener('DOMContentLoaded', function() {
-        populateFaculties();
         deptSelect.disabled = true;
-    });
+        return;
+    }
+    try {
+        const res = await fetch(`https://examguard-jmvj.onrender.com/api/departments?faculty=${facultyId}`);
+        departmentList = await res.json();
+        deptSelect.innerHTML = `<option value="">Select Department</option>`;
+        departmentList.forEach(dept => {
+            const opt = document.createElement("option");
+            opt.value = dept._id; // use ObjectId
+            opt.textContent = dept.name;
+            deptSelect.appendChild(opt);
+        });
+        deptSelect.disabled = false;
+    } catch (err) {
+        deptSelect.innerHTML = `<option value="" disabled selected>Error loading departments</option>`;
+        deptSelect.disabled = true;
+    }
+}
+
+facultySelect.addEventListener('change', function() {
+    fetchDepartments(this.value);
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    fetchFaculties();
+    showSelectSpinner(deptSelect, "Select faculty first");
+    deptSelect.disabled = true;
+});
 
     // Tab switching
     const tabBtns = document.querySelectorAll('.tab-btn');
@@ -1050,20 +1083,31 @@
         await setLoginLoading(false);
     });
 
-    // REGISTRATION HANDLING (with confirmation modal)
-    forms.register.addEventListener('submit', async function(e) {
+// REGISTRATION HANDLING (with confirmation modal)
+// This version expects faculty and department values to be ObjectIds from the <select> dropdowns.
+// It also displays the faculty/department names in the confirmation modal, not the ObjectId.
+
+forms.register.addEventListener('submit', async function(e) {
     e.preventDefault();
     // Collect all registration details
     const fullName = document.getElementById('reg-fullname').value.trim();
     const username = document.getElementById('reg-username').value.trim();
     const password = document.getElementById('reg-password').value;
     const email = document.getElementById('reg-email').value.trim();
-    const faculty = document.getElementById('reg-faculty').value.trim();
-    const department = document.getElementById('reg-department').value.trim();
+    const facultyId = document.getElementById('reg-faculty').value; // ObjectId
+    const departmentId = document.getElementById('reg-department').value; // ObjectId
     const level = document.getElementById('reg-level').value;
     const phone = document.getElementById('reg-phone').value.trim();
 
-    if (!fullName || !username || !password || !email || !faculty || !department || !level || !phone) {
+    // Look up the display name for faculty and department (for confirmation modal)
+    const facultyText = facultyId
+        ? document.querySelector('#reg-faculty option[value="' + facultyId + '"]').textContent
+        : "";
+    const departmentText = departmentId
+        ? document.querySelector('#reg-department option[value="' + departmentId + '"]').textContent
+        : "";
+
+    if (!fullName || !username || !password || !email || !facultyId || !departmentId || !level || !phone) {
         showStatusModal("error", "Registration Error", "All fields are required!");
         return;
     }
@@ -1071,13 +1115,13 @@
     // Get referral code from localStorage if user landed via referral link
     const referralCode = localStorage.getItem('pendingReferral') || "";
 
-    // Show confirmation modal
+    // Show confirmation modal with display names
     showConfirmationModal({
         "Full Name": fullName,
         "Username": username,
         "Email": email,
-        "Faculty": faculty,
-        "Department": department,
+        "Faculty": facultyText,
+        "Department": departmentText,
         "Level": level,
         "Phone": phone,
         ...(referralCode ? { "Referral Code": referralCode } : {})
@@ -1093,13 +1137,19 @@
                     password,
                     email,
                     fullname: fullName,
-                    faculty,
-                    department,
+                    faculty: facultyId,   // Send as ObjectId
+                    department: departmentId, // Send as ObjectId
                     level,
                     phone,
                     ref: referralCode // Pass referral code if present
                 })
             });
+            // ... handle response as before ...
+        } finally {
+            await setRegLoading(false);
+        }
+    });
+});
             let registerData = await registerResponse.json();
             if (registerResponse.ok) {
                 localStorage.setItem('token', registerData.token);
