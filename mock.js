@@ -198,36 +198,64 @@ async function setRegLoading(isLoading) {
 }
 
 // ====== LOGIN HANDLING ======
-forms.login.addEventListener('submit', async function(e) {
-    e.preventDefault();
-    const username = document.getElementById('login-username').value.trim();
-    const password = document.getElementById('login-password').value;
-    if (!validateUsername(username) || !password) {
-        showStatusModal("error", "Login Error", "Username and password are required!");
-        return;
-    }
-    showLoadingModal("Logging in...", "Please wait while we sign you in.");
-    await setLoginLoading(true);
-    try {
-        let loginResponse = await fetch("https://examguide.onrender.com/api/auth/login", {
-            method: "POST",
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
-        });
-        let result = await loginResponse.json();
-        await setLoginLoading(false);
-        if (loginResponse.ok && result.token) {
-            localStorage.setItem('token', result.token);
-            showStatusModal("success", "Login Successful", "Redirecting to dashboard...");
-            setTimeout(() => window.location.href = "dashboard.html", 1200);
-        } else {
-            showStatusModal("error", "Login Failed", result.message || "Could not login, check your credentials.");
+    // LOGIN HANDLING
+    forms.login.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const username = document.getElementById('login-username').value.trim();
+        const password = document.getElementById('login-password').value;
+        if (!validateUsername(username) || !password) {
+            showStatusModal("error","Login Error","Both fields are required!");
+            return;
         }
-    } catch (err) {
+        showLoadingModal("Logging in...","Please wait while we log you in.");
+        await setLoginLoading(true);
+
+        try {
+            let loginResponse = await fetch("https://examguide.onrender.com/api/auth/login", {
+                method: "POST",
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({username, password})
+            });
+            let loginData = await loginResponse.json();
+
+            if (loginResponse.ok) {
+                localStorage.setItem('token', loginData.token);
+                // Get user role and redirect accordingly
+                try {
+                    let profileResp = await fetch("https://examguide.onrender.com/api/auth/me", {
+                        headers: { 'Authorization': 'Bearer ' + loginData.token }
+                    });
+                    let profileData = await profileResp.json();
+                    if (profileResp.ok && profileData.user) {
+                        const role = profileData.user.role;
+                        let roleMsg = "Welcome!";
+                        switch (role) {
+                            case 'superadmin': roleMsg = "Welcome, Superadmin!"; break;
+                            case 'admin': roleMsg = "Welcome, Admin!"; break;
+                            case 'uploader': roleMsg = "Welcome, Uploader!"; break;
+                            case 'pq-uploader': roleMsg = "Welcome, PQ-Uploader!"; break;
+                            case 'blogger': roleMsg = "Welcome, Blogger!"; break;
+                            default: roleMsg = "Welcome, Student!";
+                        }
+                        showStatusModal("success", "Login Successful", roleMsg, false);
+                        setTimeout(() => { window.location.href = (role === 'superadmin') ? "supaadmin.html" : "loader.html"; }, 1300);
+                        await setLoginLoading(false);
+                        return;
+                    }
+                } catch {
+                    showStatusModal("success", "Login Successful", "You have been logged in!", false);
+                    setTimeout(() => { window.location.href = "loader.html"; }, 1200);
+                }
+                await setLoginLoading(false);
+                return;
+            }
+            showStatusModal("error","Login Failed",loginData.message || "Login failed");
+        } catch (err) {
+            showStatusModal("error","Network Error","Network or server error. Please try again.");
+        }
         await setLoginLoading(false);
-        showStatusModal("error", "Network Error", "Could not connect to server.");
-    }
-});
+    });
+
 
 // ====== REGISTRATION HANDLING (with confirmation modal) ======
 forms.register.addEventListener('submit', async function(e) {
