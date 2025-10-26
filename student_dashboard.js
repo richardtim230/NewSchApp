@@ -2611,8 +2611,11 @@ async function initDashboard() {
 window.addEventListener("DOMContentLoaded", initDashboard);
 window.addEventListener("DOMContentLoaded", function() {
   document.body.addEventListener("click", function(e) {
-    // Exempt any click inside the send-message-form (including the button)
-    if (e.target.closest("#send-message-form")) return;
+    // Exempt any click inside the send-message-form or chatbotForm
+    if (
+      e.target.closest("#send-message-form") ||
+      e.target.closest("#chatbotForm")
+    ) return;
     let btn = e.target.closest("button");
     if (
       btn &&
@@ -2628,6 +2631,7 @@ window.addEventListener("DOMContentLoaded", function() {
       e.preventDefault();
 
       let targetUrl = null;
+
       if (btn.dataset && btn.dataset.examSetId) {
         targetUrl = `test.html?examSet=${encodeURIComponent(btn.dataset.examSetId)}`;
       } else if (btn.getAttribute("onclick")) {
