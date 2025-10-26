@@ -4,7 +4,66 @@ const API_BASE = "https://examguard-jmvj.onrender.com/api";
 const POSTS_API = API_BASE + "/public/posts";
 const USERS_API = API_BASE + "/users";
 const COMMENTS_API = API_BASE + "/posts";
+// --- Award reading points for blog task (silent, for dashboard tracking) ---
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const postId = params.get("id");
+  if (!postId) return;
+  const blogKey = `readingBlog:${postId}`;
+  const rewardedKey = `rewardedBlog:${postId}`;
 
+  // Only proceed if the reading key is set and not yet rewarded
+  if (localStorage.getItem(blogKey) && !localStorage.getItem(rewardedKey)) {
+    let activeSeconds = 0;
+    let interval = null;
+
+    function startTimer() {
+      if (interval) return;
+      interval = setInterval(() => {
+        if (document.visibilityState === "visible") {
+          activeSeconds++;
+          // Give points after 2 minutes (120 seconds) active time
+          if (activeSeconds >= 120) {
+            clearInterval(interval);
+            // API call to award reading points
+            fetch('https://examguard-jmvj.onrender.com/api/rewards/reading', {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: 'Bearer ' + (localStorage.getItem("token") || "")
+              },
+              body: JSON.stringify({ postId, points: 5 }) // adjust points if needed
+            }).then(() => {
+              // Mark as rewarded and remove reading key
+              localStorage.setItem(rewardedKey, "1");
+              localStorage.removeItem(blogKey);
+              // No notification shown
+            }).catch(() => {
+              // Even if failed, prevent spamming backend
+              localStorage.setItem(rewardedKey, "1");
+              localStorage.removeItem(blogKey);
+            });
+          }
+        }
+      }, 1000); // every 1 second
+    }
+
+    // Pause/resume on tab visibility
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        startTimer();
+      } else {
+        clearInterval(interval);
+        interval = null;
+      }
+    });
+
+    // Start timer if page is visible
+    if (document.visibilityState === "visible") {
+      startTimer();
+    }
+  }
+})();
 // --- Efficient endpoints ---
 async function fetchMainPost(postId) {
   const res = await fetch(`${POSTS_API}/${postId}`);
