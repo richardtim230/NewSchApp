@@ -414,15 +414,15 @@ function setupAddReview(productId) {
 // --- Related Items ---
 function renderRelatedItems(product, products) {
   let related = products.filter(p=>p._id !== product._id && p.category === product.category);
-  if (related.length < 4) {
+  if (related.length < 6) {
     const others = products.filter(p=>p._id !== product._id && !related.includes(p));
-    for (let i=related.length; i<4 && others.length; i++) {
+    for (let i=related.length; i<6 && others.length; i++) {
       const idx = Math.floor(Math.random()*others.length);
       related.push(others[idx]);
       others.splice(idx,1);
     }
   }
-  document.getElementById("related-items").innerHTML = related.slice(0,4).map(p=>`
+  document.getElementById("related-items").innerHTML = related.slice(0,6).map(p=>`
     <div class="bg-white rounded-xl shadow overflow-hidden hover:scale-105 transition">
       <a href="items.html?id=${p._id||p.id}" class="block">
         <img src="${(Array.isArray(p.images) && p.images[0]) || p.img || p.imageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(p.title || 'Product') + '&background=eee&color=263159&rounded=true'}" class="w-full h-36 object-cover"/>
