@@ -22,33 +22,46 @@ const COMMENTS_API = API_BASE + "/posts";
       interval = setInterval(() => {
         if (document.visibilityState === "visible") {
           activeSeconds++;
-          // Give points after 2 minutes (120 seconds) active time
           if (activeSeconds >= 120) {
             clearInterval(interval);
-            // API call to award reading points
+            const token = localStorage.getItem("token");
+            if (!token) {
+              // Not logged in, cannot credit points!
+              localStorage.setItem(rewardedKey, "1");
+              localStorage.removeItem(blogKey);
+              console.warn("No user token found. User is not logged in, cannot award reading points.");
+              return;
+            }
             fetch('https://examguard-jmvj.onrender.com/api/rewards/reading', {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
-                Authorization: 'Bearer ' + (localStorage.getItem("token") || "")
+                Authorization: "Bearer " + token
               },
-              body: JSON.stringify({ postId, points: 5 }) // adjust points if needed
-            }).then(() => {
-              // Mark as rewarded and remove reading key
-              localStorage.setItem(rewardedKey, "1");
-              localStorage.removeItem(blogKey);
-              // No notification shown
-            }).catch(() => {
-              // Even if failed, prevent spamming backend
+              body: JSON.stringify({ postId, points: 5 })
+            }).then(async resp => {
+              if (resp.ok) {
+                localStorage.setItem(rewardedKey, "1");
+                localStorage.removeItem(blogKey);
+                // Optionally, update UI (silent)
+                console.log("Reading reward credited for post", postId);
+              } else {
+                // If unauthorized or error, log for debug
+                const err = await resp.text();
+                console.warn("Failed to award reading reward:", err);
+                localStorage.setItem(rewardedKey, "1");
+                localStorage.removeItem(blogKey);
+              }
+            }).catch(err => {
+              console.warn("Failed to award reading reward:", err);
               localStorage.setItem(rewardedKey, "1");
               localStorage.removeItem(blogKey);
             });
           }
         }
-      }, 1000); // every 1 second
+      }, 1000);
     }
 
-    // Pause/resume on tab visibility
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") {
         startTimer();
@@ -58,7 +71,6 @@ const COMMENTS_API = API_BASE + "/posts";
       }
     });
 
-    // Start timer if page is visible
     if (document.visibilityState === "visible") {
       startTimer();
     }
