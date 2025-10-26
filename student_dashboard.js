@@ -2593,11 +2593,12 @@ async function initDashboard() {
 window.addEventListener("DOMContentLoaded", initDashboard);
 window.addEventListener("DOMContentLoaded", function() {
   document.body.addEventListener("click", function(e) {
+    // Exempt any click inside the send-message-form (including the button)
+    if (e.target.closest("#send-message-form")) return;
     let btn = e.target.closest("button");
     if (
       btn &&
       btn.id !== "menu-toggle" &&
-      // Exempt Start Practice button by form
       !(btn.form && btn.form.id === "practice-config-form") &&
       !(btn.id && btn.id.startsWith("adCancelBtn")) &&
       !(btn.id && btn.id.startsWith("close")) &&
@@ -2609,7 +2610,6 @@ window.addEventListener("DOMContentLoaded", function() {
       e.preventDefault();
 
       let targetUrl = null;
-
       if (btn.dataset && btn.dataset.examSetId) {
         targetUrl = `test.html?examSet=${encodeURIComponent(btn.dataset.examSetId)}`;
       } else if (btn.getAttribute("onclick")) {
@@ -2627,5 +2627,5 @@ window.addEventListener("DOMContentLoaded", function() {
       showAdModal(targetUrl);
       return false;
     }
-  }, true);
+}, true);
 });
