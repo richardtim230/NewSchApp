@@ -25,14 +25,13 @@ function showAdModal(targetUrl) {
 }
 
 function closeAdModal(proceed) {
-  clearInterval(adModalTimer);
-  document.getElementById("adModal").style.display = "none";
-  document.getElementById("adIframe").src = "";
-  if (proceed && adModalTargetUrl) {
-  // For internal navigation, redirect in the same tab
-  window.location.href = adModalTargetUrl;
-  adModalTargetUrl = "";
-}
+    clearInterval(adModalTimer);
+    document.getElementById("adModal").style.display = "none";
+    document.getElementById("adIframe").src = "";
+    if (proceed && adModalTargetUrl) {
+        window.location.href = adModalTargetUrl; // This is the key line!
+        adModalTargetUrl = "";
+    }
 }
 
 document.getElementById("adCancelBtn").onclick = function() {
