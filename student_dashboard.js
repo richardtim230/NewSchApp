@@ -39,20 +39,17 @@ document.getElementById("adCancelBtn").onclick = function() {
 };
 
 // Checks if the current user has received a reading reward for a specific postId
+// Call this on dashboard load or when rendering blog/article reading tasks
 async function hasUserReadBlog(postId) {
   const token = localStorage.getItem("token");
   if (!token) return false;
   try {
-    const resp = await fetch("https://examguard-jmvj.onrender.com/api/rewards/me", {
+    const resp = await fetch("https://examguard-jmvj.onrender.com/api/rewards/reading", {
       headers: { Authorization: "Bearer " + token }
     });
     if (!resp.ok) return false;
-    const rewards = await resp.json();
-    // rewards should be an array of reward objects
-    // Each reward object should have at least: { type: "reading", postId: ... }
-    return Array.isArray(rewards) && rewards.some(
-      r => r.type === "reading" && r.postId === postId
-    );
+    const readingRewards = await resp.json();
+    return Array.isArray(readingRewards) && readingRewards.some(r => r.postId === postId);
   } catch (e) {
     return false;
   }
