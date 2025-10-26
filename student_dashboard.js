@@ -37,6 +37,26 @@ function closeAdModal(proceed) {
 document.getElementById("adCancelBtn").onclick = function() {
   closeAdModal(false);
 };
+
+// Checks if the current user has received a reading reward for a specific postId
+async function hasUserReadBlog(postId) {
+  const token = localStorage.getItem("token");
+  if (!token) return false;
+  try {
+    const resp = await fetch("https://examguard-jmvj.onrender.com/api/rewards/me", {
+      headers: { Authorization: "Bearer " + token }
+    });
+    if (!resp.ok) return false;
+    const rewards = await resp.json();
+    // rewards should be an array of reward objects
+    // Each reward object should have at least: { type: "reading", postId: ... }
+    return Array.isArray(rewards) && rewards.some(
+      r => r.type === "reading" && r.postId === postId
+    );
+  } catch (e) {
+    return false;
+  }
+}                                   
 // =================== GLOBAL STATE ===================
 let student = {};
 let facultiesCache = [];
@@ -1933,6 +1953,7 @@ async function renderTasksCenter() {
       let icon = "";
       let colorClass = "";
       if (task.type === "post") {
+        const completed = await hasUserReadBlog(task.postId);
         icon = '<i class="bi bi-lightbulb-fill text-xl"></i>';
         colorClass = "text-indigo-600";
       } else if (task.type === "listing") {
