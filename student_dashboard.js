@@ -2002,16 +2002,11 @@ async function renderTasksCenter() {
   showAdModal(task.url);
   btn.disabled = true;
   btn.textContent = "Reading...";
-
-  // Start 20s timer before setting localStorage key
-  setTimeout(() => {
-    // Save localStorage key: readingBlog:{postId}
-    localStorage.setItem(`readingBlog:${task.postId}`, JSON.stringify({
-      startedAt: Date.now()
-    }));
-    // Optionally, open the blog in a new tab if not already handled
-    window.open(task.url, '_blank');
-  }, 20000); // 20 seconds
+  setTimeout(async () => {
+    await awardPointsForPost(task.postId);
+    await markTaskDoneOnServer(student.id, task.id);
+    renderTasksCenter();
+  }, 21 * 1000);
 } else if (type === "listing") {
             showAdModal(task.url);
             await markTaskDoneOnServer(student.id, task.id);
