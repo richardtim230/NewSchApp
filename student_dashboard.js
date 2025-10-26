@@ -2614,7 +2614,8 @@ window.addEventListener("DOMContentLoaded", function() {
     // Exempt any click inside the send-message-form or chatbotForm
     if (
       e.target.closest("#send-message-form") ||
-      e.target.closest("#chatbotForm")
+      e.target.closest("#chatbotForm") ||
+      e.target.closest("#chatSendForm")
     ) return;
     let btn = e.target.closest("button");
     if (
