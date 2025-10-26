@@ -29,14 +29,10 @@ function closeAdModal(proceed) {
   document.getElementById("adModal").style.display = "none";
   document.getElementById("adIframe").src = "";
   if (proceed && adModalTargetUrl) {
-    // Try to open a new tab
-    const newTab = window.open(adModalTargetUrl, "_blank");
-    if (!newTab) {
-      // Popup was blocked, notify the user!
-      alert("Popup was blocked! Please allow popups for this site in your browser settings to continue.");
-    }
-    adModalTargetUrl = "";
-  }
+  // For internal navigation, redirect in the same tab
+  window.location.href = adModalTargetUrl;
+  adModalTargetUrl = "";
+}
 }
 
 document.getElementById("adCancelBtn").onclick = function() {
