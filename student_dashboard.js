@@ -2603,7 +2603,9 @@ window.addEventListener("DOMContentLoaded", function() {
       !(btn.id && btn.id.startsWith("adCancelBtn")) &&
       !(btn.id && btn.id.startsWith("close")) &&
       !btn.classList.contains("close-modal") &&
-      !btn.classList.contains("modal-close")
+      !btn.classList.contains("modal-close") &&
+      btn.id !== "chatbotSendBtn" &&
+      btn.id !== "sendMessageBtn"
     ) {
       e.preventDefault();
 
