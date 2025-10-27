@@ -2006,7 +2006,7 @@ async function renderTasksCenter() {
     await awardPointsForPost(task.postId);
     await markTaskDoneOnServer(student.id, task.id);
     renderTasksCenter();
-  }, 21 * 1000);
+  }, 15 * 1000);
 } else if (type === "listing") {
             showAdModal(task.url);
             await markTaskDoneOnServer(student.id, task.id);
