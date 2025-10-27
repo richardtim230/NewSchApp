@@ -2652,3 +2652,21 @@ window.addEventListener("DOMContentLoaded", function() {
     }
 }, true);
 });
+
+
+// =================== AI Study Assistant Form Handler ===================
+document.getElementById("aiStudyForm").onsubmit = function(e) {
+    e.preventDefault();
+    const topic = document.getElementById("aiStudyInput").value.trim();
+    const errorDiv = document.getElementById("aiStudyError");
+    if (!topic) {
+        errorDiv.textContent = "Please enter a topic!";
+        errorDiv.classList.remove("hidden");
+        return;
+    }
+    errorDiv.classList.add("hidden");
+    const url = '/ai-lecture.html?topic=' + encodeURIComponent(topic);
+    adModalTargetUrl = url; // <-- Set redirect target
+    showAdModal(url);
+};
+
