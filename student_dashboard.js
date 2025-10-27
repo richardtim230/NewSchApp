@@ -2613,6 +2613,10 @@ window.addEventListener("DOMContentLoaded", function() {
   document.body.addEventListener("click", function(e) {
     // Exempt any click inside the send-message-form or chatbotForm
     if (
+      e.target.id === "aiStudyReadNowBtn" ||
+      (e.target.closest && e.target.closest("#aiStudyReadNowBtn"))
+    ) return;
+    if (
       e.target.closest("#send-message-form") ||
       e.target.closest("#chatbotForm") ||
       e.target.closest("#chatSendForm")
@@ -2666,7 +2670,6 @@ document.getElementById("aiStudyForm").onsubmit = function(e) {
     }
     errorDiv.classList.add("hidden");
     const url = '/ai-lecture.html?topic=' + encodeURIComponent(topic);
-    adModalTargetUrl = url; // <-- Set redirect target
-    showAdModal(url);
+    window.location.href = url; // <-- Direct navigation, NO ad modal!
 };
 
