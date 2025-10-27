@@ -248,11 +248,18 @@ async function incrementPostViews(postId) {
   mainPost = await fetchMainPost(postId) || mainPost;
 
   // Format post details
-  const authorId = mainPost.authorId || mainPost.user || mainPost.author; // fallback
-  let authorData = {};
-  if (authorId) {
-    authorData = await fetchUserInfo(authorId);
-  }
+  const authorId =
+  typeof mainPost.authorId === "string" ? mainPost.authorId :
+  typeof mainPost.user === "string" ? mainPost.user :
+  typeof mainPost.user === "object" && mainPost.user._id ? mainPost.user._id :
+  typeof mainPost.author === "string" ? mainPost.author :
+  typeof mainPost.author === "object" && mainPost.author._id ? mainPost.author._id :
+  null;
+
+let authorData = {};
+if (authorId) {
+  authorData = await fetchUserInfo(authorId);
+}
 
   const authorName = authorData.fullname || authorData.username || mainPost.authorName || "Anonymous";
   const date = mainPost.date ? new Date(mainPost.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : "";
