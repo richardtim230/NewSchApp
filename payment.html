@@ -12,7 +12,7 @@
     .fade-in { animation: fadeIn 0.4s; }
     @keyframes fadeIn { from{opacity:0;transform:translateY(12px);} to{opacity:1;transform:translateY(0);} }
     .modal-backdrop { background: rgba(0,0,0,0.25); }
-    .spinner { border: 4px solid #e5e7eb; border-top: 4px solid #2563eb; border-radius: 50%; width: 32px; height: 32px; animation: spin 1s linear infinite; }
+    .spinner { border: 4px solid #e5e7eb; border-top: 4px solid #2563eb; border-radius: 50%; width: 28px; height: 28px; animation: spin 1s linear infinite; }
     @keyframes spin { 100% { transform: rotate(360deg); } }
   </style>
 </head>
@@ -75,7 +75,7 @@
     let pendingOrders = [];
     let singleSellerId = null;
 
-    // Fetch pending payment orders and render summary with product images
+    // Fetch pending payment orders and render summary
     async function loadOrderSummary() {
       const summaryDiv = document.getElementById('order-summary');
       summaryDiv.innerHTML = '<div class="spinner mx-auto my-6"></div>';
@@ -102,26 +102,25 @@
         singleSellerId = sellerIds.length === 1 ? sellerIds[0] : null;
 
         let total = 0;
-        // For each order, fetch product image if not present
-        const ordersWithImages = await Promise.all(pending.map(async order => {
-          let image = order.productImage;
-          if (!image && order.productId) {
+        summaryDiv.innerHTML = await Promise.all(pending.map(async order => {
+          total += (order.price || 0) * (order.quantity || 1);
+
+          // Try to get product image if not in order
+          let productImg = order.productImage;
+          if (!productImg && order.productId) {
             try {
               const prodRes = await fetch(BACKEND + `/api/blogger-dashboard/public/listings/${order.productId}`);
               if (prodRes.ok) {
-                const prod = await prodRes.json();
-                image = prod.images?.[0] || prod.img || prod.imageUrl || '';
+                const product = await prodRes.json();
+                productImg = (product.images && product.images[0]) || product.img || product.imageUrl;
               }
             } catch {}
           }
-          return { ...order, _productImage: image };
-        }));
+          productImg = productImg || 'https://ui-avatars.com/api/?name=Product&background=eee&color=263159&rounded=true';
 
-        summaryDiv.innerHTML = ordersWithImages.map(order => {
-          total += (order.price || 0) * (order.quantity || 1);
           return `
             <div class="flex gap-3 items-center mb-3 bg-gray-50 rounded p-3 shadow">
-              <img src="${order._productImage || 'https://ui-avatars.com/api/?name=Product&background=eee&color=263159&rounded=true'}" class="w-16 h-16 object-cover rounded-md border"/>
+              <img src="${productImg}" class="w-16 h-16 object-cover rounded-md border"/>
               <div class="flex-1">
                 <div class="font-semibold text-blue-900 text-base">${order.productTitle || "Product"}</div>
                 <div class="text-xs text-gray-500">Qty: ${order.quantity}</div>
@@ -129,7 +128,7 @@
               <div class="font-bold text-yellow-700">&#8358;${Number(order.price||0).toLocaleString()}</div>
             </div>
           `;
-        }).join('') +
+        })).then(items => items.join('')) +
         `<div class="flex justify-between items-center mt-5 border-t pt-4">
           <span class="text-lg font-bold text-gray-700">Total</span>
           <span class="text-xl font-bold text-green-700">&#8358;${total.toLocaleString()}</span>
@@ -146,7 +145,7 @@
       e.preventDefault();
       document.getElementById('error-msg').classList.add('hidden');
       const method = document.querySelector('input[name="paymentMethod"]:checked').value;
-      if (!pendingOrders.length) {
+      if (!pendingOrders || !pendingOrders.length) {
         document.getElementById('error-msg').textContent = "You have no pending payment orders.";
         document.getElementById('error-msg').classList.remove('hidden');
         return;
@@ -170,7 +169,7 @@
     document.getElementById('agreeBtn').onclick = function() {
       document.getElementById('agreementModal').classList.add('hidden');
       // Proceed to show seller info or confirmation for direct payment
-      alert("Please contact the seller directly to arrange payment and delivery. Seller ID: " + (singleSellerId || "Seller") + "\n\nThe ExamGuard platform will not be involved further in this transaction.");
+      alert("Please contact the seller directly to arrange payment and delivery.\n\nThe ExamGuard platform will not be involved further in this transaction.");
       // Optionally: Redirect to a page with seller's contact/info
     };
     document.getElementById('cancelBtn').onclick = function() {
