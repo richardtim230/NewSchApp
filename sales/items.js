@@ -119,8 +119,18 @@ async function addReview(productId, rating, comment) {
   return false;
 }
 
+// --- Fetch Seller Profile ---
+async function fetchSellerProfile(sellerIdOrUsername) {
+  if (!sellerIdOrUsername) return null;
+  try {
+    let res = await fetch(BACKEND + "/api/users/" + sellerIdOrUsername);
+    if (res.ok) return await res.json();
+  } catch {}
+  return null;
+}
+
 // --- Render Product Details ---
-function renderProduct(product) {
+async function renderProduct(product) {
   currentProduct = product;
   document.getElementById("breadcrumb-title").textContent = product.title || "";
   document.getElementById("product-title").textContent = product.title || "";
@@ -141,12 +151,26 @@ function renderProduct(product) {
   let tags = Array.isArray(product.tags) ? product.tags : [];
   document.getElementById("product-tags").innerHTML = tags.map(t=>`<span class="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs">${t}</span>`).join("");
 
-  // Seller
-  const sName = product.seller || product.authorName || product.author || "Seller";
-  document.getElementById("seller-name").textContent = sName;
-  document.getElementById("seller-avatar").textContent = (typeof sName === "string" && sName[0]) ? sName[0].toUpperCase() : "?";
-  document.getElementById("seller-meta").textContent = product.sellerMeta || "";
-  document.getElementById("seller-profile-link").href = `mart.html?seller=${encodeURIComponent(sName)}`;
+  // Seller (fetch full profile if possible)
+  let sellerId = product.sellerId || product.authorId || product.seller;
+  let sellerProfile = null;
+  if (sellerId) {
+    sellerProfile = await fetchSellerProfile(sellerId);
+  }
+  if (sellerProfile) {
+    document.getElementById("seller-name").textContent = sellerProfile.fullname || sellerProfile.username || sellerProfile.name || "Seller";
+    document.getElementById("seller-avatar").innerHTML = sellerProfile.profilePic
+      ? `<img src="${sellerProfile.profilePic}" class="w-12 h-12 object-cover rounded-full"/>`
+      : ((sellerProfile.fullname || sellerProfile.username || sellerProfile.name || "S")[0].toUpperCase());
+    document.getElementById("seller-meta").textContent = sellerProfile.bio || sellerProfile.email || "";
+    document.getElementById("seller-profile-link").href = `mart.html?seller=${encodeURIComponent(sellerProfile._id || sellerProfile.username)}`;
+  } else {
+    const sName = product.seller || product.authorName || product.author || "Seller";
+    document.getElementById("seller-name").textContent = sName;
+    document.getElementById("seller-avatar").textContent = (typeof sName === "string" && sName[0]) ? sName[0].toUpperCase() : "?";
+    document.getElementById("seller-meta").textContent = product.sellerMeta || "";
+    document.getElementById("seller-profile-link").href = `mart.html?seller=${encodeURIComponent(sName)}`;
+  }
 
   // --- Images and Thumbnails ---
   let imgs = [];
@@ -564,7 +588,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
   allProducts = await fetchProducts();
   const product = await fetchProduct(pageProductId);
-  renderProduct(product);
+  await renderProduct(product); // <-- now async
 
   // Ensure currentProduct uses the canonical URL id to avoid mismatches
   currentProduct = currentProduct || product;
