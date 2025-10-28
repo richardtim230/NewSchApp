@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Choose Payment Method | ExamGuard Marketplace</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.5.1/flowbite.min.css" rel="stylesheet"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.5.1/flowbite.min.js"></script>
+  <style>
+    body { background: #f3f4f6; }
+    .fade-in { animation: fadeIn 0.4s; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(12px);} to{opacity:1;transform:translateY(0);} }
+    .modal-backdrop { background: rgba(0,0,0,0.25); }
+  </style>
+</head>
+<body>
+  <div class="min-h-screen flex flex-col items-center justify-center px-4">
+    <div class="w-full max-w-lg mx-auto bg-white rounded-xl shadow-xl p-6 fade-in">
+      <h2 class="text-2xl md:text-3xl font-bold text-center text-blue-700 mb-2">Checkout & Payment</h2>
+      <p class="text-center text-gray-600 mb-6">Please select your preferred payment method below to complete your order.</p>
+      <div id="cart-summary" class="mb-6"></div>
+      <form id="paymentForm" class="space-y-5">
+        <div>
+          <label class="block font-semibold mb-2 text-gray-700">Select Payment Method:</label>
+          <div class="flex flex-col gap-3">
+            <label class="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:border-blue-500 transition">
+              <input type="radio" name="paymentMethod" value="paystack" class="accent-blue-600" checked>
+              <span>
+                <span class="font-semibold text-blue-700">Paystack Secure Payment</span>
+                <span class="block text-xs text-gray-500">Recommended: Safe, fast, and protected by ExamGuard</span>
+              </span>
+              <img src="https://assets.prestmit.com/payment-gateways/paystack.svg" alt="Paystack" class="w-7 h-7 ml-auto"/>
+            </label>
+            <label class="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:border-yellow-500 transition">
+              <input type="radio" name="paymentMethod" value="direct" class="accent-yellow-500">
+              <span>
+                <span class="font-semibold text-yellow-700">Direct Seller Payment</span>
+                <span class="block text-xs text-gray-500">Not recommended: Pay seller directly, no ExamGuard protection</span>
+              </span>
+              <img src="https://img.icons8.com/external-flaticons-flat-flat-icons/64/000000/external-bank-payment-flaticons-flat-flat-icons-2.png" alt="Seller Pay" class="w-7 h-7 ml-auto"/>
+            </label>
+          </div>
+        </div>
+        <button type="submit" class="w-full py-3 rounded-lg font-bold text-white bg-blue-600 hover:bg-blue-700 transition text-lg">Continue to Payment</button>
+      </form>
+      <div id="error-msg" class="text-red-600 text-center mt-4 hidden"></div>
+    </div>
+  </div>
+  <!-- Agreement Policy Modal -->
+  <div id="agreementModal" tabindex="-1" class="fixed top-0 left-0 right-0 z-50 hidden w-full h-full items-center justify-center modal-backdrop fade-in">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-auto p-7 relative">
+      <h3 class="text-xl font-bold mb-3 text-yellow-700">Direct Payment Agreement Policy</h3>
+      <div class="text-gray-700 mb-4 text-sm">
+        <p class="mb-3">
+          <span class="font-bold text-red-500">Warning:</span> You are about to pay the seller directly, outside the ExamGuard platform.
+        </p>
+        <ul class="list-disc pl-6 mb-3">
+          <li>ExamGuard will <b>NOT</b> monitor or guarantee this transaction.</li>
+          <li>If there is any dispute, fraud, or loss, ExamGuard cannot assist or be held responsible.</li>
+          <li>Proceed only if you trust the seller 100%.</li>
+        </ul>
+        <p class="italic text-gray-500">For best safety, always use the Paystack secure payment option.</p>
+      </div>
+      <div class="flex gap-3 justify-end mt-6">
+        <button id="agreeBtn" class="bg-yellow-600 hover:bg-yellow-700 text-white px-5 py-2 rounded font-semibold transition">I Agree & Continue</button>
+        <button id="cancelBtn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-5 py-2 rounded font-semibold transition">Cancel</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    const BACKEND = "https://examguard-jmvj.onrender.com";
+    let cart = [];
+    let singleSellerId = null;
+    let singleSellerName = null;
+    // Fetch cart items and render summary
+    async function loadCartSummary() {
+      const cartSummaryDiv = document.getElementById('cart-summary');
+      cartSummaryDiv.innerHTML = '<div class="spinner mx-auto my-6"></div>';
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(BACKEND + "/api/cart", { headers: { "Authorization": "Bearer " + token } });
+        const data = await res.json();
+        if (!data.items || !data.items.length) {
+          cartSummaryDiv.innerHTML = '<div class="text-gray-500 text-center py-7">Your cart is empty.</div>';
+          cart = [];
+          return;
+        }
+        cart = data.items;
+        // Check if all items are from the same seller
+        let sellerIds = [];
+        let sellerNames = [];
+        for (const item of cart) {
+          // Try to get the sellerId from product details
+          let product = {};
+          try {
+            const prodRes = await fetch(BACKEND + `/api/blogger-dashboard/public/listings/${item.productId}`);
+            if (prodRes.ok) product = await prodRes.json();
+          } catch {}
+          if (product.sellerId) sellerIds.push(product.sellerId);
+          else if (product.seller) sellerNames.push(product.seller);
+          else sellerNames.push("Unknown");
+        }
+        sellerIds = [...new Set(sellerIds)];
+        sellerNames = [...new Set(sellerNames)];
+        // If all have same sellerId, it's a single seller
+        if (sellerIds.length === 1) {
+          singleSellerId = sellerIds[0];
+          singleSellerName = sellerNames[0] || "Seller";
+        } else if (!sellerIds.length && sellerNames.length === 1) {
+          singleSellerId = null;
+          singleSellerName = sellerNames[0];
+        } else {
+          singleSellerId = null;
+          singleSellerName = null;
+        }
+        // Render cart summary
+        let total = 0;
+        cartSummaryDiv.innerHTML = cart.map(item => {
+          const title = item.latestTitle || item.title || "Product";
+          const price = Number(item.latestPrice ?? item.price ?? 0);
+          total += price * (item.quantity || 1);
+          const image = item.latestImage || item.image || 'https://ui-avatars.com/api/?name=Product&background=eee&color=263159&rounded=true';
+          return `
+            <div class="flex gap-3 items-center mb-3 bg-gray-50 rounded p-3 shadow">
+              <img src="${image}" class="w-16 h-16 object-cover rounded-md border"/>
+              <div class="flex-1">
+                <div class="font-semibold text-blue-900 text-base">${title}</div>
+                <div class="text-xs text-gray-500">Qty: ${item.quantity}</div>
+              </div>
+              <div class="font-bold text-yellow-700">&#8358;${price.toLocaleString()}</div>
+            </div>
+          `;
+        }).join('') +
+        `<div class="flex justify-between items-center mt-5 border-t pt-4">
+          <span class="text-lg font-bold text-gray-700">Total</span>
+          <span class="text-xl font-bold text-green-700">&#8358;${total.toLocaleString()}</span>
+        </div>`;
+      } catch {
+        cartSummaryDiv.innerHTML = '<div class="text-red-500 text-center py-7">Failed to load cart.</div>';
+        cart = [];
+      }
+    }
+    loadCartSummary();
+
+    // Payment logic
+    document.getElementById('paymentForm').onsubmit = async function(e) {
+      e.preventDefault();
+      document.getElementById('error-msg').classList.add('hidden');
+      const method = document.querySelector('input[name="paymentMethod"]:checked').value;
+      if (!cart.length) {
+        document.getElementById('error-msg').textContent = "Your cart is empty.";
+        document.getElementById('error-msg').classList.remove('hidden');
+        return;
+      }
+      if (method === "paystack") {
+        // Redirect to Paystack payment page (replace with your actual payment page/route)
+        window.location.href = "/paystack_checkout.html";
+        return;
+      }
+      if (method === "direct") {
+        // Check if cart has only one seller
+        if (!singleSellerId) {
+          document.getElementById('error-msg').textContent = "Direct seller payment is only available if all products are from the same seller.";
+          document.getElementById('error-msg').classList.remove('hidden');
+          return;
+        }
+        // Show agreement modal
+        document.getElementById('agreementModal').classList.remove('hidden');
+      }
+    };
+    // Agreement Modal logic
+    document.getElementById('agreeBtn').onclick = function() {
+      document.getElementById('agreementModal').classList.add('hidden');
+      // Proceed to show seller info or confirmation for direct payment
+      alert("Please contact the seller directly to arrange payment and delivery. Seller: " + (singleSellerName || "Seller") + "\n\nThe ExamGuard platform will not be involved further in this transaction.");
+      // Optionally: Redirect to a page with seller's contact/info
+    };
+    document.getElementById('cancelBtn').onclick = function() {
+      document.getElementById('agreementModal').classList.add('hidden');
+    };
+  </script>
+</body>
+</html>
