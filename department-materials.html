@@ -33,7 +33,6 @@
       inset: 0;
     }
     .dept-title { text-shadow: 0 2px 12px rgba(24,41,89,.13); }
-    /* Modal styling: fix center + scrollable content */
     #coursesModal {
       position: fixed !important;
       top: 0; left: 0; right: 0; bottom: 0;
@@ -67,9 +66,41 @@
         max-width: 98vw;
       }
     }
+    /* Loader spinner */
+    #pageLoader {
+      position: fixed;
+      z-index: 20000;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(255,255,255,0.92);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.3s;
+    }
+    #pageLoader .spinner {
+      display: inline-block;
+      width: 70px;
+      height: 70px;
+      border: 8px solid #e0e7ff;
+      border-top: 8px solid #facc15;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+    #pageLoader .loading-text {
+      margin-top: 22px; color: #6366f1; font-weight:700; font-size:1.2em; text-align:center;
+    }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900">
+
+<!-- Loader Spinner -->
+<div id="pageLoader">
+  <div style="text-align:center;">
+    <div class="spinner"></div>
+    <div class="loading-text">Loading departments...</div>
+  </div>
+</div>
 
 <nav class="fixed w-full z-40 glass shadow-sm border-b border-blue-900/30 bg-white/80 backdrop-blur">
   <div class="max-w-7xl mx-auto px-4 flex justify-between items-center h-16">
@@ -100,7 +131,7 @@
 
 <main class="pt-28 pb-12 px-2 min-h-screen bg-gradient-to-br from-blue-900/5 via-yellow-50 to-yellow-100">
   <section class="max-w-5xl mx-auto">
-    <h1 class="text-3xl md:text-4xl font-extrabold text-yellow-600 text-center mb-2">Faculty of Science Departments</h1>
+    <h1 id="facultyTitle" class="text-3xl md:text-4xl font-extrabold text-yellow-600 text-center mb-2">Faculty Departments</h1>
     <p class="text-center text-gray-700 mb-8 max-w-xl mx-auto">Select your department to view available courses and materials.</p>
     <div id="departmentsGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8">
       <!-- Dynamic department cards will be injected here -->
@@ -135,6 +166,14 @@
 </footer>
 
 <script>
+  // Loader functions
+  function showLoader() {
+    document.getElementById('pageLoader').style.display = 'flex';
+  }
+  function hideLoader() {
+    document.getElementById('pageLoader').style.display = 'none';
+  }
+
   // Navbar mobile toggle
   document.getElementById('hamburger-btn').addEventListener('click', function() {
     const menu = document.getElementById('mobile-menu');
@@ -157,58 +196,92 @@
          <a href="mock.html" class="ml-2 bg-yellow-500 text-blue-900 px-5 py-2 rounded-full font-semibold hover:bg-blue-900 hover:text-yellow-400 transition">Sign Up</a>`;
       mobileAuth.innerHTML =
         `<a href="mock.html#loginForm" class="block mt-4 w-full text-center bg-blue-900 text-white px-5 py-2 rounded-full font-semibold hover:bg-yellow-600 hover:text-blue-900 transition">Login</a>
-         <a href="mock.html#registerForm" class="block mt-2 w-full text-center bg-yellow-500 text-blue-900 px-5 py-2 rounded-full font-semibold hover:bg-blue-900 hover:text-yellow-400 transition">Sign Up</a>`;
+         <a href="mock.html#registerForm" class="block mt-2 w-full text-center bg-yellow-500 text-blue-900 px-5 py-2 rounded-full font-semibold hover:bg-blue-900 hover:text-yellow-400 transition">Sign[...]
     }
   }
   document.addEventListener('DOMContentLoaded', renderAuthButtons);
 
-  // Dynamic department loading for Faculty of Science only
+  // Get faculty from URL (e.g. ?faculty=science)
+  function getFacultyFromURL() {
+    const params = new URLSearchParams(window.location.search);
+    let faculty = params.get('faculty') || '';
+    faculty = faculty.trim().toLowerCase();
+    return faculty;
+  }
+
+  // Capitalize first letter
+  function capitalize(str) {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  }
+
+  // Store departments globally for modal logic
+  let allDepartments = [];
+
   async function loadDepartments() {
-    // Fetch Faculty of Science by name
+    showLoader();
+    const facultyParam = getFacultyFromURL();
+    document.getElementById('facultyTitle').textContent = `Faculty of ${capitalize(facultyParam)} Departments`;
+
+    // Fetch faculties
     let facultyId = null;
     try {
       const facultiesRes = await fetch('https://examguard-jmvj.onrender.com/api/faculties');
       const faculties = await facultiesRes.json();
-      const scienceFaculty = faculties.find(f => f.name && f.name.trim().toLowerCase().includes('science'));
-      if (!scienceFaculty) {
-        document.getElementById("departmentsGrid").innerHTML = `<div class="col-span-3 text-center text-red-500 font-semibold py-12">Faculty of Science not found.</div>`;
+      const matchFaculty = faculties.find(f => f.name && f.name.trim().toLowerCase().includes(facultyParam));
+      if (!matchFaculty) {
+        document.getElementById("departmentsGrid").innerHTML = `<div class="col-span-3 text-center text-red-500 font-semibold py-12">Faculty "${capitalize(facultyParam)}" not found.</div>`;
+        hideLoader();
         return;
       }
-      facultyId = scienceFaculty._id;
+      facultyId = matchFaculty._id;
     } catch (e) {
       document.getElementById("departmentsGrid").innerHTML = `<div class="col-span-3 text-center text-red-500 font-semibold py-12">Error loading faculties.</div>`;
+      hideLoader();
       return;
     }
-    // Fetch only departments for Faculty of Science
-    const res = await fetch('https://examguard-jmvj.onrender.com/api/departments?faculty=' + facultyId);
-    const departments = await res.json();
-    const grid = document.getElementById("departmentsGrid");
-    grid.innerHTML = "";
-    if (!departments.length) {
-      grid.innerHTML = `<div class="col-span-3 text-center text-red-500 font-semibold py-12">No departments found for Faculty of Science.</div>`;
-      return;
-    }
-    departments.forEach(dept => {
-      grid.innerHTML += `
-        <div class="dept-card" tabindex="0"
-          style="background-image:url('${dept.backgroundImage || "https://images.unsplash.com/photo-1465101046530-73398c7f28ca?auto=format&fit=crop&w=600&q=80"}');"
-          onclick="showCourses('${dept._id}')">
-          <div class="dept-overlay"></div>
-          <div class="relative z-10 p-5 text-white text-center">
-            <h2 class="dept-title text-xl font-bold mb-1">${dept.name}</h2>
-            <p class="text-sm">${dept.subtitle || ""}</p>
+    // Fetch only departments for selected faculty
+    try {
+      const res = await fetch('https://examguard-jmvj.onrender.com/api/departments?faculty=' + facultyId);
+      const departments = await res.json();
+      allDepartments = departments;
+      const grid = document.getElementById("departmentsGrid");
+      grid.innerHTML = "";
+      if (!departments.length) {
+        grid.innerHTML = `<div class="col-span-3 text-center text-red-500 font-semibold py-12">No departments found for Faculty of ${capitalize(facultyParam)}.</div>`;
+        hideLoader();
+        return;
+      }
+      departments.forEach((dept, idx) => {
+        grid.innerHTML += `
+          <div class="dept-card" tabindex="0"
+            style="background-image:url('${dept.backgroundImage || "https://images.unsplash.com/photo-1465101046530-73398c7f28ca?auto=format&fit=crop&w=600&q=80"}');"
+            data-dept-idx="${idx}">
+            <div class="dept-overlay"></div>
+            <div class="relative z-10 p-5 text-white text-center">
+              <h2 class="dept-title text-xl font-bold mb-1">${dept.name}</h2>
+              <p class="text-sm">${dept.subtitle || ""}</p>
+            </div>
           </div>
-        </div>
-      `;
-    });
+        `;
+      });
+      document.querySelectorAll('.dept-card').forEach(card => {
+        card.addEventListener('click', function() {
+          const idx = this.getAttribute('data-dept-idx');
+          if (idx !== null) openCoursesModal(parseInt(idx, 10));
+        });
+      });
+      hideLoader();
+    } catch (err) {
+      document.getElementById("departmentsGrid").innerHTML = `<div class="col-span-3 text-center text-red-500 font-semibold py-12">Error loading departments.</div>`;
+      hideLoader();
+    }
   }
 
-  // Show courses modal
-  async function showCourses(deptId) {
-    // Get department by id
-    const res = await fetch(`https://examguard-jmvj.onrender.com/api/departments/${deptId}`);
-    if (!res.ok) return;
-    const dept = await res.json();
+  // Show courses modal (fix: always open modal and show correct courses)
+  function openCoursesModal(deptIdx) {
+    const dept = allDepartments[deptIdx];
+    if (!dept) return;
     document.getElementById('coursesModal').classList.add('open');
     document.getElementById('deptModalTitle').textContent = dept.name + " Courses";
     document.getElementById('deptModalSubtitle').textContent = dept.subtitle || "";
@@ -220,8 +293,6 @@
       return;
     }
     dept.courses.forEach(c => {
-      // Each course clickable, redirects to course page (e.g. course-materials.html?course=COURSECODE)
-      // You may want to encode course code if it contains spaces/special chars
       const courseUrl = `course-materials.html?course=${encodeURIComponent(c)}`;
       listEl.innerHTML += `<li>
         <a href="${courseUrl}" class="block bg-blue-50 px-4 py-2 rounded text-blue-900 font-semibold hover:bg-yellow-100 hover:text-blue-700 transition">
@@ -230,11 +301,11 @@
       </li>`;
     });
   }
+
   function closeCoursesModal() {
     document.getElementById('coursesModal').classList.remove('open');
   }
 
-  // Close modal on outside click
   document.getElementById('coursesModal').addEventListener('click', function(e){
     if(e.target === this) closeCoursesModal();
   });
