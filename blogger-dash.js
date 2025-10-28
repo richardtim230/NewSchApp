@@ -455,10 +455,10 @@ function renderPostLinks() {
   }
   el.innerHTML = posts.map(post => {
     const slug = (post.title || "")
-      .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") + "-" + post._id;
+      .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
     return `<li>
       <a class="text-blue-700 hover:underline font-semibold" target="_blank"
-        href="blog-details.html?id=${post._id}">${post.title}</a>
+        href="/blog/${slug}-${post._id}">${post.title}</a>
       <span class="text-xs text-gray-500 ml-2">${post.status || ""}</span>
     </li>`;
   }).join('');
