@@ -157,14 +157,14 @@ async function renderProduct(product) {
   if (sellerId) {
     sellerProfile = await fetchSellerProfile(sellerId);
   }
-  if (sellerProfile) {
-    document.getElementById("seller-name").textContent = sellerProfile.fullname || sellerProfile.username || sellerProfile.name || "Seller";
-    document.getElementById("seller-avatar").innerHTML = sellerProfile.profilePic
-      ? `<img src="${sellerProfile.profilePic}" class="w-12 h-12 object-cover rounded-full"/>`
-      : ((sellerProfile.fullname || sellerProfile.username || sellerProfile.name || "S")[0].toUpperCase());
-    document.getElementById("seller-meta").textContent = sellerProfile.bio || sellerProfile.email || "";
-    document.getElementById("seller-profile-link").href = `mart.html?seller=${encodeURIComponent(sellerProfile._id || sellerProfile.username)}`;
-  } else {
+  if (sellerProfile && sellerProfile.user && (sellerProfile.user.username || sellerProfile.user.fullname)) {
+  document.getElementById("seller-name").textContent = sellerProfile.user.fullname || sellerProfile.user.username || "Seller";
+  document.getElementById("seller-avatar").innerHTML = sellerProfile.user.profilePic
+    ? `<img src="${sellerProfile.user.profilePic}" class="w-12 h-12 object-cover rounded-full"/>`
+    : ((sellerProfile.user.fullname || sellerProfile.user.username || "S")[0].toUpperCase());
+  document.getElementById("seller-meta").textContent = sellerProfile.user.faculty + " - " + sellerProfile.user.department;
+  document.getElementById("seller-profile-link").href = `mart.html?seller=${encodeURIComponent(sellerProfile.user.username)}`;
+} else { 
     const sName = product.seller || product.authorName || product.author || "Seller";
     document.getElementById("seller-name").textContent = sName;
     document.getElementById("seller-avatar").textContent = (typeof sName === "string" && sName[0]) ? sName[0].toUpperCase() : "?";
