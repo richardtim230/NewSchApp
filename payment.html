@@ -64,6 +64,10 @@
         </ul>
         <p class="italic text-gray-500">For best safety, always use the Paystack secure payment option.</p>
       </div>
+      <div id="seller-contact-section" class="bg-blue-50 rounded p-4 my-3 hidden">
+        <h4 class="font-bold text-blue-900 mb-2">Seller Contact Details</h4>
+        <div id="seller-contact"></div>
+      </div>
       <div class="flex gap-3 justify-end mt-6">
         <button id="agreeBtn" class="bg-yellow-600 hover:bg-yellow-700 text-white px-5 py-2 rounded font-semibold transition">I Agree & Continue</button>
         <button id="cancelBtn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-5 py-2 rounded font-semibold transition">Cancel</button>
@@ -74,6 +78,19 @@
     const BACKEND = "https://examguard-jmvj.onrender.com";
     let pendingOrders = [];
     let singleSellerId = null;
+    let sellerProfile = null;
+
+    // Helper to fetch seller profile
+    async function fetchSellerProfile(sellerId) {
+      if (!sellerId) return null;
+      try {
+        const res = await fetch(BACKEND + "/api/users/" + sellerId);
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch {}
+      return null;
+    }
 
     // Fetch pending payment orders and render summary
     async function loadOrderSummary() {
@@ -96,10 +113,38 @@
           return;
         }
 
-        // Check if all orders are from one seller (for direct payment)
-        let sellerIds = pending.map(o => o.sellerId).filter(Boolean);
+        // Check if all orders are from one seller (for direct payment), fallback to product.sellerId if needed
+        let sellerIds = [];
+        for (const order of pending) {
+          let sid = order.sellerId;
+          if (!sid && order.productId) {
+            try {
+              const prodRes = await fetch(BACKEND + `/api/blogger-dashboard/public/listings/${order.productId}`);
+              if (prodRes.ok) {
+                const product = await prodRes.json();
+                sid = product.sellerId;
+              }
+            } catch {}
+          }
+          if (sid) sellerIds.push(sid);
+        }
         sellerIds = [...new Set(sellerIds)];
+        if (pending.length === 1 && !sellerIds[0] && pending[0].productId) {
+          try {
+            const prodRes = await fetch(BACKEND + `/api/blogger-dashboard/public/listings/${pending[0].productId}`);
+            if (prodRes.ok) {
+              const product = await prodRes.json();
+              if (product.sellerId) sellerIds = [product.sellerId];
+            }
+          } catch {}
+        }
         singleSellerId = sellerIds.length === 1 ? sellerIds[0] : null;
+
+        // If single seller, fetch seller profile
+        sellerProfile = null;
+        if (singleSellerId) {
+          sellerProfile = await fetchSellerProfile(singleSellerId);
+        }
 
         let total = 0;
         summaryDiv.innerHTML = await Promise.all(pending.map(async order => {
@@ -162,15 +207,46 @@
           document.getElementById('error-msg').classList.remove('hidden');
           return;
         }
+        // Show and fill seller profile in agreement modal
+        const sellerSection = document.getElementById('seller-contact-section');
+        const sellerContact = document.getElementById('seller-contact');
+        sellerSection.classList.remove('hidden');
+        if (sellerProfile && sellerProfile.user) {
+          const sp = sellerProfile.user;
+          sellerContact.innerHTML = `
+            <div class="flex items-center gap-3 mb-2">
+              <img src="${sp.profilePic || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(sp.fullname || sp.username || 'Seller') + '&background=eee&color=263159&rounded=true'}" class="w-12 h-12 rounded-full border object-cover"/>
+              <div>
+                <div class="font-bold text-blue-900 text-base">${sp.fullname || sp.username || "Seller"}</div>
+                <div class="text-xs text-gray-700">${sp.email ? `<span class="font-semibold">Email:</span> <a href="mailto:${sp.email}" class="text-blue-700 underline">${sp.email}</a>` : ""}</div>
+                <div class="text-xs text-gray-700">${sp.phone ? `<span class="font-semibold">Phone:</span> <a href="tel:${sp.phone}" class="text-blue-700 underline">${sp.phone}</a>` : ""}</div>
+                <div class="text-xs text-gray-700">${sp.faculty ? `<span class="font-semibold">Faculty:</span> ${sp.faculty}` : ""} ${sp.department ? `| <span class="font-semibold">Dept:</span> ${sp.department}` : ""}</div>
+              </div>
+            </div>
+          `;
+        } else {
+          sellerContact.innerHTML = `<div class="text-gray-500">Seller details not available.</div>`;
+        }
         document.getElementById('agreementModal').classList.remove('hidden');
       }
     };
+
     // Agreement Modal logic
     document.getElementById('agreeBtn').onclick = function() {
       document.getElementById('agreementModal').classList.add('hidden');
-      // Proceed to show seller info or confirmation for direct payment
-      alert("Please contact the seller directly to arrange payment and delivery.\n\nThe ExamGuard platform will not be involved further in this transaction.");
-      // Optionally: Redirect to a page with seller's contact/info
+      // Show a confirmation with seller info for direct payment
+      if (sellerProfile && sellerProfile.user) {
+        const sp = sellerProfile.user;
+        alert(
+          "Please contact the seller directly to arrange payment and delivery.\n\n" +
+          "Seller: " + (sp.fullname || sp.username || "Seller") +
+          (sp.email ? ("\nEmail: " + sp.email) : "") +
+          (sp.phone ? ("\nPhone: " + sp.phone) : "") +
+          "\n\nThe ExamGuard platform will not be involved further in this transaction."
+        );
+      } else {
+        alert("Please contact the seller directly to arrange payment and delivery.\n\nThe ExamGuard platform will not be involved further in this transaction.");
+      }
     };
     document.getElementById('cancelBtn').onclick = function() {
       document.getElementById('agreementModal').classList.add('hidden');
