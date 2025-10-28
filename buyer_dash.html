@@ -346,35 +346,53 @@
       document.getElementById('cart-total').textContent = "0";
       return;
     }
-    cartItemsDiv.innerHTML = cart.items.map(item => {
-      // Use snapshot fields and enrichments
-      const title = item.latestTitle || item.title || "Product";
-      const price = Number(item.latestPrice ?? item.price ?? 0);
-      total += price * (item.quantity || 1);
-      const image = item.latestImage || item.image || 'https://ui-avatars.com/api/?name=Product&background=eee&color=263159&rounded=true';
-      const seller = item.latestSellerName || item.sellerName || "Unknown";
-      return `
-        <div class="flex flex-col sm:flex-row gap-3 items-center bg-gray-50 rounded-xl p-4 shadow border border-gray-200">
-          <div class="flex-shrink-0 w-28 h-28 bg-gray-100 rounded-xl flex items-center justify-center overflow-hidden">
-            <img src="${image}" class="w-full h-full object-cover" />
-          </div>
-          <div class="flex-1 w-full flex flex-col gap-2 pl-0 sm:pl-4">
-            <div class="flex items-center justify-between">
-              <div class="font-semibold text-blue-800 text-lg">${title}</div>
-              <button class="px-3 py-1 bg-red-100 text-red-600 font-bold rounded hover:bg-red-200" onclick="removeCartItem('${item.productId}')">Remove</button>
-            </div>
-            <div class="text-yellow-700 font-bold text-xl">&#8358;${price.toLocaleString()}</div>
-            <div class="text-sm text-gray-700">Date Carted: ${item.addedAt ? new Date(item.addedAt).toLocaleDateString() : "-"}</div>
-            <div class="text-sm text-gray-700">Seller: ${seller}</div>
-            <div class="flex items-center gap-2 mt-2">
-              <button class="bg-gray-200 p-2 rounded-full text-gray-900 font-bold text-xl" onclick="changeQty('${item.productId}', -1)">-</button>
-              <span class="font-bold text-gray-700 px-2">Qty: x${item.quantity}</span>
-              <button class="bg-gray-200 p-2 rounded-full text-gray-900 font-bold text-xl" onclick="changeQty('${item.productId}', 1)">+</button>
-            </div>
-          </div>
+    cartItemsDiv.innerHTML = await Promise.all(cart.items.map(async item => {
+  let product = {};
+  try {
+    const prodRes = await fetch(BACKEND + `/api/blogger-dashboard/public/listings/${item.productId}`, { headers: authHeader() });
+    if (prodRes.ok) product = await prodRes.json();
+  } catch (e) {}
+  const title = product.title || item.title || "Product";
+  const price = Number(product.price ?? item.price ?? 0);
+  total += price * (item.quantity || 1);
+  const image = (product.images?.[0] || product.img || item.image || 'https://ui-avatars.com/api/?name=Product&background=eee&color=263159&rounded=true');
+
+  // Try to get seller info from product
+  let seller = "Unknown";
+  if (product.sellerId) {
+    try {
+      const sellerRes = await fetch(BACKEND + `/api/users/${product.sellerId}`);
+      if (sellerRes.ok) {
+        const sellerData = await sellerRes.json();
+        seller = sellerData.user?.fullname || sellerData.user?.username || "Seller";
+      }
+    } catch (e) {}
+  } else if (product.seller) {
+    seller = product.seller;
+  }
+
+  return `
+    <div class="flex flex-col sm:flex-row gap-3 items-center bg-gray-50 rounded-xl p-4 shadow border border-gray-200">
+      <div class="flex-shrink-0 w-28 h-28 bg-gray-100 rounded-xl flex items-center justify-center overflow-hidden">
+        <img src="${image}" class="w-full h-full object-cover" />
+      </div>
+      <div class="flex-1 w-full flex flex-col gap-2 pl-0 sm:pl-4">
+        <div class="flex items-center justify-between">
+          <a href="items.html?id=${item.productId}" class="font-semibold text-blue-800 text-lg hover:underline">${title}</a>
+          <button class="px-3 py-1 bg-red-100 text-red-600 font-bold rounded hover:bg-red-200" onclick="removeCartItem('${item.productId}')">Remove</button>
         </div>
-      `;
-    }).join('');
+        <div class="text-yellow-700 font-bold text-xl">&#8358;${price.toLocaleString()}</div>
+        <div class="text-sm text-gray-700">Date Carted: ${item.addedAt ? new Date(item.addedAt).toLocaleDateString() : "-"}</div>
+        <div class="text-sm text-gray-700">Seller: ${seller}</div>
+        <div class="flex items-center gap-2 mt-2">
+          <button class="bg-gray-200 p-2 rounded-full text-gray-900 font-bold text-xl" onclick="changeQty('${item.productId}', -1)">-</button>
+          <span class="font-bold text-gray-700 px-2">Qty: x${item.quantity}</span>
+          <button class="bg-gray-200 p-2 rounded-full text-gray-900 font-bold text-xl" onclick="changeQty('${item.productId}', 1)">+</button>
+        </div>
+      </div>
+    </div>
+  `;
+})).then(htmlArr => htmlArr.join(''));
     document.getElementById('cart-total').textContent = total.toLocaleString();
   } catch {
     cartItemsDiv.innerHTML = '<div class="text-red-500 text-center my-6">Failed to load cart.</div>';
