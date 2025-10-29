@@ -5,12 +5,12 @@ const ANSWER_API = API_BASE + "/past-questions/save-answers";
 const SUBMIT_API = API_BASE + "/past-questions/submit";
 let token = localStorage.getItem("token") || "";
 // === Ad Modal Logic ===
-let adModalTimer = null, adModalCountdown = 20, adModalProceedCallback = null;
+let adModalTimer = null, adModalCountdown = 10, adModalProceedCallback = null;
 const SMARTLINK_URL = "https://nevillequery.com/aphb8wa4g?key=e33b11641a201e15c5c4c5343e791af6";
 
 function showAdModal(proceedCallback) {
   adModalProceedCallback = proceedCallback;
-  adModalCountdown = 20;
+  adModalCountdown = 10;
   document.getElementById("adIframe").src = SMARTLINK_URL;
   document.getElementById("adModal").style.display = "flex";
   document.getElementById("adCountdown").textContent = adModalCountdown;
@@ -19,13 +19,13 @@ function showAdModal(proceedCallback) {
   adModalTimer = setInterval(() => {
     adModalCountdown--;
     document.getElementById("adCountdown").textContent = adModalCountdown;
-    if (adModalCountdown <= 10) {
+    if (adModalCountdown <= 5) {
       document.getElementById("adCancelBtn").style.display = "block";
     }
     if (adModalCountdown <= 0) {
       closeAdModal(true);
     }
-  }, 1000);
+  }, 500);
 }
 
 function closeAdModal(proceed) {
@@ -130,7 +130,7 @@ document.getElementById("subject").addEventListener("change", function() {
   }
 });
 
-document.getElementById("practice-config-form").onsubmit = function(e) {
+document.getElementById("practice-config-form").onsubmit = async function(e) {
   e.preventDefault();
   const subject = document.getElementById("subject").value;
   const courseCode = document.getElementById("courseCode").value;
@@ -144,17 +144,14 @@ document.getElementById("practice-config-form").onsubmit = function(e) {
   }
   const cfg = { subject, courseCode, year, count, time, topic };
   localStorage.setItem("tppConfig", JSON.stringify(cfg));
-  window.location.reload();
-};
 
-// ====== INIT ======
-let examInSession = false;
-window.onload = async function() {
+  // Instead of reloading, re-run config and fetch logic
   parseConfig();
   await fetchUser();
   await fetchQuestions();
   startTime = Date.now();
-  updateTimer();
+  timerInterval && clearInterval(timerInterval);
+  timer = exam.duration;
   timerInterval = setInterval(() => {
     if (!examInSession) return;
     timer--;
