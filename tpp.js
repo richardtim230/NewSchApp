@@ -39,7 +39,7 @@ function closeAdModal(proceed) {
 }
 
 document.getElementById("adCancelBtn").onclick = function() {
-  closeAdModal(false);
+  closeAdModal(true);
 };
 // ====== COURSE CODES MAP ======
 const courseCodes = {
