@@ -365,17 +365,17 @@ document.getElementById('settingsForm').addEventListener('submit', async functio
   e.preventDefault();
   // Get new values
   const newProfile = {
-    storeName: document.getElementById('storeNameInput').value,
-    email: document.getElementById('emailInput').value,
-    phone: document.getElementById('phoneInput').value,
-    meetupSpot: document.getElementById('meetupSpotInput').value,
-    bank: document.getElementById('bankInput').value,
-    accountName: document.getElementById('accountNameInput').value,
-    accountNumber: document.getElementById('accountNumberInput').value,
-    notifyEmail: document.getElementById('notifEmail').checked,
-    notifySMS: document.getElementById('notifSMS').checked,
-    notifyPush: document.getElementById('notifPush').checked,
-  };
+  fullname: document.getElementById('storeNameInput').value, // not storeName
+  email: document.getElementById('emailInput').value,
+  phone: document.getElementById('phoneInput').value,
+  location: document.getElementById('meetupSpotInput').value, // not meetupSpot
+  bank: document.getElementById('bankInput').value,
+  accountName: document.getElementById('accountNameInput').value,
+  accountNumber: document.getElementById('accountNumberInput').value,
+  notifyEmail: document.getElementById('notifEmail').checked,
+  notifySMS: document.getElementById('notifSMS').checked,
+  notifyPush: document.getElementById('notifPush').checked,
+};
   // Save to backend (PATCH /api/auth/me or a settings endpoint if available, fallback to PATCH /api/users/:id)
   try {
     let patchUrl = BACKEND + "/api/auth/me";
