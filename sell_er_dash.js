@@ -409,5 +409,61 @@ document.getElementById('helpForm').addEventListener('submit', function (e) {
     helpInput.value = "";
   }
 });
+// Add this global variable for offers
+let allSellerOffers = [];
+
+// Update fetchSellerOffers to store all offers
+async function fetchSellerOffers() {
+  const res = await fetch(BACKEND + "/api/offers/seller", { headers: authHeader() });
+  offersByProduct = {};
+  allSellerOffers = [];
+  if (!res.ok) return;
+  const result = await res.json();
+  const offers = result.offers || [];
+  allSellerOffers = offers;
+  // Group by productId for products tab
+  offers.forEach(offer => {
+    if (!offersByProduct[offer.productId]) offersByProduct[offer.productId] = [];
+    offersByProduct[offer.productId].push(offer);
+  });
+}
+
+// Render Offers Tab
+function renderOffersTab() {
+  const el = document.getElementById('offersList');
+  if (!allSellerOffers.length) {
+    el.innerHTML = `<div class="text-gray-500 text-center py-8">No offers yet.</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="flex flex-col gap-4">` +
+    allSellerOffers.map(offer => {
+      let product = products.find(p => p._id === offer.productId || p.id === offer.productId);
+      return `
+        <div class="offer-card-gradient rounded-xl shadow p-4 border border-blue-200 flex flex-col md:flex-row md:items-center justify-between">
+          <div class="flex-1">
+            <div class="font-semibold text-blue-900">
+              Product: <span class="underline">${product ? product.title : 'Unknown'}</span>
+            </div>
+            <div>Buyer: <b>${offer.buyer?.name || 'Unknown'}</b> <span class="text-gray-500">${offer.buyer?.email || ''}</span></div>
+            <div>Offer: <span class="font-bold text-lg text-yellow-600">₦${offer.offerPrice}</span></div>
+            <div>Message: <span class="text-gray-700">${offer.message || ''}</span></div>
+            <div>Status: <span class="inline-block px-2 py-1 rounded-full text-white ${offer.status === "pending" ? "bg-gray-400" : offer.status === "accepted" ? "bg-green-500" : "bg-red-400"}">${offer.status}</span></div>
+          </div>
+          <div class="flex gap-2 mt-2 md:mt-0">
+            ${offer.status === "pending" ? `
+              <button onclick="updateOfferStatus('${offer._id}','accepted')" class="bg-green-500 text-white px-3 py-1 rounded">Accept</button>
+              <button onclick="updateOfferStatus('${offer._id}','rejected')" class="bg-red-500 text-white px-3 py-1 rounded">Reject</button>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }).join('') + `</div>`;
+}
+
+// Make sure to re-render Offers tab when it is selected
+document.querySelector('[data-tab="offers"]').addEventListener('click', async function () {
+  await fetchSellerOffers();
+  renderOffersTab();
+});
 
 window.addEventListener('DOMContentLoaded', checkAuth);
