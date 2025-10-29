@@ -14,6 +14,24 @@
     .modal-backdrop { background: rgba(0,0,0,0.25); }
     .spinner { border: 4px solid #e5e7eb; border-top: 4px solid #2563eb; border-radius: 50%; width: 28px; height: 28px; animation: spin 1s linear infinite; }
     @keyframes spin { 100% { transform: rotate(360deg); } }
+    .modal-fg {
+      box-shadow: 0 8px 32px 0 rgba(30,41,59,0.13), 0 1.5px 8px 0 rgba(251,191,36,0.09);
+      border-radius: 1.5rem;
+    }
+    .modal-overlay {
+      background: rgba(0,0,0,0.32);
+      z-index: 1000;
+    }
+    .bank-avatar {
+      background: #f1f5f9;
+      border-radius: 50%;
+      width: 2.2rem;
+      height: 2.2rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
   </style>
 </head>
 <body>
@@ -49,6 +67,7 @@
       <div id="error-msg" class="text-red-600 text-center mt-4 hidden"></div>
     </div>
   </div>
+
   <!-- Agreement Policy Modal -->
   <div id="agreementModal" tabindex="-1" class="fixed top-0 left-0 right-0 z-50 hidden w-full h-full items-center justify-center modal-backdrop fade-in">
     <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-auto p-7 relative">
@@ -74,6 +93,49 @@
       </div>
     </div>
   </div>
+
+  <!-- Direct Pay Modal (Bank Transfer Details) -->
+  <div id="directPayModal" tabindex="-1" class="fixed top-0 left-0 right-0 z-50 hidden w-full h-full flex items-center justify-center modal-overlay">
+    <div class="modal-fg bg-white max-w-md w-full mx-auto p-7 relative fade-in">
+      <button id="closeDirectPayModal" class="absolute top-4 right-4 text-gray-300 hover:text-gray-700 text-2xl">&times;</button>
+      <div class="flex flex-col items-center justify-center">
+        <div class="mb-2">
+          <span class="text-xs font-semibold text-gray-600">Total Amount</span>
+        </div>
+        <div id="directPayAmount" class="text-3xl md:text-4xl font-extrabold text-blue-900 mb-3">₦0.00</div>
+        <div class="w-full rounded-xl border bg-gray-50 py-5 px-4 mb-4">
+          <div class="flex items-center mb-4">
+            <span class="bank-avatar mr-3">
+              <img id="sellerBankLogo" src="https://img.icons8.com/fluency/48/bank.png" class="w-7 h-7" alt="Bank Logo">
+            </span>
+            <span class="font-bold text-gray-700 text-lg" id="sellerBankName">-</span>
+          </div>
+          <div class="grid grid-cols-1 gap-2 text-base text-gray-700">
+            <div>
+              <span class="font-semibold">Account Number:</span>
+              <span id="sellerBankAcc" class="ml-2">-</span>
+            </div>
+            <div>
+              <span class="font-semibold">Account Name:</span>
+              <span id="sellerBankHolder" class="ml-2">-</span>
+            </div>
+            <div>
+              <span class="font-semibold">Phone Number:</span>
+              <span id="sellerPhone" class="ml-2">-</span>
+            </div>
+          </div>
+        </div>
+        <div class="w-full text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2 mb-4">
+          <span class="font-bold">Notice:</span> Payment is strictly between you and the seller. ExamGuard does <span class="font-bold">not</span> monitor or guarantee this transaction.
+        </div>
+        <div class="flex gap-3 w-full mt-2">
+          <button id="madePaymentBtn" class="flex-1 py-3 rounded-lg font-bold text-white bg-green-600 hover:bg-green-700 transition text-lg">Made Payment</button>
+          <button id="payLaterBtn" class="flex-1 py-3 rounded-lg font-bold text-gray-700 bg-gray-200 hover:bg-gray-300 border transition text-lg">Pay Later</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     const BACKEND = "https://examguard-jmvj.onrender.com";
     let pendingOrders = [];
@@ -215,7 +277,7 @@
           const sp = sellerProfile.user;
           sellerContact.innerHTML = `
             <div class="flex items-center gap-3 mb-2">
-              <img src="${sp.profilePic || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(sp.fullname || sp.username || 'Seller') + '&background=eee&color=263159&rounded=true'}" class="w-12 h-12 rounded-full border object-cover"/>
+              <img src="${sp.profilePic || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(sp.fullname || sp.username || 'Seller') + '&background=eee&color=263159&rounded=true'}" class="w-12 h-12 rounded-full border"/>
               <div>
                 <div class="font-bold text-blue-900 text-base">${sp.fullname || sp.username || "Seller"}</div>
                 <div class="text-xs text-gray-700">${sp.email ? `<span class="font-semibold">Email:</span> <a href="mailto:${sp.email}" class="text-blue-700 underline">${sp.email}</a>` : ""}</div>
@@ -234,22 +296,53 @@
     // Agreement Modal logic
     document.getElementById('agreeBtn').onclick = function() {
       document.getElementById('agreementModal').classList.add('hidden');
-      // Show a confirmation with seller info for direct payment
-      if (sellerProfile && sellerProfile.user) {
-        const sp = sellerProfile.user;
-        alert(
-          "Please contact the seller directly to arrange payment and delivery.\n\n" +
-          "Seller: " + (sp.fullname || sp.username || "Seller") +
-          (sp.email ? ("\nEmail: " + sp.email) : "") +
-          (sp.phone ? ("\nPhone: " + sp.phone) : "") +
-          "\n\nThe ExamGuard platform will not be involved further in this transaction."
-        );
-      } else {
-        alert("Please contact the seller directly to arrange payment and delivery.\n\nThe ExamGuard platform will not be involved further in this transaction.");
-      }
+      // Show Direct Pay Modal with seller's bank/account details
+      showDirectPayModal();
     };
     document.getElementById('cancelBtn').onclick = function() {
       document.getElementById('agreementModal').classList.add('hidden');
+    };
+
+    // Direct Pay Modal logic
+    function showDirectPayModal() {
+      // Fill modal with seller details
+      const modal = document.getElementById('directPayModal');
+      const sp = sellerProfile && sellerProfile.user ? sellerProfile.user : {};
+      // Amount
+      const totalAmount = pendingOrders.reduce((sum, o) => sum + (o.price || 0) * (o.quantity || 1), 0);
+      document.getElementById('directPayAmount').textContent = '₦' + Number(totalAmount).toLocaleString();
+      // Bank details
+      document.getElementById('sellerBankName').textContent = sp.bank || "-";
+      document.getElementById('sellerBankAcc').textContent = sp.accountNumber || "-";
+      document.getElementById('sellerBankHolder').textContent = sp.accountName || sp.fullname || sp.username || "-";
+      document.getElementById('sellerPhone').textContent = sp.phone || "-";
+      // Bank logo logic (simple, can be improved with more bank logos)
+      let bankLogo = "https://img.icons8.com/fluency/48/bank.png";
+      if (sp.bank) {
+        let bank = sp.bank.toLowerCase();
+        if (bank.includes("access")) bankLogo = "https://upload.wikimedia.org/wikipedia/commons/6/6b/Access_Bank_logo.png";
+        else if (bank.includes("gtb") || bank.includes("guaranty")) bankLogo = "https://upload.wikimedia.org/wikipedia/commons/0/0a/GTBank_logo.png";
+        else if (bank.includes("uba")) bankLogo = "https://upload.wikimedia.org/wikipedia/commons/0/07/United_Bank_for_Africa_logo.png";
+        else if (bank.includes("zenith")) bankLogo = "https://upload.wikimedia.org/wikipedia/commons/7/7f/Zenith_Bank_logo.png";
+        else if (bank.includes("monie")) bankLogo = "https://seeklogo.com/images/M/moniepoint-logo-6B6E1AFFB2-seeklogo.com.png";
+        // Add more as needed
+      }
+      document.getElementById('sellerBankLogo').src = bankLogo;
+      modal.classList.remove('hidden');
+    }
+
+    document.getElementById('closeDirectPayModal').onclick = function() {
+      document.getElementById('directPayModal').classList.add('hidden');
+    };
+    document.getElementById('payLaterBtn').onclick = function() {
+      document.getElementById('directPayModal').classList.add('hidden');
+      window.location.href = "/dashboard";
+    };
+
+    document.getElementById('madePaymentBtn').onclick = function() {
+      document.getElementById('directPayModal').classList.add('hidden');
+      alert('Thank you for making payment directly to the seller! Please contact the seller to confirm receipt and arrange delivery.\n\nRemember: ExamGuard does not monitor or guarantee the outcome of direct transactions.');
+      window.location.href = "/dashboard";
     };
   </script>
 </body>
