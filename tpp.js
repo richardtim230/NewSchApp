@@ -5,12 +5,12 @@ const ANSWER_API = API_BASE + "/past-questions/save-answers";
 const SUBMIT_API = API_BASE + "/past-questions/submit";
 let token = localStorage.getItem("token") || "";
 // === Ad Modal Logic ===
-let adModalTimer = null, adModalCountdown = 10, adModalProceedCallback = null;
-const SMARTLINK_URL = "https://oau.examguard.com.ng";
+let adModalTimer = null, adModalCountdown = 20, adModalProceedCallback = null;
+const SMARTLINK_URL = "https://examguard.com.ng";
 
 function showAdModal(proceedCallback) {
   adModalProceedCallback = proceedCallback;
-  adModalCountdown = 10;
+  adModalCountdown = 20;
   document.getElementById("adIframe").src = SMARTLINK_URL;
   document.getElementById("adModal").style.display = "flex";
   document.getElementById("adCountdown").textContent = adModalCountdown;
@@ -19,7 +19,7 @@ function showAdModal(proceedCallback) {
   adModalTimer = setInterval(() => {
     adModalCountdown--;
     document.getElementById("adCountdown").textContent = adModalCountdown;
-    if (adModalCountdown <= 5) {
+    if (adModalCountdown <= 10) {
       document.getElementById("adCancelBtn").style.display = "block";
     }
     if (adModalCountdown <= 0) {
