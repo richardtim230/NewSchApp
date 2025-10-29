@@ -6,7 +6,7 @@ const SUBMIT_API = API_BASE + "/past-questions/submit";
 let token = localStorage.getItem("token") || "";
 // === Ad Modal Logic ===
 let adModalTimer = null, adModalCountdown = 10, adModalProceedCallback = null;
-const SMARTLINK_URL = "https://nevillequery.com/aphb8wa4g?key=e33b11641a201e15c5c4c5343e791af6";
+const SMARTLINK_URL = "https://oau.examguard.com.ng";
 
 function showAdModal(proceedCallback) {
   adModalProceedCallback = proceedCallback;
@@ -25,7 +25,7 @@ function showAdModal(proceedCallback) {
     if (adModalCountdown <= 0) {
       closeAdModal(true);
     }
-  }, 500);
+  }, 1000);
 }
 
 function closeAdModal(proceed) {
@@ -132,6 +132,16 @@ document.getElementById("subject").addEventListener("change", function() {
 
 document.getElementById("practice-config-form").onsubmit = async function(e) {
   e.preventDefault();
+
+  // --- Spinner logic start ---
+  const btn = document.getElementById("startPracticeBtn");
+  const spinner = document.getElementById("startPracticeSpinner");
+  const btnText = document.getElementById("startPracticeBtnText");
+  btn.disabled = true;
+  spinner.classList.remove("hidden");
+  btnText.textContent = "Starting...";
+
+  // Form data collection
   const subject = document.getElementById("subject").value;
   const courseCode = document.getElementById("courseCode").value;
   const year = document.getElementById("year").value;
@@ -140,6 +150,10 @@ document.getElementById("practice-config-form").onsubmit = async function(e) {
   const topic = document.getElementById("topic").value;
   if (!subject || !courseCode || !year || !count || !time) {
     showNotificationModal({ message: "Please fill out all required fields.", type: "error" });
+    // Hide spinner/reset button
+    btn.disabled = false;
+    spinner.classList.add("hidden");
+    btnText.textContent = "Start Practice";
     return;
   }
   const cfg = { subject, courseCode, year, count, time, topic };
@@ -170,6 +184,11 @@ document.getElementById("practice-config-form").onsubmit = async function(e) {
       document.body.style.overflow = '';
     }
   }
+
+  // --- Spinner logic end ---
+  btn.disabled = false;
+  spinner.classList.add("hidden");
+  btnText.textContent = "Start Practice";
 };
 
 // ====== INIT ======
