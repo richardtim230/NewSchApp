@@ -620,8 +620,7 @@ function renderSupportTab() {
       btn.onclick = function() {
         const ticketId = this.getAttribute('data-ticket-id');
         if (ticketId) {
-          window._pendingSupportModalId = ticketId;
-          switchSupportTab('messages');
+          showSupportChat(ticketId); // Directly open modal for reliable behavior
         }
       };
     });
@@ -639,8 +638,7 @@ function renderSupportTab() {
       btn.onclick = function() {
         const ticketId = this.getAttribute('data-ticket-id');
         if (ticketId) {
-          window._pendingSupportModalId = ticketId;
-          switchSupportTab('messages');
+          showSupportChat(ticketId); // Directly open modal for reliable behavior
         }
       };
     });
@@ -651,12 +649,6 @@ function renderSupportTab() {
     const openTicketBtn = document.getElementById('openTicketBtn');
     if (openTicketBtn) openTicketBtn.onclick = function() { showCreateTicket(); };
   }, 0);
-
-  // After rendering: if a modal is pending, open it now and clear the flag
-  if (window._pendingSupportModalId) {
-    showSupportChat(window._pendingSupportModalId);
-    window._pendingSupportModalId = null;
-  }
 }
 
 // Render FAQs/help articles
