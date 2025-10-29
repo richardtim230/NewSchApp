@@ -660,7 +660,9 @@ function switchSupportTab(tab) {
   else renderSupportTab();
 }
 
-// Show support chat modal
+// Show support chat modal (redesigned to match example)
+// Replace your current window.showSupportChat with the following:
+
 window.showSupportChat = async function(ticketId) {
   const ticket = tickets.find(t => t.id === ticketId);
   if (!ticket) return;
@@ -669,40 +671,63 @@ window.showSupportChat = async function(ticketId) {
     const res = await fetch(BACKEND + `/api/support/tickets/${ticketId}`, { headers: authHeader() });
     fullTicket = (await res.json()).ticket || ticket;
   } catch {}
+
+  // Remove any existing modal
+  document.querySelectorAll('.support-chat-modal').forEach(m => m.remove());
+
+  // Create modal container
   const modal = document.createElement("div");
-  modal.className = "fixed inset-0 z-[100] flex items-center justify-center bg-black/40";
+  modal.className = "fixed inset-0 z-[100] flex items-center justify-center bg-black/40 support-chat-modal";
   modal.innerHTML = `
-    <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-auto p-0 overflow-hidden fade-in flex flex-col" style="max-height:90vh;">
-      <div class="bg-gradient-to-r from-orange-600 to-red-500 px-6 py-4 flex items-center gap-2">
-        <img src="/logo.png" class="h-9 w-9 rounded-full border shadow bg-white" alt="ExamGuard Logo" />
-        <div class="text-white font-bold text-lg flex-1">Support Ticket</div>
-        <button class="text-white text-2xl leading-none font-bold" onclick="this.closest('.fixed').remove();">&times;</button>
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-auto flex flex-col fade-in relative" style="max-height:90vh;">
+      <div class="flex items-center gap-3 px-5 py-4 border-b bg-[#F8F8F8]">
+        <div class="flex items-center gap-2">
+          <div class="bg-orange-600 rounded-full h-10 w-10 flex items-center justify-center text-white font-extrabold text-xl">
+            <span>A</span>
+          </div>
+          <div>
+            <div class="font-semibold text-gray-900 leading-none">ExamGuard Team</div>
+            <div class="text-xs text-gray-500 leading-none">The team can also help</div>
+          </div>
+        </div>
+        <button class="ml-auto text-gray-500 text-2xl hover:text-gray-800 font-bold" title="Close" onclick="this.closest('.fixed').remove();">&times;</button>
       </div>
-      <div class="flex-1 overflow-y-auto px-6 py-4" id="support-chat-body">
-        <div class="flex items-center gap-2 mb-4">
-          <span class="bg-orange-100 text-orange-700 px-2 py-1 text-xs rounded font-semibold">${fullTicket.title}</span>
-          <span class="ml-auto text-xs bg-green-200 text-green-800 rounded-full px-2 py-0.5">${fullTicket.status}</span>
+      <div class="flex-1 overflow-y-auto px-5 py-4 space-y-2" style="background: #F7F7F9;">
+        <div class="flex justify-center mb-2">
+          <div class="rounded-full bg-white border px-4 py-1 text-sm font-semibold text-orange-700 shadow-sm flex items-center gap-2">
+            <svg fill="none" stroke="orange" stroke-width="2" viewBox="0 0 24 24" class="w-4 h-4"><path d="M18.364 5.636l-1.414-1.414A9 9 0 105.636 18.364l1.414 1.414A9 9 0 1018.364 5.636z"></path></svg>
+            ${fullTicket.title}
+          </div>
         </div>
         <div class="space-y-4">
           ${(fullTicket.messages||[]).map(m => `
             <div class="flex ${m.from === 'user' ? 'justify-end' : 'justify-start'}">
-              <div class="${m.from === 'user' ? 'bg-orange-600 text-white' : 'bg-gray-100 text-gray-900'} px-4 py-2 rounded-2xl max-w-[75%] shadow">
-                ${m.text.replace(/\n/g, '<br/>')}
-                <div class="text-xs text-gray-400 mt-1">${m.from === 'user' ? 'You' : 'Support'} • ${timeAgo(new Date(m.createdAt).getTime())}</div>
+              <div class="${m.from === 'user'
+                ? 'bg-orange-600 text-white'
+                : 'bg-white text-gray-900 border'} px-4 py-2 rounded-2xl max-w-[90%] shadow-md" style="word-break:break-word;">
+                ${m.text.replace(/\n/g,"<br/>")}
+                <div class="text-xs mt-1 ${m.from === 'user' ? 'text-orange-100' : 'text-gray-400'} text-right">
+                  ${m.from === 'user' ? 'You' : 'Support'} • ${timeAgo(new Date(m.createdAt).getTime())}
+                </div>
               </div>
             </div>
           `).join('')}
         </div>
+        <div class="flex items-center justify-center mt-6">
+          <span class="inline-block text-xs px-3 py-1 rounded-full bg-gray-200 text-gray-600 font-semibold">${fullTicket.status.charAt(0).toUpperCase() + fullTicket.status.slice(1)}</span>
+        </div>
       </div>
       <form class="flex gap-2 border-t p-4 bg-white" onsubmit="return sendSupportMessage('${fullTicket.id}',this,event)">
-        <input type="text" class="flex-1 border rounded px-3 py-2" name="chatBody" placeholder="Type a message..." required>
-        <button type="submit" class="px-4 py-2 bg-orange-600 text-white rounded font-bold hover:bg-orange-700">Send</button>
+        <input type="text" class="flex-1 border rounded px-3 py-2" name="chatBody" placeholder="Type a message..." required ${fullTicket.status === 'resolved' ? 'disabled' : ''}>
+        <button type="submit" class="px-4 py-2 bg-orange-600 text-white rounded font-bold hover:bg-orange-700" ${fullTicket.status === 'resolved' ? 'disabled' : ''}>Send</button>
       </form>
+      ${fullTicket.status === 'resolved'
+        ? `<div class="px-5 py-3 text-center text-gray-500 text-sm border-t bg-gray-50">Your conversation has ended</div>`
+        : ''}
     </div>
   `;
   document.body.appendChild(modal);
 };
-
 // Send a support message (to backend)
 window.sendSupportMessage = async function(ticketId, form, event) {
   if (event) event.preventDefault();
