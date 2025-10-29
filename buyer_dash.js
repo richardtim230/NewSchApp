@@ -616,13 +616,12 @@ function renderSupportTab() {
       `).join('') : '<div class="text-gray-400 text-center my-6">No tickets yet.</div>' +
       `<button onclick="showCreateTicket()" class="w-full py-3 bg-orange-600 text-white font-bold rounded-lg mt-4">Create New Ticket</button>`;
 
-    // -- Add event listeners for view conversation buttons
     content.querySelectorAll('.view-convo-btn').forEach(btn => {
       btn.onclick = function() {
         const ticketId = this.getAttribute('data-ticket-id');
         if (ticketId) {
+          window._pendingSupportModalId = ticketId;
           switchSupportTab('messages');
-          setTimeout(() => showSupportChat(ticketId), 100);
         }
       };
     });
@@ -640,8 +639,8 @@ function renderSupportTab() {
       btn.onclick = function() {
         const ticketId = this.getAttribute('data-ticket-id');
         if (ticketId) {
+          window._pendingSupportModalId = ticketId;
           switchSupportTab('messages');
-          setTimeout(() => showSupportChat(ticketId), 100);
         }
       };
     });
@@ -652,6 +651,12 @@ function renderSupportTab() {
     const openTicketBtn = document.getElementById('openTicketBtn');
     if (openTicketBtn) openTicketBtn.onclick = function() { showCreateTicket(); };
   }, 0);
+
+  // After rendering: if a modal is pending, open it now and clear the flag
+  if (window._pendingSupportModalId) {
+    showSupportChat(window._pendingSupportModalId);
+    window._pendingSupportModalId = null;
+  }
 }
 
 // Render FAQs/help articles
