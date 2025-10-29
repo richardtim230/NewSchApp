@@ -612,19 +612,34 @@ function renderSupportTab() {
             <span class="ml-auto text-xs bg-green-200 text-green-800 rounded-full px-2 py-0.5">${t.status}</span>
           </div>
           <div class="text-xs text-gray-500 mb-2">Ticket ID: ${t.id}</div>
-          <button class="text-blue-600 hover:underline text-xs font-semibold" onclick="showSupportChat('${t.id}')">View Conversation</button>
+          <button class="view-convo-btn text-blue-600 hover:underline text-xs font-semibold" data-ticket-id="${t.id}">View Conversation</button>
         </div>
       `).join('') : '<div class="text-gray-400 text-center my-6">No tickets yet.</div>' +
       `<button onclick="showCreateTicket()" class="w-full py-3 bg-orange-600 text-white font-bold rounded-lg mt-4">Create New Ticket</button>`;
+
+    // -- Add event listeners for view conversation buttons
+    content.querySelectorAll('.view-convo-btn').forEach(btn => {
+      btn.onclick = function() {
+        const ticketId = this.getAttribute('data-ticket-id');
+        if (ticketId) showSupportChat(ticketId);
+      };
+    });
   } else if (supportTab === "messages") {
     content.innerHTML = tickets.length
       ? tickets.map(t => `
-        <div class="bg-gray-50 rounded-lg p-4 shadow text-center mb-4">
+        <div class="bg-gray-50 rounded-lg p-4 text-center mb-4">
           <div class="text-lg font-semibold text-gray-700 mb-1">${t.title}</div>
           <div class="text-gray-500 mb-4">${t.status}</div>
-          <button onclick="showSupportChat('${t.id}')" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">View Conversation</button>
+          <button class="view-convo-btn bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700" data-ticket-id="${t.id}">View Conversation</button>
         </div>
       `).join('') : '<div class="text-gray-400 text-center my-6">No messages yet.</div>';
+
+    content.querySelectorAll('.view-convo-btn').forEach(btn => {
+      btn.onclick = function() {
+        const ticketId = this.getAttribute('data-ticket-id');
+        if (ticketId) showSupportChat(ticketId);
+      };
+    });
   } else if (supportTab === "faqs") {
     renderFaqs();
   }
