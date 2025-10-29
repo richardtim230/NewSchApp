@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Ad Management Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .modal-bg { background: rgba(0,0,0,0.35); }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen font-sans">
+  <div class="max-w-4xl mx-auto px-2 py-6">
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-2xl font-bold text-blue-800">Advertisement Admin Dashboard</h1>
+      <button id="addAdBtn" class="bg-blue-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-700 transition">+ New Ad</button>
+    </div>
+    <div id="adsTable" class="bg-white rounded-xl shadow p-4"></div>
+  </div>
+
+  <!-- Ad Modal (Create/Edit) -->
+  <div id="adModal" class="fixed inset-0 z-50 items-center justify-center hidden modal-bg">
+    <div class="bg-white rounded-xl shadow-lg max-w-lg w-full mx-auto p-0 overflow-hidden">
+      <div class="flex items-center justify-between px-6 py-4 border-b">
+        <div id="modalTitle" class="font-bold text-lg text-blue-700"></div>
+        <button onclick="closeAdModal()" class="text-2xl text-gray-400 hover:text-gray-700">&times;</button>
+      </div>
+      <form id="adForm" class="px-6 py-4 flex flex-col gap-4" autocomplete="off">
+        <input type="hidden" name="adId" id="adId" />
+        <label class="block">
+          <span class="font-medium text-gray-700">Ad Type</span>
+          <select name="type" id="adType" required class="w-full mt-1 px-3 py-2 border rounded">
+            <option value="">Select type...</option>
+            <option value="image">Image</option>
+            <option value="url">URL (redirect)</option>
+            <option value="video">Video</option>
+            <option value="html">HTML</option>
+            <option value="text">Text</option>
+          </select>
+        </label>
+        <label class="block">
+          <span class="font-medium text-gray-700">Content</span>
+          <input type="text" name="content" id="adContent" required placeholder="Image/Video URL, Redirect URL, HTML, or Text" class="w-full px-3 py-2 border rounded" />
+        </label>
+        <label class="block">
+          <span class="font-medium text-gray-700">Meta Title</span>
+          <input type="text" name="metaTitle" id="adMetaTitle" placeholder="Optional" class="w-full px-3 py-2 border rounded" />
+        </label>
+        <label class="block">
+          <span class="font-medium text-gray-700">Meta Description</span>
+          <input type="text" name="metaDesc" id="adMetaDesc" placeholder="Optional" class="w-full px-3 py-2 border rounded" />
+        </label>
+        <div>
+          <span class="font-medium text-gray-700">Actions</span>
+          <div id="actionsList" class="space-y-2 mt-1"></div>
+          <button type="button" onclick="addActionRow()" class="mt-2 px-3 py-1 bg-gray-200 rounded text-sm hover:bg-gray-300">+ Add Action</button>
+        </div>
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" onclick="closeAdModal()" class="px-5 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400">Cancel</button>
+          <button id="saveAdBtn" type="submit" class="px-5 py-2 bg-blue-600 text-white rounded font-semibold hover:bg-blue-700">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Delete Confirm Modal -->
+  <div id="deleteModal" class="fixed inset-0 z-50 items-center justify-center hidden modal-bg">
+    <div class="bg-white rounded-xl shadow-lg max-w-sm w-full mx-auto mt-40 p-0 overflow-hidden">
+      <div class="px-6 py-4">
+        <div class="font-bold text-lg text-red-700 mb-2">Delete Advertisement?</div>
+        <div class="mb-4 text-gray-700">Are you sure you want to permanently delete this advertisement?</div>
+        <div class="flex justify-end gap-3">
+          <button onclick="closeDeleteModal()" class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400 text-gray-800">Cancel</button>
+          <button id="confirmDeleteBtn" class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 font-semibold">Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- State ---
+    let ads = [];
+    let editingAd = null;
+    let deletingAdId = null;
+
+    // --- Helpers ---
+    function escapeHTML(s) {
+      return (s||"").replace(/[<>&'"]/g, c =>
+        ({'<':'&lt;','>':'&gt;','&':'&amp;','\'':'&#39;','"':'&quot;'}[c]));
+    }
+
+    // --- Modal Controls ---
+    function openAdModal(ad = null) {
+      editingAd = ad;
+      document.getElementById('adModal').style.display = 'flex';
+      document.getElementById('modalTitle').textContent = ad ? "Edit Advertisement" : "New Advertisement";
+      document.getElementById('adForm').reset();
+      document.getElementById('adId').value = ad? ad._id : "";
+      document.getElementById('adType').value = ad? ad.type : "";
+      document.getElementById('adContent').value = ad? ad.content : "";
+      document.getElementById('adMetaTitle').value = ad?.meta?.title || "";
+      document.getElementById('adMetaDesc').value = ad?.meta?.description || "";
+      renderActionsList(ad?.actions || []);
+    }
+    function closeAdModal() {
+      document.getElementById('adModal').style.display = 'none';
+      editingAd = null;
+      renderActionsList([]);
+    }
+    function openDeleteModal(adId) {
+      deletingAdId = adId;
+      document.getElementById('deleteModal').style.display = 'flex';
+    }
+    function closeDeleteModal() {
+      deletingAdId = null;
+      document.getElementById('deleteModal').style.display = 'none';
+    }
+
+    // --- Render Actions ---
+    function renderActionsList(actions) {
+      const container = document.getElementById('actionsList');
+      container.innerHTML = '';
+      (actions || []).forEach((a, i) => addActionRow(a, i));
+    }
+    function addActionRow(action = {}, idx) {
+      const container = document.getElementById('actionsList');
+      const row = document.createElement('div');
+      row.className = 'flex gap-2 mb-1 items-center';
+      row.innerHTML = `
+        <select class="px-2 py-1 border rounded action-type" required>
+          <option value="">Type</option>
+          <option value="download">Download</option>
+          <option value="visit">Visit URL</option>
+          <option value="share">Share</option>
+        </select>
+        <input type="text" class="px-2 py-1 border rounded action-label" placeholder="Label (eg. Download)">
+        <input type="text" class="px-2 py-1 border rounded action-url" placeholder="URL (if needed)">
+        <button type="button" onclick="this.parentNode.remove()" class="text-red-600 pl-1 hover:text-red-800 text-lg">&times;</button>
+      `;
+      container.appendChild(row);
+      // Fill values
+      row.querySelector('.action-type').value = action.type || "";
+      row.querySelector('.action-label').value = action.label || "";
+      row.querySelector('.action-url').value = action.url || "";
+    }
+
+    // --- CRUD ---
+    async function fetchAds() {
+      try {
+        const res = await fetch("https://examguard-jmvj.onrender.com/api/ads");
+        if (!res.ok) throw new Error("Could not fetch ads");
+        ads = await res.json();
+      } catch {
+        ads = [];
+      }
+      renderAdsTable();
+    }
+
+    async function saveAd(e) {
+      e.preventDefault();
+      const form = e.target;
+      const ad = {
+        type: form.adType.value,
+        content: form.adContent.value,
+        meta: {
+          title: form.adMetaTitle.value,
+          description: form.adMetaDesc.value
+        },
+        actions: Array.from(form.querySelectorAll('.action-type')).map((_,i) => {
+          const type = form.querySelectorAll('.action-type')[i].value;
+          const label = form.querySelectorAll('.action-label')[i].value;
+          const url = form.querySelectorAll('.action-url')[i].value;
+          return type ? { type, label, url } : null;
+        }).filter(Boolean)
+      };
+      const adId = form.adId.value;
+      let method, url;
+      if (adId) {
+        method = "PUT";
+        url = `https://examguard-jmvj.onrender.com/api/ads/${adId}`;
+      } else {
+        method = "POST";
+        url = "https://examguard-jmvj.onrender.com/api/ads";
+      }
+      document.getElementById('saveAdBtn').disabled = true;
+      try {
+        const res = await fetch(url, {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(ad)
+        });
+        if (!res.ok) throw new Error("Failed to save ad");
+        await fetchAds();
+        closeAdModal();
+      } catch (err) {
+        alert("Failed to save ad.");
+      }
+      document.getElementById('saveAdBtn').disabled = false;
+    }
+
+    async function deleteAdConfirmed() {
+      if (!deletingAdId) return;
+      try {
+        await fetch(`https://examguard-jmvj.onrender.com/api/ads/${deletingAdId}`, { method: "DELETE" });
+        await fetchAds();
+      } catch {}
+      closeDeleteModal();
+    }
+
+    // --- UI Render ---
+    function renderAdsTable() {
+      const tbl = document.getElementById('adsTable');
+      if (!ads.length) {
+        tbl.innerHTML = `<div class="text-center text-gray-500 py-12">No ads found. Click <b>+ New Ad</b> to add one!</div>`;
+        return;
+      }
+      tbl.innerHTML = `
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead>
+            <tr class="bg-blue-50 text-blue-800 font-semibold">
+              <th class="p-2 text-left">Type</th>
+              <th class="p-2 text-left">Content</th>
+              <th class="p-2 text-left">Meta</th>
+              <th class="p-2 text-left">Actions</th>
+              <th class="p-2"></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${ads.map(ad => `
+              <tr class="border-t hover:bg-blue-50">
+                <td class="p-2 font-bold">${escapeHTML(ad.type)}</td>
+                <td class="p-2">${escapeHTML(ad.content).slice(0,90)}${ad.content.length>90?"...":""}</td>
+                <td class="p-2">
+                  <div class="font-semibold">${escapeHTML(ad.meta?.title||"")}</div>
+                  <div class="text-gray-500">${escapeHTML(ad.meta?.description||"")}</div>
+                </td>
+                <td class="p-2">
+                  <ul class="space-y-1">
+                    ${(ad.actions||[]).map(a=>`<li>
+                      <span class="inline-block bg-gray-200 text-gray-700 rounded px-2 py-0.5 text-xs">${escapeHTML(a.type)}</span>
+                      <span class="ml-1">${escapeHTML(a.label||"")}</span>
+                      ${a.url?`<a href="${escapeHTML(a.url)}" class="ml-1 text-blue-500 underline text-xs" target="_blank">url</a>`:""}
+                    </li>`).join('')}
+                  </ul>
+                </td>
+                <td class="p-2 flex gap-2">
+                  <button onclick='openAdModal(${JSON.stringify(ad)})' class="px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-xs">Edit</button>
+                  <button onclick='openDeleteModal("${ad._id}")' class="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs">Delete</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        </div>
+      `;
+    }
+
+    // --- Events ---
+    document.getElementById('addAdBtn').onclick = ()=>openAdModal();
+    document.getElementById('adForm').onsubmit = saveAd;
+    document.getElementById('confirmDeleteBtn').onclick = deleteAdConfirmed;
+
+    // Modal close on bg click
+    document.getElementById('adModal').onclick = function(e) {if(e.target===this) closeAdModal();}
+    document.getElementById('deleteModal').onclick = function(e){if(e.target===this) closeDeleteModal();}
+
+    // --- INIT ---
+    fetchAds();
+  </script>
+</body>
+</html>
