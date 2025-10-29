@@ -635,11 +635,14 @@ function renderSupportTab() {
       `).join('') : '<div class="text-gray-400 text-center my-6">No messages yet.</div>';
 
     content.querySelectorAll('.view-convo-btn').forEach(btn => {
-      btn.onclick = function() {
-        const ticketId = this.getAttribute('data-ticket-id');
-        if (ticketId) showSupportChat(ticketId);
-      };
-    });
+  btn.onclick = function() {
+    const ticketId = this.getAttribute('data-ticket-id');
+    if (ticketId) {
+      switchSupportTab('messages');
+      setTimeout(() => showSupportChat(ticketId), 100);
+    }
+  };
+});
   } else if (supportTab === "faqs") {
     renderFaqs();
   }
