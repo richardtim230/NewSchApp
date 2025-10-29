@@ -41,6 +41,15 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (this.dataset.tab === "orders") loadOrders();
     if (this.dataset.tab === "messages") loadMessages();
     if (this.dataset.tab === "notifications") loadNotifications();
+    if (this.dataset.tab === "help") {
+      loadHelpUserProfile();
+      fetchTickets();
+      fetchFaqs();
+      setTimeout(() => {
+        const openTicketBtn = document.getElementById('openTicketBtn');
+        if (openTicketBtn) openTicketBtn.onclick = function() { showCreateTicket(); };
+      }, 0);
+    }
   });
 });
 
@@ -619,6 +628,10 @@ function renderSupportTab() {
   } else if (supportTab === "faqs") {
     renderFaqs();
   }
+  setTimeout(() => {
+    const openTicketBtn = document.getElementById('openTicketBtn');
+    if (openTicketBtn) openTicketBtn.onclick = function() { showCreateTicket(); };
+  }, 0);
 }
 
 // Render FAQs/help articles
