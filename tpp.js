@@ -25,7 +25,7 @@ function showAdModal(proceedCallback) {
     if (adModalCountdown <= 0) {
       closeAdModal(true);
     }
-  }, 1000);
+  }, 1500);
 }
 
 function closeAdModal(proceed) {
