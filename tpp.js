@@ -172,11 +172,38 @@ document.getElementById("practice-config-form").onsubmit = async function(e) {
   }
 };
 
+// ====== INIT ======
+let examInSession = false;
+window.onload = async function() {
+  parseConfig();
+  if (examInSession) {
+    await fetchUser();
+    await fetchQuestions();
+    startTime = Date.now();
+    updateTimer();
+    timerInterval && clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      if (!examInSession) return;
+      timer--;
+      updateTimer();
+      if (timer <= 0) submitExam();
+    }, 1000);
+    setFooterState();
+  } else {
+    setFooterState();
+  }
+};
+
 function parseConfig() {
+  // Read config from localStorage
   if (localStorage.getItem('tppConfig')) {
     config = JSON.parse(localStorage.getItem('tppConfig'));
   }
-  examInSession = !!(config.subject && config.year && config.courseCode);
+  // Only set examInSession = true if all required config is present and valid
+  examInSession = !!(
+    config.subject && config.year && config.courseCode && config.count && config.time
+  );
+
   if (!examInSession) {
     document.getElementById('examCard').innerHTML = "<div class='text-gray-500 text-center py-14 text-lg'>No practice session is active.<br>Select your configuration on the left and click <b>Start Practice</b> to begin.</div>";
     document.getElementById('timer').textContent = "--:--:--";
@@ -191,6 +218,7 @@ function parseConfig() {
   exam.topic = config.topic || "";
   timer = exam.duration;
 
+  // Set form values (without triggering reload)
   document.getElementById("subject").value = config.subject;
   document.getElementById("subject").dispatchEvent(new Event("change"));
   document.getElementById("courseCode").value = config.courseCode;
@@ -199,6 +227,7 @@ function parseConfig() {
   document.getElementById("time").value = config.time;
   document.getElementById("topic").value = config.topic || "";
 
+  // Update header info
   document.getElementById('examTitle').textContent = exam.title;
   document.getElementById('examMeta').textContent = `Subject: ${exam.subject} • Year: ${exam.year} • Code: ${exam.courseCode}`;
   document.getElementById("displayCourseCode").textContent = exam.courseCode;
