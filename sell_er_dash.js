@@ -4,21 +4,24 @@ const BACKEND = "https://examguard-jmvj.onrender.com";
 const CLOUDINARY_UPLOAD_ENDPOINT = `${BACKEND}/api/images`;
 let products = [];
 let offersByProduct = {};
+let allSellerOffers = [];
 let userId = "";
 let uploadedImageUrls = [];
 let uploading = false;
 let editingProductId = null;
+let sellerProfile = {};
 
 function getToken() {
   return localStorage.token || sessionStorage.token || '';
 }
-function authHeader() {
-  return {
-    'Authorization': 'Bearer ' + getToken(),
-    'Content-Type': 'application/json'
-  };
+function authHeader(contentType = "application/json") {
+  // contentType can be set to null for FormData
+  let h = { 'Authorization': 'Bearer ' + getToken() };
+  if (contentType) h['Content-Type'] = contentType;
+  return h;
 }
 
+// ========== AUTH & INIT ==========
 async function checkAuth() {
   const overlay = document.getElementById('overlayLoader');
   try {
@@ -30,18 +33,18 @@ async function checkAuth() {
     userId = data.user?._id || "";
     overlay.style.opacity = "0";
     setTimeout(() => { overlay.style.display = "none"; }, 300);
-    await fetchProductsAndOffers();
+    await Promise.all([fetchProductsAndOffers(), fetchProfile()]);
+    renderSettingsTab();
   } catch {
     window.location.href = "mock.html";
   }
 }
 
+// ========== PRODUCTS & OFFERS ==========
 async function fetchProductsAndOffers() {
-  await fetchProducts();
-  await fetchSellerOffers();
+  await Promise.all([fetchProducts(), fetchSellerOffers()]);
   renderProducts();
 }
-
 async function fetchProducts() {
   const res = await fetch(BACKEND + "/api/blogger-dashboard/mylistings", { headers: authHeader() });
   if (!res.ok) {
@@ -52,21 +55,22 @@ async function fetchProducts() {
   const data = await res.json();
   products = (data || []).map(l => ({ ...l, id: l._id }));
 }
-
 async function fetchSellerOffers() {
-  // Get all offers where sellerId is current user
   const res = await fetch(BACKEND + "/api/offers/seller", { headers: authHeader() });
   offersByProduct = {};
+  allSellerOffers = [];
   if (!res.ok) return;
   const result = await res.json();
   const offers = result.offers || [];
-  // Group by productId
+  allSellerOffers = offers;
+  // Group by productId for products tab
   offers.forEach(offer => {
     if (!offersByProduct[offer.productId]) offersByProduct[offer.productId] = [];
     offersByProduct[offer.productId].push(offer);
   });
 }
 
+// ========== PRODUCTS TAB ==========
 function statusBadge(status, approved) {
   let color = "bg-gray-200 text-gray-700";
   let label = "Pending Approval";
@@ -146,8 +150,24 @@ function renderOffersList(offers) {
             <span class="ml-2 mt-1 md:mt-0">
               <span class="inline-block px-2 py-1 rounded-full text-white ${offer.status === "pending" ? "bg-gray-400" : offer.status === "accepted" ? "bg-green-500" : "bg-red-400"}">${offer.status}</span>
               ${offer.status === "pending" ? `
-                <button onclick="updateOfferStatus('${offer._id}','accepted')" class="bg-green-100 hover:bg-green-200 text-green-800 px-2 py-1 rounded ml-1">Accept</button>
-                <button onclick="updateOfferStatus('${offer._id}','rejected')" class="bg-red-100 hover:bg-red-200 text-red-800 px-2 py-1 rounded ml-1">Reject</button>
+                <button onclick="updateOfferStatusWithSpinner(this, '${offer._id}','accepted')" class="bg-green-100 hover:bg-green-200 text-green-800 px-2 py-1 rounded ml-1 flex items-center gap-1">
+                  <span class="button-text">Accept</span>
+                  <span class="button-spinner" style="display:none">
+                    <svg class="animate-spin h-4 w-4 text-green-800" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                    </svg>
+                  </span>
+                </button>
+                <button onclick="updateOfferStatusWithSpinner(this, '${offer._id}','rejected')" class="bg-red-100 hover:bg-red-200 text-red-800 px-2 py-1 rounded ml-1 flex items-center gap-1">
+                  <span class="button-text">Reject</span>
+                  <span class="button-spinner" style="display:none">
+                    <svg class="animate-spin h-4 w-4 text-red-800" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                    </svg>
+                  </span>
+                </button>
               ` : ''}
             </span>
           </li>
@@ -157,7 +177,72 @@ function renderOffersList(offers) {
   `;
 }
 
-window.updateOfferStatus = async function (offerId, status) {
+// ========== OFFERS TAB ==========
+function renderOffersTab() {
+  const el = document.getElementById('offersList');
+  if (!allSellerOffers.length) {
+    el.innerHTML = `<div class="text-gray-500 text-center py-8">No offers yet.</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="flex flex-col gap-4">` +
+    allSellerOffers.map(offer => {
+      let product = products.find(p => p._id === offer.productId || p.id === offer.productId);
+      return `
+        <div class="offer-card-gradient rounded-xl shadow p-4 border border-blue-200 flex flex-col md:flex-row md:items-center justify-between">
+          <div class="flex-1">
+            <div class="font-semibold text-blue-900">
+              Product: <span class="underline">${product ? product.title : 'Unknown'}</span>
+            </div>
+            <div>Buyer: <b>${offer.buyer?.name || 'Unknown'}</b> <span class="text-gray-500">${offer.buyer?.email || ''}</span></div>
+            <div>Offer: <span class="font-bold text-lg text-yellow-600">₦${offer.offerPrice}</span></div>
+            <div>Message: <span class="text-gray-700">${offer.message || ''}</span></div>
+            <div>Status: <span class="inline-block px-2 py-1 rounded-full text-white ${offer.status === "pending" ? "bg-gray-400" : offer.status === "accepted" ? "bg-green-500" : "bg-red-400"}">${offer.status}</span></div>
+          </div>
+          <div class="flex gap-2 mt-2 md:mt-0">
+            ${offer.status === "pending" ? `
+              <button onclick="updateOfferStatusWithSpinner(this, '${offer._id}', 'accepted')" class="bg-green-500 text-white px-3 py-1 rounded flex items-center gap-1">
+                <span class="button-text">Accept</span>
+                <span class="button-spinner" style="display:none">
+                  <svg class="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                  </svg>
+                </span>
+              </button>
+              <button onclick="updateOfferStatusWithSpinner(this, '${offer._id}', 'rejected')" class="bg-red-500 text-white px-3 py-1 rounded flex items-center gap-1">
+                <span class="button-text">Reject</span>
+                <span class="button-spinner" style="display:none">
+                  <svg class="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                  </svg>
+                </span>
+              </button>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }).join('') + `</div>`;
+}
+
+// Spinner-enabled status update for offer action buttons
+function updateOfferStatusWithSpinner(btn, offerId, status) {
+  const button = btn;
+  const text = button.querySelector('.button-text');
+  const spinner = button.querySelector('.button-spinner');
+  // Show spinner, hide text
+  text.style.display = 'none';
+  spinner.style.display = 'inline-block';
+  updateOfferStatus(offerId, status)
+    .finally(() => {
+      // Restore after status update and reload
+      text.style.display = '';
+      spinner.style.display = 'none';
+    });
+}
+
+// Offer status update function
+async function updateOfferStatus(offerId, status) {
   if (!["accepted", "rejected"].includes(status)) return;
   try {
     await fetch(BACKEND + `/api/offers/${offerId}/status`, {
@@ -166,33 +251,14 @@ window.updateOfferStatus = async function (offerId, status) {
       body: JSON.stringify({ status })
     });
     await fetchSellerOffers();
+    renderOffersTab();
     renderProducts();
   } catch (err) {
     alert("Failed to update offer status.");
   }
-};
-
-function showConfirmModal(message, onYes, onNo) {
-  const modal = document.getElementById("confirmModal");
-  document.getElementById("confirmModalText").textContent = message;
-  modal.classList.remove("hidden");
-  document.body.style.overflow = "hidden";
-  function cleanup() {
-    modal.classList.add("hidden");
-    document.body.style.overflow = "";
-    document.getElementById("confirmModalYes").onclick = null;
-    document.getElementById("confirmModalNo").onclick = null;
-  }
-  document.getElementById("confirmModalYes").onclick = function() {
-    cleanup();
-    if (typeof onYes === "function") onYes();
-  };
-  document.getElementById("confirmModalNo").onclick = function() {
-    cleanup();
-    if (typeof onNo === "function") onNo();
-  };
 }
 
+// ========== PRODUCT CRUD ==========
 window.deleteProduct = function (id) {
   showConfirmModal(
     "Are you sure you want to delete this product?",
@@ -206,7 +272,6 @@ window.deleteProduct = function (id) {
     }
   );
 };
-
 window.editProduct = function (id) {
   const prod = products.find(p => p.id === id);
   if (!prod) return;
@@ -221,7 +286,6 @@ window.editProduct = function (id) {
   renderImagePreviews(uploadedImageUrls);
   editingProductId = id;
 };
-
 window.unpublishProduct = async function (id) {
   const prod = products.find(p => p.id === id);
   if (!prod) return;
@@ -232,18 +296,33 @@ window.unpublishProduct = async function (id) {
     alert("Could not update product status.");
   }
 };
+async function addProductToBackend(prod) {
+  const res = await fetch(BACKEND + "/api/blogger-dashboard/listings", {
+    method: "POST",
+    headers: authHeader(),
+    body: JSON.stringify(prod)
+  });
+  if (!res.ok) throw new Error("Could not add product");
+  return await res.json();
+}
+async function updateProductInBackend(id, prod) {
+  const res = await fetch(BACKEND + `/api/blogger-dashboard/listings/${id}`, {
+    method: "PATCH",
+    headers: authHeader(),
+    body: JSON.stringify(prod)
+  });
+  if (!res.ok) throw new Error("Could not update product");
+  return await res.json();
+}
+async function deleteProductFromBackend(id) {
+  const res = await fetch(BACKEND + `/api/blogger-dashboard/listings/${id}`, {
+    method: "DELETE",
+    headers: authHeader()
+  });
+  if (!res.ok) throw new Error("Could not delete product");
+}
 
-document.getElementById('addProductBtn').addEventListener('click', function () {
-  document.getElementById('addProductModal').classList.remove('hidden');
-  document.getElementById('addProductForm').reset();
-  uploadedImageUrls = [];
-  renderImagePreviews([]);
-  editingProductId = null;
-});
-document.getElementById('closeAddModal').addEventListener('click', function () {
-  document.getElementById('addProductModal').classList.add('hidden');
-});
-
+// ========== IMAGE PREVIEW & UPLOAD ==========
 function renderImagePreviews(urls) {
   const previewDiv = document.getElementById('product-img-preview');
   previewDiv.innerHTML = '';
@@ -258,7 +337,111 @@ function renderImagePreviews(urls) {
   });
 }
 
+// ========== SETTINGS TAB ==========
+async function fetchProfile() {
+  // Assumes settings (profile) based on user
+  const res = await fetch(BACKEND + "/api/auth/me", { headers: authHeader() });
+  if (!res.ok) return;
+  const data = await res.json();
+  sellerProfile = data.user || {};
+}
+function renderSettingsTab() {
+  // Fill settings form with values if available
+  document.getElementById('storeNameInput').value = sellerProfile.storeName || sellerProfile.fullname || sellerProfile.username || "";
+  document.getElementById('emailInput').value = sellerProfile.email || "";
+  document.getElementById('phoneInput').value = sellerProfile.phone || "";
+  document.getElementById('meetupSpotInput').value = sellerProfile.meetupSpot || "";
+  // Notification checkboxes
+  document.getElementById('notifEmail').checked = sellerProfile.notifyEmail ?? true;
+  document.getElementById('notifSMS').checked = sellerProfile.notifySMS ?? true;
+  document.getElementById('notifPush').checked = sellerProfile.notifyPush ?? false;
+}
+
+document.getElementById('settingsForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  // Get new values
+  const newProfile = {
+    storeName: document.getElementById('storeNameInput').value,
+    email: document.getElementById('emailInput').value,
+    phone: document.getElementById('phoneInput').value,
+    meetupSpot: document.getElementById('meetupSpotInput').value,
+    notifyEmail: document.getElementById('notifEmail').checked,
+    notifySMS: document.getElementById('notifSMS').checked,
+    notifyPush: document.getElementById('notifPush').checked,
+  };
+  // Save to backend (PATCH /api/auth/me or a settings endpoint if available, fallback to PATCH /api/users/:id)
+  try {
+    let patchUrl = BACKEND + "/api/auth/me";
+    let res = await fetch(patchUrl, {
+      method: "PATCH",
+      headers: authHeader(),
+      body: JSON.stringify(newProfile)
+    });
+    if (!res.ok) {
+      // fallback to PATCH /api/users/:id
+      patchUrl = BACKEND + "/api/users/" + userId;
+      res = await fetch(patchUrl, {
+        method: "PATCH",
+        headers: authHeader(),
+        body: JSON.stringify(newProfile)
+      });
+    }
+    if (!res.ok) throw new Error("Update failed");
+    sellerProfile = { ...sellerProfile, ...newProfile };
+    renderSettingsTab();
+    alert("Settings updated!");
+  } catch (e) {
+    alert("Could not update settings.");
+  }
+});
+
+// ========== REWARDS TAB (Mocked Data for Now) ==========
+document.getElementById('point-badge').textContent = 72;
+document.getElementById('point-badge-mobile').textContent = 72;
+document.getElementById('rewardTotal').textContent = 72;
+
+// ========== TABS ==========
+function tabSwitch(tabName) {
+  document.querySelectorAll('[data-tab]').forEach(b => b.classList.remove('tab-btn-active'));
+  document.querySelector(`[data-tab="${tabName}"]`).classList.add('tab-btn-active');
+  document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
+  document.getElementById('tab-' + tabName).classList.remove('hidden');
+}
+document.querySelectorAll('[data-tab]').forEach(btn => {
+  btn.addEventListener('click', async function () {
+    tabSwitch(this.dataset.tab);
+    if (this.dataset.tab === 'products') await fetchProductsAndOffers();
+    if (this.dataset.tab === 'offers') {
+      await fetchSellerOffers();
+      renderOffersTab();
+    }
+    if (this.dataset.tab === 'settings') {
+      await fetchProfile();
+      renderSettingsTab();
+    }
+  });
+});
+
+// Hamburger for mobile nav
+document.getElementById('hamburger-btn').addEventListener('click', function () {
+  const menu = document.getElementById('mobile-menu');
+  menu.hidden = !menu.hidden;
+});
+
+// ========== PRODUCT MODAL ==========
+document.getElementById('addProductBtn').addEventListener('click', function () {
+  document.getElementById('addProductModal').classList.remove('hidden');
+  document.getElementById('addProductForm').reset();
+  uploadedImageUrls = [];
+  renderImagePreviews([]);
+  editingProductId = null;
+});
+document.getElementById('closeAddModal').addEventListener('click', function () {
+  document.getElementById('addProductModal').classList.add('hidden');
+});
+
 document.addEventListener("DOMContentLoaded", function() {
+  // IMAGE UPLOAD HANDLING
   const prodImageFileInput = document.getElementById('prodImageFile');
   const productImgPreviewDiv = document.getElementById('product-img-preview');
   uploadedImageUrls = [];
@@ -266,15 +449,12 @@ document.addEventListener("DOMContentLoaded", function() {
 
   if (prodImageFileInput) {
     prodImageFileInput.addEventListener('change', async function(event) {
-      // Reset previews and URLs on every new selection
       uploadedImageUrls = [];
       productImgPreviewDiv.innerHTML = '';
       const files = Array.from(event.target.files).slice(0, 8);
       if (!files.length) return;
       uploading = true;
-      // Upload all files in parallel (faster)
       await Promise.all(files.map(async (file) => {
-        // Show thumbnail preview while uploading
         const thumb = document.createElement('div');
         thumb.className = "w-14 h-14 bg-gray-100 rounded flex items-center justify-center relative";
         const img = document.createElement('img');
@@ -316,6 +496,7 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 });
 
+// PRODUCT FORM SUBMIT
 document.getElementById('addProductForm').addEventListener('submit', async function (e) {
   e.preventDefault();
   if (uploading) {
@@ -353,52 +534,29 @@ document.getElementById('addProductForm').addEventListener('submit', async funct
   }
 });
 
-async function addProductToBackend(prod) {
-  const res = await fetch(BACKEND + "/api/blogger-dashboard/listings", {
-    method: "POST",
-    headers: authHeader(),
-    body: JSON.stringify(prod)
-  });
-  if (!res.ok) throw new Error("Could not add product");
-  return await res.json();
-}
-async function updateProductInBackend(id, prod) {
-  const res = await fetch(BACKEND + `/api/blogger-dashboard/listings/${id}`, {
-    method: "PATCH",
-    headers: authHeader(),
-    body: JSON.stringify(prod)
-  });
-  if (!res.ok) throw new Error("Could not update product");
-  return await res.json();
-}
-async function deleteProductFromBackend(id) {
-  const res = await fetch(BACKEND + `/api/blogger-dashboard/listings/${id}`, {
-    method: "DELETE",
-    headers: authHeader()
-  });
-  if (!res.ok) throw new Error("Could not delete product");
+// ========== CONFIRM MODAL ==========
+function showConfirmModal(message, onYes, onNo) {
+  const modal = document.getElementById("confirmModal");
+  document.getElementById("confirmModalText").textContent = message;
+  modal.classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+  function cleanup() {
+    modal.classList.add("hidden");
+    document.body.style.overflow = "";
+    document.getElementById("confirmModalYes").onclick = null;
+    document.getElementById("confirmModalNo").onclick = null;
+  }
+  document.getElementById("confirmModalYes").onclick = function() {
+    cleanup();
+    if (typeof onYes === "function") onYes();
+  };
+  document.getElementById("confirmModalNo").onclick = function() {
+    cleanup();
+    if (typeof onNo === "function") onNo();
+  };
 }
 
-document.getElementById('point-badge').textContent = 72;
-document.getElementById('point-badge-mobile').textContent = 72;
-document.getElementById('rewardTotal').textContent = 72;
-
-function tabSwitch(tabName) {
-  document.querySelectorAll('[data-tab]').forEach(b => b.classList.remove('tab-btn-active'));
-  document.querySelector(`[data-tab="${tabName}"]`).classList.add('tab-btn-active');
-  document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
-  document.getElementById('tab-' + tabName).classList.remove('hidden');
-}
-document.querySelectorAll('[data-tab]').forEach(btn => {
-  btn.addEventListener('click', function () {
-    tabSwitch(this.dataset.tab);
-    if (this.dataset.tab === 'products') fetchProductsAndOffers();
-  });
-});
-document.getElementById('hamburger-btn').addEventListener('click', function () {
-  const menu = document.getElementById('mobile-menu');
-  menu.hidden = !menu.hidden;
-});
+// ========== HELP TAB (Simple Append) ==========
 document.getElementById('helpForm').addEventListener('submit', function (e) {
   e.preventDefault();
   const helpInput = document.getElementById('helpInput');
@@ -409,61 +567,6 @@ document.getElementById('helpForm').addEventListener('submit', function (e) {
     helpInput.value = "";
   }
 });
-// Add this global variable for offers
-let allSellerOffers = [];
 
-// Update fetchSellerOffers to store all offers
-async function fetchSellerOffers() {
-  const res = await fetch(BACKEND + "/api/offers/seller", { headers: authHeader() });
-  offersByProduct = {};
-  allSellerOffers = [];
-  if (!res.ok) return;
-  const result = await res.json();
-  const offers = result.offers || [];
-  allSellerOffers = offers;
-  // Group by productId for products tab
-  offers.forEach(offer => {
-    if (!offersByProduct[offer.productId]) offersByProduct[offer.productId] = [];
-    offersByProduct[offer.productId].push(offer);
-  });
-}
-
-// Render Offers Tab
-function renderOffersTab() {
-  const el = document.getElementById('offersList');
-  if (!allSellerOffers.length) {
-    el.innerHTML = `<div class="text-gray-500 text-center py-8">No offers yet.</div>`;
-    return;
-  }
-  el.innerHTML = `<div class="flex flex-col gap-4">` +
-    allSellerOffers.map(offer => {
-      let product = products.find(p => p._id === offer.productId || p.id === offer.productId);
-      return `
-        <div class="offer-card-gradient rounded-xl shadow p-4 border border-blue-200 flex flex-col md:flex-row md:items-center justify-between">
-          <div class="flex-1">
-            <div class="font-semibold text-blue-900">
-              Product: <span class="underline">${product ? product.title : 'Unknown'}</span>
-            </div>
-            <div>Buyer: <b>${offer.buyer?.name || 'Unknown'}</b> <span class="text-gray-500">${offer.buyer?.email || ''}</span></div>
-            <div>Offer: <span class="font-bold text-lg text-yellow-600">₦${offer.offerPrice}</span></div>
-            <div>Message: <span class="text-gray-700">${offer.message || ''}</span></div>
-            <div>Status: <span class="inline-block px-2 py-1 rounded-full text-white ${offer.status === "pending" ? "bg-gray-400" : offer.status === "accepted" ? "bg-green-500" : "bg-red-400"}">${offer.status}</span></div>
-          </div>
-          <div class="flex gap-2 mt-2 md:mt-0">
-            ${offer.status === "pending" ? `
-              <button onclick="updateOfferStatus('${offer._id}','accepted')" class="bg-green-500 text-white px-3 py-1 rounded">Accept</button>
-              <button onclick="updateOfferStatus('${offer._id}','rejected')" class="bg-red-500 text-white px-3 py-1 rounded">Reject</button>
-            ` : ''}
-          </div>
-        </div>
-      `;
-    }).join('') + `</div>`;
-}
-
-// Make sure to re-render Offers tab when it is selected
-document.querySelector('[data-tab="offers"]').addEventListener('click', async function () {
-  await fetchSellerOffers();
-  renderOffersTab();
-});
-
+// ========== INIT ==========
 window.addEventListener('DOMContentLoaded', checkAuth);
