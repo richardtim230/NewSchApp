@@ -198,13 +198,16 @@ function parseConfig() {
 
 function setFooterState() {
   const disabled = !examInSession || submitted;
-  document.getElementById("prevBtn").disabled = disabled;
-  document.getElementById("nextBtn").disabled = disabled;
-  document.getElementById("submitBtn").disabled = disabled;
-  document.getElementById("saveNextBtn").disabled = disabled;
-  document.getElementById("skipBtn").disabled = disabled;
-  document.getElementById("questionNavGrid").querySelectorAll?.("button").forEach(btn => btn.disabled = disabled);
-  document.getElementById("timer").style.opacity = disabled ? "0.5" : "1";
+  ["prevBtn", "nextBtn", "submitBtn", "saveNextBtn", "skipBtn"].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.disabled = disabled;
+  });
+  const grid = document.getElementById("questionNavGrid");
+  if (grid && grid.querySelectorAll) {
+    grid.querySelectorAll("button").forEach(btn => btn.disabled = disabled);
+  }
+  const timer = document.getElementById("timer");
+  if (timer) timer.style.opacity = disabled ? "0.5" : "1";
 }
 
 async function fetchUser() {
