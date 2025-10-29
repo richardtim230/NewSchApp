@@ -519,3 +519,35 @@ document.addEventListener('keydown', function(e) {
   if (e.key === "n" || e.key === "N") saveAnswer();
   if (e.key === "k" || e.key === "K") skipQuestion();
 });
+// Sidebar toggle
+const sidebar = document.querySelector('.sidebar');
+const sidebarToggleBtn = document.getElementById('sidebarToggleBtn');
+const sidebarOverlay = document.getElementById('sidebarOverlay');
+
+function openSidebar() {
+  sidebar.classList.add('open');
+  sidebarOverlay.style.display = 'block';
+  document.body.style.overflow = 'hidden';
+}
+function closeSidebar() {
+  sidebar.classList.remove('open');
+  sidebarOverlay.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+sidebarToggleBtn.addEventListener('click', function() {
+  if (sidebar.classList.contains('open')) {
+    closeSidebar();
+  } else {
+    openSidebar();
+  }
+});
+// Hide sidebar when clicking overlay
+sidebarOverlay.addEventListener('click', closeSidebar);
+
+// Optional: Hide sidebar on resize to desktop
+window.addEventListener('resize', function() {
+  if (window.innerWidth >= 900) {
+    closeSidebar();
+  }
+});
