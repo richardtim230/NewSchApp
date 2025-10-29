@@ -347,11 +347,15 @@ async function fetchProfile() {
 }
 function renderSettingsTab() {
   // Fill settings form with values if available
+  
   document.getElementById('storeNameInput').value = sellerProfile.storeName || sellerProfile.fullname || sellerProfile.username || "";
   document.getElementById('emailInput').value = sellerProfile.email || "";
   document.getElementById('phoneInput').value = sellerProfile.phone || "";
-  document.getElementById('meetupSpotInput').value = sellerProfile.meetupSpot || "";
-  // Notification checkboxes
+  document.getElementById('meetupSpotInput').value = sellerProfile.meetupSpot || sellerProfile.location || "";
+  document.getElementById('bankInput').value = sellerProfile.bank || "";
+  document.getElementById('accountNameInput').value = sellerProfile.accountName || "";
+  document.getElementById('accountNumberInput').value = sellerProfile.accountNumber || "";
+  
   document.getElementById('notifEmail').checked = sellerProfile.notifyEmail ?? true;
   document.getElementById('notifSMS').checked = sellerProfile.notifySMS ?? true;
   document.getElementById('notifPush').checked = sellerProfile.notifyPush ?? false;
@@ -365,6 +369,9 @@ document.getElementById('settingsForm').addEventListener('submit', async functio
     email: document.getElementById('emailInput').value,
     phone: document.getElementById('phoneInput').value,
     meetupSpot: document.getElementById('meetupSpotInput').value,
+    bank: document.getElementById('bankInput').value,
+    accountName: document.getElementById('accountNameInput').value,
+    accountNumber: document.getElementById('accountNumberInput').value,
     notifyEmail: document.getElementById('notifEmail').checked,
     notifySMS: document.getElementById('notifSMS').checked,
     notifyPush: document.getElementById('notifPush').checked,
