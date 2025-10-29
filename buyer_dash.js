@@ -592,7 +592,6 @@ function renderRecentMessage() {
   document.getElementById("recent-ticket-msg").textContent = lastMsg ? (lastMsg.text.slice(0,60).replace(/\n/g, ' ') + (lastMsg.text.length>60?"...":"")) : "No recent message.";
   document.getElementById("recent-ticket-meta").textContent = lastMsg ? (lastMsg.from==="support"?"Support":"You") + " • " + timeAgo(new Date(lastMsg.createdAt).getTime()) : "";
 }
-
 // Support Tab Content rendering
 function renderSupportTab() {
   const content = document.getElementById("supportTabContent");
@@ -621,7 +620,10 @@ function renderSupportTab() {
     content.querySelectorAll('.view-convo-btn').forEach(btn => {
       btn.onclick = function() {
         const ticketId = this.getAttribute('data-ticket-id');
-        if (ticketId) showSupportChat(ticketId);
+        if (ticketId) {
+          switchSupportTab('messages');
+          setTimeout(() => showSupportChat(ticketId), 100);
+        }
       };
     });
   } else if (supportTab === "messages") {
@@ -635,14 +637,14 @@ function renderSupportTab() {
       `).join('') : '<div class="text-gray-400 text-center my-6">No messages yet.</div>';
 
     content.querySelectorAll('.view-convo-btn').forEach(btn => {
-  btn.onclick = function() {
-    const ticketId = this.getAttribute('data-ticket-id');
-    if (ticketId) {
-      switchSupportTab('messages');
-      setTimeout(() => showSupportChat(ticketId), 100);
-    }
-  };
-});
+      btn.onclick = function() {
+        const ticketId = this.getAttribute('data-ticket-id');
+        if (ticketId) {
+          switchSupportTab('messages');
+          setTimeout(() => showSupportChat(ticketId), 100);
+        }
+      };
+    });
   } else if (supportTab === "faqs") {
     renderFaqs();
   }
