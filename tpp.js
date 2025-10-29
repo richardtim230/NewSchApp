@@ -145,7 +145,7 @@ document.getElementById("practice-config-form").onsubmit = async function(e) {
   const cfg = { subject, courseCode, year, count, time, topic };
   localStorage.setItem("tppConfig", JSON.stringify(cfg));
 
-  // Instead of reloading, re-run config and fetch logic
+  // Re-initialize session
   parseConfig();
   await fetchUser();
   await fetchQuestions();
@@ -159,6 +159,17 @@ document.getElementById("practice-config-form").onsubmit = async function(e) {
     if (timer <= 0) submitExam();
   }, 1000);
   setFooterState();
+
+  // Hide the sidebar if on mobile
+  if (window.innerWidth <= 900) {
+    const sidebar = document.querySelector('.sidebar');
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
+    if (sidebar && sidebar.classList.contains('open')) {
+      sidebar.classList.remove('open');
+      if (sidebarOverlay) sidebarOverlay.style.display = 'none';
+      document.body.style.overflow = '';
+    }
+  }
 };
 
 function parseConfig() {
