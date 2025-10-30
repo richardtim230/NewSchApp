@@ -7,6 +7,20 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     .modal-bg { background: rgba(0,0,0,0.35); }
+    .spinner {
+      border: 2px solid #e5e7eb;
+      border-top: 2px solid #2563eb;
+      border-radius: 50%;
+      width: 1.25em;
+      height: 1.25em;
+      animation: spin 0.7s linear infinite;
+      display: inline-block;
+      vertical-align: middle;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg);}
+      100% { transform: rotate(360deg);}
+    }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen font-sans">
@@ -38,9 +52,13 @@
             <option value="text">Text</option>
           </select>
         </label>
-        <label class="block">
+        <label class="block" id="contentLabel">
           <span class="font-medium text-gray-700">Content</span>
           <input type="text" name="content" id="adContent" required placeholder="Image/Video URL, Redirect URL, HTML, or Text" class="w-full px-3 py-2 border rounded" />
+          <div id="imageUploadSection" class="hidden mt-2">
+            <input type="file" accept="image/*" id="imageUploadInput" class="block w-full text-sm text-gray-600" />
+            <div id="imagePreview" class="mt-2"></div>
+          </div>
         </label>
         <label class="block">
           <span class="font-medium text-gray-700">Meta Title</span>
@@ -57,7 +75,10 @@
         </div>
         <div class="flex justify-end gap-3 pt-2">
           <button type="button" onclick="closeAdModal()" class="px-5 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400">Cancel</button>
-          <button id="saveAdBtn" type="submit" class="px-5 py-2 bg-blue-600 text-white rounded font-semibold hover:bg-blue-700">Save</button>
+          <button id="saveAdBtn" type="submit" class="px-5 py-2 bg-blue-600 text-white rounded font-semibold hover:bg-blue-700 flex items-center gap-2">
+            <span id="saveAdBtnSpinner" class="hidden spinner"></span>
+            <span>Save</span>
+          </button>
         </div>
       </form>
     </div>
@@ -71,7 +92,10 @@
         <div class="mb-4 text-gray-700">Are you sure you want to permanently delete this advertisement?</div>
         <div class="flex justify-end gap-3">
           <button onclick="closeDeleteModal()" class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400 text-gray-800">Cancel</button>
-          <button id="confirmDeleteBtn" class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 font-semibold">Delete</button>
+          <button id="confirmDeleteBtn" class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 font-semibold flex items-center gap-2">
+            <span id="deleteAdBtnSpinner" class="hidden spinner"></span>
+            <span>Delete</span>
+          </button>
         </div>
       </div>
     </div>
@@ -101,19 +125,45 @@
       document.getElementById('adMetaTitle').value = ad?.meta?.title || "";
       document.getElementById('adMetaDesc').value = ad?.meta?.description || "";
       renderActionsList(ad?.actions || []);
+
+      // Set up the image upload area if editing an image ad
+      const adType = ad ? ad.type : "";
+      const imageSection = document.getElementById('imageUploadSection');
+      const contentInput = document.getElementById('adContent');
+      const imagePreview = document.getElementById('imagePreview');
+      if (adType === "image") {
+        imageSection.classList.remove('hidden');
+        contentInput.placeholder = "Image URL will appear here after upload";
+        contentInput.readOnly = true;
+        if (ad && ad.content) {
+          imagePreview.innerHTML = `<img src="${escapeHTML(ad.content)}" class="max-h-32 mt-1 rounded border" alt="Ad Image Preview" />`;
+        } else {
+          imagePreview.innerHTML = "";
+        }
+      } else {
+        imageSection.classList.add('hidden');
+        contentInput.placeholder = "Image/Video URL, Redirect URL, HTML, or Text";
+        contentInput.readOnly = false;
+        imagePreview.innerHTML = "";
+      }
     }
     function closeAdModal() {
       document.getElementById('adModal').style.display = 'none';
       editingAd = null;
       renderActionsList([]);
+      // Reset spinners
+      document.getElementById('saveAdBtnSpinner').classList.add('hidden');
     }
     function openDeleteModal(adId) {
       deletingAdId = adId;
       document.getElementById('deleteModal').style.display = 'flex';
+      // Reset spinner
+      document.getElementById('deleteAdBtnSpinner').classList.add('hidden');
     }
     function closeDeleteModal() {
       deletingAdId = null;
       document.getElementById('deleteModal').style.display = 'none';
+      document.getElementById('deleteAdBtnSpinner').classList.add('hidden');
     }
 
     // --- Render Actions ---
@@ -183,6 +233,7 @@
         url = "https://examguard-jmvj.onrender.com/api/ads";
       }
       document.getElementById('saveAdBtn').disabled = true;
+      document.getElementById('saveAdBtnSpinner').classList.remove('hidden');
       try {
         const res = await fetch(url, {
           method,
@@ -196,15 +247,20 @@
         alert("Failed to save ad.");
       }
       document.getElementById('saveAdBtn').disabled = false;
+      document.getElementById('saveAdBtnSpinner').classList.add('hidden');
     }
 
     async function deleteAdConfirmed() {
       if (!deletingAdId) return;
+      document.getElementById('confirmDeleteBtn').disabled = true;
+      document.getElementById('deleteAdBtnSpinner').classList.remove('hidden');
       try {
         await fetch(`https://examguard-jmvj.onrender.com/api/ads/${deletingAdId}`, { method: "DELETE" });
         await fetchAds();
       } catch {}
       closeDeleteModal();
+      document.getElementById('confirmDeleteBtn').disabled = false;
+      document.getElementById('deleteAdBtnSpinner').classList.add('hidden');
     }
 
     // --- UI Render ---
@@ -230,7 +286,11 @@
             ${ads.map(ad => `
               <tr class="border-t hover:bg-blue-50">
                 <td class="p-2 font-bold">${escapeHTML(ad.type)}</td>
-                <td class="p-2">${escapeHTML(ad.content).slice(0,90)}${ad.content.length>90?"...":""}</td>
+                <td class="p-2">
+                  ${ad.type === 'image' ? `<img src="${escapeHTML(ad.content)}" alt="ad image" class="max-h-16 rounded border" />` :
+                    `${escapeHTML(ad.content).slice(0,90)}${ad.content.length>90?"...":""}`
+                  }
+                </td>
                 <td class="p-2">
                   <div class="font-semibold">${escapeHTML(ad.meta?.title||"")}</div>
                   <div class="text-gray-500">${escapeHTML(ad.meta?.description||"")}</div>
@@ -264,6 +324,51 @@
     // Modal close on bg click
     document.getElementById('adModal').onclick = function(e) {if(e.target===this) closeAdModal();}
     document.getElementById('deleteModal').onclick = function(e){if(e.target===this) closeDeleteModal();}
+
+    // --- Image Upload for Ad Type ---
+    document.getElementById('adType').addEventListener('change', function() {
+      const type = this.value;
+      const imageSection = document.getElementById('imageUploadSection');
+      const contentInput = document.getElementById('adContent');
+      const imagePreview = document.getElementById('imagePreview');
+      if (type === 'image') {
+        imageSection.classList.remove('hidden');
+        contentInput.placeholder = "Image URL will appear here after upload";
+        contentInput.readOnly = true;
+        contentInput.value = "";
+        imagePreview.innerHTML = "";
+      } else {
+        imageSection.classList.add('hidden');
+        contentInput.placeholder = "Image/Video URL, Redirect URL, HTML, or Text";
+        contentInput.readOnly = false;
+        contentInput.value = "";
+        imagePreview.innerHTML = "";
+      }
+    });
+
+    document.getElementById('imageUploadInput').addEventListener('change', async function() {
+      const file = this.files[0];
+      if (!file) return;
+      const formData = new FormData();
+      formData.append('image', file);
+      const preview = document.getElementById('imagePreview');
+      preview.innerHTML = '<span class="spinner"></span> <span class="ml-2 text-gray-700">Uploading...</span>';
+      try {
+        const res = await fetch('https://examguard-jmvj.onrender.com/api/images', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+        if (data.url) {
+          document.getElementById('adContent').value = data.url;
+          preview.innerHTML = `<img src="${data.url}" class="max-h-32 mt-1 rounded border" alt="Ad Image Preview" />`;
+        } else {
+          preview.innerHTML = `<span class="text-red-600">Upload failed.</span>`;
+        }
+      } catch (e) {
+        preview.innerHTML = '<span class="text-red-600">Upload error. Try again.</span>';
+      }
+    });
 
     // --- INIT ---
     fetchAds();
