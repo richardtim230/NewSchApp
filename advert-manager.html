@@ -30,25 +30,21 @@
       <button id="addAdBtn" class="bg-blue-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-700 transition">+ New Ad</button>
     </div>
     <div id="adsTable" class="bg-white rounded-xl shadow p-4"></div>
-  </div>
 
-  <!-- APK Upload Section -->
-  <div class="max-w-4xl mx-auto px-2 py-6 mt-10">
-    <div class="bg-white rounded-xl shadow p-6">
-      <h2 class="text-xl font-semibold text-green-700 mb-3 flex items-center gap-2">
-        <svg width="22" height="22" fill="none"><path fill="#22c55e" d="M13.46 4.49c0 .07.02.13.06.19l3.59 6.23c.06.11.05.24-.02.34l-6.84 9.69c-.07.1-.19.16-.31.16h-.01a.36.36 0 0 1-.31-.19l-3.6-6.23a.34.34 0 0 1 0-.34l6.84-9.68a.36.36 0 0 1 .6.17ZM11 2.5c-.46 0-.89.24-1.13.63l-6.84 9.68a1.83 1.83 0 0 0-.04 1.85l3.6 6.23c.22.38.62.61 1.05.61h.01c.43 0 .83-.22 1.05-.61l6.84-9.69c.22-.38.22-.86-.01-1.24l-3.59-6.23A1.32 1.32 0 0 0 11 2.5Zm0 1.5c.08 0 .16.04.21.12l3.59 6.23a.34.34 0 0 1 0 .34l-6.84 9.68a.36.36 0 0 1-.6-.17l-3.6-6.23a.36.36 0 0 1 .02-.34l6.84-9.68A.36.36 0 0 1 11 4Zm.01 4.49c-.29 0-.53.22-.53.5v2.01h-2a.5.5 0 1 0 0 1h2v2.01a.5.5 0 1 0 1 0v-2.01h2a.5.5 0 1 0 0-1h-2v-2a.49.49 0 0 0-.47-.5Z"/></svg>
-        APK Uploader
-      </h2>
-      <form id="apkUploadForm" class="flex flex-col md:flex-row items-center gap-4" enctype="multipart/form-data">
-        <input type="file" name="apk" id="apkInput" accept=".apk" required class="flex-1 px-3 py-2 border rounded text-sm" />
-        <button type="submit" id="apkUploadBtn" class="bg-green-600 text-white px-6 py-2 rounded font-semibold hover:bg-green-700 flex items-center gap-2">
+    <!-- APK Upload Section -->
+    <div class="bg-white rounded-xl shadow p-6 mt-10 max-w-xl mx-auto">
+      <h2 class="text-xl font-bold text-green-700 mb-2">APK File Upload</h2>
+      <p class="mb-4 text-gray-700">Upload your Android APK file and get a direct download link.</p>
+      <form id="apkUploadForm" enctype="multipart/form-data" class="flex flex-col gap-4">
+        <input type="file" name="apk" id="apkFileInput" accept=".apk,application/vnd.android.package-archive" class="border rounded px-3 py-2" required>
+        <button id="apkUploadBtn" type="submit" class="bg-green-600 text-white px-5 py-2 rounded font-semibold hover:bg-green-700 flex items-center gap-2">
           <span id="apkUploadSpinner" class="hidden spinner"></span>
           <span>Upload APK</span>
         </button>
       </form>
-      <div id="apkUploadMsg" class="mt-4"></div>
-      <div id="apkDownloadLink" class="mt-3"></div>
+      <div id="apkUploadResult" class="mt-4"></div>
     </div>
+    <!-- End APK Upload Section -->
   </div>
 
   <!-- Ad Modal (Create/Edit) -->
@@ -121,49 +117,6 @@
   </div>
 
   <script>
-    // --- APK Upload Section ---
-    document.getElementById('apkUploadForm').onsubmit = async function(e) {
-      e.preventDefault();
-      const apkInput = document.getElementById('apkInput');
-      const file = apkInput.files[0];
-      const msgDiv = document.getElementById('apkUploadMsg');
-      const linkDiv = document.getElementById('apkDownloadLink');
-      const btn = document.getElementById('apkUploadBtn');
-      const spinner = document.getElementById('apkUploadSpinner');
-      msgDiv.textContent = '';
-      linkDiv.textContent = '';
-      btn.disabled = true;
-      spinner.classList.remove('hidden');
-      try {
-        const formData = new FormData();
-        formData.append('apk', file);
-        // Use your backend APK endpoint (adjust if needed)
-        const res = await fetch('https://examguard-jmvj.onrender.com/api/apk', {
-          method: 'POST',
-          body: formData
-        });
-        const data = await res.json();
-        if (data.url) {
-          // Guarantee download by adding ?fl_attachment
-          const downloadUrl = data.url.includes('?') ? data.url + '&fl_attachment' : data.url + '?fl_attachment';
-          linkDiv.innerHTML = `<a href="${downloadUrl}" target="_blank" rel="noopener" class="text-green-700 underline font-semibold break-all">
-            Download APK &darr;
-          </a>
-          <div class="text-xs text-gray-500 mt-1 break-all">${downloadUrl}</div>`;
-          msgDiv.textContent = "APK uploaded successfully!";
-          msgDiv.className = "mt-4 text-green-600 font-semibold";
-        } else {
-          msgDiv.textContent = "Upload failed.";
-          msgDiv.className = "mt-4 text-red-600 font-semibold";
-        }
-      } catch (err) {
-        msgDiv.textContent = "Upload error. Try again.";
-        msgDiv.className = "mt-4 text-red-600 font-semibold";
-      }
-      btn.disabled = false;
-      spinner.classList.add('hidden');
-    };
-
     // --- State ---
     let ads = [];
     let editingAd = null;
@@ -431,6 +384,55 @@
         preview.innerHTML = '<span class="text-red-600">Upload error. Try again.</span>';
       }
     });
+
+    // --- APK Upload Section Logic ---
+    document.getElementById('apkUploadForm').onsubmit = async function(e) {
+      e.preventDefault();
+      const fileInput = document.getElementById('apkFileInput');
+      const resultDiv = document.getElementById('apkUploadResult');
+      const btn = document.getElementById('apkUploadBtn');
+      const spinner = document.getElementById('apkUploadSpinner');
+
+      resultDiv.innerHTML = "";
+      btn.disabled = true;
+      spinner.classList.remove('hidden');
+
+      const file = fileInput.files[0];
+      if (!file || !file.name.endsWith('.apk')) {
+        resultDiv.innerHTML = `<span class="text-red-600">Please select an .apk file.</span>`;
+        btn.disabled = false;
+        spinner.classList.add('hidden');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('apk', file);
+
+      try {
+        // Upload to backend Cloudinary endpoint
+        const res = await fetch('https://examguard-jmvj.onrender.com/api/apk', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+        if (data.url) {
+          // Guarantee download and filename (Cloudinary: use ?fl_attachment=filename.apk)
+          let downloadUrl = data.url;
+          // If url already contains ?, append with &, else with ?
+          downloadUrl += (downloadUrl.includes('?') ? '&' : '?') + 'fl_attachment=' + encodeURIComponent(file.name.replace(/\s+/g,'_'));
+          resultDiv.innerHTML = `
+            <div class="text-green-700 font-semibold mb-1">APK uploaded successfully!</div>
+            <a href="${downloadUrl}" download class="text-blue-700 underline break-all" target="_blank">${downloadUrl}</a>
+          `;
+        } else {
+          resultDiv.innerHTML = `<span class="text-red-600">Upload failed. ${escapeHTML(data.error || "")}</span>`;
+        }
+      } catch (e) {
+        resultDiv.innerHTML = `<span class="text-red-600">Upload error. Try again.</span>`;
+      }
+      btn.disabled = false;
+      spinner.classList.add('hidden');
+    };
 
     // --- INIT ---
     fetchAds();
