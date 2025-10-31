@@ -1,12 +1,12 @@
 // =================== CONFIG ===================
 const API_URL = "https://examguide.onrender.com/api/";
 const token = localStorage.getItem("token");
-let adModalTimer = null, adModalCountdown = 20, adModalTargetUrl = "";
-const SMARTLINK_URL = "https://nevillequery.com/aphb8wa4g?key=e33b11641a201e15c5c4c5343e791af6";
+let adModalTimer = null, adModalCountdown = 10, adModalTargetUrl = "";
+const SMARTLINK_URL = "https://oau.examguard.com.ng/ads-network.html";
 
 function showAdModal(targetUrl) {
   adModalTargetUrl = targetUrl;
-  adModalCountdown = 20;
+  adModalCountdown = 10;
   document.getElementById("adIframe").src = SMARTLINK_URL;
   document.getElementById("adModal").style.display = "flex";
   document.getElementById("adCountdown").textContent = adModalCountdown;
@@ -15,13 +15,13 @@ function showAdModal(targetUrl) {
   adModalTimer = setInterval(() => {
     adModalCountdown--;
     document.getElementById("adCountdown").textContent = adModalCountdown;
-    if (adModalCountdown <= 10) {
+    if (adModalCountdown <= 5) {
       document.getElementById("adCancelBtn").style.display = "block";
     }
     if (adModalCountdown <= 0) {
       closeAdModal(true);
     }
-  }, 1000);
+  }, 2000);
 }
 
 function closeAdModal(proceed) {
@@ -35,7 +35,7 @@ function closeAdModal(proceed) {
 }
 
 document.getElementById("adCancelBtn").onclick = function() {
-  closeAdModal(false);
+  closeAdModal(true);
 };
 
 // Checks if the current user has received a reading reward for a specific postId
