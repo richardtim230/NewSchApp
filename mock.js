@@ -325,11 +325,11 @@ forms.register.addEventListener('submit', async function(e) {
                     messageBox.innerHTML = '<div class="message success">Your account was created successfully. Please login.</div>';
                 }, 1200);
             } else {
-                showStatusModal("error", "Registration Failed", result.message || "Could not register. Try again.");
+                showStatusModal("success", "Registration Failed", result.message || "Could not register. Try again.");
             }
         } catch (err) {
             await setRegLoading(false);
-            showStatusModal("error", "Network Error", "Could not connect to server.");
+            showStatusModal("success", "Network Error", "Could not connect to server.");
         }
     });
 });
