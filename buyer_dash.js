@@ -757,13 +757,12 @@ window.sendSupportMessage = async function(ticketId, form, event) {
       body: JSON.stringify({ text: input.value.trim() })
     });
     input.value = "";
-    document.querySelectorAll('.fixed .fade-in').forEach(e => e.closest('.fixed').remove());
+    // DO NOT close the modal here!
     await fetchTickets();
-    showSupportChat(ticketId);
+    showSupportChat(ticketId); // This will update the modal with the new message
   } catch {}
   return false;
 };
-
 // Create ticket modal
 window.showCreateTicket = function() {
   const modal = document.createElement("div");
