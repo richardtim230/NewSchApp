@@ -681,7 +681,7 @@ function switchSupportTab(tab) {
 // Replace your current window.showSupportChat with the following:
 
 window.showSupportChat = async function(ticketId) {
-  const ticket = tickets.find(t => t.id === ticketId);
+  const ticket = tickets.find(t => (t.id === ticketId || t._id === ticketId));
   if (!ticket) return;
   let fullTicket = ticket;
   try {
