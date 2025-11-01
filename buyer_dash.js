@@ -680,14 +680,16 @@ function switchSupportTab(tab) {
 // Show support chat modal (redesigned to match example)
 // Replace your current window.showSupportChat with the following:
 
-window.showSupportChat = async function(ticketId) {
-  const ticket = tickets.find(t => (t.id === ticketId || t._id === ticketId));
-  if (!ticket) return;
-  let fullTicket = ticket;
-  try {
-    const res = await fetch(BACKEND + `/api/support/tickets/${ticketId}`, { headers: authHeader() });
-    fullTicket = (await res.json()).ticket || ticket;
-  } catch {}
+window.showSupportChat = async function(ticketId, ticketObj) {
+  let fullTicket = ticketObj;
+  if (!fullTicket) {
+    const ticket = tickets.find(t => (t.id === ticketId || t._id === ticketId));
+    if (!ticket) return;
+    try {
+      const res = await fetch(BACKEND + `/api/support/tickets/${ticketId}`, { headers: authHeader() });
+      fullTicket = (await res.json()).ticket || ticket;
+    } catch {}
+  }
 
   // Remove any existing modal
   document.querySelectorAll('.support-chat-modal').forEach(m => m.remove());
@@ -751,16 +753,37 @@ window.sendSupportMessage = async function(ticketId, form, event) {
   const input = form.chatBody;
   if (!input.value.trim()) return false;
   try {
+    // Send the message to backend
     await fetch(BACKEND + `/api/support/tickets/${ticketId}/message`, {
       method: "POST",
       headers: { ...authHeader(), "Content-Type": "application/json" },
       body: JSON.stringify({ text: input.value.trim() })
     });
     input.value = "";
-    // DO NOT close the modal here!
+
+    // Fetch the updated ticket immediately and rerender chat with latest messages
+    let updatedTicket = null;
+    try {
+      const res = await fetch(BACKEND + `/api/support/tickets/${ticketId}`, { headers: authHeader() });
+      updatedTicket = (await res.json()).ticket;
+    } catch {}
+
+    // If we got the updated ticket, re-render the modal with new messages
+    if (updatedTicket) {
+      // Remove old modal
+      document.querySelectorAll('.support-chat-modal').forEach(m => m.remove());
+      // Render new modal with updatedTicket
+      // You can refactor showSupportChat to accept a ticket object directly
+      showSupportChat(ticketId, updatedTicket);
+    } else {
+      // Fallback: re-call showSupportChat as before
+      showSupportChat(ticketId);
+    }
+    // Optionally, refresh the tickets list
     await fetchTickets();
-    showSupportChat(ticketId); // This will update the modal with the new message
-  } catch {}
+  } catch (e) {
+    // Optionally, show error notification
+  }
   return false;
 };
 // Create ticket modal
