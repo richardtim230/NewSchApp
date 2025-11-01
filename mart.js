@@ -1,4 +1,11 @@
-
+function showProductsSpinner() {
+  document.getElementById("products-spinner").classList.remove("hidden");
+  document.getElementById("products-list").classList.add("opacity-50");
+}
+function hideProductsSpinner() {
+  document.getElementById("products-spinner").classList.add("hidden");
+  document.getElementById("products-list").classList.remove("opacity-50");
+}
     // --- Faculty/Department Cache & Lookup Utilities ---
     let facultiesCache = [];
     let departmentsCache = [];
@@ -123,7 +130,9 @@ function renderProducts(products) {
   `).join("");
 }
 
+  
   async function fetchPublicProducts(query="") {
+  showProductsSpinner();
   try {
     let url = "https://examguard-jmvj.onrender.com/api/blogger-dashboard/public/listings";
     let res = await fetch(url);
@@ -147,6 +156,8 @@ function renderProducts(products) {
     renderProducts(products);
   } catch (e) {
     renderProducts(demoProducts);
+  } finally {
+    hideProductsSpinner();
   }
 }
 
