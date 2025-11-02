@@ -487,6 +487,109 @@ a { color: inherit; text-decoration: none; }
         <tbody></tbody>
       </table>
     </div>
+    <!-- AI Modal for Generating or Converting Questions -->
+<div class="modal-backdrop" id="aiModalBackdrop" style="display:none;" onclick="closeAIModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <button class="close-modal" onclick="closeAIModal(event)">&times;</button>
+    <h2 id="aiModalTitle">AI Question Assistant</h2>
+    <div id="aiModeSwitch" style="margin-bottom:18px;">
+      <label><input type="radio" name="aiMode" value="generate" checked onchange="switchAIMode()"> Generate New Questions</label>
+      <label style="margin-left:18px;"><input type="radio" name="aiMode" value="convert" onchange="switchAIMode()"> Convert Pasted Questions</label>
+    </div>
+    <form id="aiQuestionForm" onsubmit="submitAIForm(event)">
+      <div id="generateSection">
+        <label>Topic</label>
+        <input required id="aiTopic" type="text" maxlength="48" placeholder="e.g. Cell Biology">
+        <label>Number of Questions</label>
+        <input required id="aiNumQuestions" type="number" min="1" max="100" value="10">
+        <label>Faculty</label>
+        <input required id="aiFaculty" type="text" placeholder="e.g. Science">
+        <label>Department</label>
+        <input required id="aiDepartment" type="text" placeholder="e.g. Zoology">
+      </div>
+      <div id="convertSection" style="display:none;">
+        <label>Paste Questions Here</label>
+        <textarea required id="aiConvertText" rows="8" placeholder="Paste questions..."></textarea>
+      </div>
+      <button class="btn" type="submit" id="aiSubmitBtn">Generate</button>
+      <div id="aiModalMsg" style="margin-top:10px;color:#0072ff;font-weight:600;"></div>
+    </form>
+    <div id="aiModalOutput" style="margin-top:20px;display:none;">
+      <label>Generated JSON (copy & use for upload):</label>
+      <textarea id="aiJsonOutput" rows="12" readonly style="width:100%;background:#f7faff;color:#003366;font-size:1em;border-radius:7px;"></textarea>
+      <button class="btn" style="margin-top:10px;" onclick="copyAIOutput()">Copy JSON</button>
+    </div>
+  </div>
+</div>
+<script>
+function openAIModal() {
+  document.getElementById('aiModalBackdrop').style.display = '';
+  document.getElementById('aiModalMsg').innerText = '';
+  document.getElementById('aiModalOutput').style.display = 'none';
+  document.getElementById('aiQuestionForm').style.display = '';
+  document.getElementById('aiSubmitBtn').innerText = 'Generate';
+}
+function closeAIModal(e) {
+  if (!e || e.target.classList.contains('modal-backdrop') || e.target.classList.contains('close-modal')) {
+    document.getElementById("aiModalBackdrop").style.display = "none";
+  }
+}
+function switchAIMode() {
+  const mode = document.querySelector('input[name="aiMode"]:checked').value;
+  document.getElementById('generateSection').style.display = (mode === 'generate') ? '' : 'none';
+  document.getElementById('convertSection').style.display = (mode === 'convert') ? '' : 'none';
+  document.getElementById('aiSubmitBtn').innerText = (mode === 'generate') ? 'Generate' : 'Convert';
+}
+async function submitAIForm(e) {
+  e.preventDefault();
+  document.getElementById('aiModalMsg').innerText = 'Processing...';
+  document.getElementById('aiModalOutput').style.display = 'none';
+  document.getElementById('aiQuestionForm').style.pointerEvents = 'none';
+  const mode = document.querySelector('input[name="aiMode"]:checked').value;
+  let payload = {};
+  if (mode === 'generate') {
+    payload = {
+      type: 'generate',
+      topic: document.getElementById('aiTopic').value.trim(),
+      number: Number(document.getElementById('aiNumQuestions').value),
+      faculty: document.getElementById('aiFaculty').value.trim(),
+      department: document.getElementById('aiDepartment').value.trim()
+    };
+  } else {
+    payload = {
+      type: 'convert',
+      text: document.getElementById('aiConvertText').value.trim()
+    };
+  }
+  try {
+    // Replace /api/ai-questions with your secured backend endpoint
+    const resp = await fetch('https://examguard-jmvj.onrender.com/api/ai-questions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (localStorage.getItem("token") || "") },
+      body: JSON.stringify(payload)
+    });
+    if (!resp.ok) {
+      const err = await resp.json();
+      document.getElementById('aiModalMsg').innerText = err.message || "Failed to process. Try again.";
+    } else {
+      const text = await resp.text();
+      document.getElementById('aiJsonOutput').value = text.trim();
+      document.getElementById('aiModalMsg').innerText = '';
+      document.getElementById('aiModalOutput').style.display = '';
+      document.getElementById('aiQuestionForm').style.display = 'none';
+    }
+  } catch (err) {
+    document.getElementById('aiModalMsg').innerText = "Network or server error.";
+  }
+  document.getElementById('aiQuestionForm').style.pointerEvents = '';
+}
+function copyAIOutput() {
+  const area = document.getElementById('aiJsonOutput');
+  area.select();
+  document.execCommand('copy');
+}
+</script>
+
     <!-- Profile Section -->
     <div class="section" id="profileSection" style="display:none;">
       <div class="section-title">Your Profile</div>
@@ -525,11 +628,15 @@ a { color: inherit; text-decoration: none; }
       const resp = await fetch(API_URL + "auth/me", { headers: { Authorization: "Bearer " + token } });
       if (!resp.ok) { localStorage.removeItem("token"); window.location.href = "mock.html"; return; }
       uploader = await resp.json();
-      if (!uploader || !uploader.user || uploader.user.role !== "uploader") {
-        alert("Unauthorized.");
-        window.location.href = "mock-icthallb";
-        return;
-      }
+      if (
+  !uploader ||
+  !uploader.user ||
+  (uploader.user.role !== "uploader" && uploader.user.role !== "admin")
+) {
+  alert("Unauthorized.");
+  window.location.href = "mock-icthallb";
+  return;
+}
       uploader = uploader.user;
       document.getElementById("uploaderName").innerText = uploader.fullname || uploader.username || "-";
       document.getElementById("welcomeName").innerText = uploader.fullname || uploader.username || "-";
