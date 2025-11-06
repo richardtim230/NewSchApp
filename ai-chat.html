@@ -608,14 +608,37 @@
         const res=await fetch(`https://examguard-jmvj.onrender.com/api/ai-chat/history?offset=${offset}&limit=${limit}&channel=${currentChannel}`,{headers:{'Authorization':'Bearer '+token}});
         const data=await res.json();
         if(data.history&&data.history.length>0){
-          let newMessages=data.history.slice().reverse().map(msg=>({role:msg.professorReply?'prof':'user',text:msg.professorReply||(msg.messages[0]?.content||''),time:msg.date?getTime(new Date(msg.date)):''}));
-          if(isLoadMore){messages=[...newMessages,...messages];offset+=data.history.length;}else{messages=newMessages;offset=data.history.length;}
-          hasMore=data.hasMore;loadMoreBtn.style.display=hasMore?"block":"none";
-        }else{hasMore=false;loadMoreBtn.style.display="none";}
-        renderMessages(false);
-      }catch(e){loadMoreBtn.style.display="none";}
-      loadMoreBtn.disabled=false;loadingHistory=false;
+  let newMessages = [];
+  data.history.slice().reverse().forEach(msg => {
+    // 1. User input (always present as msg.messages[0]?.content)
+    if (msg.messages && msg.messages[0]?.content) {
+      newMessages.push({
+        role: 'user',
+        text: msg.messages[0].content,
+        time: msg.date ? getTime(new Date(msg.date)) : ''
+      });
     }
+    // 2. Professor reply (could be null)
+    if (msg.professorReply) {
+      newMessages.push({
+        role: 'prof',
+        text: msg.professorReply,
+        time: msg.date ? getTime(new Date(msg.date)) : ''
+      });
+    }
+  });
+  if(isLoadMore){
+    messages = [...newMessages, ...messages];
+    offset += data.history.length;
+  }else{
+    messages = newMessages;
+    offset = data.history.length;
+  }
+  hasMore = data.hasMore;
+  loadMoreBtn.style.display = hasMore ? "block" : "none";
+}else{
+  hasMore=false;loadMoreBtn.style.display="none";
+}
     // SEND MESSAGE WITH CONTEXT
     chatFormDOM.addEventListener('submit',function(e){e.preventDefault();sendMessage();});
     chatInput.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}});
