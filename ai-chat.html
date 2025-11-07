@@ -250,59 +250,65 @@
     }
     // FIXED: Load HISTORY, prevent repeating user's messages upon reload
     async function loadHistory(isLoadMore = false) {
-      if (loadingHistory || !hasMore) return;
-      loadingHistory = true; loadMoreBtn.disabled = true;
-      let token = getCookie('jwt_token') || localStorage.getItem('jwt_token');
-      try {
-        const res = await fetch(
-          `https://examguard-jmvj.onrender.com/api/ai-chat/history?offset=${offset}&limit=${limit}&channel=${currentChannel}`,
-          { headers: { 'Authorization': 'Bearer ' + token } }
-        );
-        const data = await res.json();
-        let newMessages = [];
-        if (data.history && data.history.length > 0) {
-          // To avoid repetition on reload, only use messages from backend, do NOT merge with local state
-          data.history.slice().reverse().forEach(msg => {
-            // Push only the first user message per turn (GeminiMessage schema)
-            if (msg.messages && Array.isArray(msg.messages) && msg.messages.length > 0) {
-              const userMsg = msg.messages.find(m => m.role === 'user' || m.role === 'student');
-              if (userMsg) {
-                newMessages.push({
-                  role: 'user',
-                  text: userMsg.content || '',
-                  time: msg.date ? getTime(new Date(msg.date)) : ''
-                });
-              }
-            }
-            // Push professor reply (if present)
-            if (msg.professorReply) {
+  if (loadingHistory || !hasMore) return;
+  loadingHistory = true; loadMoreBtn.disabled = true;
+  let token = getCookie('jwt_token') || localStorage.getItem('jwt_token');
+  try {
+    const res = await fetch(
+      `https://examguard-jmvj.onrender.com/api/ai-chat/history?offset=${offset}&limit=${limit}&channel=${currentChannel}`,
+      { headers: { 'Authorization': 'Bearer ' + token } }
+    );
+    const data = await res.json();
+    let newMessages = [];
+    if (data.history && data.history.length > 0) {
+      // Iterate in reverse to maintain correct chronological order
+      data.history.slice().reverse().forEach(msg => {
+        // Render ALL items in msg.messages in order (reliably maintains student's turn(s))
+        if (msg.messages && Array.isArray(msg.messages)) {
+          msg.messages.forEach(subMsg => {
+            if (subMsg.role === 'user' || subMsg.role === 'student') {
+              newMessages.push({
+                role: 'user',
+                text: subMsg.content || '',
+                time: msg.date ? getTime(new Date(msg.date)) : ''
+              });
+            } else if (subMsg.role === 'professor' || subMsg.role === 'prof') {
               newMessages.push({
                 role: 'prof',
-                text: msg.professorReply,
+                text: subMsg.content || '',
                 time: msg.date ? getTime(new Date(msg.date)) : ''
               });
             }
           });
-          if (isLoadMore) {
-            messages = [...newMessages, ...messages];
-            offset += data.history.length;
-          } else {
-            messages = newMessages;
-            offset = data.history.length;
-          }
-          hasMore = data.hasMore;
-          loadMoreBtn.style.display = hasMore ? "block" : "none";
-        } else {
-          hasMore = false;
-          loadMoreBtn.style.display = "none";
         }
-        // Always scroll to latest on reload (not on load more)
-        renderMessages(!isLoadMore);
-      } catch (e) {
-        loadMoreBtn.style.display = "none";
+        // Then ADD the top-level professorReply, if present (often the actual AI/professor response)
+        if (msg.professorReply) {
+          newMessages.push({
+            role: 'prof',
+            text: msg.professorReply,
+            time: msg.date ? getTime(new Date(msg.date)) : ''
+          });
+        }
+      });
+      if (isLoadMore) {
+        messages = [...newMessages, ...messages];
+        offset += data.history.length;
+      } else {
+        messages = newMessages;
+        offset = data.history.length;
       }
-      loadMoreBtn.disabled = false; loadingHistory = false;
+      hasMore = data.hasMore;
+      loadMoreBtn.style.display = hasMore ? "block" : "none";
+    } else {
+      hasMore = false;
+      loadMoreBtn.style.display = "none";
     }
+    renderMessages(!isLoadMore);
+  } catch (e) {
+    loadMoreBtn.style.display = "none";
+  }
+  loadMoreBtn.disabled = false; loadingHistory = false;
+}
     // SEND MESSAGE WITH CONTEXT
     chatFormDOM.addEventListener('submit',function(e){e.preventDefault();sendMessage();});
     chatInput.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}});
