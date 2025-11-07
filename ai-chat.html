@@ -599,25 +599,30 @@
       if(window.MathJax) MathJax.typesetPromise([chatMessages]);
       if(scrollBottom) chatMessages.scrollTop=chatMessages.scrollHeight;
     }
-    async function loadHistory(isLoadMore=false){
-  if(loadingHistory||!hasMore)return;
-  loadingHistory=true;loadMoreBtn.disabled=true;
-  let token=getCookie('jwt_token')||localStorage.getItem('jwt_token');
-  try{
-    const res=await fetch(`https://examguard-jmvj.onrender.com/api/ai-chat/history?offset=${offset}&limit=${limit}&channel=${currentChannel}`,{headers:{'Authorization':'Bearer '+token}});
-    const data=await res.json();
-    if(data.history&&data.history.length>0){
-      let newMessages = [];
+async function loadHistory(isLoadMore=false){
+  if (loadingHistory || !hasMore) return;
+  loadingHistory = true; loadMoreBtn.disabled = true;
+
+  let token = getCookie('jwt_token') || localStorage.getItem('jwt_token');
+  try {
+    const res = await fetch(
+      `https://examguard-jmvj.onrender.com/api/ai-chat/history?offset=${offset}&limit=${limit}&channel=${currentChannel}`,
+      { headers: { 'Authorization': 'Bearer ' + token } }
+    );
+    const data = await res.json();
+    let newMessages = [];
+    if (data.history && data.history.length > 0) {
       data.history.slice().reverse().forEach(msg => {
-        // User's message
-        if (msg.messages && Array.isArray(msg.messages) && msg.messages[0]) {
+        // 1. USER: Only push if messages[0] present and is 'user'
+        if (msg.messages && Array.isArray(msg.messages) && msg.messages[0]
+            && (msg.messages[0].role === 'user' || msg.messages[0].role === 'student') ) {
           newMessages.push({
             role: 'user',
             text: msg.messages[0].content || '',
             time: msg.date ? getTime(new Date(msg.date)) : ''
           });
         }
-        // Professor's reply
+        // 2. PROFESSOR: Only push if professorReply exists and non-empty
         if (msg.professorReply) {
           newMessages.push({
             role: 'prof',
@@ -626,24 +631,24 @@
           });
         }
       });
-      if(isLoadMore){
-        messages=[...newMessages,...messages];
-        offset+=data.history.length;
-      }else{
-        messages=newMessages;
-        offset=data.history.length;
+      if (isLoadMore) {
+        messages = [...newMessages, ...messages];
+        offset += data.history.length;
+      } else {
+        messages = newMessages;
+        offset = data.history.length;
       }
-      hasMore=data.hasMore;
-      loadMoreBtn.style.display=hasMore?"block":"none";
-    }else{
-      hasMore=false;
-      loadMoreBtn.style.display="none";
+      hasMore = data.hasMore;
+      loadMoreBtn.style.display = hasMore ? "block" : "none";
+    } else {
+      hasMore = false;
+      loadMoreBtn.style.display = "none";
     }
     renderMessages(false);
-  }catch(e){
-    loadMoreBtn.style.display="none";
+  } catch (e) {
+    loadMoreBtn.style.display = "none";
   }
-  loadMoreBtn.disabled=false;loadingHistory=false;
+  loadMoreBtn.disabled = false; loadingHistory = false;
 }
     // SEND MESSAGE WITH CONTEXT
     chatFormDOM.addEventListener('submit',function(e){e.preventDefault();sendMessage();});
