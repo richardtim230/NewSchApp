@@ -5,126 +5,457 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Academic Tutor Chat</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.css" rel="stylesheet" />
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.js"></script>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        body { font-family: sans-serif; }
+        #loginScreen { display: flex; align-items: center; justify-content: center; height: 100vh; background: #f0f4f8; }
+        #chatContainer { display: none; flex-direction: column; height: 100vh; }
+        #topicsBar { display: flex; overflow-x: auto; padding: 10px; background: #fff; border-bottom: 1px solid #ddd; }
+        .topic-btn { padding: 8px 16px; margin-right: 8px; border-radius: 20px; background: #eee; white-space: nowrap; }
+        .topic-btn.active { background: #blue-600; color: white; }
+        .new-topic-btn { padding: 8px 16px; border-radius: 20px; background: #green-600; color: white; }
+        #userInfoBar { padding: 10px; background: #blue-600; color: white; display: flex; align-items: center; }
+        #chatMessages { flex: 1; overflow-y: auto; padding: 20px; background: #f0f4f8; }
+        .message-row { display: flex; margin-bottom: 20px; }
+        .message-row.user { flex-direction: row-reverse; }
+        .message-avatar { width: 40px; height: 40px; border-radius: 50%; }
+        .message-bubble { max-width: 70%; padding: 12px; border-radius: 20px; position: relative; }
+        .message-row.prof .message-bubble { background: #fff; border: 1px solid #ddd; margin-left: 10px; border-bottom-left-radius: 0; }
+        .message-row.user .message-bubble { background: #blue-600; color: white; margin-right: 10px; border-bottom-right-radius: 0; }
+        .message-meta { font-size: 0.8em; color: #888; margin-top: 5px; }
+        .message-actions { display: none; position: absolute; bottom: -25px; left: 0; background: #fff; border: 1px solid #ddd; border-radius: 20px; padding: 5px; }
+        .message-bubble:hover .message-actions { display: flex; }
+        .message-actions button { margin: 0 5px; background: none; border: none; cursor: pointer; }
+        #chatForm { display: flex; padding: 10px; background: #fff; border-top: 1px solid #ddd; }
+        #chatInput { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 20px; resize: none; }
+        #emojiPicker { display: none; position: absolute; bottom: 60px; background: #fff; border: 1px solid #ddd; padding: 10px; max-width: 300px; flex-wrap: wrap; }
+        #emojiPicker.active { display: flex; }
+        #emojiPicker span { font-size: 24px; margin: 5px; cursor: pointer; }
+        #typingIndicator { display: none; padding: 10px; color: #888; }
+        #loadMoreBtn { margin: 10px auto; display: block; }
+        .attach-preview img { max-width: 200px; border-radius: 10px; }
+        .rich-block table { border-collapse: collapse; margin: 10px 0; }
+        .rich-block table td { border: 1px solid #ddd; padding: 8px; }
+        .rich-block ul { list-style: disc; margin-left: 20px; }
+        .rich-block h1, h2, h3 { margin: 10px 0; }
+    </style>
 </head>
-<body class="bg-gray-100 font-sans antialiased">
-    <div class="flex flex-col h-screen overflow-hidden">
-        <!-- Login Screen -->
-        <div id="loginScreen" class="fixed inset-0 flex items-center justify-center z-50 bg-gray-50" style="display:none;">
-            <form id="loginForm" class="bg-white p-6 rounded-lg shadow-lg flex flex-col gap-3 w-80">
-                <h2 class="text-xl font-semibold mb-2">Login</h2>
-                <input type="text" id="loginUsername" placeholder="Username" class="border rounded px-3 py-2" required>
-                <input type="password" id="loginPassword" placeholder="Password" class="border rounded px-3 py-2 mb-2" required>
-                <div id="loginError" class="text-red-500 text-sm mb-1"></div>
-                <button type="submit" class="bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Sign In</button>
-            </form>
-        </div>
-
-        <!-- Chat Container -->
-        <div id="chatContainer" class="flex flex-col h-full" style="display:none;">
-            <!-- Header -->
-            <header class="bg-blue-600 text-white p-4 flex items-center justify-between shadow-md">
-                <button data-drawer-target="sidebar-drawer" data-drawer-toggle="sidebar-drawer" aria-controls="sidebar-drawer" type="button" class="text-white hover:text-gray-200 focus:outline-none">
-                    <i class="fas fa-bars text-xl"></i>
-                </button>
-                <h1 class="text-xl font-bold">Academic Tutor</h1>
-                <div id="userInfoBar" class="flex items-center">
-                    <!-- Profile picture and username are rendered here -->
-                </div>
-            </header>
-
-            <!-- Topics Navigation Bar -->
-            <div id="topicsBar" class="flex space-x-2 p-2 border-b border-gray-200 bg-white overflow-x-auto">
-                <!-- Dynamic topic buttons will appear here -->
-            </div>
-
-            <!-- Chat Area -->
-            <main class="flex-1 overflow-y-auto p-4 space-y-6 relative">
-                <div id="chatMessages" class="flex flex-col gap-6"></div>
-                <div id="typingIndicator" style="display:none;" class="mt-2 mb-2">
-                    <span class="animate-pulse bg-blue-200 rounded px-3 py-1 text-blue-900">Professor is typing...</span>
-                </div>
-                <button id="loadMoreBtn" class="absolute left-1/2 transform -translate-x-1/2 top-2 px-4 py-1 bg-gray-100 text-gray-700 rounded shadow hover:bg-gray-200 hidden">Load More</button>
-            </main>
-
-            <!-- Input Area -->
-            <footer class="bg-white border-t border-gray-200 p-4 flex items-center space-x-2">
-                <!-- New Conversation Button (Floating) -->
-                <button id="newConvBtn" class="absolute bottom-20 left-4 bg-blue-600 text-white p-3 rounded-full shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 z-50">
-                    <i class="fas fa-plus text-lg"></i>
-                </button>
-
-                <!-- Topic Delete History Button (inline, shown by JS) -->
-                <button id="deleteHistoryBtn" class="bg-red-200 text-red-700 px-3 py-1 rounded hover:bg-red-300 focus:outline-none" style="display:none;">
-                    <i class="fas fa-trash"></i>
-                    Delete Topic History
-                </button>
-
-                <!-- Attachment Button -->
-                <button id="attachBtn" class="text-gray-600 hover:text-gray-800 focus:outline-none">
-                    <i class="fas fa-paperclip text-xl"></i>
-                </button>
-                <input type="file" id="attachInput" accept="image/*" class="hidden" />
-
-                <!-- Emoji Button and Picker -->
-                <button id="emojiBtn" class="text-gray-600 hover:text-gray-800 focus:outline-none">
-                    <i class="fas fa-smile text-xl"></i>
-                </button>
-                <div id="emojiPicker" class="absolute bottom-20 left-1/2 transform -translate-x-1/2 z-50 bg-white border border-gray-200 rounded shadow-lg p-2 flex flex-wrap gap-1 mt-2" style="display:none;">
-                    <!-- Emoji span buttons will be rendered here by JS -->
-                </div>
-
-                <!-- Message Input and Send -->
-                <form id="chatForm" class="flex-1 flex items-center space-x-2">
-                    <textarea id="chatInput" class="flex-1 resize-none border border-gray-300 rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" rows="1" placeholder="Type your message..."></textarea>
-                    <button type="submit" class="text-blue-600 hover:text-blue-800 focus:outline-none px-3">
-                        <i class="fas fa-paper-plane text-xl"></i>
-                    </button>
-                </form>
-            </footer>
-        </div>
-
-        <!-- Sidebar Drawer -->
-        <div id="sidebar-drawer" class="fixed top-0 left-0 z-40 h-screen p-4 overflow-y-auto transition-transform -translate-x-full bg-white w-80 border-r border-gray-200" tabindex="-1" aria-labelledby="drawer-label">
-            <h5 id="drawer-label" class="text-base font-semibold text-gray-500 uppercase">Menu</h5>
-            <button type="button" data-drawer-hide="sidebar-drawer" aria-controls="sidebar-drawer" class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 absolute top-2 right-2 flex items-center justify-center">
-                <i class="fas fa-times"></i>
-            </button>
-            <div class="py-4 overflow-y-auto">
-                <ul class="space-y-2 font-medium" id="chat-history-list">
-                    <!-- Chat history items, not used by ai-chat.js but retained for expansion -->
-                </ul>
-                <hr class="my-4 border-gray-200">
-                <button id="create-topic-button" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">
-                    <i class="fas fa-plus mr-2"></i> Create New Chat Topic
-                </button>
-                <button class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">
-                    <i class="fas fa-archive mr-2"></i> Archived Chats
-                </button>
-                <button class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">
-                    <i class="fas fa-cog mr-2"></i> Settings
-                </button>
-            </div>
-        </div>
-
-        <!-- Image Preview Modal -->
-        <div id="image-preview-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50 p-4">
-            <div class="bg-white rounded-lg p-4 max-w-lg w-full">
-                <div class="flex justify-between items-center mb-3">
-                    <h3 class="text-lg font-semibold">Image Preview</h3>
-                    <button id="close-preview" class="text-gray-500 hover:text-gray-700">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <div id="preview-container" class="grid grid-cols-3 gap-2 max-h-96 overflow-y-auto"></div>
-                <div class="mt-4 flex justify-end">
-                    <button id="send-images" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">Send</button>
-                </div>
-            </div>
-        </div>
-        <script src="ai-chat.js"></script>
+<body>
+    <!-- Login Screen -->
+    <div id="loginScreen" class="flex items-center justify-center min-h-screen bg-gray-100">
+        <form id="loginForm" class="bg-white p-8 rounded-lg shadow-lg w-full max-w-sm">
+            <h2 class="text-2xl font-bold mb-6 text-center">Login to Academic Tutor</h2>
+            <input id="loginUsername" type="text" placeholder="Username" class="w-full p-2 mb-4 border rounded" required>
+            <input id="loginPassword" type="password" placeholder="Password" class="w-full p-2 mb-4 border rounded" required>
+            <p id="loginError" class="text-red-500 mb-4"></p>
+            <button type="submit" class="w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700">Login</button>
+        </form>
     </div>
+
+    <!-- Chat Container -->
+    <div id="chatContainer" class="hidden flex flex-col h-screen">
+        <!-- User Info Bar -->
+        <div id="userInfoBar" class="bg-blue-600 text-white p-4 flex items-center shadow-md"></div>
+
+        <!-- Topics Bar -->
+        <div id="topicsBar" class="flex overflow-x-auto bg-white border-b border-gray-200 p-2"></div>
+
+        <!-- Load More Button -->
+        <button id="loadMoreBtn" class="mx-auto my-2 px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300" style="display: none;">Load More</button>
+
+        <!-- Chat Messages -->
+        <div id="chatMessages" class="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-100"></div>
+
+        <!-- Typing Indicator -->
+        <div id="typingIndicator" class="p-4 text-gray-500 italic" style="display: none;">Professor is typing...</div>
+
+        <!-- Chat Form -->
+        <form id="chatForm" class="bg-white border-t border-gray-200 p-4 flex items-center space-x-2">
+            <button id="newConvBtn" type="button" class="text-blue-600 hover:text-blue-800">
+                <i class="fas fa-plus text-xl"></i>
+            </button>
+            <button id="attachBtn" type="button" class="text-gray-600 hover:text-gray-800">
+                <i class="fas fa-paperclip text-xl"></i>
+            </button>
+            <input type="file" id="attachInput" accept="image/*" class="hidden">
+            <button id="emojiBtn" type="button" class="text-gray-600 hover:text-gray-800">
+                <i class="fas fa-smile text-xl"></i>
+            </button>
+            <div id="emojiPicker" class="hidden absolute bottom-16 flex flex-wrap bg-white border border-gray-300 p-2 rounded-lg shadow-lg max-w-xs"></div>
+            <textarea id="chatInput" class="flex-1 resize-none border border-gray-300 rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" rows="1" placeholder="Type your message..."></textarea>
+            <button type="submit" class="text-blue-600 hover:text-blue-800">
+                <i class="fas fa-paper-plane text-xl"></i>
+            </button>
+            <button id="deleteHistoryBtn" type="button" class="text-red-600 hover:text-red-800" style="display: none;">
+                <i class="fas fa-trash text-xl"></i>
+            </button>
+        </form>
+    </div>
+
+    <script>
+        // Fixed and completed JS code
+        const PROFESSOR_AVATAR = "https://avatars.githubusercontent.com/u/645549?v=4";
+        const EMOJIS = ["😀","😁","😂","🤓","🤩","😉","😊","😍","🙌","💯","👍","👏","🙏","🎉","📝","📚","🤔","⚡","💡","🔥","😱","🥳","😇","🎓","😢","😭","🥺","👩‍🏫","🧑‍🔬","🔬"];
+        let messages = [];
+        let topics = []; // User's dynamic topics: [{id, name, icon, createdAt}]
+        let currentTopicId = null;
+        let user = null;
+        let sending = false, currentAttachment = null, loadingHistory = false;
+        let offset = 0, limit = 14, hasMore = true;
+
+        // DOM Elements
+        const loginScreen = document.getElementById('loginScreen');
+        const loginForm = document.getElementById('loginForm');
+        const loginUsername = document.getElementById('loginUsername');
+        const loginPassword = document.getElementById('loginPassword');
+        const loginError = document.getElementById('loginError');
+        const chatContainer = document.getElementById('chatContainer');
+        const userInfoBar = document.getElementById('userInfoBar');
+        const chatMessages = document.getElementById('chatMessages');
+        const chatInput = document.getElementById('chatInput');
+        const chatFormDOM = document.getElementById('chatForm');
+        const attachBtn = document.getElementById('attachBtn');
+        const attachInput = document.getElementById('attachInput');
+        const emojiBtn = document.getElementById('emojiBtn');
+        const emojiPicker = document.getElementById('emojiPicker');
+        const typingIndicator = document.getElementById('typingIndicator');
+        const loadMoreBtn = document.getElementById('loadMoreBtn');
+        const newConvBtn = document.getElementById('newConvBtn');
+        const topicsBar = document.getElementById('topicsBar');
+        const deleteHistoryBtn = document.getElementById('deleteHistoryBtn');
+
+        // Utility Functions
+        function getTime(dateObj){if(!dateObj)dateObj=new Date();return dateObj.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});}
+        function setCookie(name,val){document.cookie=name+'='+val+';path=/';}
+        function getCookie(name){let v=(';'+document.cookie).split('; '+name+'=');return v.length===2?v.pop().split(';').shift():""; }
+        function showLogin(){loginScreen.style.display='flex';chatContainer.style.display='none';}
+        function showChat(){loginScreen.style.display='none';chatContainer.style.display='flex';}
+
+        // Session and Login
+        async function checkSession() {
+          let token=getCookie('jwt_token')||localStorage.getItem('jwt_token');
+          if(token){
+            try{
+              let res=await fetch('https://examguard-jmvj.onrender.com/api/auth/me',{headers:{'Authorization':'Bearer '+token}});
+              let data=await res.json();
+              if(data&&data.user){
+                user=data.user;showChat();
+                postLoginSetup();
+                await loadTopics();
+                await loadHistory();
+                return true;
+              }
+            }catch(e){}
+          }
+          showLogin();return false;
+        }
+        loginForm.onsubmit=async function(e){
+          e.preventDefault();
+          let username=loginUsername.value.trim(),password=loginPassword.value;
+          loginError.textContent="";
+          try{
+            let res=await fetch('https://examguard-jmvj.onrender.com/api/auth/login',{
+              method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})
+            });
+            let data=await res.json();
+            if(data.token){
+              setCookie('jwt_token',data.token);localStorage.setItem('jwt_token',data.token);user={username};
+              showChat();postLoginSetup();await loadTopics();await loadHistory();
+            }else{loginError.textContent=data.message||"Login error";}
+          }catch(e){loginError.textContent="Network error. Please try later.";}
+        }
+        function postLoginSetup(){
+          userInfoBar.innerHTML=`<img src="${user.profilePic||PROFESSOR_AVATAR}" class="w-6 h-6 rounded-full mr-2" alt="Profile" title="${user.fullname||user.username||""}"> <span>${user.fullname||user.username||""}</span>`;
+        }
+
+        // Topics Section
+        async function loadTopics() {
+          // Fetch topics via API, fallback to sample if new
+          try {
+            let token=getCookie('jwt_token')||localStorage.getItem('jwt_token');
+            let res=await fetch('https://examguard-jmvj.onrender.com/api/ai-chat/topics',{headers:{'Authorization':'Bearer '+token}});
+            let data=await res.json();
+            topics = (data.topics && data.topics.length) ? data.topics : [{id:"general",name:"General",icon:"fa-book"}];
+          } catch { topics = [{id:"general",name:"General",icon:"fa-book"}]; }
+          if(!currentTopicId) currentTopicId = topics[0].id;
+          renderTopicsBar();
+        }
+
+        function renderTopicsBar() {
+          topicsBar.innerHTML = "";
+          topics.forEach(topic => {
+            let btn = document.createElement('button');
+            btn.className = "topic-btn px-4 py-2 mr-2 rounded-full bg-gray-200 hover:bg-gray-300" + (topic.id === currentTopicId ? " bg-blue-600 text-white" : "");
+            btn.innerHTML = `<i class="fas ${topic.icon||"fa-book"} mr-2"></i> ${topic.name}`;
+            btn.onclick = () => {
+              if(currentTopicId!==topic.id){
+                currentTopicId = topic.id;
+                messages = []; offset = 0; hasMore = true;
+                document.querySelectorAll('.topic-btn').forEach(b => b.classList.remove('bg-blue-600', 'text-white'));
+                btn.classList.add('bg-blue-600', 'text-white');
+                loadHistory();
+              }
+            };
+            btn.id = 'topic-'+topic.id;
+            topicsBar.appendChild(btn);
+          });
+          // Add "New Topic" button
+          let newBtn = document.createElement('button');
+          newBtn.className = "new-topic-btn px-4 py-2 rounded-full bg-green-600 text-white hover:bg-green-700";
+          newBtn.innerHTML = `<i class="fas fa-plus mr-2"></i> New Topic`;
+          newBtn.onclick = createNewTopicModal;
+          topicsBar.appendChild(newBtn);
+          deleteHistoryBtn.style.display = "inline-block";
+        }
+
+        // Create Topic Modal/Prompt
+        function createNewTopicModal() {
+          const topicName = prompt("Enter a new topic name");
+          if(topicName && topicName.length>=2){
+            let icon = "fa-book";
+            // Could show a modal with icon choices
+            addNewTopic(topicName,icon);
+          }
+        }
+        async function addNewTopic(name,icon) {
+          try {
+            let token=getCookie('jwt_token')||localStorage.getItem('jwt_token');
+            let res = await fetch('https://examguard-jmvj.onrender.com/api/ai-chat/topics',{
+              method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+              body:JSON.stringify({name,icon})
+            });
+            let topic = await res.json();
+            if(topic && topic.id){
+              topics.push(topic);
+              currentTopicId = topic.id;
+              renderTopicsBar();
+              messages = []; offset = 0; hasMore = true;
+              loadHistory();
+            }
+          }catch(e){alert("Can't create topic right now.");}
+        }
+
+        // Load Chat History
+        async function loadHistory(isLoadMore = false) {
+          if(loadingHistory || !hasMore) return;
+          loadingHistory = true; loadMoreBtn.disabled = true;
+          let token = getCookie('jwt_token') || localStorage.getItem('jwt_token');
+          try {
+            const res = await fetch(
+              `https://examguard-jmvj.onrender.com/api/ai-chat/history?offset=${offset}&limit=${limit}&topic=${currentTopicId}`,
+              { headers: { 'Authorization': 'Bearer ' + token } }
+            );
+            const data = await res.json();
+            let newMessages = [];
+            if (data.history && data.history.length > 0) {
+              data.history.slice().reverse().forEach(msg => {
+                // Flatten all user/prof/professor messages in order
+                if (msg.messages && Array.isArray(msg.messages)) {
+                  msg.messages.forEach(subMsg => {
+                    if (subMsg.role === 'user' || subMsg.role === 'student') {
+                      newMessages.push({ role: 'user', text: subMsg.content || '', time: msg.date ? getTime(new Date(msg.date)) : '' });
+                    } else if (subMsg.role === 'professor' || subMsg.role === 'prof') {
+                      newMessages.push({ role: 'prof', text: subMsg.content || '', time: msg.date ? getTime(new Date(msg.date)) : '' });
+                    }
+                  });
+                }
+                if (msg.professorReply) {
+                  newMessages.push({ role: 'prof', text: msg.professorReply, time: msg.date ? getTime(new Date(msg.date)) : '' });
+                }
+              });
+              if (isLoadMore) {
+                messages = [...newMessages, ...messages];
+                offset += data.history.length;
+              } else {
+                messages = newMessages;
+                offset = data.history.length;
+              }
+              hasMore = data.hasMore;
+              loadMoreBtn.style.display = hasMore ? "block" : "none";
+            } else {
+              hasMore = false;
+              loadMoreBtn.style.display = "none";
+            }
+            renderMessages(!isLoadMore);
+          } catch (e) {
+            loadMoreBtn.style.display = "none";
+          }
+          loadMoreBtn.disabled = false; loadingHistory = false;
+        }
+
+        // Message Rendering + Actions (copy, edit, resend, delete)
+        function markdownToRichHtml(input) {
+          input=input.replace(/(?:\|\s*([$a-zA-Z0-9^_{}\\().\-+/* ]+)\s*)+\|/g,function(row){
+            let cells=row.trim().split('|').filter(e=>e.trim().length>0);
+            if(cells.length<2)return row;
+            return '<tr>'+cells.map(c=>'<td>'+c.trim()+'</td>').join('')+'</tr>';
+          });
+          input=input.replace(/(<tr>.*<\/tr>)+/g,function(rows){return '<table>'+rows+'</table>';});
+          input=input.replace(/^### (.*)$/gm,'<h3>$1</h3>').replace(/^## (.*)$/gm,'<h2>$1</h2>').replace(/^# (.*)$/gm,'<h1>$1</h1>');
+          input=input.replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/\*([^*]+)\*/g,'<i>$1</i>');
+          input=input.replace(/(?:^|\n)[-—•] (.+)/g,'<li>$1</li>');
+          input=input.replace(/(?:^|\n)(\d+)\. (.+)/g,'<li>$2</li>');
+          input=input.replace(/(<ul>(?:<li>[\s\S]+?<\/li>)+<\/ul>)/g,"$1");
+          input=input.replace(/(?:<li>[\s\S]+?<\/li>)+/g, m => `<ul>${m}</ul>`);
+          input=input.replace(/\n{2,}/g,'<br><br>');
+          input=input.replace(/!\[(.*?)\]\((.*?)\)/g,'<img src="$2" alt="$1" style="max-width:90%;border-radius:5px;">');
+          return `<div class='rich-block'>${input}</div>`;
+        }
+
+        function renderMessages(scrollBottom=true) {
+          chatMessages.innerHTML='';
+          messages.forEach((msg, idx) => {
+            let row = document.createElement('div');
+            row.className = 'message-row flex mb-4 ' + (msg.role==='user'?'justify-end':'justify-start');
+            let avatar = document.createElement('img');
+            avatar.className = 'message-avatar w-10 h-10 rounded-full';
+            avatar.src = msg.role==='user'?(user.profilePic||PROFESSOR_AVATAR):PROFESSOR_AVATAR;
+            avatar.alt = msg.role==='user'?(user.username||'You'):'Professor';
+            let bubble = document.createElement('div'); bubble.className='message-bubble relative max-w-[70%] p-3 rounded-2xl shadow';
+            let bubbleContent = msg.role==='prof'?markdownToRichHtml(msg.text||''):(msg.text||'');
+            if (msg.attachment) bubbleContent += '<br>' + msg.attachment.preview;
+            bubble.innerHTML = bubbleContent;
+
+            // Actions bar
+            let actions = document.createElement('div');
+            actions.className = 'message-actions hidden absolute bottom-full left-0 bg-white border rounded-full p-1 shadow flex space-x-2';
+            // Copy
+            let copyBtn = document.createElement('button');
+            copyBtn.className = 'text-gray-600 hover:text-black';
+            copyBtn.title = "Copy";
+            copyBtn.innerHTML = '<i class="fas fa-copy"></i>';
+            copyBtn.onclick = () => navigator.clipboard.writeText(msg.text);
+            actions.appendChild(copyBtn);
+            // Edit+Resend (only user)
+            if (msg.role==='user') {
+              let editBtn = document.createElement('button');
+              editBtn.className = 'text-gray-600 hover:text-black';
+              editBtn.title = "Edit and Resend";
+              editBtn.innerHTML = '<i class="fas fa-edit"></i>';
+              editBtn.onclick = () => {
+                chatInput.value = msg.text;
+                chatInput.focus();
+              };
+              actions.appendChild(editBtn);
+            }
+            // Delete message
+            let deleteBtn = document.createElement('button');
+            deleteBtn.className = 'text-gray-600 hover:text-black';
+            deleteBtn.title = "Delete";
+            deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
+            deleteBtn.onclick = () => deleteMessage(idx);
+            actions.appendChild(deleteBtn);
+
+            bubble.appendChild(actions);
+            let meta = document.createElement('div'); meta.className='message-meta text-xs text-gray-500 mt-1';
+            meta.textContent = msg.time||'';
+            if(msg.role==='user'){
+              let statusEl=document.createElement('span');
+              statusEl.className="message-status ml-2";
+              statusEl.innerHTML='<i class="fas fa-eye"></i>';
+              meta.appendChild(statusEl);
+              row.appendChild(bubble); row.appendChild(avatar); row.appendChild(meta);
+            } else {
+              row.appendChild(avatar); row.appendChild(bubble); row.appendChild(meta);
+            }
+            chatMessages.appendChild(row);
+            row.addEventListener('mouseenter', () => actions.style.display = 'flex');
+            row.addEventListener('mouseleave', () => actions.style.display = 'none');
+          });
+          chatMessages.appendChild(typingIndicator);
+          if(window.MathJax) MathJax.typesetPromise([chatMessages]);
+          if(scrollBottom) chatMessages.scrollTop=chatMessages.scrollHeight;
+        }
+
+        // Delete single message
+        function deleteMessage(idx) {
+          if (confirm('Delete this message?')) {
+            // Optionally call a backend delete per message if persisted
+            messages.splice(idx,1); renderMessages();
+          }
+        }
+
+        // Delete all history for current topic
+        deleteHistoryBtn.onclick = async function() {
+          if (confirm('Delete all history for this topic?')) {
+            let token = getCookie('jwt_token') || localStorage.getItem('jwt_token');
+            try {
+              await fetch('https://examguard-jmvj.onrender.com/api/ai-chat/history', {
+                method:'DELETE',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+                body:JSON.stringify({topic:currentTopicId})
+              });
+              messages = []; offset = 0; hasMore = false; renderMessages();
+            }catch(e){alert('Could not delete history now.');}
+          }
+        };
+
+        // Load more
+        loadMoreBtn.onclick = () => loadHistory(true);
+
+        // Emoji Picker
+        EMOJIS.forEach(e=>{
+          const span=document.createElement('span');
+          span.textContent=e;
+          span.onclick=()=>{chatInput.value+=e;chatInput.focus();emojiPicker.classList.remove('active');};
+          emojiPicker.appendChild(span);
+        });
+        emojiBtn.onclick=()=>emojiPicker.classList.toggle('active');
+        document.addEventListener('mousedown',(e)=>{if(!emojiPicker.contains(e.target)&&e.target!==emojiBtn)emojiPicker.classList.remove('active');});
+
+        // Attachments
+        attachBtn.onclick=()=>attachInput.click();
+        attachInput.onchange=function(){
+          const file=this.files[0];if(!file)return;
+          const reader=new FileReader();
+          reader.onload=function(e){
+            if(file.type.startsWith('image/')){currentAttachment={name:file.name,type:file.type,data:e.target.result.split(',')[1],preview:`<img src="${e.target.result}" alt="attachment" class="attach-preview">`};}
+            chatInput.value=chatInput.value.trim()?chatInput.value:`[Attachment: ${file.name}] `;chatInput.focus();
+          };
+          reader.readAsDataURL(file);
+        };
+
+        // New Conversation button
+        newConvBtn.onclick = async function() {
+          // Optionally ask for new topic name
+          createNewTopicModal();
+        };
+
+        // Send message
+        chatFormDOM.addEventListener('submit',function(e){e.preventDefault();sendMessage();});
+        chatInput.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}});
+        async function sendMessage(){
+          if(sending)return;
+          let text=chatInput.value.trim();
+          if(!text&&!currentAttachment)return;
+          sending=true;
+          let nowTime=getTime();
+          messages.push({role:'user',text:text,time:nowTime,status:'sent',attachment:currentAttachment});
+          renderMessages(true);
+          chatInput.value='';typingIndicator.style.display='block';
+          let token=getCookie('jwt_token')||localStorage.getItem('jwt_token');
+          let contextMsgs=messages.filter(m=>m.role==='user'||m.role==='prof').slice(-10).map(m=>({role:m.role==='prof'?'professor':'user',content:m.text}));
+          let payload={messages:[...contextMsgs,{role:'user',content:text}],topic:currentTopicId};
+          if(currentAttachment){payload.image={mimeType:currentAttachment.type,data:currentAttachment.data,fileName:currentAttachment.name};}
+          try{
+            const resp=await fetch('https://examguard-jmvj.onrender.com/api/ai-chat/send',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(payload)});
+            const data=await resp.json();
+            let profMsg={role:'prof',text:(data.reply||''),time:getTime()};
+            messages.push(profMsg);typingIndicator.style.display='none';renderMessages(true);
+          }catch(e){
+            messages.push({role:'prof',text:'<span style="color:red;">Error contacting Academic Tutor.</span>',time:getTime()});
+            typingIndicator.style.display='none';renderMessages(true);
+          }
+          sending=false;currentAttachment=null;attachInput.value='';
+        }
+        checkSession();
+
+        // Auto-resize chat input
+        chatInput.addEventListener('input', () => {
+          chatInput.style.height = 'auto';
+          chatInput.style.height = `${Math.min(chatInput.scrollHeight, 150)}px`;
+        });
+    </script>
 </body>
 </html>
