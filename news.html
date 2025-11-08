@@ -19,7 +19,7 @@
             <h1 class="text-xl font-bold">Academic Tutor</h1>
             <div class="flex items-center">
                 <i class="fas fa-user-circle text-2xl mr-1"></i>
-                <span class="text-sm" id="username-label">UserName</span>
+                <span class="text-sm">UserName</span>
             </div>
         </header>
 
@@ -30,7 +30,7 @@
 
         <!-- Input Area -->
         <footer class="bg-white border-t border-gray-200 p-4 flex items-center space-x-2">
-            <!-- New Conversation Button (Floating) -->
+            <!-- New Conversation Button (Bottom Left Floating) -->
             <button id="new-chat-button" class="absolute bottom-20 left-4 bg-blue-600 text-white p-3 rounded-full shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 z-50">
                 <i class="fas fa-plus text-lg"></i>
             </button>
@@ -64,7 +64,7 @@
     <!-- Sidebar Drawer -->
     <div id="sidebar-drawer" class="fixed top-0 left-0 z-40 h-screen p-4 overflow-y-auto transition-transform -translate-x-full bg-white w-80 border-r border-gray-200" tabindex="-1" aria-labelledby="drawer-label">
         <h5 id="drawer-label" class="text-base font-semibold text-gray-500 uppercase">Menu</h5>
-        <button type="button" data-drawer-hide="sidebar-drawer" aria-controls="sidebar-drawer" class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 absolute top-2.5 end-2.5 flex items-center justify-center">
+        <button type="button" data-drawer-hide="sidebar-drawer" aria-controls="sidebar-drawer" class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 absolute top-2.5 end-2.5 inline-flex items-center justify-center">
             <i class="fas fa-times"></i>
         </button>
         <div class="py-4 overflow-y-auto">
@@ -75,10 +75,10 @@
             <button id="create-topic-button" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">
                 <i class="fas fa-plus mr-2"></i> Create New Chat Topic
             </button>
-            <button class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">
+            <button id="archived-chats-button" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">
                 <i class="fas fa-archive mr-2"></i> Archived Chats
             </button>
-            <button class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">
+            <button id="settings-button" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">
                 <i class="fas fa-cog mr-2"></i> Settings
             </button>
         </div>
@@ -101,44 +101,25 @@
     </div>
 
     <script>
-        // --- JWT Auth Helper ---
-        function getToken() {
-            return localStorage.getItem('jwt_token');
-        }
-        function getUsername() {
-            return localStorage.getItem('username') || "UserName";
-        }
-
-        // --- UI State ---
+        // Chat Management
         let chats = [];
         let currentChatId = null;
         let nextChatId = 1;
         let selectedFiles = [];
-        let currentChannel = "general"; // maps to backend topic/channel
+        const isMobile = /Mobi|Android/i.test(navigator.userAgent) || window.innerWidth < 768;
 
-        // --- Helper: Set Username ---
-        document.getElementById("username-label").textContent = getUsername();
-
-        // --- Create a new chat with first 10 words as title ---
-        function createNewChat(firstMessage = '', channelOverride = '') {
-            let title = 'New Chat';
-            if (firstMessage && firstMessage.trim()) {
-                const words = firstMessage.trim().split(/\s+/).slice(0, 10).join(' ');
-                title = words + (firstMessage.trim().split(/\s+/).length > 10 ? '...' : '');
-            }
-            const channel = channelOverride || `topic${nextChatId}`;
-            const newChat = { id: nextChatId++, title, messages: [], channel };
+        // Create a new chat
+        function createNewChat(title = 'New Chat') {
+            const newChat = { id: nextChatId++, title, messages: [] };
             chats.push(newChat);
             switchToChat(newChat.id);
             updateChatHistory();
-            return newChat;
         }
 
-        // --- Switch chat & close sidebar ---
+        // Switch to a chat and close sidebar
         function switchToChat(id) {
             currentChatId = id;
             const chat = chats.find(c => c.id === id);
-            currentChannel = chat.channel || "general";
             if (chat) {
                 document.getElementById('chat-messages').innerHTML = '';
                 chat.messages.forEach(msg => {
@@ -148,12 +129,12 @@
                         appendImageMessage(msg.role, msg.images, msg.timestamp);
                     }
                 });
-                const drawer = document.getElementById('sidebar-drawer');
-                drawer.classList.add('-translate-x-full');
             }
+            // Close sidebar
+            document.getElementById('sidebar-drawer').classList.add('-translate-x-full');
         }
 
-        // --- Update chat history display in sidebar ---
+        // Update chat history list
         function updateChatHistory() {
             const list = document.getElementById('chat-history-list');
             list.innerHTML = '';
@@ -169,7 +150,7 @@
             });
         }
 
-        // --- Message Rendering ---
+        // Append text message
         function appendTextMessage(role, content, timestamp) {
             const messagesDiv = document.getElementById('chat-messages');
             const messageDiv = document.createElement('div');
@@ -187,7 +168,7 @@
                 timeDiv.classList.add('self-end');
                 bubbleDiv.classList.add('justify-end');
                 bubbleDiv.innerHTML = `
-                    <div class="max-w-[70%] bg-blue-600 text-white p-3 rounded-2xl rounded-br-none shadow-md whitespace-pre-wrap">
+                    <div class="max-w-[70%] bg-blue-600 text-white p-3 rounded-2xl rounded-br-none shadow-md break-words hyphens-auto">
                         ${content}
                     </div>
                     <i class="fas fa-user-circle ml-2 text-blue-600 text-2xl"></i>
@@ -197,7 +178,7 @@
                 timeDiv.classList.add('self-start');
                 bubbleDiv.innerHTML = `
                     <i class="fas fa-robot mr-2 text-gray-600 text-2xl"></i>
-                    <div class="max-w-[70%] bg-gray-200 text-gray-800 p-3 rounded-2xl rounded-bl-none shadow-md whitespace-pre-wrap">
+                    <div class="max-w-[70%] bg-gray-200 text-gray-800 p-3 rounded-2xl rounded-bl-none shadow-md break-words hyphens-auto">
                         ${content}
                     </div>
                 `;
@@ -209,6 +190,7 @@
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
+        // Append image message as grid
         function appendImageMessage(role, images, timestamp) {
             const messagesDiv = document.getElementById('chat-messages');
             const messageDiv = document.createElement('div');
@@ -222,7 +204,7 @@
             bubbleDiv.classList.add('flex', 'items-start');
 
             const gridDiv = document.createElement('div');
-            gridDiv.classList.add('grid', 'gap-2', 'max-w-[70%]', 'shadow-md', 'rounded-lg', 'p-1', 'bg-white');
+            gridDiv.classList.add('grid', 'gap-2');
             if (images.length === 1) {
                 gridDiv.classList.add('grid-cols-1');
             } else if (images.length === 2) {
@@ -234,7 +216,7 @@
             images.forEach(src => {
                 const img = document.createElement('img');
                 img.src = src;
-                img.classList.add('w-full', 'h-48', 'object-cover', 'rounded');
+                img.classList.add('max-w-full', 'h-auto', 'rounded-lg', 'shadow-md', 'object-cover');
                 gridDiv.appendChild(img);
             });
 
@@ -243,11 +225,11 @@
                 timeDiv.classList.add('self-end');
                 bubbleDiv.classList.add('justify-end');
                 bubbleDiv.appendChild(gridDiv);
-                bubbleDiv.innerHTML += '<i class="fas fa-user-circle ml-2 text-blue-600 text-2xl self-end"></i>';
+                bubbleDiv.innerHTML += '<i class="fas fa-user-circle ml-2 text-blue-600 text-2xl self-start"></i>';
             } else {
                 messageDiv.classList.add('items-start');
                 timeDiv.classList.add('self-start');
-                bubbleDiv.innerHTML = '<i class="fas fa-robot mr-2 text-gray-600 text-2xl self-end"></i>';
+                bubbleDiv.innerHTML = '<i class="fas fa-robot mr-2 text-gray-600 text-2xl self-start"></i>';
                 bubbleDiv.appendChild(gridDiv);
             }
 
@@ -257,149 +239,36 @@
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
-        // --- Send Text Message (To Backend) ---
-        async function sendMessage() {
+        // Send text message
+        function sendMessage() {
             const input = document.getElementById('message-input');
             const content = input.value.trim();
             if (content && currentChatId !== null) {
                 const timestamp = new Date().toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
                 const chat = chats.find(c => c.id === currentChatId);
+                chat.messages.push({ type: 'text', role: 'user', content, timestamp });
 
-                // If first message, update title
-                if (chat.messages.length === 0) {
-                    chat.title = content.split(/\s+/).slice(0, 10).join(' ') + (content.split(/\s+/).length > 10 ? '...' : '');
+                // Update chat title if it's the first message
+                if (chat.messages.length === 1 && chat.title === 'New Chat') {
+                    const firstWords = content.split(/\s+/).slice(0, 10).join(' ');
+                    chat.title = firstWords || 'New Chat';
                     updateChatHistory();
                 }
 
-                // Add user's local message
-                chat.messages.push({ type: 'text', role: 'user', content, timestamp });
                 appendTextMessage('user', content, timestamp);
-
                 input.value = '';
-                autoResizeTextarea();
 
-                // Call backend for AI response
-                try {
-                    const res = await fetch('https://examguard-jmvj.onrender.com/api/ai-chat/send', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': 'Bearer ' + getToken(),
-                        },
-                        body: JSON.stringify({
-                            messages: [{ role: 'user', content }],
-                            channel: chat.channel || "general"
-                        })
-                    });
-                    const data = await res.json();
-                    const aiReply = data.reply || 'No response';
+                // Simulate AI response
+                setTimeout(() => {
                     const aiTimestamp = new Date().toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
-                    chat.messages.push({ type: 'text', role: 'ai', content: aiReply, timestamp: aiTimestamp });
-                    appendTextMessage('ai', aiReply, aiTimestamp);
-                } catch (err) {
-                    appendTextMessage('ai', 'Sorry, there was an error contacting the server.', timestamp);
-                }
+                    const aiResponse = `AI response to: "${content}"`;
+                    chat.messages.push({ type: 'text', role: 'ai', content: aiResponse, timestamp: aiTimestamp });
+                    appendTextMessage('ai', aiResponse, aiTimestamp);
+                }, 1000);
             }
         }
 
-        // --- Load Message History For User/Channel ---
-        async function loadChatHistory(channel = "general") {
-            try {
-                const res = await fetch(`https://examguard-jmvj.onrender.com/api/ai-chat/history?channel=${encodeURIComponent(channel)}&offset=0&limit=20`, {
-                    headers: {
-                        'Authorization': 'Bearer ' + getToken(),
-                    }
-                });
-                const data = await res.json();
-                chats = []; // Reset chat array
-                nextChatId = 1;
-                // Map backend messages to frontend chats
-                data.history?.forEach(backendMsg => {
-                    let chat = chats.find(c => c.channel === backendMsg.channel);
-                    if (!chat) {
-                        chat = { id: nextChatId++, title: backendMsg.channel, messages: [], channel: backendMsg.channel };
-                        chats.push(chat);
-                    }
-                    // Add stored messages
-                    backendMsg.messages.forEach(m => {
-                        chat.messages.push({
-                            type: backendMsg.image ? 'image' : 'text',
-                            role: m.role === 'professor' ? 'ai' : 'user',
-                            content: m.content,
-                            images: backendMsg.image ? ["/uploads/gemini/" + backendMsg.image.fileName] : undefined,
-                            timestamp: new Date(backendMsg.date).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' })
-                        });
-                    });
-                    // Add professor reply as AI message
-                    if (backendMsg.professorReply) {
-                        chat.messages.push({
-                            type: 'text',
-                            role: 'ai',
-                            content: backendMsg.professorReply,
-                            timestamp: new Date(backendMsg.date).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' })
-                        });
-                    }
-                });
-                if (chats.length > 0) {
-                    switchToChat(chats[0].id);
-                } else {
-                    // No history - load default
-                    createNewChat();
-                }
-                updateChatHistory();
-            } catch (err) {
-                console.error('Error loading chat history:', err);
-                createNewChat();
-            }
-        }
-
-        // --- Send Images (call /upload-image) ---
-        async function uploadImagesAndSend() {
-            if (selectedFiles.length > 0 && currentChatId !== null) {
-                const chat = chats.find(c => c.id === currentChatId);
-                const formData = new FormData();
-                formData.append('image', selectedFiles[0]); // Only uploading one image per request
-                formData.append('channel', chat.channel || "general");
-
-                try {
-                    const res = await fetch('https://examguard-jmvj.onrender.com/api/ai-chat/upload-image', {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': 'Bearer ' + getToken(),
-                        },
-                        body: formData
-                    });
-                    const data = await res.json();
-                    // Show uploaded image using an object URL for preview (can't get backend url unless server exposes it)
-                    const timestamp = new Date().toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
-                    const localURL = URL.createObjectURL(selectedFiles[0]);
-                    chat.messages.push({
-                        type: 'image',
-                        role: 'user',
-                        images: [localURL],
-                        timestamp
-                    });
-                    appendImageMessage('user', [localURL], timestamp);
-
-                    // Professor reply
-                    chat.messages.push({
-                        type: 'text',
-                        role: 'ai',
-                        content: data.reply,
-                        timestamp
-                    });
-                    appendTextMessage('ai', data.reply, timestamp);
-
-                    selectedFiles = [];
-                    document.getElementById('file-input').value = '';
-                    document.getElementById('image-preview-modal').classList.add('hidden');
-                } catch (err) {
-                    alert('Image upload failed. Make sure you are logged in.');
-                }
-            }
-        }
-
-        // --- File selection and preview logic ---
+        // Handle file selection
         document.getElementById('file-input').addEventListener('change', (e) => {
             const files = Array.from(e.target.files).slice(0, 3);
             if (files.length > 0) {
@@ -407,10 +276,13 @@
                 showImagePreview();
             }
         });
+
+        // Show image preview modal
         function showImagePreview() {
             const modal = document.getElementById('image-preview-modal');
             const container = document.getElementById('preview-container');
             container.innerHTML = '';
+
             selectedFiles.forEach((file, index) => {
                 const reader = new FileReader();
                 reader.onload = (e) => {
@@ -421,8 +293,9 @@
                     img.classList.add('w-full', 'h-32', 'object-cover', 'rounded-lg');
                     div.appendChild(img);
 
+                    // Remove button
                     const removeBtn = document.createElement('button');
-                    removeBtn.innerHTML = '×';
+                    removeBtn.innerHTML = '&times;';
                     removeBtn.classList.add('absolute', 'top-1', 'right-1', 'bg-red-500', 'text-white', 'w-6', 'h-6', 'rounded-full', 'text-sm', 'hover:bg-red-600');
                     removeBtn.onclick = () => {
                         selectedFiles.splice(index, 1);
@@ -438,70 +311,66 @@
             modal.classList.remove('hidden');
         }
 
+        // Close preview
         document.getElementById('close-preview').addEventListener('click', () => {
             document.getElementById('image-preview-modal').classList.add('hidden');
             selectedFiles = [];
         });
 
-        document.getElementById('send-images').onclick = uploadImagesAndSend;
+        // Send images
+        document.getElementById('send-images').addEventListener('click', () => {
+            if (selectedFiles.length > 0 && currentChatId !== null) {
+                const timestamp = new Date().toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
+                const chat = chats.find(c => c.id === currentChatId);
 
-        // --- UI Events ---
-        document.getElementById('send-button').addEventListener('click', sendMessage);
+                const imageUrls = selectedFiles.map(file => URL.createObjectURL(file));
 
-        // Enter key: new line on mobile, send on desktop (with Shift+Enter for new line)
-        document.getElementById('message-input').addEventListener('keydown', (e) => {
-            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-            if (e.key === 'Enter') {
-                if (isMobile) {
-                    // On mobile: Enter = new line
-                    e.preventDefault();
-                    const cursorPos = e.target.selectionStart;
-                    const textBefore = e.target.value.substring(0, cursorPos);
-                    const textAfter = e.target.value.substring(cursorPos);
-                    e.target.value = textBefore + '\n' + textAfter;
-                    e.target.selectionStart = e.target.selectionEnd = cursorPos + 1;
-                    autoResizeTextarea();
-                } else {
-                    // On desktop: Enter = send, Shift+Enter = new line
-                    if (!e.shiftKey) {
-                        e.preventDefault();
-                        sendMessage();
-                    }
-                }
+                chat.messages.push({ type: 'image', role: 'user', images: imageUrls, timestamp });
+                appendImageMessage('user', imageUrls, timestamp);
+
+                document.getElementById('image-preview-modal').classList.add('hidden');
+                selectedFiles = [];
+                document.getElementById('file-input').value = '';
             }
         });
 
-        document.getElementById('new-chat-button').addEventListener('click', () => {
-            createNewChat();
+        // Event Listeners
+        document.getElementById('send-button').addEventListener('click', sendMessage);
+        document.getElementById('message-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
+                e.preventDefault();
+                sendMessage();
+            }
+            // On mobile, enter always adds new line
         });
+
+        document.getElementById('new-chat-button').addEventListener('click', () => createNewChat());
 
         document.getElementById('create-topic-button').addEventListener('click', () => {
             const title = prompt('Enter chat topic title:');
-            if (title) {
-                const newChat = createNewChat('', title);
-                newChat.title = title;
-                updateChatHistory();
-            }
+            if (title) createNewChat(title);
         });
 
-        // --- Auto-resize textarea ---
-        function autoResizeTextarea() {
-            const textarea = document.getElementById('message-input');
+        // Placeholder for other tabs
+        document.getElementById('archived-chats-button').addEventListener('click', () => {
+            alert('Archived Chats functionality coming soon!');
+            document.getElementById('sidebar-drawer').classList.add('-translate-x-full');
+        });
+
+        document.getElementById('settings-button').addEventListener('click', () => {
+            alert('Settings functionality coming soon!');
+            document.getElementById('sidebar-drawer').classList.add('-translate-x-full');
+        });
+
+        // Auto-resize textarea
+        const textarea = document.getElementById('message-input');
+        textarea.addEventListener('input', () => {
             textarea.style.height = 'auto';
             textarea.style.height = `${Math.min(textarea.scrollHeight, 150)}px`;
-        }
-        document.getElementById('message-input').addEventListener('input', autoResizeTextarea);
-
-        // --- Initial History Load ---
-        window.addEventListener('DOMContentLoaded', function() {
-            // Try to load user/channel history from backend
-            if (getToken()) {
-                loadChatHistory();
-            } else {
-                // No jwt, show blank/default chat
-                createNewChat();
-            }
         });
+
+        // Initial chat
+        createNewChat();
     </script>
 </body>
 </html>
