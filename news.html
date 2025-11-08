@@ -19,7 +19,7 @@
             <h1 class="text-xl font-bold">Academic Tutor</h1>
             <div class="flex items-center">
                 <i class="fas fa-user-circle text-2xl mr-1"></i>
-                <span class="text-sm">UserName</span>
+                <span class="text-sm" id="username-label">UserName</span>
             </div>
         </header>
 
@@ -64,7 +64,7 @@
     <!-- Sidebar Drawer -->
     <div id="sidebar-drawer" class="fixed top-0 left-0 z-40 h-screen p-4 overflow-y-auto transition-transform -translate-x-full bg-white w-80 border-r border-gray-200" tabindex="-1" aria-labelledby="drawer-label">
         <h5 id="drawer-label" class="text-base font-semibold text-gray-500 uppercase">Menu</h5>
-        <button type="button" data-drawer-hide="sidebar-drawer" aria-controls="sidebar-drawer" class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 absolute top-2.5 end-2.5 inline-flex items-center justify-center">
+        <button type="button" data-drawer-hide="sidebar-drawer" aria-controls="sidebar-drawer" class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 absolute top-2.5 end-2.5 flex items-center justify-center">
             <i class="fas fa-times"></i>
         </button>
         <div class="py-4 overflow-y-auto">
@@ -101,25 +101,39 @@
     </div>
 
     <script>
-        // Chat Management
+        // --- JWT Auth Helper ---
+        function getToken() {
+            return localStorage.getItem('jwt_token');
+        }
+        function getUsername() {
+            return localStorage.getItem('username') || "UserName";
+        }
+
+        // --- UI State ---
         let chats = [];
         let currentChatId = null;
         let nextChatId = 1;
         let selectedFiles = [];
-        const isMobile = /Mobi|Android/i.test(navigator.userAgent) || window.innerWidth < 768;
+        let currentChannel = "general";
 
-        // Create a new chat
-        function createNewChat(title = 'New Chat') {
-            const newChat = { id: nextChatId++, title, messages: [] };
+        // --- Set Username ---
+        document.getElementById("username-label").textContent = getUsername();
+
+        // --- Create a new chat ---
+        function createNewChat(title = 'New Chat', channelOverride = '') {
+            const channel = channelOverride || `topic${nextChatId}`;
+            const newChat = { id: nextChatId++, title, messages: [], channel };
             chats.push(newChat);
             switchToChat(newChat.id);
             updateChatHistory();
+            return newChat;
         }
 
-        // Switch to a chat and close sidebar
+        // --- Switch chat & close sidebar ---
         function switchToChat(id) {
             currentChatId = id;
             const chat = chats.find(c => c.id === id);
+            currentChannel = chat.channel || "general";
             if (chat) {
                 document.getElementById('chat-messages').innerHTML = '';
                 chat.messages.forEach(msg => {
@@ -129,12 +143,11 @@
                         appendImageMessage(msg.role, msg.images, msg.timestamp);
                     }
                 });
+                document.getElementById('sidebar-drawer').classList.add('-translate-x-full');
             }
-            // Close sidebar
-            document.getElementById('sidebar-drawer').classList.add('-translate-x-full');
         }
 
-        // Update chat history list
+        // --- Update chat history in sidebar ---
         function updateChatHistory() {
             const list = document.getElementById('chat-history-list');
             list.innerHTML = '';
@@ -150,7 +163,7 @@
             });
         }
 
-        // Append text message
+        // --- Message Rendering ---
         function appendTextMessage(role, content, timestamp) {
             const messagesDiv = document.getElementById('chat-messages');
             const messageDiv = document.createElement('div');
@@ -190,7 +203,6 @@
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
-        // Append image message as grid
         function appendImageMessage(role, images, timestamp) {
             const messagesDiv = document.getElementById('chat-messages');
             const messageDiv = document.createElement('div');
@@ -239,36 +251,142 @@
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
-        // Send text message
-        function sendMessage() {
+        // --- Send Text Message (To Backend) ---
+        async function sendMessage() {
             const input = document.getElementById('message-input');
             const content = input.value.trim();
             if (content && currentChatId !== null) {
                 const timestamp = new Date().toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
                 const chat = chats.find(c => c.id === currentChatId);
-                chat.messages.push({ type: 'text', role: 'user', content, timestamp });
 
-                // Update chat title if it's the first message
-                if (chat.messages.length === 1 && chat.title === 'New Chat') {
-                    const firstWords = content.split(/\s+/).slice(0, 10).join(' ');
-                    chat.title = firstWords || 'New Chat';
+                // If first message, update title
+                if (chat.messages.length === 0) {
+                    chat.title = content.split(/\s+/).slice(0, 10).join(' ') + (content.split(/\s+/).length > 10 ? '...' : '');
                     updateChatHistory();
                 }
 
+                // Add user's local message
+                chat.messages.push({ type: 'text', role: 'user', content, timestamp });
                 appendTextMessage('user', content, timestamp);
-                input.value = '';
 
-                // Simulate AI response
-                setTimeout(() => {
+                input.value = '';
+                autoResizeTextarea();
+
+                // Call backend for AI response
+                try {
+                    const res = await fetch('https://examguard-jmvj.onrender.com/api/ai-chat/send', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + getToken(),
+                        },
+                        body: JSON.stringify({
+                            messages: [{ role: 'user', content }],
+                            channel: chat.channel || "general"
+                        })
+                    });
+                    const data = await res.json();
+                    const aiReply = data.reply || 'No response';
                     const aiTimestamp = new Date().toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
-                    const aiResponse = `AI response to: "${content}"`;
-                    chat.messages.push({ type: 'text', role: 'ai', content: aiResponse, timestamp: aiTimestamp });
-                    appendTextMessage('ai', aiResponse, aiTimestamp);
-                }, 1000);
+                    chat.messages.push({ type: 'text', role: 'ai', content: aiReply, timestamp: aiTimestamp });
+                    appendTextMessage('ai', aiReply, aiTimestamp);
+                } catch (err) {
+                    appendTextMessage('ai', 'Sorry, there was an error contacting the server.', timestamp);
+                }
             }
         }
 
-        // Handle file selection
+        // --- Load Message History for User/Channel from backend ---
+        async function loadChatHistory(channel = "general") {
+            try {
+                const res = await fetch(`https://examguard-jmvj.onrender.com/api/ai-chat/history?channel=${encodeURIComponent(channel)}&offset=0&limit=20`, {
+                    headers: {
+                        'Authorization': 'Bearer ' + getToken(),
+                    }
+                });
+                const data = await res.json();
+                chats = [];
+                nextChatId = 1;
+                data.history?.forEach(backendMsg => {
+                    let chat = chats.find(c => c.channel === backendMsg.channel);
+                    if (!chat) {
+                        chat = { id: nextChatId++, title: backendMsg.channel, messages: [], channel: backendMsg.channel };
+                        chats.push(chat);
+                    }
+                    backendMsg.messages.forEach(m => {
+                        chat.messages.push({
+                            type: backendMsg.image ? 'image' : 'text',
+                            role: m.role === 'professor' ? 'ai' : 'user',
+                            content: m.content,
+                            images: backendMsg.image ? ["/uploads/gemini/" + backendMsg.image.fileName] : undefined,
+                            timestamp: new Date(backendMsg.date).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' })
+                        });
+                    });
+                    if (backendMsg.professorReply) {
+                        chat.messages.push({
+                            type: 'text',
+                            role: 'ai',
+                            content: backendMsg.professorReply,
+                            timestamp: new Date(backendMsg.date).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' })
+                        });
+                    }
+                });
+                if (chats.length > 0) {
+                    switchToChat(chats[0].id);
+                } else {
+                    createNewChat();
+                }
+                updateChatHistory();
+            } catch (err) {
+                console.error('Error loading chat history:', err);
+                createNewChat();
+            }
+        }
+
+        // --- Send Images (call /upload-image) ---
+        async function uploadImagesAndSend() {
+            if (selectedFiles.length > 0 && currentChatId !== null) {
+                const chat = chats.find(c => c.id === currentChatId);
+                const formData = new FormData();
+                formData.append('image', selectedFiles[0]); // Only uploading one image per request
+                formData.append('channel', chat.channel || "general");
+
+                try {
+                    const res = await fetch('https://examguard-jmvj.onrender.com/api/ai-chat/upload-image', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': 'Bearer ' + getToken(),
+                        },
+                        body: formData
+                    });
+                    const data = await res.json();
+                    const timestamp = new Date().toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
+                    const localURL = URL.createObjectURL(selectedFiles[0]);
+                    chat.messages.push({
+                        type: 'image',
+                        role: 'user',
+                        images: [localURL],
+                        timestamp
+                    });
+                    appendImageMessage('user', [localURL], timestamp);
+
+                    chat.messages.push({
+                        type: 'text',
+                        role: 'ai',
+                        content: data.reply,
+                        timestamp
+                    });
+                    appendTextMessage('ai', data.reply, timestamp);
+
+                    selectedFiles = [];
+                    document.getElementById('file-input').value = '';
+                    document.getElementById('image-preview-modal').classList.add('hidden');
+                } catch (err) {
+                    alert('Image upload failed. Make sure you are logged in.');
+                }
+            }
+        }
+
         document.getElementById('file-input').addEventListener('change', (e) => {
             const files = Array.from(e.target.files).slice(0, 3);
             if (files.length > 0) {
@@ -277,12 +395,10 @@
             }
         });
 
-        // Show image preview modal
         function showImagePreview() {
             const modal = document.getElementById('image-preview-modal');
             const container = document.getElementById('preview-container');
             container.innerHTML = '';
-
             selectedFiles.forEach((file, index) => {
                 const reader = new FileReader();
                 reader.onload = (e) => {
@@ -293,7 +409,6 @@
                     img.classList.add('w-full', 'h-32', 'object-cover', 'rounded-lg');
                     div.appendChild(img);
 
-                    // Remove button
                     const removeBtn = document.createElement('button');
                     removeBtn.innerHTML = '&times;';
                     removeBtn.classList.add('absolute', 'top-1', 'right-1', 'bg-red-500', 'text-white', 'w-6', 'h-6', 'rounded-full', 'text-sm', 'hover:bg-red-600');
@@ -311,33 +426,17 @@
             modal.classList.remove('hidden');
         }
 
-        // Close preview
         document.getElementById('close-preview').addEventListener('click', () => {
             document.getElementById('image-preview-modal').classList.add('hidden');
             selectedFiles = [];
         });
 
-        // Send images
-        document.getElementById('send-images').addEventListener('click', () => {
-            if (selectedFiles.length > 0 && currentChatId !== null) {
-                const timestamp = new Date().toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
-                const chat = chats.find(c => c.id === currentChatId);
+        document.getElementById('send-images').onclick = uploadImagesAndSend;
 
-                const imageUrls = selectedFiles.map(file => URL.createObjectURL(file));
-
-                chat.messages.push({ type: 'image', role: 'user', images: imageUrls, timestamp });
-                appendImageMessage('user', imageUrls, timestamp);
-
-                document.getElementById('image-preview-modal').classList.add('hidden');
-                selectedFiles = [];
-                document.getElementById('file-input').value = '';
-            }
-        });
-
-        // Event Listeners
         document.getElementById('send-button').addEventListener('click', sendMessage);
+
         document.getElementById('message-input').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
+            if (e.key === 'Enter' && !e.shiftKey && !(/Mobi|Android/i.test(navigator.userAgent) || window.innerWidth < 768)) {
                 e.preventDefault();
                 sendMessage();
             }
@@ -351,7 +450,6 @@
             if (title) createNewChat(title);
         });
 
-        // Placeholder for other tabs
         document.getElementById('archived-chats-button').addEventListener('click', () => {
             alert('Archived Chats functionality coming soon!');
             document.getElementById('sidebar-drawer').classList.add('-translate-x-full');
@@ -362,15 +460,20 @@
             document.getElementById('sidebar-drawer').classList.add('-translate-x-full');
         });
 
-        // Auto-resize textarea
-        const textarea = document.getElementById('message-input');
-        textarea.addEventListener('input', () => {
+        function autoResizeTextarea() {
+            const textarea = document.getElementById('message-input');
             textarea.style.height = 'auto';
             textarea.style.height = `${Math.min(textarea.scrollHeight, 150)}px`;
-        });
+        }
+        document.getElementById('message-input').addEventListener('input', autoResizeTextarea);
 
-        // Initial chat
-        createNewChat();
+        window.addEventListener('DOMContentLoaded', function() {
+            if (getToken()) {
+                loadChatHistory();
+            } else {
+                createNewChat();
+            }
+        });
     </script>
 </body>
 </html>
