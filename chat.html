@@ -221,12 +221,12 @@
       });
     }
     function switchTopicAndRestore(topic){
-      currentTopic = topic;
-      chatOffset = parseInt(localStorage.getItem('chat_offset_' + topic.id) || 0,10);
-      messages = [];
-      loadMessages(PAGE_SIZE, true);
-      saveLastTopic();
-    }
+  currentTopic = topic;
+  chatOffset = 0;
+  messages = [];
+  saveLastTopic();
+  loadMessages(PAGE_SIZE, true);
+}
     function saveLastTopic() {
   if (currentTopic) localStorage.setItem('last_topic_name', currentTopic.name);
 }
@@ -238,14 +238,14 @@
     }
     // === INFINITE SCROLL & HISTORY ===
     async function loadMessages(n=PAGE_SIZE, initial=false){
-      if(!currentTopic || loading) return;
-      loading = true;
-      let offset = chatOffset;
-      let res = await fetch(`${API_BASE}/ai-chat/history?offset=${offset}&limit=${n}&channel=${encodeURIComponent(currentTopic.name)}`,{
-        headers:{Authorization:"Bearer "+jwt_token}
-      });
-      let data = await res.json();
-      let newMessages = [];
+  if(!currentTopic || loading) return;
+  loading = true;
+  let offset = chatOffset;
+  let res = await fetch(`${API_BASE}/ai-chat/history?offset=${offset}&limit=${n}&channel=${encodeURIComponent(currentTopic.name)}`,{
+    headers:{Authorization:"Bearer "+jwt_token}
+  });
+  let data = await res.json();
+  let newMessages = [];
       if (data.history && data.history.length>0){
         data.history.forEach(msg => {
           (msg.messages||[]).forEach(subMsg=>{
@@ -262,12 +262,25 @@
           }
         });
         messages = newMessages.concat(messages); // prepend
-        chatOffset += data.history.length;
-        saveChatOffset();
-      }
+    chatOffset += data.history.length;
+    saveChatOffset();
+    renderChat(initial);
+  } else if (offset > 0) {
+    // If no history is returned, but offset > 0, try from zero offset
+    chatOffset = 0;
+    localStorage.setItem('chat_offset_' + currentTopic.id, 0);
+    // Prevent infinite loop: only retry once
+    if (!initial) {
+      await loadMessages(n, true); // Try one more time from zero
+    } else {
       renderChat(initial);
-      loading = false;
     }
+  } else {
+    // No messages at all for this topic
+    renderChat(initial);
+  }
+  loading = false;
+}
     function saveChatOffset(){if(currentTopic)localStorage.setItem('chat_offset_' + currentTopic.id, chatOffset);}
     function restoreChatOffset(){
       if(currentTopic) chatOffset = parseInt(localStorage.getItem('chat_offset_' + currentTopic.id)||"0",10);
