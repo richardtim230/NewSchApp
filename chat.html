@@ -128,6 +128,12 @@
       </div>
     </form>
   </div>
+  <!-- CBT Exam Modal -->
+<div id="cbtModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(30,34,70,0.95); z-index:999; align-items:center; justify-content:center;">
+  <div id="cbtContent" style="background:#fff; border-radius:18px; max-width:440px; margin:auto; padding:26px 19px; box-shadow:0 2px 46px rgba(44,62,120,0.18);">
+    <!-- Exam content is inserted here by JS -->
+  </div>
+</div>
   <div class="floating-btn" id="floatingNewChat" title="Start New Chat"><i class="fa-solid fa-plus"></i></div>
   <script>
     // === CONSTANTS ===
@@ -169,7 +175,15 @@
       let data=await res.json();
       if(data.user){userProfile = data.user;}
     }
-
+function maybeShowCBTButton(aiReply) {
+  if(/start.*cbt|ready.*quiz|test/i.test(aiReply)) {
+    let btn = document.createElement('button');
+    btn.textContent = "Start CBT Exam";
+    btn.style = "margin:12px 0; padding:10px 24px; border-radius:12px; background:#396ae2; color:#fff; font-size:16px; border:none; cursor:pointer;";
+    btn.onclick = () => launchCBT(currentTopic.name);
+    document.getElementById("chatBody").appendChild(btn);
+  }
+}
     // TOPICS
     async function fetchTopics(){
       let res=await fetch(`${API_BASE}/ai-chat/topics`,{headers:{Authorization:"Bearer "+jwt_token}});
@@ -410,10 +424,11 @@
       let data = await res.json();
       typingDiv.remove();
       if(data.reply){
-        messages.push({sender:"ai",text:data.reply, time:Date.now()});
-        appendMessage(data.reply,"ai",null,null,false,Date.now());
-        if(window.MathJax) MathJax.typesetPromise([document.getElementById("chatBody")]);
-      } else {
+  messages.push({sender:"ai",text:data.reply, time:Date.now()});
+  appendMessage(data.reply,"ai",null,null,false,Date.now());
+  maybeShowCBTButton(data.reply); // <-- this
+  if(window.MathJax) MathJax.typesetPromise([document.getElementById("chatBody")]);
+} else {
         messages.push({sender:"ai",text:"[No response]", time:Date.now()});
         appendMessage("[No response]","ai",null,null,false,Date.now());
       }
@@ -469,6 +484,73 @@
         alert("Current Topic: "+currentTopic.name);
       }
     }
+    function launchCBT(topicName) {
+  document.getElementById("cbtModal").style.display = "flex";
+  document.getElementById("cbtContent").innerHTML = "<div style='text-align:center'><b>Loading questions...</b></div>";
+
+  fetch(`${API_BASE}/ai-chat/schedule-cbt`,{
+    method: "POST",
+    headers: {"Content-Type":"application/json", "Authorization": "Bearer "+jwt_token},
+    body: JSON.stringify({channel: topicName, n: 20})
+  })
+  .then(res => res.json())
+  .then(data => {
+    window._cbtExamId = data.examId;
+    renderCBTExam(data.questions);
+  });
+}
+
+function renderCBTExam(questions) {
+  let cbtHtml = "<h2 style='margin-bottom:14px'>CBT Exam – 20 MCQs</h2><form id='cbtExamForm'>";
+  questions.forEach((q, i) => {
+    cbtHtml += `<div style='margin-bottom:18px'>
+      <div><b>Q${i+1}:</b> ${q.text}</div>
+      ${q.options.map((opt, j) => 
+        `<div><label><input type='radio' name='cbt_q${i}' value='${j}'> ${opt}</label></div>`
+      ).join("")}
+    </div>`;
+  });
+  cbtHtml += `<button type='submit' style='background:#396ae2;color:#fff;border:none;border-radius:10px;padding:10px 24px;font-size:17px;cursor:pointer;'>Submit Exam</button></form>`;
+  document.getElementById("cbtContent").innerHTML = cbtHtml;
+
+  document.getElementById("cbtExamForm").onsubmit = function(e){
+    e.preventDefault();
+    let answers = [];
+    for(let i=0;i<questions.length;i++){
+      let val = document.querySelector(`[name='cbt_q${i}']:checked`);
+      answers.push(val ? parseInt(val.value) : null);
+    }
+    gradeCBTExam(window._cbtExamId, answers, questions);
+  };
+}
+
+function gradeCBTExam(examId, answers, questions) {
+  fetch(`${API_BASE}/ai-chat/submit-cbt`, {
+    method:'POST',
+    headers:{"Content-Type":"application/json", "Authorization":"Bearer "+jwt_token},
+    body: JSON.stringify({examId, answers})
+  })
+  .then(res=>res.json())
+  .then(data=>{
+    let html = `<h2>Your Score: ${data.score} / ${questions.length}</h2>`;
+    html += `<div style='margin-bottom:12px'>${data.summary}</div>`;
+    data.explanations.forEach((exp,i) => {
+      html += `
+      <div style='margin-bottom:13px; background:#f7faff; border-radius:8px; padding:8px 12px;'>
+        <div><b>Q${i+1}: ${exp.question}</b></div>
+        <div>Your answer: <span style='color:${exp.correct ? "#37ab49":"#d63e3e"}'>${exp.options[exp.yourAnswer]||"No answer"}</span></div>
+        <div>Correct answer: <b>${exp.options[exp.answer]}</b></div>
+        <div><i>${exp.explanation}</i></div>
+      </div>
+      `;
+    });
+    html += `<button onclick="closeCBTModal()" style='background:#396ae2;color:#fff;border:none;border-radius:10px;padding:9px 22px;font-size:16px;cursor:pointer;margin-top:14px;'>Close</button>`;
+    document.getElementById("cbtContent").innerHTML = html;
+  });
+}
+function closeCBTModal() {
+  document.getElementById("cbtModal").style.display = "none";
+}
   </script>
 </body>
 </html>
