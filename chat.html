@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -17,6 +16,8 @@
   </script>
   <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+  <!-- Marked for rich markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
     body { background:#20304a; font-family:"Segoe UI","Roboto",Arial,sans-serif; margin:0; min-height:100vh; user-select:none; }
@@ -93,12 +94,12 @@
       <i class="fa-solid fa-xmark" id="closeSidebar"></i>
     </div>
     <div class="sidebar-section">
-      <button class="sidebar-btn" id="newChatBtn"><i class="fa-solid fa-plus"></i> New Chat</button>
+      <button class="sidebar-btn" id="newChatBtn" type="button"><i class="fa-solid fa-plus"></i> New Chat</button>
     </div>
     <div class="sidebar-section">
       <h4><i class="fa-solid fa-list"></i> Topics</h4>
       <ul class="sidebar-list" id="topicsList"></ul>
-      <button class="sidebar-btn new-topic" id="newTopicBtn"><i class="fa-solid fa-plus"></i> Create Topic</button>
+      <button class="sidebar-btn new-topic" id="newTopicBtn" type="button"><i class="fa-solid fa-plus"></i> Create Topic</button>
     </div>
     <div class="sidebar-section">
       <h4><i class="fa-solid fa-clock-rotate-left"></i> History</h4>
@@ -132,7 +133,7 @@
     // === CONSTANTS ===
     const API_BASE = "https://examguard-jmvj.onrender.com/api";
     const PAGE_SIZE = 10;
-    let jwt_token = localStorage.getItem("token");
+    let jwt_token = localStorage.getItem("jwt_token");
     let currentTopic = null, topics = [];
     let messages = [];
     let chatOffset = 0;
@@ -143,13 +144,31 @@
     const sidebar = document.getElementById("sidebar"), sidebarBackdrop = document.getElementById("sidebarBackdrop"), closeSidebar = document.getElementById("closeSidebar");
     document.getElementById("hamburger").onclick = ()=>{sidebar.classList.add("open");sidebarBackdrop.classList.add("open");renderTopics();renderHistory();};
     closeSidebar.onclick = sidebarBackdrop.onclick = ()=>{sidebar.classList.remove("open");sidebarBackdrop.classList.remove("open");};
-    document.getElementById("floatingNewChat").onclick = document.getElementById("newChatBtn").onclick = ()=>{resetChat(true);sidebar.classList.remove("open");sidebarBackdrop.classList.remove("open");};
-    document.getElementById("newTopicBtn").onclick = createTopicHandler;
+    document.getElementById("floatingNewChat").onclick = document.getElementById("newChatBtn").onclick = ()=>{
+      startNewChat();
+      sidebar.classList.remove("open");
+      sidebarBackdrop.classList.remove("open");
+    };
+    document.getElementById("newTopicBtn").onclick = ()=>{
+      createTopicHandler();
+      sidebar.classList.remove("open");
+      sidebarBackdrop.classList.remove("open");
+    };
     document.getElementById("logoutBtn").onclick = function(){localStorage.removeItem("jwt_token");location.reload();};
 
     function getAvatar(sender="ai"){return sender==="user" ? "https://ui-avatars.com/api/?name=User" : "https://ui-avatars.com/api/?name=AI";}
     function prettyTime(ts){if(!ts)return"";let d=new Date(ts),h=d.getHours(),m=d.getMinutes();return `${h.toString().padStart(2,"0")}:${m.toString().padStart(2,"0")}`;}
     function escapeHtml(text){return text.replace(/[&<>"']/g,t=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[t]));}
+
+    // --- USER PROFILE ---
+    let userProfile = null;
+    async function loadUserProfile(){
+      let res = await fetch(`${API_BASE}/auth/me`,{
+        headers:{Authorization:"Bearer "+jwt_token}
+      });
+      let data=await res.json();
+      if(data.user){userProfile = data.user;}
+    }
 
     // TOPICS
     async function fetchTopics(){
@@ -178,6 +197,17 @@
         body:JSON.stringify({name}) }
       );
       await fetchTopics();
+      if(topics.length){
+        currentTopic = topics.find(t=>t.name===name) || topics[topics.length-1];
+        startNewChat();
+      }
+    }
+    // --- NEW CHAT ---
+    function startNewChat(){
+      chatOffset = 0;
+      messages = [];
+      saveChatOffset();
+      renderChat(true);
     }
     // HISTORY
     function renderHistory(){
@@ -194,7 +224,11 @@
       currentTopic = topic;
       chatOffset = parseInt(localStorage.getItem('chat_offset_' + topic.id) || 0,10);
       messages = [];
-      resetChat(false);
+      loadMessages(PAGE_SIZE, true);
+      saveLastTopic();
+    }
+    function saveLastTopic(){
+      if(currentTopic) localStorage.setItem('last_topic_id', currentTopic.id);
     }
     async function resetChat(resetOffset){
       if(resetOffset){ chatOffset = 0; }
@@ -246,12 +280,14 @@
       if(window.MathJax) MathJax.typesetPromise([chatBody]);
       if(scrollToBottom) chatBody.scrollTop = chatBody.scrollHeight;
     }
+    // --- MARKDOWN + MATHJAX RENDERER ---
     function appendMessage(text,sender='user',images=null,voice=null,isHello=false,ts=null){
       const chatBody=document.getElementById("chatBody"),bubble=document.createElement("div");
       bubble.className=`chat-bubble ${sender}`;
-      let meta=`<img src="${getAvatar(sender)}" class="bubble-avatar" title="${sender==='user'?'You':'AI'}"/>`;
-      let hasMath = /\$[^$]+\$|\\\([^()]+\\\)|\\\[[^\][]+\\\]|(\$\$([^$]+)\$\$)/.test(text);
-      bubble.innerHTML = `<div>${hasMath?text:escapeHtml(text||"")}</div>`;
+      let meta=`<img src="${getAvatar(sender)}" class="bubble-avatar" title="${sender==='user'?(userProfile && userProfile.fullname ? userProfile.fullname : 'You'):'AI'}"/>`;
+      let html = sender === "ai" ? marked.parse(text || "") : escapeHtml(text || "");
+      if(sender === "ai") html = html.replace(/<p>/g, "<p class='rich-block'>");
+      bubble.innerHTML = `<div>${html}</div>`;
       if(images && images.length){
         let imgRow=document.createElement('div'); imgRow.className='msg-file';
         images.forEach(img=>{imgRow.innerHTML+=`<img src="${img.url}" alt="${img.name}">`;});
@@ -262,6 +298,8 @@
       bubbleMeta.innerHTML=meta+(ts?`<span title="${new Date(ts).toLocaleString()}">${prettyTime(ts)}</span>`:"");
       bubble.appendChild(bubbleMeta);
       chatBody.appendChild(bubble);
+      // After rendering: typeset any math
+      if(window.MathJax) MathJax.typesetPromise([bubble]);
     }
     // IMAGE PREVIEW
     const attachInput=document.getElementById("attachInput"),previewImageContainer=document.getElementById("previewImageContainer"),chatInput=document.getElementById("chatInput");
@@ -393,12 +431,13 @@
       }
     });
 
-    // === BOOTSTRAP: load last topic/offset ===
+    // === BOOTSTRAP: load last topic/offset and user profile ===
     (async function(){
       if(!jwt_token){
         alert("Sign in required! Please log in on the authentication page.");
         return;
       }
+      await loadUserProfile();
       await fetchTopics();
       if(topics.length){
         let lastTopicId = localStorage.getItem('last_topic_id');
@@ -412,7 +451,7 @@
     })();
     document.getElementById("chatTitle").onclick=function(){
       if(currentTopic){
-        localStorage.setItem('last_topic_id', currentTopic.id);
+        saveLastTopic();
         saveChatOffset();
         alert("Current Topic: "+currentTopic.name);
       }
