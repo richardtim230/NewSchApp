@@ -437,24 +437,31 @@
       });
       let data = await res.json();
       typingDiv.remove();
-      if(data.reply){
-        // PATCH: Only append Professor's explanation (not the JSON MCQ block!) to chat
-        messages.push({sender:"ai",text:data.reply, time:Date.now()});
-        appendMessage(data.reply,"ai",null,null,false,Date.now());
-
-        // PATCH: Check for CBT MCQs and show modal directly
-        if(data.cbt && data.cbt.questions && data.cbt.examId){
-          window._cbtExamId = data.cbt.examId;
-          renderCBTExam(data.cbt.questions);
-          document.getElementById("cbtModal").style.display = "flex";
-        }
-
-        maybeShowCBTButton(data.reply);
-        if(window.MathJax) MathJax.typesetPromise([document.getElementById("chatBody")]);
-      } else {
-        messages.push({sender:"ai",text:"[No response]", time:Date.now()});
-        appendMessage("[No response]","ai",null,null,false,Date.now());
-      }
+      if (data.reply) {
+  // Detect a JSON block for MCQs in the AI reply
+  let mcqMatch = data.reply.match(/\[\s*\{[\s\S]*?\}\s*\]/);
+  if (mcqMatch) {
+    try {
+      let questions = JSON.parse(mcqMatch[0]);
+      // Show only the explanation, then launch CBT UI with parsed MCQs
+      let explanation = data.reply.split(mcqMatch[0])[0].trim();
+      messages.push({sender: "ai", text: explanation, time: Date.now()});
+      appendMessage(explanation, "ai", null, null, false, Date.now());
+      launchCBTWithQuestions(questions); // <- This displays your CBT modal with MCQs!
+    } catch (e) {
+      messages.push({sender:"ai",text:data.reply, time:Date.now()});
+      appendMessage(data.reply,"ai",null,null,false,Date.now());
+    }
+  } else {
+    messages.push({sender:"ai",text:data.reply, time:Date.now()});
+    appendMessage(data.reply,"ai",null,null,false,Date.now());
+  }
+  maybeShowCBTButton(data.reply);
+  if(window.MathJax) MathJax.typesetPromise([document.getElementById("chatBody")]);
+} else {
+  messages.push({sender:"ai",text:"[No response]", time:Date.now()});
+  appendMessage("[No response]","ai",null,null,false,Date.now());
+}
       saveChatOffset();
     }
     async function blobToBase64(blob) {
