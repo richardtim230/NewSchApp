@@ -90,7 +90,28 @@
       .chat-body{padding-left:2px; padding-right:2px;}
       .sidebar.open{width:100vw;}
     }
-  </style>
+
+  /* Neat scrollable modal content */
+  #cbtContent {
+    max-height:70vh;
+    overflow-y:auto;
+    scrollbar-width:thin;
+    scrollbar-color:#396ae2 #f7fafc;
+  }
+  #cbtContent::-webkit-scrollbar {
+    width:7px;
+    background:#f7fafc;
+    border-radius:9px;
+  }
+  #cbtContent::-webkit-scrollbar-thumb {
+    background:#396ae2;
+    border-radius:9px;
+  }
+  .cbt-nav-btn[disabled] {
+    opacity:.5;
+    pointer-events:none;
+  }
+</style>
 </head>
 <body>
   <!-- SIDEBAR -->
@@ -619,32 +640,68 @@
       });
     }
 
-    function renderCBTExam(questions) {
-      let cbtHtml = `<h2 style="text-align:center;margin-bottom:19px;color:#233b62;">CBT Practice – 20 MCQs</h2><form id="cbtExamForm">`;
-      questions.forEach((q,i) => {
-        cbtHtml += `<div style="margin-bottom:21px;">
-          <div style="margin-bottom:9px;font-weight:bolder;">Q${i+1}: ${q.text}</div>
-          ${q.options.map((opt,j)=>
-            `<div style="margin-bottom:4px;">
-              <label style="cursor:pointer;">
-                <input type="radio" name="cbt_q${i}" value="${j}"> ${opt}
-              </label>
-            </div>`
-          ).join('')}
-        </div>`;
-      });
-      cbtHtml += `<button type="submit" style="display:block;width:100%;margin-top:15px;padding:11px 0px;background:#396ae2;color:#fff;border:none;border-radius:10px;font-size:18px;font-weight:bold;cursor:pointer;">Submit Exam</button></form>`;
-      document.getElementById("cbtContent").innerHTML = cbtHtml;
-      document.getElementById("cbtExamForm").onsubmit = function(e){
-        e.preventDefault();
-        let answers = [];
-        for(let i=0;i<questions.length;i++){
-          let val = document.querySelector(`[name='cbt_q${i}']:checked`);
-          answers.push(val ? parseInt(val.value) : null);
+  function renderCBTExam(questions) {
+    let currentQ = 0;
+    let answers = Array(questions.length).fill(null);
+    window._cbtExamQuestions = questions;
+    window._cbtExamAnswers = answers;
+    window._cbtExamCurrentQ = 0;
+
+    function updateCBTModal() {
+      const qObj = questions[currentQ];
+      let qHtml = `<div style="max-height:61vh;overflow-y:auto;overflow-x:hidden;padding-bottom:8px;">
+        <div style="font-size:17px;font-weight:600;margin-bottom:22px;">Q${currentQ+1} of ${questions.length}<br><span style="font-size:18px;font-weight:700;">${qObj.text}</span></div>
+        <form id="cbtSingleForm">` +
+        qObj.options.map((opt,idx) => 
+          `<div style="margin-bottom:13px;">
+            <label style="display:flex;align-items:center;gap:12px;cursor:pointer;font-size:17px;font-weight:500;background:#f7fafc;border-radius:11px;padding:9px 13px;border:1.3px solid #e3e8f2;">
+              <input type="radio" name="cbt_q${currentQ}" value="${idx}" ${answers[currentQ]===idx?"checked":""} style="accent-color:#396ae2;transform:scale(1.2);"/>
+              <span style="font-weight:600;">${String.fromCharCode(65+idx)}.</span>
+              <span>${opt}</span>
+            </label>
+          </div>`).join('') +
+        `</form></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:13px;padding-top:6px;border-top:1px solid #e5eaf4;">
+          <button id="cbtPrevBtn" class="cbt-nav-btn" style="background:#f7fafc;color:#5e7ca3;font-weight:bold;padding:11px 19px;border-radius:10px;border:none;box-shadow:0 2px 14px rgba(32,64,120,.08);"${currentQ===0?'disabled':''}>← Prev (P)</button>
+          <span style="flex:1;text-align:center;color:#98afd2;padding:0 12px;">${currentQ===questions.length-1?'<span style="font-weight:bold;">Last Question</span>':'Question '+(currentQ+1)+'/'+questions.length}</span>
+          <button id="cbtNextBtn" class="cbt-nav-btn" style="background:#f7fafc;color:#4a8ad6;font-weight:bold;padding:11px 19px;border-radius:10px;border:none;box-shadow:0 2px 14px rgba(32,64,120,.08);"${currentQ===questions.length-1?'disabled':''}>Next (X) →</button>
+          <button id="cbtSubmitBtn" class="cbt-button" style="margin-left:10px;background:#28a745;padding:11px 24px;font-size:17px;border-radius:10px;border:none;color:#fff;font-weight:bold;${currentQ===questions.length-1?'':'display:none;'}">Submit Exam</button>
+        </div>
+      `;
+
+      document.getElementById("cbtContent").innerHTML = qHtml;
+
+      // --- HANDLERS ---
+      document.getElementById("cbtSingleForm").onchange = function(e) {
+        if(e.target.name===`cbt_q${currentQ}`) {
+          answers[currentQ] = parseInt(e.target.value);
         }
-        gradeCBTExam(window._cbtExamId, answers, questions);
+      };
+      document.getElementById("cbtPrevBtn").onclick = function() {
+        if(currentQ>0){ currentQ--; window._cbtExamCurrentQ=currentQ; updateCBTModal(); }
+      };
+      document.getElementById("cbtNextBtn").onclick = function() {
+        if(currentQ<questions.length-1){ currentQ++; window._cbtExamCurrentQ=currentQ; updateCBTModal(); }
+      };
+      if(document.getElementById("cbtSubmitBtn")) {
+        document.getElementById("cbtSubmitBtn").onclick = function() {
+          gradeCBTExam(window._cbtExamId, answers, questions);
+        };
+      }
+      // KEYBOARD SHORTCUTS
+      document.onkeydown = function(e) {
+        if(document.getElementById("cbtModal").style.display==="flex") {
+          if (e.key === "ArrowRight" || e.key.toLowerCase()==="x") { if(currentQ < questions.length-1) {currentQ++; window._cbtExamCurrentQ=currentQ; updateCBTModal();} }
+          if (e.key === "ArrowLeft" || e.key.toLowerCase()==="p") { if(currentQ > 0) { currentQ--; window._cbtExamCurrentQ=currentQ; updateCBTModal(); } }
+        }
       };
     }
+
+    document.getElementById("cbtModal").style.display = "flex";
+    updateCBTModal();
+  }
+
+
 
     function gradeCBTExam(examId, answers, questions) {
       document.getElementById("cbtContent").innerHTML = `<div style="text-align:center;">Scoring...</div>`;
