@@ -113,6 +113,11 @@
       <ul class="sidebar-list" id="historyList"></ul>
     </div>
     <div class="sidebar-section">
+  <button class="sidebar-btn" id="generateMcqBtn" type="button">
+    <i class="fa-solid fa-brain"></i> Generate MCQ from File
+  </button>
+</div>
+    <div class="sidebar-section">
       <button class="sidebar-btn-logout" id="logoutBtn"><i class="fa-solid fa-right-from-bracket"></i> Log Out</button>
     </div>
   </nav>
@@ -135,6 +140,80 @@
       </div>
     </form>
   </div>
+  <!-- --- SIDEBAR ADDITION: "Generate MCQ from File" menu item --- -->
+
+
+<!-- --- MCQ GENERATOR MODAL (hidden by default, place before main </body>) --- -->
+<div id="mcqFileModal" style="display:none;position:fixed;z-index:2000;left:0;top:0;width:100vw;height:100vh;background:rgba(32,34,60,0.90);align-items:center;justify-content:center;">
+  <div style="background:#fff;padding:27px 21px 22px 21px;border-radius:21px;max-width:340px;min-width:260px;">
+    <h3 style="text-align:center;margin-bottom:19px;color:#20407a;">Generate MCQs from File</h3>
+    <form id="mcqFileForm" autocomplete="off">
+      <label style="font-weight:bolder;">Choose file (PDF, DOCX, image):</label>
+      <input type="file" name="file" id="mcqFileInput" accept="application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*" required style="margin-bottom:11px;" />
+      <label>Difficulty:</label>
+      <select name="difficulty" style="margin-bottom:10px;width:100%">
+        <option value="easy">Easy</option>
+        <option value="medium" selected>Medium</option>
+        <option value="hard">Hard</option>
+      </select>
+      <label>Number of questions:</label>
+      <input type="number" name="numQuestions" min="1" max="100" value="20" required style="margin-bottom:10px;width:100%" />
+      <label>Any instruction?</label>
+      <textarea name="instructions" rows="2" placeholder="E.g. Focus on section 2 only" style="margin-bottom:15px;width:100%"></textarea>
+      <button type="submit" class="sidebar-btn" style="margin-bottom:10px;">Generate MCQs</button>
+      <button type="button" id="closeMcqFileModal" class="sidebar-btn-logout">Cancel</button>
+    </form>
+    <div id="mcqFileStatus" style="margin-top:7px;color:#c63b2e;font-size:14px;text-align:center;"></div>
+  </div>
+</div>
+
+<script>
+  // --- OPEN MODAL ---
+  document.getElementById("generateMcqBtn").onclick = function() {
+    document.getElementById("mcqFileModal").style.display = "flex";
+    document.getElementById("mcqFileStatus").textContent = "";
+    document.getElementById("mcqFileForm").reset();
+  };
+  document.getElementById("closeMcqFileModal").onclick = function() {
+    document.getElementById("mcqFileModal").style.display = "none";
+  };
+
+  // --- SUBMIT FORM (AJAX to /ai-chat/generate-questions) ---
+  document.getElementById("mcqFileForm").onsubmit = async function(e) {
+    e.preventDefault();
+    const form = e.target;
+    const fileInput = form.file.files[0];
+    if (!fileInput) return;
+    document.getElementById("mcqFileStatus").textContent = "Uploading and generating MCQs...";
+    const data = new FormData();
+    data.append("file", fileInput);
+    data.append("difficulty", form.difficulty.value);
+    data.append("numQuestions", form.numQuestions.value);
+    data.append("instructions", form.instructions.value);
+
+    try {
+      const res = await fetch(API_BASE + "/ai-chat/generate-questions", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + jwt_token },
+        body: data
+      });
+      const result = await res.json();
+      if (result.questions && result.questions.length) {
+        document.getElementById("mcqFileModal").style.display = "none";
+        // Use exam session name as topic (create/fetch if needed)
+        // You may want to add the new session/channel to topics/history
+        // This displays the MCQ exam modal directly:
+        window._cbtExamId = result.examId;
+        renderCBTExam(result.questions);
+        document.getElementById("cbtModal").style.display = "flex";
+      } else {
+        document.getElementById("mcqFileStatus").textContent = "Failed to generate MCQs. " + (result.error || "Try again or use a different file.");
+      }
+    } catch (err) {
+      document.getElementById("mcqFileStatus").textContent = "Error: " + (err.message || "Could not generate MCQs.");
+    }
+  };
+</script>
   <!-- CBT Exam Modal -->
   <div id="cbtModal" style="display:none;">
     <div id="cbtCard">
