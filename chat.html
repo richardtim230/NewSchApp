@@ -668,63 +668,6 @@
         setTimeout(()=>{if(voiceRecording)mediaRecorder.stop();},12000);
       } else { mediaRecorder && mediaRecorder.stop(); }
     }
-
-    async function onSend(){
-      let text=chatInput.value.trim();
-      if(!text && (!previewImages||!previewImages.length) && !voicePendingBlob) return;
-      appendMessage(text||"", "user", previewImages.length?previewImages:null, voicePendingBlob?{url:voicePendingBlob.url}:null, false, Date.now());
-      let payload = {
-        messages: [{role:'user',content:text}],
-        channel: currentTopic ? currentTopic.name : "General"
-      };
-      if(previewImages.length){
-        let img = previewImages[0];
-        payload.image = {mimeType:img.type, data:img.url.split(",")[1], fileName:img.name};
-      }
-      if(voicePendingBlob){
-        payload.voice = {mimeType:"audio/webm", data:await blobToBase64(await fetch(voicePendingBlob.url).then(r=>r.blob())), fileName:"voice_note.webm"};
-      }
-      chatInput.value="";clearPreviewImages();voicePendingBlob=null;
-      // Show typing AI
-      let typingDiv = document.createElement("div");
-      typingDiv.className = "chat-bubble ai";
-      typingDiv.innerHTML = `<div><i class="fa-solid fa-ellipsis fa-bounce"></i> AI is typing...</div>`;
-      document.getElementById("chatBody").appendChild(typingDiv);
-      document.getElementById("chatBody").scrollTop = document.getElementById("chatBody").scrollHeight;
-            let res = await fetch(`${API_BASE}/ai-chat/send`,{
-        method:"POST",
-        headers:{"Content-Type":"application/json",Authorization:"Bearer "+jwt_token},
-        body:JSON.stringify(payload)
-      });
-      let data = await res.json();
-      typingDiv.remove();
-      if (data.reply) {
-  // Detect a JSON block for MCQs in the AI reply
-  let mcqMatch = data.reply.match(/\[\s*\{[\s\S]*?\}\s*\]/);
-  if (mcqMatch) {
-    try {
-      let questions = JSON.parse(mcqMatch[0]);
-      // Show only the explanation, then launch CBT UI with parsed MCQs
-      let explanation = data.reply.split(mcqMatch[0])[0].trim();
-      messages.push({sender: "ai", text: explanation, time: Date.now()});
-      appendMessage(explanation, "ai", null, null, false, Date.now());
-      launchCBTWithQuestions(questions); // <- This displays your CBT modal with MCQs!
-    } catch (e) {
-      messages.push({sender:"ai",text:data.reply, time:Date.now()});
-      appendMessage(data.reply,"ai",null,null,false,Date.now());
-    }
-  } else {
-    messages.push({sender:"ai",text:data.reply, time:Date.now()});
-    appendMessage(data.reply,"ai",null,null,false,Date.now());
-  }
-  maybeShowCBTButton(data.reply);
-  if(window.MathJax) MathJax.typesetPromise([document.getElementById("chatBody")]);
-} else {
-  messages.push({sender:"ai",text:"[No response]", time:Date.now()});
-  appendMessage("[No response]","ai",null,null,false,Date.now());
-}
-      saveChatOffset();
-    }
     async function blobToBase64(blob) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -776,12 +719,6 @@
       }
     }
 
-    // --- CBT Modal logic ---
-    document.getElementById('cbtClose').onclick = closeCBTModal;
-    function closeCBTModal() {
-      document.getElementById("cbtModal").style.display = "none";
-      document.getElementById("cbtContent").innerHTML = "";
-    }
 
     function launchCBT(topicName) {
       document.getElementById("cbtModal").style.display = "flex";
@@ -886,33 +823,166 @@ function renderCBTExam(questions, topicTitle) {
   updateCBTModal();
 }
 
+  // --- CBT MCQ LocalStorage Key ---
+  const CBT_LOCAL_KEY = "cbt_pending_mcqs";
+  const CBT_TOPIC_KEY = "cbt_pending_title";
 
-    function gradeCBTExam(examId, answers, questions) {
-      document.getElementById("cbtContent").innerHTML = `<div style="text-align:center;">Scoring...</div>`;
-      fetch(`${API_BASE}/ai-chat/submit-cbt`, {
-        method:'POST',
-        headers:{"Content-Type":"application/json", "Authorization":"Bearer "+jwt_token},
-        body: JSON.stringify({examId, answers})
-      })
-      .then(res=>res.json())
-      .then(data=>{
-        let html = `<h2 style="text-align:center;color:#37ab49;">Score: ${data.score} / ${questions.length}</h2>`;
-        html += `<div style="margin-bottom:14px;text-align:center;">${data.summary}</div>`;
-        data.explanations.forEach((exp, i) => {
-          html += `<div style='margin-bottom:16px; background:#f7faff; border-radius:8px; padding:9px 13px;box-shadow:0 1.5px 8px rgba(57,106,226,0.08);'>
-            <div style="font-weight:bold;">Q${i+1}: ${exp.question}</div>
-            <div>Your answer: <span style='color:${exp.correct ? "#37ab49":"#d63e3e"}'>${exp.options[exp.yourAnswer]||"No answer"}</span></div>
-            <div>Correct answer: <b>${exp.options[exp.answer]}</b></div>
-            <div><span style='color:#3264a3'><i>${exp.explanation}</i></span></div>
-          </div>`;
-        });
-        html += `<button onclick="closeCBTModal()" class="cbt-button" style="margin:18px auto 0 auto;">Close</button>`;
-        document.getElementById("cbtContent").innerHTML = html;
-      })
-      .catch(()=>{
-        document.getElementById("cbtContent").innerHTML = "Could not score exam.";
+  // --- Modified onSend logic to HIDE JSON questions; only shows explanation + button ---
+  async function onSend(){
+    let text=chatInput.value.trim();
+    if(!text && (!previewImages||!previewImages.length) && !voicePendingBlob) return;
+    appendMessage(text||"", "user", previewImages.length?previewImages:null, voicePendingBlob?{url:voicePendingBlob.url}:null, false, Date.now());
+    let payload = {
+      messages: [{role:'user',content:text}],
+      channel: currentTopic ? currentTopic.name : "General"
+    };
+    if(previewImages.length){
+      let img = previewImages[0];
+      payload.image = {mimeType:img.type, data:img.url.split(",")[1], fileName:img.name};
+    }
+    if(voicePendingBlob){
+      payload.voice = {mimeType:"audio/webm", data:await blobToBase64(await fetch(voicePendingBlob.url).then(r=>r.blob())), fileName:"voice_note.webm"};
+    }
+    chatInput.value="";clearPreviewImages();voicePendingBlob=null;
+    // Show typing AI
+    let typingDiv = document.createElement("div");
+    typingDiv.className = "chat-bubble ai";
+    typingDiv.innerHTML = `<div><i class="fa-solid fa-ellipsis fa-bounce"></i> AI is typing...</div>`;
+    document.getElementById("chatBody").appendChild(typingDiv);
+    document.getElementById("chatBody").scrollTop = document.getElementById("chatBody").scrollHeight;
+
+    let res = await fetch(`${API_BASE}/ai-chat/send`,{
+      method:"POST",
+      headers:{"Content-Type":"application/json",Authorization:"Bearer "+jwt_token},
+      body:JSON.stringify(payload)
+    });
+    let data = await res.json();
+    typingDiv.remove();
+
+    if (data.reply) {
+      // Detect a JSON block for MCQs in the AI reply
+      let mcqMatch = data.reply.match(/\[\s*\{[\s\S]*?\}\s*\]/);
+      if (mcqMatch) {
+        try {
+          let questions = JSON.parse(mcqMatch[0]);
+          // Only show the explanation in chat, and STORE MCQs LOCALLY
+          let explanation = data.reply.split(mcqMatch[0])[0].trim();
+          messages.push({sender: "ai", text: explanation, time: Date.now()});
+          appendMessage(explanation, "ai", null, null, false, Date.now());
+
+          // Use currentTopic.name for topic, or fallback
+          let topicTitle = currentTopic && currentTopic.name ? currentTopic.name : "CBT Practice";
+          // Save MCQs and title to localStorage
+          localStorage.setItem(CBT_LOCAL_KEY, JSON.stringify(questions));
+          localStorage.setItem(CBT_TOPIC_KEY, topicTitle);
+
+          // Show "Start CBT" button if not already present
+          showCBTButton(topicTitle);
+        } catch (e) {
+          messages.push({sender:"ai",text:data.reply, time:Date.now()});
+          appendMessage(data.reply,"ai",null,null,false,Date.now());
+        }
+      } else {
+        messages.push({sender:"ai",text:data.reply, time:Date.now()});
+        appendMessage(data.reply,"ai",null,null,false,Date.now());
+        maybeShowCBTButton(data.reply); // fallback CBT button display logic
+      }
+      if(window.MathJax) MathJax.typesetPromise([document.getElementById("chatBody")]);
+    } else {
+      messages.push({sender:"ai",text:"[No response]", time:Date.now()});
+      appendMessage("[No response]","ai",null,null,false,Date.now());
+    }
+    saveChatOffset();
+  }
+
+  // --- Show CBT Button below chat when MCQs are in localStorage ---
+  function showCBTButton(topicTitle) {
+    // Remove existing button if any
+    const oldBtn = document.getElementById("cbtStartBtn");
+    if (oldBtn) oldBtn.remove();
+    let btn = document.createElement('button');
+    btn.textContent = "Start CBT Practice";
+    btn.id = "cbtStartBtn";
+    btn.className = "cbt-button";
+    btn.style = "margin:18px 0; padding:14px 32px; border-radius:14px; background:linear-gradient(120deg,#396ae2 60%,#7db9fb 100%); box-shadow:0 4px 19px rgba(44, 92, 220, 0.07); color:#fff;font-size:19px;font-weight:bold;display:block;";
+    btn.onclick = function() {
+      btn.remove();
+      launchCBTFromLocal(topicTitle);
+    };
+    document.getElementById("chatBody").appendChild(btn);
+    document.getElementById("chatBody").scrollTop = document.getElementById("chatBody").scrollHeight;
+  }
+
+  // --- CBT Modal from localStorage MCQs ---
+  function launchCBTFromLocal(topicTitle) {
+    // Fetch MCQs from localStorage
+    let raw = localStorage.getItem(CBT_LOCAL_KEY);
+    let qArr = [];
+    try {
+      qArr = JSON.parse(raw);
+      if (!Array.isArray(qArr) || qArr.length === 0) throw new Error("No MCQs found in localStorage.");
+    } catch (e) {
+      alert("CBT questions not found or invalid!");
+      return;
+    }
+    document.getElementById("cbtModal").style.display = "flex";
+    renderCBTExam(qArr, topicTitle || localStorage.getItem(CBT_TOPIC_KEY));
+  }
+
+  // --- Remove MCQs from localStorage on CBT close/submit ---
+  function clearLocalCBT() {
+    localStorage.removeItem(CBT_LOCAL_KEY);
+    localStorage.removeItem(CBT_TOPIC_KEY);
+    window._cbtExamQuestions = null;
+    window._cbtExamAnswers = null;
+    window._cbtExamCurrentQ = 0;
+  }
+
+  // --- CBT Modal logic: Override close to clear local CBT ---
+  document.getElementById('cbtClose').onclick = function() {
+    closeCBTModal();
+    clearLocalCBT();
+  };
+  function closeCBTModal() {
+    document.getElementById("cbtModal").style.display = "none";
+    document.getElementById("cbtContent").innerHTML = "";
+    clearLocalCBT();
+  }
+
+  // --- CBT Modal submission: Override to clear localStorage after grading ---
+  function gradeCBTExam(examId, answers, questions) {
+    document.getElementById("cbtContent").innerHTML = `<div style="text-align:center;">Scoring...</div>`;
+    // Simulate grading locally
+    let score = 0;
+    let explanations = [];
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      let correct = answers[i] === q.answer;
+      if (correct) score++;
+      explanations.push({
+        correct,
+        answer: q.answer,
+        yourAnswer: answers[i] ?? null,
+        options: q.options,
+        explanation: q.explanation || "",
+        question: q.text
       });
     }
-  </script>
+    let html = `<h2 style="text-align:center;color:#37ab49;">Score: ${score} / ${questions.length}</h2>`;
+    html += `<div style="margin-bottom:14px;text-align:center;">You scored ${score}/${questions.length}</div>`;
+    explanations.forEach((exp, i) => {
+      html += `<div style='margin-bottom:16px; background:#f7faff; border-radius:8px; padding:9px 13px;box-shadow:0 1.5px 8px rgba(57,106,226,0.08);'>
+        <div style="font-weight:bold;">Q${i+1}: ${exp.question}</div>
+        <div>Your answer: <span style='color:${exp.correct ? "#37ab49":"#d63e3e"}'>${exp.options[exp.yourAnswer]||"No answer"}</span></div>
+        <div>Correct answer: <b>${exp.options[exp.answer]}</b></div>
+        <div><span style='color:#3264a3'><i>${exp.explanation}</i></span></div>
+      </div>`;
+    });
+    html += `<button onclick="closeCBTModal()" class="cbt-button" style="margin:18px auto 0 auto;">Close</button>`;
+    document.getElementById("cbtContent").innerHTML = html;
+    // Remove MCQ data from localStorage after grading
+    clearLocalCBT();
+  }
+</script>
 </body>
 </html>
