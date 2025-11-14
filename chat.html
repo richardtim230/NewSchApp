@@ -595,26 +595,46 @@ function splitAiReply(reply) {
       if(window.MathJax) MathJax.typesetPromise([chatBody]);
       if(scrollToBottom) chatBody.scrollTop = chatBody.scrollHeight;
     }
-    function appendMessage(text,sender='user',images=null,voice=null,isHello=false,ts=null){
-      const chatBody=document.getElementById("chatBody"),bubble=document.createElement("div");
-      bubble.className=`chat-bubble ${sender}`;
-      let meta=`<img src="${getAvatar(sender)}" class="bubble-avatar" title="${sender==='user'?(userProfile && userProfile.fullname ? userProfile.fullname : 'You'):'AI'}"/>`;
-      let html = sender === "ai" ? marked.parse(text || "") : escapeHtml(text || "");
-      if(sender === "ai") html = html.replace(/<p>/g, "<p class='rich-block'>");
-      bubble.innerHTML = `<div>${html}</div>`;
-      if(images && images.length){
-        let imgRow=document.createElement('div'); imgRow.className='msg-file';
-        images.forEach(img=>{imgRow.innerHTML+=`<img src="${img.url}" alt="${img.name}">`;});
-        bubble.appendChild(imgRow);
-      }
-      if(voice){let voiceDiv=document.createElement('div');voiceDiv.className='msg-voice';voiceDiv.innerHTML=`<i class="fa-solid fa-headphones"></i> <audio controls src="${voice.url}"></audio>`;bubble.appendChild(voiceDiv);}
-      let bubbleMeta=document.createElement('div');bubbleMeta.className="bubble-meta";
-      bubbleMeta.innerHTML=meta+(ts?`<span title="${new Date(ts).toLocaleString()}">${prettyTime(ts)}</span>`:"");
-      bubble.appendChild(bubbleMeta);
-      chatBody.appendChild(bubble);
-      // After rendering: typeset any math
-      if(window.MathJax) MathJax.typesetPromise([bubble]);
+    
+
+function appendMessage(text,sender='user',images=null,voice=null,isHello=false,ts=null){
+  const chatBody=document.getElementById("chatBody"),
+    bubble=document.createElement("div");
+
+  // ---- filter MCQ JSON if sender is 'ai'
+  if(sender === "ai") {
+    const {explanation, questions} = splitAiReply(text);
+    text = explanation; // only show the explanation, never the JSON
+    // Show CBT button if MCQs present and not already shown
+    if (questions && !document.getElementById("cbtStartBtn")) {
+      showCBTButton(localStorage.getItem("cbt_pending_title") || "CBT Practice");
     }
+  }
+
+  bubble.className=`chat-bubble ${sender}`;
+  let meta=`<img src="${getAvatar(sender)}" class="bubble-avatar" title="${sender==='user'?(userProfile && userProfile.fullname ? userProfile.fullname : 'You'):'AI'}"/>`;
+  let html = sender === "ai" ? marked.parse(text || "") : escapeHtml(text || "");
+  if(sender === "ai") html = html.replace(/<p>/g, "<p class='rich-block'>");
+  bubble.innerHTML = `<div>${html}</div>`;
+  if(images && images.length){
+    let imgRow=document.createElement('div'); imgRow.className='msg-file';
+    images.forEach(img=>{imgRow.innerHTML+=`<img src="${img.url}" alt="${img.name}">`;});
+    bubble.appendChild(imgRow);
+  }
+  if(voice){
+    let voiceDiv=document.createElement('div');
+    voiceDiv.className='msg-voice';
+    voiceDiv.innerHTML=`<i class="fa-solid fa-headphones"></i> <audio controls src="${voice.url}"></audio>`;
+    bubble.appendChild(voiceDiv);
+  }
+  let bubbleMeta=document.createElement('div');
+  bubbleMeta.className="bubble-meta";
+  bubbleMeta.innerHTML=meta+(ts?`<span title="${new Date(ts).toLocaleString()}">${prettyTime(ts)}</span>`:"");
+  bubble.appendChild(bubbleMeta);
+  chatBody.appendChild(bubble);
+  // After rendering: typeset any math
+  if(window.MathJax) MathJax.typesetPromise([bubble]);
+}
 
     // IMAGE PREVIEW
     const attachInput=document.getElementById("attachInput"),previewImageContainer=document.getElementById("previewImageContainer"),chatInput=document.getElementById("chatInput");
