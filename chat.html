@@ -414,7 +414,18 @@
     let chatOffset = 0;
     let loading = false;
     let previewImages = [], voicePendingBlob = null;
-
+function splitAiReply(reply) {
+  // Returns {explanation, questions} where questions is null or MCQ array
+  let match = reply.match(/\[\s*\{[\s\S]*?\}\s*\]/);
+  if (match) {
+    try {
+      let qs = JSON.parse(match[0]);
+      let explanation = reply.split(match[0])[0].trim();
+      return {explanation, questions: qs};
+    } catch { /* ignore */ }
+  }
+  return {explanation: reply, questions: null};
+}
     // SIDEBAR HANDLERS
     const sidebar = document.getElementById("sidebar"), sidebarBackdrop = document.getElementById("sidebarBackdrop"), closeSidebar = document.getElementById("closeSidebar");
     document.getElementById("hamburger").onclick = ()=>{sidebar.classList.add("open");sidebarBackdrop.classList.add("open");renderTopics();renderHistory();};
@@ -585,32 +596,26 @@
       if(scrollToBottom) chatBody.scrollTop = chatBody.scrollHeight;
     }
     function appendMessage(text,sender='user',images=null,voice=null,isHello=false,ts=null){
-  if(sender === "ai") {
-    // Remove MCQ JSON from AI replies; show only explanation + CBT button if present
-    const {explanation, questions} = splitAiReply(text);
-    text = explanation;
-    if (questions) showCBTButton(localStorage.getItem(CBT_TOPIC_KEY) || (currentTopic && currentTopic.name) || "CBT Practice");
-  }
-  const chatBody=document.getElementById("chatBody"),
-    bubble=document.createElement("div");
-  bubble.className=`chat-bubble ${sender}`;
-  let meta=`<img src="${getAvatar(sender)}" class="bubble-avatar" title="${sender==='user'?(userProfile && userProfile.fullname ? userProfile.fullname : 'You'):'AI'}"/>`;
-  let html = sender === "ai" ? marked.parse(text || "") : escapeHtml(text || "");
-  if(sender === "ai") html = html.replace(/<p>/g, "<p class='rich-block'>");
-  bubble.innerHTML = `<div>${html}</div>`;
-  if(images && images.length){
-    let imgRow=document.createElement('div'); imgRow.className='msg-file';
-    images.forEach(img=>{imgRow.innerHTML+=`<img src="${img.url}" alt="${img.name}">`;});
-    bubble.appendChild(imgRow);
-  }
-  if(voice){let voiceDiv=document.createElement('div');voiceDiv.className='msg-voice';voiceDiv.innerHTML=`<i class="fa-solid fa-headphones"></i> <audio controls src="${voice.url}"></audio>`;bubble[...]
-  let bubbleMeta=document.createElement('div');bubbleMeta.className="bubble-meta";
-  bubbleMeta.innerHTML=meta+(ts?`<span title="${new Date(ts).toLocaleString()}">${prettyTime(ts)}</span>`:"");
-  bubble.appendChild(bubbleMeta);
-  chatBody.appendChild(bubble);
-  if(window.MathJax) MathJax.typesetPromise([bubble]);
-}
+      const chatBody=document.getElementById("chatBody"),bubble=document.createElement("div");
+      bubble.className=`chat-bubble ${sender}`;
+      let meta=`<img src="${getAvatar(sender)}" class="bubble-avatar" title="${sender==='user'?(userProfile && userProfile.fullname ? userProfile.fullname : 'You'):'AI'}"/>`;
+      let html = sender === "ai" ? marked.parse(text || "") : escapeHtml(text || "");
+      if(sender === "ai") html = html.replace(/<p>/g, "<p class='rich-block'>");
+      bubble.innerHTML = `<div>${html}</div>`;
+      if(images && images.length){
+        let imgRow=document.createElement('div'); imgRow.className='msg-file';
+        images.forEach(img=>{imgRow.innerHTML+=`<img src="${img.url}" alt="${img.name}">`;});
+        bubble.appendChild(imgRow);
+      }
+      if(voice){let voiceDiv=document.createElement('div');voiceDiv.className='msg-voice';voiceDiv.innerHTML=`<i class="fa-solid fa-headphones"></i> <audio controls src="${voice.url}"></audio>`;bubble.appendChild(voiceDiv);}
+      let bubbleMeta=document.createElement('div');bubbleMeta.className="bubble-meta";
+      bubbleMeta.innerHTML=meta+(ts?`<span title="${new Date(ts).toLocaleString()}">${prettyTime(ts)}</span>`:"");
+      bubble.appendChild(bubbleMeta);
+      chatBody.appendChild(bubble);
+      // After rendering: typeset any math
+      if(window.MathJax) MathJax.typesetPromise([bubble]);
     }
+
     // IMAGE PREVIEW
     const attachInput=document.getElementById("attachInput"),previewImageContainer=document.getElementById("previewImageContainer"),chatInput=document.getElementById("chatInput");
     document.getElementById("attachBtn").onclick=()=>attachInput.click();
@@ -865,7 +870,7 @@ function renderCBTExam(questions, topicTitle) {
     let data = await res.json();
     typingDiv.remove();
 
-if(data.reply){
+    if(data.reply){
   const {explanation, questions} = splitAiReply(data.reply);
   messages.push({sender:"ai",text:explanation, time:Date.now()});
   appendMessage(explanation,"ai",null,null,false,Date.now());
