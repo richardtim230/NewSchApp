@@ -529,67 +529,66 @@
   </div>
 </div>
 <script>
-/**
- * === LIVE CODING PLATFORM CLIENT LOGIC ===
- * All in one file!
- */
+/** == LIVE CODING PLATFORM LOGIC: Socket.IO, Persistent backend, Auth == **/
 
-/* ========== USER / PRESENCE ========== */
-// Random name/ avatar generator for demo purposes
+// ========== USER / LOGIN CHECK ==========
 function randomName() {
   const names = ["Ada", "Chris", "Zara", "Mummsi", "Tim", "Nia", "Jake", "Sage", "Ray", "Ruby", "Emir", "Deen", "Yemi", "Noah"];
   return names[Math.floor(Math.random()*names.length)] + Math.floor(100+Math.random()*900);
 }
-function avatarUrl(seed){
-  return "https://api.dicebear.com/6.x/bottts/svg?seed="+seed;
+function avatarUrl(seed){ return "https://api.dicebear.com/6.x/bottts/svg?seed="+seed; }
+let token = localStorage.getItem("token") || "";
+if (!token) {
+    alert("You must be logged in! Please login to use live coding platform.");
+    window.location = '/mock.html'; // Or your login page.
+    throw new Error("Not logged in");
 }
-const selfUser = {
-  name: localStorage.getItem("livecoding-username") || randomName(),
-  avatar: localStorage.getItem("livecoding-avatar") || avatarUrl(Math.floor(Math.random()*10000)),
-};
-localStorage.setItem("livecoding-username", selfUser.name);
-localStorage.setItem("livecoding-avatar", selfUser.avatar);
+const username = localStorage.getItem("livecoding-username") || randomName();
+const avatar = localStorage.getItem("livecoding-avatar") || avatarUrl(Math.floor(Math.random()*10000));
+localStorage.setItem("livecoding-username", username);
+localStorage.setItem("livecoding-avatar", avatar);
 
-/* ========== SOCKET COLLAB (Stub - requires backend at 'wss://...' to work!) ========== */
-const socketUrl = "wss://www.exmaguard-jmvj.onrender.com"; // <-- Replace with real backend!
-let ws;
-let usersOnline = [selfUser];
+// ========== SOCKET.IO COLLAB ==========
+const socketEndpoint = "https://examguard-jmvj.onrender.com/liveclass";
+const socket = io(socketEndpoint, { transports: ['websocket'], query: { token } });
+// Users and chat state (synced)
+let usersOnline = [];
 let chatMessages = [];
-let isOwner = true; // If true, only you can edit (for demo); but in collab all can.
+let codeState = { html:"", css:"", js:"" };
 
-function connectSocket(){
-  ws = new WebSocket(socketUrl);
-  ws.onopen = () => {
-    ws.send(JSON.stringify({type:"join", user:selfUser}));
-  }
-  ws.onmessage = (event)=>{
-    const msg = JSON.parse(event.data);
-    if(msg.type=="presence"){
-      usersOnline = msg.users;
-      renderUserList();
-    }
-    if(msg.type=="code"){
-      if(msg.exclude!==selfUser.name){
-        loadCode(msg.code.html, msg.code.css, msg.code.js, false);
-      }
-    }
-    if(msg.type=="chat"){
-      chatMessages.push(msg);
-      renderChat();
-    }
-  }
-  ws.onclose = ()=>{
-    setTimeout(connectSocket, 2000); // Reconnect
-  }
+// PRESENCE: join with profile
+socket.emit("user:join", { name: username, avatar });
+socket.on("user:presence", users => {
+  usersOnline = users;
+  renderUserList();
+});
+
+// CODE EDIT
+socket.on("code:update", code => {
+  codeState = code;
+  // Only show update if not from ourself
+  loadCode(code.html, code.css, code.js, false);
+});
+
+// CHAT
+socket.on("chat:message", msg => {
+  chatMessages.push(msg);
+  renderChat();
+});
+
+// FILE SHARING (not shown in UI yet, but can add easily)
+socket.on("file:uploaded", file => {
+  // Optionally show file list in sidebar
+});
+
+function emitCodeUpdate() {
+  socket.emit("code:update", getCode());
 }
-function emit(type, data){
-  if(ws && ws.readyState==1){
-    ws.send(JSON.stringify({type, ...data}));
-  }
+function emitChat(text) {
+  socket.emit("chat:message", { sender: username, text: text, avatar });
 }
 
-/* ========== UI LOGIC ========== */
-// Tabs
+// ========== UI & Editor Logic ==========
 document.querySelectorAll('.tab-btn').forEach(btn=>{
   btn.onclick = () => {
     document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
@@ -598,36 +597,21 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
     document.getElementById('tab-'+btn.dataset.tab).style.display = 'block';
   }
 });
-
-// Editors
 const htmlEditor = document.getElementById('htmlEditor');
 const cssEditor = document.getElementById('cssEditor');
 const jsEditor = document.getElementById('jsEditor');
-
 function loadCode(html, css, js, updatePreview=true){
-  htmlEditor.value = html;
-  cssEditor.value = css;
-  jsEditor.value = js;
+  htmlEditor.value = html??"";
+  cssEditor.value = css??"";
+  jsEditor.value = js??"";
   if(updatePreview) updateOutput();
 }
 function getCode(){
-  return {
-    html: htmlEditor.value,
-    css: cssEditor.value,
-    js: jsEditor.value,
-  };
+  return { html: htmlEditor.value, css: cssEditor.value, js: jsEditor.value };
 }
-// Editor change broadcast
-function onEditorChange(){
-  if(isOwner){
-    emit("code",{code:getCode(), exclude:selfUser.name});
-  }
-  updateOutput();
-}
-htmlEditor.oninput = cssEditor.oninput = jsEditor.oninput = ()=>{onEditorChange();};
-document.getElementById('runBtn').onclick = ()=>{updateOutput(); showOutputStatus("Output updated!");};
+htmlEditor.oninput = cssEditor.oninput = jsEditor.oninput = ()=>{ emitCodeUpdate(); updateOutput(); };
+document.getElementById('runBtn').onclick = ()=>{ updateOutput(); showOutputStatus("Output updated!"); };
 
-// Output
 const outputPreview = document.getElementById('outputPreview');
 const resultFrame = document.getElementById('resultFrame');
 function updateOutput(){
@@ -645,7 +629,6 @@ function updateOutput(){
     </body></html>
   `;
   resultFrame.srcdoc = doc;
-  // Fullscreen output sync
   if(document.getElementById('fullscreenOutput').style.display=="flex"){
     document.getElementById('fullResultFrame').srcdoc = doc;
   }
@@ -656,7 +639,7 @@ function showOutputStatus(msg){
   setTimeout(()=>{el.textContent="Latest preview below"},2200);
 }
 
-// Fullscreen output modal
+// Fullscreen output modal logic (unchanged)
 document.getElementById('fullscreenBtn').onclick = ()=>{
   document.getElementById('modalBackdrop').classList.add('show');
   document.getElementById('fullscreenOutput').style.display="flex";
@@ -673,20 +656,20 @@ document.getElementById('modalBackdrop').onclick = (e)=>{
   }
 };
 
-/* ========== USER LIST LOGIC ========== */
+// ====== USER LIST LOGIC ======
 function renderUserList(){
   const ul = document.getElementById('userList');
   ul.innerHTML = '';
   usersOnline.forEach(u=>{
     const li = document.createElement("li");
-    li.className = "user-item"+(u.name==selfUser.name?" self":"");
+    li.className = "user-item"+(u.name==username?" self":"");
     li.innerHTML = `<img class="avatar" src="${u.avatar}" alt="avatar"/> <b>${u.name}</b> <span class="user-live"></span>`;
     ul.appendChild(li);
   });
 }
 renderUserList();
 
-/* ========== CHAT LOGIC ========== */
+// ====== CHAT LOGIC ======
 function renderChat(){
   const box = document.getElementById('chatBox');
   box.innerHTML = '';
@@ -698,20 +681,38 @@ function renderChat(){
   });
   box.scrollTop = box.scrollHeight;
 }
-// Chat send
 document.getElementById('chatForm').onsubmit = (e)=>{
   e.preventDefault();
   const chatInput = document.getElementById('chatInput');
   if(chatInput.value.trim()){
-    // If socket connected, send
-    emit("chat",{sender:selfUser.name, text:chatInput.value.trim()});
-    chatMessages.push({sender:selfUser.name, text:chatInput.value.trim()});
-    renderChat();
+    emitChat(chatInput.value.trim());
     chatInput.value="";
   }
 };
 
-/* ========== INITIAL DEMO CODE ========== */
+// ====== INITIAL CODE LOAD & PERSIST ======
+socket.on("code:update", code => {
+  loadCode(code.html, code.css, code.js, true);
+});
+
+// Load starter code only if server was empty
+socket.emit("code:update", getCode());
+
+// ====== FILE UPLOAD (bonus feature) ======
+async function uploadFile(file) {
+  const url = "https://examguard-jmvj.onrender.com/api/liveclass/files/upload";
+  const fd = new FormData();
+  fd.append("file", file);
+  // Provide JWT!
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Authorization": "Bearer " + token },
+    body: fd
+  });
+  return resp.json();
+}
+
+// ====== DEMO STARTER ======
 loadCode(
 `<h2 style="color:#2861e0;font-family:sans-serif;">Welcome to Live Coding!</h2>
 <p style="color:#333;font-size:1.15em;">Collaborate, learn, and code live together.<br/>HTML, CSS, JS editors — try updating below!</p>
@@ -730,10 +731,6 @@ li { font-size:1em; margin-bottom:.6em;}
 `,
 `console.log("👩‍💻 Live Coding Platform — Edit HTML, CSS & JS");`
 );
-
-/* ========== AUTO SOCKET INIT FOR COLLAB (Stub only!) ========== */
-// Comment below until backend is ready:
- connectSocket();
 
 </script>
 </body>
