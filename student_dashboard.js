@@ -2609,53 +2609,6 @@ async function initDashboard() {
 }
 
 window.addEventListener("DOMContentLoaded", initDashboard);
-window.addEventListener("DOMContentLoaded", function() {
-  document.body.addEventListener("click", function(e) {
-    // Exempt any click inside the send-message-form or chatbotForm
-    if (
-      e.target.id === "aiStudyReadNowBtn" ||
-      (e.target.closest && e.target.closest("#aiStudyReadNowBtn"))
-    ) return;
-    if (
-      e.target.closest("#send-message-form") ||
-      e.target.closest("#chatbotForm") ||
-      e.target.closest("#chatSendForm")
-    ) return;
-    let btn = e.target.closest("button");
-    if (
-      btn &&
-      btn.id !== "menu-toggle" &&
-      !(btn.form && btn.form.id === "practice-config-form") &&
-      !(btn.id && btn.id.startsWith("adCancelBtn")) &&
-      !(btn.id && btn.id.startsWith("close")) &&
-      !btn.classList.contains("close-modal") &&
-      !btn.classList.contains("modal-close") &&
-      btn.id !== "chatbotSendBtn" &&
-      btn.id !== "sendMessageBtn"
-    ) {
-      e.preventDefault();
-
-      let targetUrl = null;
-
-      if (btn.dataset && btn.dataset.examSetId) {
-        targetUrl = `test.html?examSet=${encodeURIComponent(btn.dataset.examSetId)}`;
-      } else if (btn.getAttribute("onclick")) {
-        const match = btn.getAttribute("onclick").match(/window\.open\(['"]([^'"]+)/);
-        if (match) targetUrl = match[1];
-      } else if (btn.getAttribute("data-target-url")) {
-        targetUrl = btn.getAttribute("data-target-url");
-      } else if (btn.getAttribute("href")) {
-        targetUrl = btn.getAttribute("href");
-      } else if (btn.form && btn.form.action) {
-        targetUrl = btn.form.action;
-      }
-      if (!targetUrl) targetUrl = window.location.href;
-
-      showAdModal(targetUrl);
-      return false;
-    }
-}, true);
-});
 
 
 // =================== AI Study Assistant Form Handler ===================
