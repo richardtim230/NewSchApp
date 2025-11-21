@@ -72,6 +72,23 @@ document.addEventListener('DOMContentLoaded', function() {
     fetchFaculties();
     showSelectSpinner(deptSelect, "Select faculty first");
     deptSelect.disabled = true;
+
+    // --- Added code ---
+    const urlParams = new URLSearchParams(window.location.search);
+    const tab = urlParams.get('tab');
+    if (tab === 'register') {
+        tabBtns.forEach(b => b.classList.remove('active'));
+        forms.login.classList.remove('active');
+        forms.register.classList.add('active');
+        tabBtns.forEach(btn => { if (btn.dataset.tab === 'register') btn.classList.add('active'); });
+        messageBox.innerHTML = '';
+    } else if (tab === 'login') {
+        tabBtns.forEach(b => b.classList.remove('active'));
+        forms.register.classList.remove('active');
+        forms.login.classList.add('active');
+        tabBtns.forEach(btn => { if (btn.dataset.tab === 'login') btn.classList.add('active'); });
+        messageBox.innerHTML = '';
+    }
 });
 
 // ====== Tab switching ======
