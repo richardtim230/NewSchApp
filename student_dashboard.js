@@ -55,7 +55,8 @@ async function hasUserReadBlog(postId) {
   }
 }                                   
 // =================== GLOBAL STATE ===================
-let student = {};
+const FREE_TABS = ['dashboard', 'mock-tests'];
+let student = {}; 
 let facultiesCache = [];
 let departmentsCache = [];
 let usersCache = [];
@@ -154,11 +155,20 @@ function getGreetingData() {
   }
   // Tab switching
   document.querySelectorAll('.nav-link').forEach(link => {
-    link.addEventListener('click', e => {
-      e.preventDefault();
-      const tabId = link.getAttribute('data-tab');
-      showTab(tabId);
-      setSidebarActive(tabId);
+  link.addEventListener('click', e => {
+    e.preventDefault();
+    const tabId = link.getAttribute('data-tab');
+    if (
+      !FREE_TABS.includes(tabId) && (
+        typeof student.isPremium === 'undefined' || !student.isPremium // Not premium!
+      )
+    ) {
+      // Show premium restriction modal
+      document.getElementById('premiumRestrictionModal').style.display = 'flex';
+      return;
+    }
+    showTab(tabId);
+    setSidebarActive(tabId);
       if (window.innerWidth < 768) {
         sidebar.classList.remove('open');
         sidebarOverlay.classList.add('hidden');
@@ -169,19 +179,35 @@ function getGreetingData() {
     });
   });
   // Restore last tab
-  window.addEventListener('DOMContentLoaded', () => {
-    let tabId = location.hash.replace('#', '') || localStorage.getItem('student_dashboard_active_tab') || 'dashboard';
-    if (!document.getElementById(tabId)) tabId = 'dashboard';
-    showTab(tabId);
-    setSidebarActive(tabId);
-  });
-  window.addEventListener('hashchange', () => {
-    let tabId = location.hash.replace('#', '') || 'dashboard';
-    if (document.getElementById(tabId)) {
-      showTab(tabId);
-      setSidebarActive(tabId);
-    }
-  });
+window.addEventListener('DOMContentLoaded', () => {
+  let tabId = location.hash.replace('#', '') || localStorage.getItem('student_dashboard_active_tab') || 'dashboard';
+  if (!document.getElementById(tabId)) tabId = 'dashboard';
+  if (
+    !FREE_TABS.includes(tabId) && (
+      typeof student.isPremium === 'undefined' || !student.isPremium
+    )
+  ) {
+    document.getElementById('premiumRestrictionModal').style.display = 'flex';
+    tabId = 'dashboard';
+  }
+  showTab(tabId);
+  setSidebarActive(tabId);
+});
+window.addEventListener('hashchange', () => {
+  let tabId = location.hash.replace('#', '') || 'dashboard';
+  if (!document.getElementById(tabId)) tabId = 'dashboard';
+  if (
+    !FREE_TABS.includes(tabId) && (
+      typeof student.isPremium === 'undefined' || !student.isPremium
+    )
+  ) {
+    document.getElementById('premiumRestrictionModal').style.display = 'flex';
+    tabId = 'dashboard';
+    location.hash = 'dashboard'; // force redirect
+  }
+  showTab(tabId);
+  setSidebarActive(tabId);
+});
 })();
 
 // =================== FETCH HELPERS ===================
