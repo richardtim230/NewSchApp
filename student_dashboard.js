@@ -55,7 +55,7 @@ async function hasUserReadBlog(postId) {
   }
 }                                   
 // =================== GLOBAL STATE ===================
-const FREE_TABS = ['dashboard', 'mock-tests'];
+const FREE_TABS = ['dashboard', 'mock-tests', 'messages', 'logout', 'broadcasts'];
 let student = {}; 
 let facultiesCache = [];
 let departmentsCache = [];
