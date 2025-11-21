@@ -176,6 +176,180 @@
       </div>
     </div>
   </div>
+  <!-- ...existing content above... -->
+
+<!-- Activation Key Management Section -->
+<div class="mt-16 mb-10 w-full max-w-3xl mx-auto p-6 rounded-2xl bg-white shadow border-2 border-indigo-100">
+  <h2 class="text-2xl font-extrabold text-indigo-900 mb-3">Premium Activation Management</h2>
+  <div class="mb-5 grid gap-4 md:grid-cols-3">
+    <div>
+      <label class="block text-sm font-semibold text-indigo-700">Search Student</label>
+      <input type="text" id="activation-search-input" class="form-input w-full border border-indigo-200 rounded px-4 py-2" placeholder="Fullname, Username, or Student ID">
+    </div>
+    <div>
+      <label class="block text-sm font-semibold text-indigo-700">Batch Student IDs</label>
+      <textarea id="batch-assign-input" class="form-input w-full border border-indigo-200 rounded px-4 py-2" placeholder="Paste comma, space, or newline separated Student IDs for batch assign"></textarea>
+    </div>
+    <div class="flex gap-2 items-end mb-2">
+      <button id="search-activation-btn" class="px-4 py-2 bg-indigo-700 text-white font-bold rounded shadow hover:bg-yellow-400 hover:text-indigo-900 transition">Search</button>
+      <button id="batch-assign-btn" class="px-4 py-2 bg-green-700 text-white font-bold rounded shadow hover:bg-green-400 hover:text-green-900 transition">Batch Assign</button>
+      <button id="refresh-activation-btn" class="px-4 py-2 bg-yellow-300 text-indigo-900 font-bold rounded shadow">Refresh List</button>
+    </div>
+  </div>
+  <div id="activation-key-result" class="mb-3"></div>
+  <div class="table-scroll">
+    <table class="min-w-full bg-white rounded shadow overflow-hidden mb-2">
+      <thead class="bg-indigo-50">
+        <tr>
+          <th class="px-5 py-2 text-indigo-700 font-extrabold text-left">Student</th>
+          <th class="px-5 py-2 text-indigo-700 font-extrabold text-left">Student ID</th>
+          <th class="px-5 py-2 text-indigo-700 font-extrabold text-left">Username</th>
+          <th class="px-5 py-2 text-indigo-700 font-extrabold text-left">Email</th>
+          <th class="px-5 py-2 text-indigo-700 font-extrabold text-left">Activation Key</th>
+          <th class="px-5 py-2 text-indigo-700 font-extrabold text-left">Status</th>
+          <th class="px-5 py-2 text-indigo-700 font-extrabold text-left">Premium</th>
+          <th class="px-5 py-2 text-indigo-700 font-extrabold text-left">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="activation-keys-table">
+        <!-- JS fills here -->
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ...existing content below... -->
+
+<script>
+const API_BASE = "https://examguard-jmvj.onrender.com"; // adjust if different
+
+// ---- Activation Key Management ---- //
+async function fetchActivationKeys(searchTerm = "", batchStudentIds = []) {
+  let url = API_BASE + "/api/users/activation-keys";
+  let params = [];
+  if (searchTerm) params.push("studentId=" + encodeURIComponent(searchTerm));
+  if (params.length) url += "?" + params.join("&");
+  const res = await fetch(url, {
+    headers: { "Authorization": "Bearer " + (localStorage.getItem("token") || "") }
+  });
+  const { data } = await res.json();
+  // If batch mode, filter on our side (student IDs only)
+  if (batchStudentIds.length > 0) {
+    return data.filter(u => batchStudentIds.includes(u.studentId));
+  }
+  return data;
+}
+
+function renderActivationTable(users) {
+  const tbody = document.getElementById('activation-keys-table');
+  tbody.innerHTML = '';
+  if (users.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" class="text-red-500 text-center py-4">No matching students found</td></tr>`;
+    return;
+  }
+  for (const u of users) {
+    tbody.innerHTML += `
+      <tr class="border-b border-gray-100 hover:bg-indigo-50 transition">
+        <td class="px-5 py-2 font-semibold text-indigo-800">${u.fullname || "N/A"}</td>
+        <td class="px-5 py-2 text-indigo-700">${u.studentId || ""}</td>
+        <td class="px-5 py-2 text-indigo-700">${u.username || ""}</td>
+        <td class="px-5 py-2 text-gray-700">${u.email || ""}</td>
+        <td class="px-5 py-2 text-green-700 font-bold">${u.assignedActivationKey || '-'}</td>
+        <td class="px-5 py-2">
+          <span class="text-xs px-3 py-1 rounded-full ${u.activationKeyStatus === 'redeemed' ? 'bg-green-100 text-green-900' : u.activationKeyStatus === 'pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}">
+            ${u.activationKeyStatus || 'none'}
+          </span>
+        </td>
+        <td class="px-5 py-2">
+          ${u.isPremium ? 
+            '<span class="bg-green-600 text-white font-bold px-3 py-1 rounded-full">Premium</span>' :
+            '<span class="bg-gray-200 text-gray-600 font-bold px-3 py-1 rounded-full">Basic</span>'
+          }
+        </td>
+        <td class="px-5 py-2 flex flex-col gap-2 md:flex-row">
+          <button class="px-3 py-1 rounded bg-indigo-600 text-white font-semibold shadow hover:bg-yellow-400 hover:text-indigo-900 btn-assign-key" data-studentid="${u.studentId}" ${u.isPremium ? "disabled" : ""}>Generate/Assign Key</button>
+          <button class="px-3 py-1 rounded bg-red-600 text-white font-semibold shadow hover:bg-red-400 btn-expire-key" data-studentid="${u.studentId}" ${!u.assignedActivationKey ? "disabled" : ""}>Expire Key</button>
+        </td>
+      </tr>
+    `;
+  }
+}
+
+async function refreshActivationTable() {
+  const search = document.getElementById('activation-search-input').value.trim();
+  const users = await fetchActivationKeys(search);
+  renderActivationTable(users);
+}
+document.getElementById("search-activation-btn").onclick = refreshActivationTable;
+document.getElementById("refresh-activation-btn").onclick = function() {
+  document.getElementById("activation-search-input").value = "";
+  document.getElementById("batch-assign-input").value = "";
+  refreshActivationTable();
+}
+document.addEventListener("DOMContentLoaded", refreshActivationTable);
+
+document.getElementById("batch-assign-btn").onclick = async function() {
+  const value = document.getElementById("batch-assign-input").value;
+  if (!value.trim()) return alert("Please enter student IDs for batch assignment.");
+  let ids = value.split(/[\s,]+/).map(v => v.trim()).filter(Boolean);
+  if (ids.length === 0) return alert("No valid student IDs found.");
+  // POST for batch assign
+  const res = await fetch(API_BASE + "/api/users/batch-assign-keys", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + (localStorage.getItem("token") || "")
+    },
+    body: JSON.stringify({ studentIds: ids })
+  });
+  const { results } = await res.json();
+  let msg = '';
+  (results || []).forEach(r => {
+    msg += `<div>${r.studentId || "-"}: <span class="font-bold">${r.activationKey || r.status || r.error}</span></div>`;
+  });
+  document.getElementById('activation-key-result').innerHTML = `
+    <div class="mb-3 px-3 py-2 border border-indigo-200 rounded bg-indigo-50">
+      ${msg}
+    </div>
+  `;
+  refreshActivationTable();
+};
+document.getElementById('activation-keys-table').addEventListener('click', async function(e) {
+  // Assign/generate key
+  if (e.target.classList.contains("btn-assign-key")) {
+    const studentId = e.target.getAttribute("data-studentid");
+    const btn = e.target;
+    btn.disabled = true;
+    btn.textContent = "Assigning...";
+    const res = await fetch(`${API_BASE}/api/users/${encodeURIComponent(studentId)}/activation-key`, {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + (localStorage.getItem("token") || "") }
+    });
+    const data = await res.json();
+    btn.textContent = "Assigned";
+    document.getElementById('activation-key-result').innerHTML =
+      `<div class="mb-3 px-3 py-2 border border-green-200 rounded bg-green-50 text-green-800">Key assigned for <b>${studentId}</b>: <span class="font-bold">${data.activationKey || "Error"}</span></div>`;
+    setTimeout(() => { refreshActivationTable(); }, 1200);
+  }
+  // Expire/revoke key
+  if (e.target.classList.contains("btn-expire-key")) {
+    const studentId = e.target.getAttribute("data-studentid");
+    const btn = e.target;
+    btn.disabled = true;
+    btn.textContent = "Expiring...";
+    const res = await fetch(`${API_BASE}/api/users/${encodeURIComponent(studentId)}/expire-key`, {
+      method: "PATCH",
+      headers: { "Authorization": "Bearer " + (localStorage.getItem("token") || "") }
+    });
+    const data = await res.json();
+    btn.textContent = "Expired";
+    document.getElementById('activation-key-result').innerHTML =
+      `<div class="mb-3 px-3 py-2 border border-red-200 rounded bg-red-50 text-red-800">Key expired/revoked for <b>${studentId}</b></div>`;
+    setTimeout(() => { refreshActivationTable(); }, 1000);
+  }
+});
+</script>
+<!-- ...existing content below... -->
   <!-- Student Details Modal -->
   <div id="student-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full bg-black/60 flex items-center justify-center">
     <div class="relative w-full max-w-lg mx-auto mt-12">
