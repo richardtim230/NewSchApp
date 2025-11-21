@@ -296,7 +296,7 @@ forms.register.addEventListener('submit', async function(e) {
         "Level": level,
         "Phone": phone,
         ...(referralCode ? { "Referral Code": referralCode } : {})
-    }, async function proceedReg() {
+}, async function proceedReg() {
         showLoadingModal("Registering...", "Please wait while we create your account.");
         await setRegLoading(true);
         try {
@@ -317,19 +317,34 @@ forms.register.addEventListener('submit', async function(e) {
             });
             let result = await registerResponse.json();
             await setRegLoading(false);
-            if (registerResponse.ok && result.user) {
-                showStatusModal("success", "Registration Successful", "Account created! Redirecting to login...");
+
+            if (registerResponse.ok) {
+                // Show success modal with registration message
+                showStatusModal("success", "Registration Successful", result.message || "Account created! Redirecting to login...", false);
                 setTimeout(() => {
                     forms.login.classList.add('active');
                     forms.register.classList.remove('active');
-                    messageBox.innerHTML = '<div class="message success">Your account was created successfully. Please login.</div>';
-                }, 1200);
+                    messageBox.innerHTML = '<div class="message success">Your account was created successfully. Please check your email for a verification link before logging in.</div>';
+                }, 1800);
             } else {
-                showStatusModal("success", "Registration Failed", result.message || "Could not register. Try again.");
+                // Show failed modal with error message
+                showStatusModal("error", "Registration Failed", result.message || "Could not register. Try again.");
             }
         } catch (err) {
             await setRegLoading(false);
-            showStatusModal("success", "Network Error", "Could not connect to server.");
+            showStatusModal("error", "Network Error", "Could not connect to server.");
         }
     });
 });
+document.querySelectorAll('.social-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const platform = btn.classList.contains('google') ? "Google" : "Facebook";
+        showStatusModal(
+            "success",
+            `${platform} Login`,
+            `Login with ${platform} is coming soon!`,
+            true
+        );
+    });
+});
+
