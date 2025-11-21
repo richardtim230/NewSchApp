@@ -319,17 +319,20 @@ forms.register.addEventListener('submit', async function(e) {
             await setRegLoading(false);
 
             if (registerResponse.ok) {
-                // Show success modal with registration message
-                showStatusModal("success", "Registration Successful", result.message || "Account created! Redirecting to login...", false);
-                setTimeout(() => {
-                    forms.login.classList.add('active');
-                    forms.register.classList.remove('active');
-                    messageBox.innerHTML = '<div class="message success">Your account was created successfully. Please check your email for a verification link before logging in.</div>';
-                }, 1800);
-            } else {
-                // Show failed modal with error message
-                showStatusModal("error", "Registration Failed", result.message || "Could not register. Try again.");
-            }
+    showStatusModal("success", "Registration Successful", result.message || "Account created! Redirecting to login...", true);
+    
+    // Make sure we only attach this once, so remove previous listeners
+    closeModalBtn.onclick = function() {
+        closeModal();
+        forms.login.classList.add('active');
+        forms.register.classList.remove('active');
+        messageBox.innerHTML = '<div class="message success">Your account was created successfully. Please login.</div>';
+        // Optionally, remove the handler after using
+        closeModalBtn.onclick = closeModal;
+    };
+} else {
+    showStatusModal("error", "Registration Failed", result.message || "Could not register. Try again.");
+}
         } catch (err) {
             await setRegLoading(false);
             showStatusModal("error", "Network Error", "Could not connect to server.");
