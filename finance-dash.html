@@ -224,6 +224,7 @@
         <thead class="bg-indigo-50">
           <tr>
             <th class="px-5 py-3 text-indigo-700 font-extrabold text-left">Student</th>
+            <th class="px-5 py-3 text-indigo-700 font-extrabold text-left">Mongo ID</th>
             <th class="px-5 py-3 text-indigo-700 font-extrabold text-left">Username</th>
             <th class="px-5 py-3 text-indigo-700 font-extrabold text-left">Email</th>
             <th class="px-5 py-3 text-indigo-700 font-extrabold text-left">Points</th>
@@ -245,7 +246,7 @@
     </div>
   </div>
   <!-- Student Details Modal -->
-  <div id="student-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full bg-black/40">
+  <div id="student-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full bg-black/50">
     <div class="relative w-full max-w-lg mx-auto mt-12">
       <div class="relative bg-white rounded-2xl shadow-lg border-[1.5px] border-indigo-100 p-7">
         <button type="button" class="absolute top-3 right-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center close-modal">
@@ -288,53 +289,6 @@
     const API_BASE = "https://examguard-jmvj.onrender.com";
     const PAGE_SIZE = 12;
     let students = [], filtered = [], page = 1;
-
-    // Helper: detect a possible Mongo ObjectId
-    function looksLikeObjectId(v) {
-      return typeof v === "string" && /^[0-9a-fA-F]{24}$/.test(v);
-    }
-
-    // Resolve user by Mongo id to a user object (handle different response shapes)
-    async function fetchUserByMongoId(mongoId) {
-      try {
-        const res = await fetch(`${API_BASE}/api/users/${encodeURIComponent(mongoId)}`, {
-          headers: { "Authorization": "Bearer " + (localStorage.getItem("token") || "") }
-        });
-        if (!res.ok) return null;
-        const json = await res.json();
-        // API might return { user: {...} } or the user object directly
-        return json.user || json;
-      } catch (err) {
-        console.error("Error fetching user by mongo id", mongoId, err);
-        return null;
-      }
-    }
-
-    // Resolve a single provided identifier (could be mongo _id or studentId) into a studentId if possible
-    async function resolveToStudentId(idOrStudentId) {
-      if (!idOrStudentId) return idOrStudentId;
-      if (looksLikeObjectId(idOrStudentId)) {
-        const u = await fetchUserByMongoId(idOrStudentId);
-        if (u) return u.studentId || u._id || idOrStudentId;
-        // fallback to original if not found
-        return idOrStudentId;
-      }
-      return idOrStudentId;
-    }
-
-    // Resolve an array of ids — if any look like mongo ids, try to get their studentId counterpart
-    async function resolveBatchIds(ids) {
-      const results = [];
-      for (const id of ids) {
-        if (looksLikeObjectId(id)) {
-          const u = await fetchUserByMongoId(id);
-          results.push((u && (u.studentId || u._id)) ? (u.studentId || u._id) : id);
-        } else {
-          results.push(id);
-        }
-      }
-      return results;
-    }
 
     async function loadSummary() {
       try {
@@ -433,6 +387,7 @@
         tbody.innerHTML += `
           <tr class="border-b border-gray-100 hover:bg-indigo-50 transition">
             <td class="px-5 py-3 font-semibold text-indigo-800">${u.fullname || u.username || "N/A"}</td>
+            <td class="px-5 py-3 text-indigo-700">${u._id || "-"}</td>
             <td class="px-5 py-3 text-indigo-700">${u.username}</td>
             <td class="px-5 py-3 text-gray-700">${u.email || ""}</td>
             <td class="px-5 py-3 text-green-700 font-bold">${u.points || 0}</td>
@@ -440,7 +395,7 @@
             <td class="px-5 py-3 text-indigo-700">${u.level || ""}</td>
             <td class="px-5 py-3 text-indigo-700">${(u.faculty && u.faculty.name) ? u.faculty.name : (typeof u.faculty === "string" ? u.faculty : "")}</td>
             <td class="px-5 py-3">
-              <button class="bg-indigo-700 hover:bg-yellow-400 text-white hover:text-indigo-900 font-semibold rounded px-3 py-1 shadow view-details-btn" data-index="${i - start}">
+              <button class="bg-indigo-700 hover:bg-yellow-400 text-white hover:text-indigo-900 font-semibold rounded px-3 py-1 shadow view-details-btn" data-index="${i}">
                 View
               </button>
             </td>
@@ -495,6 +450,7 @@
           <div>
             <div class="font-bold text-indigo-700 text-xl">${u.fullname || u.username || "N/A"}</div>
             <div class="text-sm text-gray-500">@${u.username}</div>
+            <div class="text-xs text-gray-500">Mongo ID: ${u._id || "-"}</div>
             <div class="text-xs text-gray-500">Email: ${u.email || "-"}</div>
           </div>
         </div>
@@ -540,62 +496,38 @@
 
     // ---- Activation Key Management ---- //
     async function fetchActivationKeys(searchTerm = "", batchStudentIds = []) {
-      // Attempt to resolve mongo id(s) to actual studentId before calling activation-keys endpoint
-      try {
-        if (searchTerm && looksLikeObjectId(searchTerm)) {
-          const resolved = await resolveToStudentId(searchTerm);
-          searchTerm = resolved || searchTerm;
-        }
-        if (batchStudentIds && batchStudentIds.length > 0) {
-          batchStudentIds = await resolveBatchIds(batchStudentIds);
-        }
-
-        let url = API_BASE + "/api/users/activation-keys";
-        let params = [];
-        if (searchTerm) params.push("studentId=" + encodeURIComponent(searchTerm));
-        if (params.length) url += "?" + params.join("&");
-        const res = await fetch(url, {
-          headers: { "Authorization": "Bearer " + (localStorage.getItem("token") || "") }
-        });
-        if (!res.ok) {
-          console.error("Activation keys fetch failed", res.status);
-          return [];
-        }
-        const json = await res.json();
-        const data = json.data || json.activationKeys || json.users || [];
-        // If batch mode, filter on our side (student IDs only)
-        if (batchStudentIds.length > 0) {
-          // Ensure we compare against both studentId and _id
-          return data.filter(u => batchStudentIds.includes(u.studentId) || batchStudentIds.includes(u._id));
-        }
-        return data;
-      } catch (err) {
-        console.error("Error in fetchActivationKeys:", err);
-        return [];
+      let url = API_BASE + "/api/users/activation-keys";
+      let params = [];
+      if (searchTerm) params.push("studentId=" + encodeURIComponent(searchTerm));
+      if (params.length) url += "?" + params.join("&");
+      const res = await fetch(url, {
+        headers: { "Authorization": "Bearer " + (localStorage.getItem("token") || "") }
+      });
+      const { data } = await res.json();
+      // If batch mode, filter on our side (student IDs only)
+      if (batchStudentIds.length > 0) {
+        return data.filter(u => batchStudentIds.includes(u.studentId));
       }
+      return data;
     }
 
     function renderActivationTable(users) {
       const tbody = document.getElementById('activation-keys-table');
       tbody.innerHTML = '';
-      if (!users || users.length === 0) {
+      if (users.length === 0) {
         tbody.innerHTML = `<tr><td colspan="8" class="text-red-500 text-center py-4">No matching students found</td></tr>`;
         return;
       }
       for (const u of users) {
-        // Ensure we render both studentId and fallback to mongo id if studentId missing
-        const studentIdDisplay = u.studentId || u._id || '';
-        const studentIdAttr = u.studentId || '';
-        const userMongoIdAttr = u._id || '';
         tbody.innerHTML += `
           <tr class="border-b border-gray-100 hover:bg-indigo-50 transition">
             <td class="px-5 py-2 font-semibold text-indigo-800">${u.fullname || "N/A"}</td>
-            <td class="px-5 py-2 text-indigo-700">${studentIdDisplay}</td>
+            <td class="px-5 py-2 text-indigo-700">${u.studentId || ""}</td>
             <td class="px-5 py-2 text-indigo-700">${u.username || ""}</td>
             <td class="px-5 py-2 text-gray-700">${u.email || ""}</td>
             <td class="px-5 py-2 text-green-700 font-bold">${u.assignedActivationKey || '-'}</td>
             <td class="px-5 py-2">
-              <span class="text-xs px-3 py-1 rounded-full ${u.activationKeyStatus === 'redeemed' ? 'bg-green-100 text-green-900' : u.activationKeyStatus === 'pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-700'}">
+              <span class="text-xs px-3 py-1 rounded-full ${u.activationKeyStatus === 'redeemed' ? 'bg-green-100 text-green-900' : u.activationKeyStatus === 'pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}">
                 ${u.activationKeyStatus || 'none'}
               </span>
             </td>
@@ -606,11 +538,11 @@
               }
             </td>
             <td class="px-5 py-2 flex flex-col gap-2 md:flex-row">
-              <button class="px-3 py-1 rounded bg-indigo-600 text-white font-semibold shadow hover:bg-yellow-400 hover:text-indigo-900 btn-assign-key" data-studentid="${studentIdAttr}" data-userid="${userMongoIdAttr}" ${u.isPremium ? 'disabled' : ''}>
-                Assign Key
+              <button class="px-3 py-1 rounded bg-indigo-600 text-white font-semibold shadow hover:bg-yellow-400 hover:text-indigo-900 btn-assign-key" data-studentid="${u.studentId}" ${u.isPremium ? "disabled" : ""}>
+                Assign
               </button>
-              <button class="px-3 py-1 rounded bg-red-600 text-white font-semibold shadow hover:bg-red-400 btn-expire-key" data-studentid="${studentIdAttr}" data-userid="${userMongoIdAttr}" ${!u.assignedActivationKey ? "disabled" : ""}>
-                Expire Key
+              <button class="px-3 py-1 rounded bg-red-600 text-white font-semibold shadow hover:bg-red-400 btn-expire-key" data-studentid="${u.studentId}" ${!u.assignedActivationKey ? "disabled" : ""}>
+                Expire
               </button>
             </td>
           </tr>
@@ -636,92 +568,59 @@
       if (!value.trim()) return alert("Please enter student IDs for batch assignment.");
       let ids = value.split(/[\s,]+/).map(v => v.trim()).filter(Boolean);
       if (ids.length === 0) return alert("No valid student IDs found.");
-      // Resolve any mongo ids into studentIds before posting
-      const resolvedIds = await resolveBatchIds(ids);
+      // POST for batch assign
       const res = await fetch(API_BASE + "/api/users/batch-assign-keys", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": "Bearer " + (localStorage.getItem("token") || "")
         },
-        body: JSON.stringify({ studentIds: resolvedIds })
+        body: JSON.stringify({ studentIds: ids })
       });
-      let json = {};
-      try { json = await res.json(); } catch(e){ json = {}; }
-      const results = json.results || json.data || [];
+      const { results } = await res.json();
       let msg = '';
       (results || []).forEach(r => {
-        msg += `<div>${r.studentId || r._id || "-"}: <span class="font-bold">${r.activationKey || r.status || r.error || JSON.stringify(r)}</span></div>`;
+        msg += `<div>${r.studentId || "-"}: <span class="font-bold">${r.activationKey || r.status || r.error}</span></div>`;
       });
       document.getElementById('activation-key-result').innerHTML = `
         <div class="mb-3 px-3 py-2 border border-indigo-200 rounded bg-indigo-50">
-          ${msg || 'Batch assign completed.'}
+          ${msg}
         </div>
       `;
       refreshActivationTable();
     };
-
     document.getElementById('activation-keys-table').addEventListener('click', async function(e) {
       // Assign/generate key
       if (e.target.classList.contains("btn-assign-key")) {
-        const studentIdAttr = e.target.getAttribute("data-studentid");
-        const userIdAttr = e.target.getAttribute("data-userid");
-        let identifierToSend = studentIdAttr || userIdAttr || "";
-        // If identifier is a mongo id, try to resolve to studentId first
-        if (looksLikeObjectId(identifierToSend) && !studentIdAttr) {
-          const u = await fetchUserByMongoId(identifierToSend);
-          identifierToSend = (u && (u.studentId || u._id)) ? (u.studentId || u._id) : identifierToSend;
-        }
+        const studentId = e.target.getAttribute("data-studentid");
         const btn = e.target;
         btn.disabled = true;
-        const originalText = btn.textContent;
         btn.textContent = "Assigning...";
-        try {
-          const res = await fetch(`${API_BASE}/api/users/${encodeURIComponent(identifierToSend)}/activation-key`, {
-            method: "POST",
-            headers: { "Authorization": "Bearer " + (localStorage.getItem("token") || "") }
-          });
-          const data = await res.json();
-          btn.textContent = "Assigned";
-          document.getElementById('activation-key-result').innerHTML =
-            `<div class="mb-3 px-3 py-2 border border-green-200 rounded bg-green-50 text-green-800">Key assigned for <b>${identifierToSend}</b>: <span class="font-bold">${data.activationKey || "Assigned"}</span></div>`;
-        } catch (err) {
-          console.error("Assign key error:", err);
-          btn.textContent = originalText;
-          alert("Failed to assign key.");
-        } finally {
-          setTimeout(() => { refreshActivationTable(); }, 1200);
-        }
+        const res = await fetch(`${API_BASE}/api/users/${encodeURIComponent(studentId)}/activation-key`, {
+          method: "POST",
+          headers: { "Authorization": "Bearer " + (localStorage.getItem("token") || "") }
+        });
+        const data = await res.json();
+        btn.textContent = "Assigned";
+        document.getElementById('activation-key-result').innerHTML =
+          `<div class="mb-3 px-3 py-2 border border-green-200 rounded bg-green-50 text-green-800">Key assigned for <b>${studentId}</b>: <span class="font-bold">${data.activationKey || "Error"}</span></div>`;
+        setTimeout(() => { refreshActivationTable(); }, 1200);
       }
       // Expire/revoke key
       if (e.target.classList.contains("btn-expire-key")) {
-        const studentIdAttr = e.target.getAttribute("data-studentid");
-        const userIdAttr = e.target.getAttribute("data-userid");
-        let identifierToSend = studentIdAttr || userIdAttr || "";
-        if (looksLikeObjectId(identifierToSend) && !studentIdAttr) {
-          const u = await fetchUserByMongoId(identifierToSend);
-          identifierToSend = (u && (u.studentId || u._id)) ? (u.studentId || u._id) : identifierToSend;
-        }
+        const studentId = e.target.getAttribute("data-studentid");
         const btn = e.target;
         btn.disabled = true;
-        const originalText = btn.textContent;
         btn.textContent = "Expiring...";
-        try {
-          const res = await fetch(`${API_BASE}/api/users/${encodeURIComponent(identifierToSend)}/expire-key`, {
-            method: "PATCH",
-            headers: { "Authorization": "Bearer " + (localStorage.getItem("token") || "") }
-          });
-          const data = await res.json();
-          btn.textContent = "Expired";
-          document.getElementById('activation-key-result').innerHTML =
-            `<div class="mb-3 px-3 py-2 border border-red-200 rounded bg-red-50 text-red-800">Key expired/revoked for <b>${identifierToSend}</b></div>`;
-        } catch (err) {
-          console.error("Expire key error:", err);
-          btn.textContent = originalText;
-          alert("Failed to expire key.");
-        } finally {
-          setTimeout(() => { refreshActivationTable(); }, 1000);
-        }
+        const res = await fetch(`${API_BASE}/api/users/${encodeURIComponent(studentId)}/expire-key`, {
+          method: "PATCH",
+          headers: { "Authorization": "Bearer " + (localStorage.getItem("token") || "") }
+        });
+        const data = await res.json();
+        btn.textContent = "Expired";
+        document.getElementById('activation-key-result').innerHTML =
+          `<div class="mb-3 px-3 py-2 border border-red-200 rounded bg-red-50 text-red-800">Key expired/revoked for <b>${studentId}</b></div>`;
+        setTimeout(() => { refreshActivationTable(); }, 1000);
       }
     });
   </script>
