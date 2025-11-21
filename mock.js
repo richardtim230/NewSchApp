@@ -319,17 +319,14 @@ forms.register.addEventListener('submit', async function(e) {
             await setRegLoading(false);
 
             if (registerResponse.ok) {
-    showStatusModal("success", "Registration Successful", result.message || "Account created! Redirecting to login...", true);
-    
-    // Make sure we only attach this once, so remove previous listeners
-    closeModalBtn.onclick = function() {
+    showStatusModal("success", "Registration Successful", result.message || "Account created! Redirecting to login...", false);
+    // Auto-close modal and switch to login after short timeout
+    setTimeout(() => {
         closeModal();
         forms.login.classList.add('active');
         forms.register.classList.remove('active');
-        messageBox.innerHTML = '<div class="message success">Your account was created successfully. Please login.</div>';
-        // Optionally, remove the handler after using
-        closeModalBtn.onclick = closeModal;
-    };
+        messageBox.innerHTML = '<div class="message success">Your account was created successfully. Please check your email for a verification link before logging in.</div>';
+    }, 1800);
 } else {
     showStatusModal("error", "Registration Failed", result.message || "Could not register. Try again.");
 }
