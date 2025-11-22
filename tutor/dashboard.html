@@ -3,59 +3,267 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Tutor Dashboard - Manage Class Notes</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/dist/tailwind.min.css" rel="stylesheet" />
+  <title>Teacher Dashboard | StudyPadi</title>
+
+  <!-- Tailwind + Flowbite -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.css" rel="stylesheet" />
+  
+  <!-- Quill Editor -->
+  <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet" />
+  <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+
+  <!-- KaTeX for Math Rendering -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.css" />
-  <!-- Quill Editor CSS -->
-  <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet" />
-  <link rel="stylesheet" href="/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/contrib/auto-render.min.js"></script>
+
+  <style>
+    .ql-container { height: 380px; }
+    .preview-content img, .preview-content table, .preview-content pre { max-width: 100% !important; }
+    .katex-display { margin: 1.5em 0; }
+  </style>
 </head>
-<body class="bg-gray-50">
-  <div class="max-w-6xl mx-auto p-4">
-    <header class="flex items-center justify-between mb-7">
-      <h1 class="text-2xl font-bold text-indigo-700">Tutor Dashboard</h1>
-      <button onclick="logout()" class="bg-red-50 hover:bg-red-100 text-red-600 px-3 py-1 rounded shadow">Logout</button>
-    </header>
-    <section class="mb-10">
-      <button id="newNoteBtn" class="bg-indigo-600 text-white px-5 py-2 rounded-lg hover:bg-indigo-700 shadow">+ Upload New Content</button>
-    </section>
-    <section>
-      <h2 class="text-xl font-semibold mb-4">Uploaded Notes</h2>
-      <div id="notesTable" class="mb-4"></div>
-    </section>
-    <!-- Modal for adding or editing note -->
-    <div id="noteModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-40">
-      <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl p-5">
-        <h3 class="font-bold text-lg mb-4" id="modalTitle">Add New Note</h3>
-        <form id="noteForm">
-          <input type="hidden" id="noteId" />
-          <label class="block mb-2">Title</label>
-          <input type="text" id="noteTitle" class="border p-2 rounded w-full mb-3" required />
-          <label class="block mb-2">Course Code</label>
-          <input type="text" id="noteCourse" class="border p-2 rounded w-full mb-3" required />
-          <label class="block mb-2">Content (Quill Editor — supports Math, images, etc.)</label>
-          <div id="quillEditor" style="height:250px;" class="mb-3"></div>
-          <div class="flex gap-3 justify-end mt-6">
-            <button type="button" onclick="closeModal()" class="px-4 py-2 rounded border">Cancel</button>
-            <button type="submit" class="px-4 py-2 rounded bg-indigo-600 text-white">Save</button>
-          </div>
-        </form>
+<body class="bg-gray-50 min-h-screen">
+
+  <!-- Navbar -->
+  <nav class="bg-white border-b border-gray-200 px-4 py-4 sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto flex justify-between items-center">
+      <div class="flex items-center space-x-4">
+        <h1 class="text-2xl font-bold text-indigo-700">StudyPadi</h1>
+        <span class="text-sm text-gray-600">Teacher Dashboard</span>
+      </div>
+      <div class="flex items-center space-x-4">
+        <span class="text-sm font-medium">Dr. Fatima Yusuf</span>
+        <img src="https://ui-avatars.com/api/?name=Fatima&background=6366f1&color=fff" class="w-10 h-10 rounded-full" alt="Teacher">
       </div>
     </div>
-    <!-- Preview Modal -->
-    <div id="previewModal" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center hidden z-50">
-      <div class="bg-white rounded-lg shadow-xl max-w-3xl w-full p-7">
-        <div id="previewContent"></div>
-        <div class="mt-7 text-right">
-          <button type="button" onclick="closePreview()" class="px-4 py-1 rounded border">Close</button>
+  </nav>
+
+  <div class="max-w-7xl mx-auto px-4 py-8">
+    <div class="flex flex-col lg:flex-row justify-between items-start mb-8 gap-6">
+      <div>
+        <h2 class="text-3xl font-bold text-gray-900">Manage Lecture Notes</h2>
+        <p class="text-gray-600 mt-1">Create, edit, and organize rich content for your students</p>
+      </div>
+      <button data-modal-target="upload-modal" data-modal-toggle="upload-modal"
+              class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-xl shadow-lg transition flex items-center gap-2">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        Upload New Note
+      </button>
+    </div>
+
+    <!-- Content Management Table -->
+    <div class="bg-white rounded-2xl shadow-lg border overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left">
+          <thead class="bg-gray-50 border-b">
+            <tr>
+              <th class="px-6 py-4 font-semibold text-gray-700">Title</th>
+              <th class="px-6 py-4 font-semibold text-gray-700">Course</th>
+              <th class="px-6 py-4 font-semibold text-gray-700">Last Updated</th>
+              <th class="px-6 py-4 font-semibold text-gray-700 text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="notesTable" class="divide-y divide-gray-200">
+            <!-- Sample Data -->
+            <tr class="hover:bg-gray-50 transition">
+              <td class="px-6 py-5 font-medium">Introduction to Differential Equations</td>
+              <td class="px-6 py-5 text-gray-600">MAT201</td>
+              <td class="px-6 py-5 text-gray-600">Nov 22, 2025</td>
+              <td class="px-6 py-5 text-center">
+                <button onclick="openEditModal(1)" class="text-blue-600 hover:text-blue-800 mr-3">Edit</button>
+                <button onclick="deleteNote(1)" class="text-red-600 hover:text-red-800">Delete</button>
+              </td>
+            </tr>
+            <tr class="hover:bg-gray-50 transition">
+              <td class="px-6 py-5 font-medium">Limits and Continuity</td>
+              <td class="px-6 py-5 text-gray-600">MAT101</td>
+              <td class="px-6 py-5 text-gray-600">Nov 18, 2025</td>
+              <td class="px-6 py-5 text-center">
+                <button onclick="openEditModal(2)" class="text-blue-600 hover:text-blue-800 mr-3">Edit</button>
+                <button onclick="deleteNote(2)" class="text-red-600 hover:text-red-800">Delete</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Upload / Edit Modal -->
+  <div id="upload-modal" tabindex="-1" aria-hidden="true" class="hidden fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overflow-x-hidden">
+    <div class="relative p-4 w-full max-w-5xl max-h-full">
+      <div class="relative bg-white rounded-2xl shadow-2xl">
+        <div class="flex items-center justify-between p-6 border-b">
+          <h3 id="modalTitle" class="text-2xl font-bold text-gray-900">Upload New Lecture Note</h3>
+          <button type="button" class="text-gray-400 hover:text-gray-900" data-modal-hide="upload-modal">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <div class="p-6 space-y-6">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Left: Form -->
+            <div class="space-y-5">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Note Title</label>
+                <input type="text" id="noteTitle" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="e.g., Introduction to Calculus">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Course Code</label>
+                <input type="text" id="courseCode" class="w-full px-4 py-3 border border-gray-300 rounded-xl" placeholder="e.g., MAT101">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Rich Content (Supports Math, Images, Code)</label>
+                <div id="editor" class="bg-white border border-gray-300 rounded-xl"></div>
+              </div>
+              <div class="flex gap-3">
+                <button onclick="saveNote()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition">
+                  <span id="saveBtnText">Upload Note</span>
+                </button>
+                <button data-modal-hide="upload-modal" class="px-6 py-3 border border-gray-300 rounded-xl font-medium hover:bg-gray-50 transition">
+                  Cancel
+                </button>
+              </div>
+            </div>
+
+            <!-- Right: Live Preview -->
+            <div>
+              <h4 class="font-semibold text-lg text-gray-800 mb-4 flex items-center gap-2">
+                <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                Live Preview
+              </h4>
+              <div id="preview" class="preview-content prose prose-lg max-w-none bg-gray-50 rounded-xl p-6 min-h-96 border overflow-x-auto">
+                <p class="text-gray-500 italic">Start typing to see live preview...</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   </div>
+
   <!-- Scripts -->
-  <script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/contrib/auto-render.min.js"></script>
-  <script src="/main.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.js"></script>
+  <script>
+    // Initialize Quill with Math support
+    const quill = new Quill('#editor', {
+      theme: 'snow',
+      modules: {
+        toolbar: [
+          [{ header: [1, 2, 3, false] }],
+          ['bold', 'italic', 'underline'],
+          ['image', 'link'],
+          [{ list: 'ordered' }, { list: 'bullet' }],
+          ['clean'],
+          ['formula'] // KaTeX formula button
+        ]
+      },
+      placeholder: 'Write your lecture notes here... Use $x^2$ or $$E=mc^2$$ for math...'
+    });
+
+    // Live Preview with KaTeX rendering
+    quill.on('text-change', function() {
+      const content = quill.root.innerHTML;
+      document.getElementById('preview').innerHTML = content;
+      renderMathInElement(document.getElementById('preview'), {
+        delimiters: [
+          {left: '$$', right: '$$', display: true},
+          {left: '$', right: '$', display: false},
+          {left: '\\(', right: '\\)', display: false},
+          {left: '\\[', right: '\\]', display: true}
+        ],
+        throwOnError: false
+      });
+    });
+
+    // Sample Notes Data (Replace with backend)
+    let notes = [
+      { id: 1, title: "Introduction to Differential Equations", course: "MAT201", date: "Nov 22, 2025", content: "<h2>First Order ODEs</h2><p>Solve $$\\frac{dy}{dx} = ky$$ → $y = Ce^{kx}$</p>" },
+      { id: 2, title: "Limits and Continuity", course: "MAT101", date: "Nov 18, 2025", content: "<p>The limit definition: $$\\lim_{x \\to a} f(x) = L$$</p>" }
+    ];
+
+    let currentEditId = null;
+
+    // Open modal for new/edit
+    function openEditModal(id) {
+      currentEditId = id;
+      const note = notes.find(n => n.id === id);
+      document.getElementById('modalTitle').textContent = "Edit Lecture Note";
+      document.getElementById('saveBtnText').textContent = "Update Note";
+      document.getElementById('noteTitle').value = note.title;
+      document.getElementById('courseCode').value = note.course;
+      quill.root.innerHTML = note.content;
+      quill.trigger('text-change');
+      document.querySelector('[data-modal-toggle="upload-modal"]').click();
+    }
+
+    // Save (Create or Update)
+    function saveNote() {
+      const title = document.getElementById('noteTitle').value.trim();
+      const course = document.getElementById('courseCode').value.trim();
+      const content = quill.root.innerHTML;
+
+      if (!title || !course) {
+        alert("Please fill in title and course code");
+        return;
+      }
+
+      if (currentEditId) {
+        // Update
+        const note = notes.find(n => n.id === currentEditId);
+        note.title = title;
+        note.course = course;
+        note.content = content;
+        note.date = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+      } else {
+        // Create new
+        notes.push({
+          id: Date.now(),
+          title, course, content,
+          date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+        });
+      }
+
+      refreshTable();
+      document.querySelector('[data-modal-hide="upload-modal"]').click();
+      resetForm();
+    }
+
+    function deleteNote(id) {
+      if (confirm("Delete this note permanently?")) {
+        notes = notes.filter(n => n.id !== id);
+        refreshTable();
+      }
+    }
+
+    function resetForm() {
+      currentEditId = null;
+      document.getElementById('modalTitle').textContent = "Upload New Lecture Note";
+      document.getElementById('saveBtnText').textContent = "Upload Note";
+      document.getElementById('noteTitle').value = "";
+      document.getElementById('courseCode').value = "";
+      quill.setContents([]);
+    }
+
+    function refreshTable() {
+      const tbody = document.getElementById('notesTable');
+      tbody.innerHTML = notes.map(note => `
+        <tr class="hover:bg-gray-50 transition">
+          <td class="px-6 py-5 font-medium">${note.title}</td>
+          <td class="px-6 py-5 text-gray-600">${note.course}</td>
+          <td class="px-6 py-5 text-gray-600">${note.date}</td>
+          <td class="px-6 py-5 text-center">
+            <button onclick="openEditModal(${note.id})" class="text-blue-600 hover:text-blue-800 mr-4">Edit</button>
+            <button onclick="deleteNote(${note.id})" class="text-red-600 hover:text-red-800">Delete</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    // Initial render
+    refreshTable();
+  </script>
 </body>
 </html>
