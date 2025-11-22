@@ -18,27 +18,41 @@
     .ql-container { height: 380px; }
     .preview-content img, .preview-content table, .preview-content pre { max-width: 100% !important; }
     .katex-display { margin: 1.5em 0; }
-    .spinner {
-      border: 3px solid #f3f3f3; border-top: 3px solid #6366f1; border-radius: 50%;
-      width: 22px; height: 22px; animation: spin 0.8s linear infinite; display: inline-block; vertical-align: middle;
+    .loader-overlay {
+      position: fixed; z-index: 100; inset: 0; background: rgba(255,255,255,0.56); display: flex;
+      align-items: center; justify-content: center;
+      transition: opacity 0.25s;
+    }
+    .loader-spinner {
+      border: 6px solid #e0e7ff;
+      border-top: 6px solid #6366f1;
+      border-radius: 50%;
+      width: 60px;
+      height: 60px;
+      animation: spin 1s linear infinite;
     }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    .overlay-loader {
-      position: fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(243,244,246,0.92);
-      z-index:99999; display: flex; align-items:center; justify-content:center;
-      transition: opacity 0.2s;
+    .action-spinner {
+      border: 3px solid #fff3;
+      border-top: 3px solid #6366f1;
+      border-radius: 50%;
+      width: 1em; height: 1em;
+      min-width: 1em; min-height: 1em;
+      display: inline-block; vertical-align: middle;
+      margin-right: 7px;
+      animation: spin 1s linear infinite;
     }
-    .overlay-hide { opacity: 0; pointer-events: none; }
+    .disabled { opacity: 0.7; pointer-events: none;}
   </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
-
   <!-- Loader Overlay -->
-  <div id="overlayLoader" class="overlay-loader">
-    <span class="spinner"></span>
-    <span class="ml-4 text-lg font-semibold text-indigo-700">Loading dashboard...</span>
+  <div id="loaderOverlay" class="loader-overlay">
+    <div>
+      <div class="loader-spinner mx-auto mb-5"></div>
+      <div class="text-center text-indigo-700 font-bold text-lg">Loading dashboard...</div>
+    </div>
   </div>
-
   <!-- Navbar -->
   <nav class="bg-white border-b border-gray-200 px-4 py-4 sticky top-0 z-40">
     <div class="max-w-7xl mx-auto flex justify-between items-center">
@@ -46,26 +60,24 @@
         <h1 class="text-2xl font-bold text-indigo-700">StudyPadi</h1>
         <span class="text-sm text-gray-600">Teacher Dashboard</span>
       </div>
-      <div id="profileArea" class="flex items-center space-x-4"></div>
+      <div class="flex items-center space-x-4" id="userInfo">
+        <span class="text-sm font-medium" id="userName"></span>
+        <img id="userPic" src="https://ui-avatars.com/api/?name=Teacher&background=6366f1&color=fff" class="w-10 h-10 rounded-full" alt="Teacher">
+      </div>
     </div>
   </nav>
-
   <div class="max-w-7xl mx-auto px-4 py-8">
     <div class="flex flex-col lg:flex-row justify-between items-start mb-8 gap-6">
       <div>
         <h2 class="text-3xl font-bold text-gray-900">Manage Lecture Notes</h2>
         <p class="text-gray-600 mt-1">Create, edit, and organize rich content for your students</p>
       </div>
-      <button id="uploadBtn"
-        data-modal-target="upload-modal" data-modal-toggle="upload-modal"
-        class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-xl shadow-lg transition flex items-center gap-2 relative">
-        <span id="uploadBtnIcon">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-        </span>
-        <span>Upload New Note</span>
+      <button id="uploadNoteBtn"
+        class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-xl shadow-lg transition flex items-center gap-2">
+        <span id="uploadBtnIcon"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg></span>
+        <span id="uploadBtnText">Upload New Note</span>
       </button>
     </div>
-
     <!-- Content Management Table -->
     <div class="bg-white rounded-2xl shadow-lg border overflow-hidden">
       <div class="overflow-x-auto">
@@ -78,19 +90,20 @@
               <th class="px-6 py-4 font-semibold text-gray-700 text-center">Actions</th>
             </tr>
           </thead>
-          <tbody id="notesTable" class="divide-y divide-gray-200"></tbody>
+          <tbody id="notesTable" class="divide-y divide-gray-200">
+            <!-- Populated from backend -->
+          </tbody>
         </table>
       </div>
     </div>
   </div>
-
   <!-- Upload / Edit Modal -->
   <div id="upload-modal" tabindex="-1" aria-hidden="true" class="hidden fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overflow-x-hidden">
     <div class="relative p-4 w-full max-w-5xl max-h-full">
       <div class="relative bg-white rounded-2xl shadow-2xl">
         <div class="flex items-center justify-between p-6 border-b">
           <h3 id="modalTitle" class="text-2xl font-bold text-gray-900">Upload New Lecture Note</h3>
-          <button type="button" class="text-gray-400 hover:text-gray-900" data-modal-hide="upload-modal" id="modalCloseBtn">
+          <button type="button" class="text-gray-400 hover:text-gray-900" id="closeModalBtn">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
           </button>
         </div>
@@ -100,7 +113,8 @@
             <div class="space-y-5">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">Note Title</label>
-                <input type="text" id="noteTitle" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="e.g., Introduction [...]">
+                <input type="text" id="noteTitle" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  placeholder="e.g., Introduction to Differential Equations">
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">Course Code</label>
@@ -111,13 +125,11 @@
                 <div id="editor" class="bg-white border border-gray-300 rounded-xl"></div>
               </div>
               <div class="flex gap-3">
-                <button id="saveBtn" onclick="saveNote()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2 relative">
-                  <span id="saveBtnSpinner" style="display:none;" class="spinner"></span>
+                <button id="saveNoteBtn" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2" type="button">
+                  <span id="saveBtnSpinner" style="display:none;" class="action-spinner"></span>
                   <span id="saveBtnText">Upload Note</span>
                 </button>
-                <button id="cancelBtn" type="button" data-modal-hide="upload-modal"
-                  class="px-6 py-3 border border-gray-300 rounded-xl font-medium hover:bg-gray-50 transition flex items-center gap-2">
-                  <span id="cancelBtnSpinner" style="display:none;" class="spinner"></span>
+                <button id="cancelModalBtn" class="px-6 py-3 border border-gray-300 rounded-xl font-medium hover:bg-gray-50 transition" type="button">
                   <span>Cancel</span>
                 </button>
               </div>
@@ -125,7 +137,7 @@
             <!-- Right: Live Preview -->
             <div>
               <h4 class="font-semibold text-lg text-gray-800 mb-4 flex items-center gap-2">
-                <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3[...]"/>
+                <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                 Live Preview
               </h4>
               <div id="preview" class="preview-content prose prose-lg max-w-none bg-gray-50 rounded-xl p-6 min-h-96 border overflow-x-auto">
@@ -137,116 +149,127 @@
       </div>
     </div>
   </div>
-
   <!-- Scripts -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.js"></script>
   <script>
-    // Backend url config
-    const BACKEND_URL = 'https://examguard-jmvj.onrender.com';
-
-    let currentUser = null;
-    let allowedRoles = ['admin', 'superadmin', 'tutor', 'uploader'];
+    // =========== GLOBALS & STATE ===========
+    const BACKEND_URL = "https://examguard-jmvj.onrender.com";
     let notes = [];
+    let user = null;
     let currentEditId = null;
+    let quill = null;
 
-    // Loader
-    function showOverlayLoader(show=true) {
-      document.getElementById('overlayLoader').classList.toggle('overlay-hide', !show);
-      document.getElementById('overlayLoader').style.display = show ? 'flex' : 'none';
-    }
-    showOverlayLoader(true);
-
-    // Helper to show spinner on action button
-    function showSpinner(btnId, spinnerId, show=true) {
-      document.getElementById(btnId).disabled = show;
-      document.getElementById(spinnerId).style.display = show ? 'inline-block' : 'none';
-    }
-
-    // Quill Editor setup
-    const quill = new Quill('#editor', {
-      theme: 'snow',
-      modules: {
-        toolbar: [
-          [{ header: [1, 2, 3, false] }],
-          ['bold', 'italic', 'underline', 'strike'],
-          ['image', 'link'],
-          [{ list: 'ordered' }, { list: 'bullet' }],
-          ['clean'],
-          ['formula']
-        ]
-      },
-      placeholder: 'Write your lecture notes here... Use $x^2$ or $$E=mc^2$$ for math...'
-    });
-
-    // Live Preview with KaTeX rendering
-    quill.on('text-change', function() {
-      const content = quill.root.innerHTML;
-      document.getElementById('preview').innerHTML = content;
-      renderMathInElement(document.getElementById('preview'), {
-        delimiters: [
-          {left: '$$', right: '$$', display: true},
-          {left: '$', right: '$', display: false},
-          {left: '\\(', right: '\\)', display: false},
-          {left: '\\[', right: '\\]', display: true}
-        ],
-        throwOnError: false
-      });
-    });
-
-    async function checkLoginAndPermissions() {
-      try {
-        let res = await fetch(BACKEND_URL+'/api/auth/me', { credentials: 'include' });
-        if (res.status !== 200) return forceLogout();
-        let data = await res.json();
-        let user = data.user || {};
-        currentUser = user;
-        if (!allowedRoles.includes(user.role)) return forceLogout();
-        // Show profile
-        let profile = `
-          <span class="text-sm font-medium">${user.fullname || user.username || 'Tutor'}</span>
-          <img src="${user.profilePic?.startsWith('http') ? user.profilePic : (user.profilePic ? user.profilePic : "https://ui-avatars.com/api/?name=Tutor&background=6366f1&color=fff")}" class="w-10 h-10 rounded-full" alt="Teacher">
-        `;
-        document.getElementById('profileArea').innerHTML = profile;
-      } catch(e) { forceLogout(); }
-    }
-    function forceLogout() {
-      window.location.href = '/logout';
-    }
-
-    // CRUD ACTIONS with backend
-    async function fetchNotes() {
-      showOverlayLoader(true);
-      showSpinner('uploadBtn', 'uploadBtnIcon', true);
-      try {
-        let res = await fetch(BACKEND_URL+'/api/lecturenotes', { credentials: 'include' });
-        if (!res.ok) throw new Error("Could not fetch notes");
-        notes = await res.json();
-        refreshTable();
-      } catch (e) {
-        alert("Failed to load notes. Please refresh.");
+    // =========== AUTH & USER PROFILE ===========
+    async function fetchUserInfo() {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        logout();
+        return;
       }
-      showSpinner('uploadBtn', 'uploadBtnIcon', false);
-      setTimeout(()=>showOverlayLoader(false), 700);
+      try {
+        const resp = await fetch(BACKEND_URL + "/api/auth/me", {
+          headers: { "Authorization": "Bearer " + token },
+        });
+        if (!resp.ok) throw new Error("Authentication failed");
+        const data = await resp.json();
+        user = data.user;
+        // Show user info in navbar
+        document.getElementById("userName").textContent = user.fullname || user.username || "Tutor";
+        document.getElementById("userPic").src = user.profilePic ? user.profilePic : "https://ui-avatars.com/api/?name=" + encodeURIComponent(user.fullname||user.username||"Teacher") + "&background=6366f1&color=fff";
+        // Check allowed roles
+        const allowedRoles = ["admin","tutor","superadmin","uploader"];
+        if (!allowedRoles.includes(user.role)) logout();
+      } catch(e) {
+        logout();
+      }
+    }
+
+    function logout() {
+      localStorage.removeItem("token");
+      window.location.href = "/";
+    }
+
+    // =========== INITIALIZATION ===========
+    document.addEventListener("DOMContentLoaded", async function() {
+      // Loader overlay: show until both user & notes loaded
+      document.getElementById("loaderOverlay").style.display = "flex";
+      await fetchUserInfo();
+      initQuill();
+      await loadNotes();
+      document.getElementById("loaderOverlay").style.display = "none";
+
+      // Modal open
+      document.getElementById("uploadNoteBtn").onclick = () => openUploadModal();
+      document.getElementById("closeModalBtn").onclick = () => closeModal();
+      document.getElementById("cancelModalBtn").onclick = () => closeModal();
+      document.getElementById("saveNoteBtn").onclick = () => saveNote();
+    });
+
+    // =========== QUILL EDITOR ===========
+    function initQuill() {
+      if (quill) return; // prevent re-init
+      quill = new Quill('#editor', {
+        theme: 'snow',
+        modules: {
+          toolbar: [
+            [{ header: [1, 2, 3, false] }],
+            ['bold', 'italic', 'underline', 'strike', 'blockquote'],
+            [{ list: 'ordered' }, { list: 'bullet' }],
+            ['link', 'image', 'video'],
+            ['clean'],
+            ['formula'] // KaTeX button
+          ]
+        },
+        placeholder: 'Write your lecture notes here... Use $x^2$ or $$E=mc^2$$ for math...'
+      });
+      // Live preview on change
+      quill.on('text-change', function() {
+        const content = quill.root.innerHTML;
+        document.getElementById('preview').innerHTML = content;
+        renderMathInElement(document.getElementById('preview'), {
+          delimiters: [
+            {left: '$$', right: '$$', display: true},
+            {left: '$', right: '$', display: false},
+            {left: '\\(', right: '\\)', display: false},
+            {left: '\\[', right: '\\]', display: true}
+          ],
+          throwOnError: false
+        });
+      });
+    }
+
+    // =========== NOTES CRUD ===========
+    async function loadNotes() {
+      const token = localStorage.getItem("token");
+      document.getElementById("notesTable").innerHTML = `<tr><td colspan="4" class="text-center py-10 text-indigo-300 font-semibold">Loading notes...</td></tr>`;
+      try {
+        const resp = await fetch(BACKEND_URL + "/api/lecturenotes", {
+          headers: { "Authorization": "Bearer " + token }
+        });
+        if (!resp.ok) throw new Error("Failed to fetch notes");
+        notes = await resp.json();
+        refreshTable();
+      } catch(e) {
+        document.getElementById("notesTable").innerHTML = `<tr><td colspan="4" class="text-center py-10 text-red-400 font-semibold">Failed to load notes</td></tr>`;
+      }
     }
 
     function refreshTable() {
       const tbody = document.getElementById('notesTable');
-      if (!notes.length) {
-        tbody.innerHTML = `<tr><td colspan="4" class="px-6 py-6 text-center text-gray-400 italic">No notes found.</td></tr>`;
+      if (!notes || notes.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" class="text-center py-10 text-indigo-300 font-semibold">No notes uploaded yet. Click "Upload New Note" to get started.</td></tr>`;
         return;
       }
       tbody.innerHTML = notes.map(note => `
         <tr class="hover:bg-gray-50 transition">
           <td class="px-6 py-5 font-medium">${note.title}</td>
           <td class="px-6 py-5 text-gray-600">${note.course}</td>
-          <td class="px-6 py-5 text-gray-600">${formatDate(note.updatedAt)}</td>
-          <td class="px-6 py-5 text-center flex gap-2 justify-center items-center">
-            <button onclick="openEditModal('${note._id}')" class="text-blue-600 hover:text-blue-800 mr-3 flex items-center gap-1 relative">
-              <span id="edit_${note._id}_spinner" style="display:none;" class="spinner"></span>
+          <td class="px-6 py-5 text-gray-600">${new Date(note.updatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+          <td class="px-6 py-5 text-center">
+            <button onclick="openEditModal('${note._id}')" class="text-blue-600 hover:text-blue-800 mr-4 min-w-[60px]">
               Edit
             </button>
-            <button onclick="deleteNote('${note._id}')" class="text-red-600 hover:text-red-800 flex items-center gap-1 relative">
-              <span id="del_${note._id}_spinner" style="display:none;" class="spinner"></span>
+            <button onclick="deleteNote('${note._id}')" class="text-red-600 hover:text-red-800 min-w-[60px]" id="deleteBtn_${note._id}">
               Delete
             </button>
           </td>
@@ -254,65 +277,109 @@
       `).join('');
     }
 
-    function formatDate(iso) {
-      if(!iso) return '';
-      let d = new Date(iso);
-      return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    function openUploadModal() {
+      currentEditId = null;
+      document.getElementById('modalTitle').textContent = "Upload New Lecture Note";
+      document.getElementById('saveBtnText').textContent = "Upload Note";
+      document.getElementById('noteTitle').value = "";
+      document.getElementById('courseCode').value = "";
+      quill.setContents([]);
+      document.getElementById('preview').innerHTML = `<p class="text-gray-500 italic">Start typing to see live preview...</p>`;
+      document.getElementById('upload-modal').classList.remove("hidden");
     }
 
-    window.openEditModal = async function(id) {
-      currentEditId = id;
-      let note = notes.find(n => n._id === id);
-      if (!note) return alert("Note not found");
+    async function openEditModal(noteId) {
+      const note = notes.find(n => n._id === noteId);
+      if (!note) return;
+      currentEditId = noteId;
       document.getElementById('modalTitle').textContent = "Edit Lecture Note";
       document.getElementById('saveBtnText').textContent = "Update Note";
       document.getElementById('noteTitle').value = note.title;
       document.getElementById('courseCode').value = note.course;
       quill.root.innerHTML = note.content;
-      quill.trigger('text-change');
-      document.getElementById('uploadBtn').click();
+      quill.emit('text-change');
+      document.getElementById('upload-modal').classList.remove("hidden");
     }
 
-    window.deleteNote = async function(id) {
-      if (!confirm("Delete this note permanently?")) return;
-      showSpinner('del_'+id, 'del_'+id+'_spinner', true);
-      try {
-        let res = await fetch(BACKEND_URL+'/api/lecturenotes/'+id, {
-          method: 'DELETE',
-          credentials: 'include'
-        });
-        if (!res.ok) throw new Error("Delete failed");
-        notes = notes.filter(n => n._id !== id);
-        refreshTable();
-      } catch(e) { alert("Failed to delete note."); }
-      showSpinner('del_'+id, 'del_'+id+'_spinner', false);
+    function closeModal() {
+      document.getElementById('upload-modal').classList.add("hidden");
+      resetForm();
     }
 
-    window.saveNote = async function() {
+    async function saveNote() {
+      const btn = document.getElementById("saveNoteBtn");
+      const spinner = document.getElementById("saveBtnSpinner");
+      btn.classList.add("disabled");
+      spinner.style.display = "";
+      document.getElementById("saveBtnText").textContent = currentEditId ? "Updating..." : "Uploading...";
       const title = document.getElementById('noteTitle').value.trim();
       const course = document.getElementById('courseCode').value.trim();
       const content = quill.root.innerHTML;
-
-      if (!title || !course) return alert("Please fill in title and course code");
-      showSpinner('saveBtn','saveBtnSpinner',true);
-      let url = BACKEND_URL+'/api/lecturenotes'+(currentEditId ? '/'+currentEditId : '');
-      let method = currentEditId ? 'PUT' : 'POST';
+      if (!title || !course) {
+        alert("Please fill in title and course code");
+        spinner.style.display = "none";
+        btn.classList.remove("disabled");
+        document.getElementById("saveBtnText").textContent = currentEditId ? "Update Note" : "Upload Note";
+        return;
+      }
+      const token = localStorage.getItem("token");
       try {
-        let res = await fetch(url, {
-          method,
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title, course, content })
+        let resp, updatedNote;
+        if (currentEditId) {
+          resp = await fetch(BACKEND_URL + "/api/lecturenotes/" + currentEditId, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": "Bearer " + token
+            },
+            body: JSON.stringify({ title, course, content })
+          });
+          updatedNote = await resp.json();
+        } else {
+          resp = await fetch(BACKEND_URL + "/api/lecturenotes", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": "Bearer " + token
+            },
+            body: JSON.stringify({ title, course, content })
+          });
+          updatedNote = await resp.json();
+        }
+        if (!resp.ok || updatedNote.error) throw new Error(updatedNote.error || "Error saving note");
+        closeModal();
+        await loadNotes();
+      } catch (e) {
+        alert("Error: " + (e.message || "Could not save note."));
+      }
+      spinner.style.display = "none";
+      btn.classList.remove("disabled");
+      document.getElementById("saveBtnText").textContent = currentEditId ? "Update Note" : "Upload Note";
+    }
+
+    async function deleteNote(noteId) {
+      const btn = document.getElementById("deleteBtn_" + noteId);
+      const originalTxt = btn.textContent;
+      btn.classList.add("disabled");
+      btn.innerHTML = `<span class="action-spinner"></span>Deleting...`;
+      const token = localStorage.getItem("token");
+      try {
+        const resp = await fetch(BACKEND_URL + "/api/lecturenotes/" + noteId, {
+          method: "DELETE",
+          headers: { "Authorization": "Bearer " + token }
         });
-        if (!res.ok) throw new Error("Save failed");
-        let newNote = await res.json();
-        if (currentEditId) notes = notes.map(n => n._id === currentEditId ? newNote : n);
-        else notes.push(newNote);
-        refreshTable();
-        document.getElementById('modalCloseBtn').click();
-        resetForm();
-      } catch(e) { alert("Failed to save note."); }
-      showSpinner('saveBtn','saveBtnSpinner',false);
+        if (!resp.ok) {
+          btn.innerHTML = originalTxt;
+          btn.classList.remove("disabled");
+          alert("Failed to delete note");
+          return;
+        }
+        await loadNotes();
+      } catch (e) {
+        alert("Error deleting note.");
+      }
+      btn.innerHTML = originalTxt;
+      btn.classList.remove("disabled");
     }
 
     function resetForm() {
@@ -321,22 +388,8 @@
       document.getElementById('saveBtnText').textContent = "Upload Note";
       document.getElementById('noteTitle').value = "";
       document.getElementById('courseCode').value = "";
-      quill.setContents([]);
-    }
-
-    document.getElementById('uploadBtn').addEventListener('click', function() { resetForm(); });
-    document.getElementById('cancelBtn').addEventListener('click', function() {
-      showSpinner('cancelBtn','cancelBtnSpinner',true);
-      setTimeout(()=>{ 
-        document.getElementById('modalCloseBtn').click();
-        showSpinner('cancelBtn','cancelBtnSpinner',false);
-      }, 350);
-    });
-
-    // Initial fetch sequence
-    window.onload = async function() {
-      await checkLoginAndPermissions();
-      await fetchNotes();
+      if (quill) quill.setContents([]);
+      document.getElementById('preview').innerHTML = `<p class="text-gray-500 italic">Start typing to see live preview...</p>`;
     }
   </script>
 </body>
