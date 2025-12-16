@@ -81,7 +81,7 @@
     <nav class="fixed w-full z-30 top-0 left-0 glass shadow-sm border-b border-blue-900/25 bg-white/90 backdrop-blur">
         <div class="max-w-3xl mx-auto px-4 flex justify-between items-center h-16">
             <a class="flex items-center gap-2 font-bold text-xl text-yellow-600" href="index.html">
-                <img src="../logo.png" class="h-8" alt="logo">
+                <img src="logo.png" class="h-8" alt="logo">
                 <span class="text-blue-900">OAU</span> <span class="text-yellow-600">ExamGuard</span>
             </a>
             <span class="text-xs text-blue-900 hidden sm:inline">OAU Mock Test Portal</span>
@@ -317,6 +317,7 @@
         }
     })();
 
+    // --- IMPORTANT EDIT: Use the new login API endpoint from mock.js ----
     loginForm.addEventListener('submit', async function(e) {
         e.preventDefault();
         loginErrMsg.classList.add("hidden");
@@ -329,18 +330,31 @@
             setBtnSpinner(loginBtn, false);
             return;
         }
+        // NEW API ENDPOINT: /api/auth/login
         try {
-            const response = await fetch(API_BASE + "/api/student/login", {
+            const response = await fetch(API_BASE + "/api/auth/login", {
                 method: "POST",
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ emailOrPhone: regnumber, password })
+                body: JSON.stringify({ username: regnumber, password })
             });
             const data = await response.json();
             if (response.ok && data.token) {
-                setToken(data.token);
-                currentUser = data.user;
-                setBtnSpinner(loginBtn, false);
-                showAccess(data.user);
+                localStorage.setItem('token', data.token);
+                // Fetch profile to get latest user info
+                let meResp = await fetch(API_BASE + "/api/auth/me", {
+                    headers: { 'Authorization': 'Bearer ' + data.token }
+                });
+                let meData = await meResp.json();
+                if (meResp.ok && meData.user) {
+                    setToken(data.token); // still set this for student session
+                    currentUser = meData.user;
+                    setBtnSpinner(loginBtn, false);
+                    showAccess(meData.user);
+                } else {
+                    loginErrMsg.textContent = "Login succeeded, but user profile not found.";
+                    loginErrMsg.classList.remove("hidden");
+                    setBtnSpinner(loginBtn, false);
+                }
             } else {
                 loginErrMsg.textContent = data.message || "Invalid credentials.";
                 loginErrMsg.classList.remove("hidden");
