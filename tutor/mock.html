@@ -98,16 +98,16 @@
                     OAU Mock Exam Access
                 </h1>
                 <p class="text-sm font-semibold" id="intro-desc">
-                    Log in and enter your course/access code to start your test.
+                    Log in with your username, email, or student ID. Enter your course/access code to start your test.
                 </p>
             </div>
             <!-- Login form -->
             <form id="login-form" autocomplete="off" class="space-y-7 hidden">
                 <div>
-                    <label for="regNumber" class="block text-sm font-semibold text-gray-700 mb-1">Student Email/Matric Number</label>
+                    <label for="regNumber" class="block text-sm font-semibold text-gray-700 mb-1">Username, Email, or Student ID</label>
                     <input type="text" id="regNumber" name="regNumber"
                         class="input-focus block w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none transition"
-                        placeholder="e.g. ENG/2022/1234 or email" required />
+                        placeholder="e.g. ENG/2022/1234 or user@email.com" required />
                 </div>
                 <div>
                     <label for="password" class="block text-sm font-semibold text-gray-700 mb-1">Password</label>
@@ -167,7 +167,6 @@
     <script>
     // ==== CONFIG ====
     const API_BASE = "https://examguide.onrender.com";
-    // ==== UTILITIES ====
     function setToken(token) { localStorage.setItem("student_jwt_token", token); }
     function getToken() { return localStorage.getItem("student_jwt_token"); }
     function clearToken() { localStorage.removeItem("student_jwt_token"); }
@@ -181,10 +180,11 @@
             if (btn._realText) btn.querySelector('span').textContent = btn._realText;
         }
     }
+
     // ==== Modal Utility ====
     function showModal(options) {
-        let studentName = currentUser?.fullName || "";
-        let studentEmail = currentUser?.email || currentUser?.matricNo || "";
+        let studentName = currentUser?.fullName || currentUser?.fullname || currentUser?.name || currentUser?.username || "";
+        let studentEmail = currentUser?.email || currentUser?.matricNo || currentUser?.matricNumber || currentUser?.studentId || currentUser?.username || "";
         let studentMsg = "";
         if (options.type === "credit") {
             let details = `Hello, I want to purchase ExamGuard credits.\n\nName: ${studentName}\nEmail/Matric: ${studentEmail}`;
@@ -231,6 +231,7 @@
         `;
         document.getElementById("close-modal-btn").onclick = () => { root.innerHTML = ""; };
     }
+
     // ==== DOM Shortcuts ====
     const loginForm = document.getElementById('login-form');
     const accessForm = document.getElementById('access-form');
@@ -267,11 +268,12 @@
 
     async function fetchProfile(token) {
         try {
-            const res = await fetch(API_BASE + "/api/student/me", {
+            const res = await fetch(API_BASE + "/api/auth/me", {
                 headers: { Authorization: "Bearer " + token }
             });
             if (!res.ok) throw new Error("Not authenticated");
-            return await res.json();
+            const data = await res.json();
+            return data.user;
         } catch (err) {
             return null;
         }
@@ -280,36 +282,41 @@
         loginForm.classList.remove("hidden");
         accessForm.classList.add("hidden");
         loginSection.innerHTML = '';
-        introDesc.textContent = "Log in and enter your course/access code to start your test.";
+        introDesc.textContent = "Log in with your username, email, or student ID. Enter your course/access code to start your test.";
     }
     function showAccess(user) {
-        loginForm.classList.add("hidden");
-        accessForm.classList.remove("hidden");
-        showRegNumber.value = user.fullName + " (" + (user.email || user.matricNo || "") + ")";
-        showRegNumber.dataset.regnum = user.email || user.matricNo || "";
+        // Use fallback order to avoid "undefined"
+        const displayName = user.fullName || user.fullname || user.name || user.username || user.email || user.studentId || "";
+        const displayMatric = user.matricNo || user.matricNumber || user.studentId || user.username || user.email || "";
+        showRegNumber.value = displayName + " (" + displayMatric + ")";
+        showRegNumber.dataset.regnum = displayMatric;
+
         loginSection.innerHTML = `
-            <div><i class="fas fa-user-check text-green-600"></i> Logged in as <b>${user.fullName}</b></div>
-            <div class="text-gray-500">Credits: <b id="login-credit-show">${user.creditPoints != null ? user.creditPoints : "--"}</b></div>
+            <div><i class="fas fa-user-check text-green-600"></i> Logged in as <b>${displayName}</b></div>
+            <div class="text-gray-500">Credits: <b id="login-credit-show">${user.creditPoints != null ? user.creditPoints : user.credits != null ? user.credits : "--"}</b></div>
             <button onclick="logoutUser()" class="text-xs text-blue-600 underline hover:text-blue-900 mt-2">Not you? Log out</button>
         `;
         introDesc.textContent = "Enter your course/access code to proceed";
-        studentCreditElem.innerText = user.creditPoints != null ? user.creditPoints : "--";
+        studentCreditElem.innerText = user.creditPoints != null ? user.creditPoints : (user.credits != null ? user.credits : "--");
     }
     function logoutUser() {
         clearToken();
+        localStorage.removeItem('token');
         location.reload();
     }
     window.logoutUser = logoutUser;
 
     (async function checkAuthOnLoad() {
-        const token = getToken();
+        const token = getToken() || localStorage.getItem("token");
         if (token) {
             const user = await fetchProfile(token);
-            if (user && user._id) {
+            if (user && (user._id || user.id)) {
+                setToken(token); // (sync tokens for exam code endpoint)
                 currentUser = user;
                 showAccess(user);
             } else {
                 clearToken();
+                localStorage.removeItem('token');
                 showLogin();
             }
         } else {
@@ -317,41 +324,38 @@
         }
     })();
 
-    // --- IMPORTANT EDIT: Use the new login API endpoint from mock.js ----
+    // This login allows username, email, or studentId as login handle!
     loginForm.addEventListener('submit', async function(e) {
         e.preventDefault();
         loginErrMsg.classList.add("hidden");
         setBtnSpinner(loginBtn, true, "Logging in...");
-        const regnumber = regNumInput.value.trim();
+        const handle = regNumInput.value.trim();
         const password = passwordInput.value;
-        if (!regnumber || !password) {
+        if (!handle || !password) {
             loginErrMsg.textContent = "All fields are required.";
             loginErrMsg.classList.remove("hidden");
             setBtnSpinner(loginBtn, false);
             return;
         }
-        // NEW API ENDPOINT: /api/auth/login
+        // Unified login: backend tries username, email, or studentId
         try {
             const response = await fetch(API_BASE + "/api/auth/login", {
                 method: "POST",
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: regnumber, password })
+                body: JSON.stringify({ username: handle, password })
             });
             const data = await response.json();
             if (response.ok && data.token) {
                 localStorage.setItem('token', data.token);
-                // Fetch profile to get latest user info
-                let meResp = await fetch(API_BASE + "/api/auth/me", {
-                    headers: { 'Authorization': 'Bearer ' + data.token }
-                });
-                let meData = await meResp.json();
-                if (meResp.ok && meData.user) {
-                    setToken(data.token); // still set this for student session
-                    currentUser = meData.user;
+                setToken(data.token); // For old key as well, for any endpoint checks
+                // Now fetch user profile
+                let user = await fetchProfile(data.token);
+                if (user && (user._id || user.id)) {
+                    currentUser = user;
                     setBtnSpinner(loginBtn, false);
-                    showAccess(meData.user);
+                    showAccess(user);
                 } else {
-                    loginErrMsg.textContent = "Login succeeded, but user profile not found.";
+                    loginErrMsg.textContent = "Login succeeded, but user profile could not be loaded.";
                     loginErrMsg.classList.remove("hidden");
                     setBtnSpinner(loginBtn, false);
                 }
@@ -376,6 +380,7 @@
             errorElem.textContent = "User session expired. Please log in again.";
             errorElem.classList.remove("hidden");
             clearToken();
+            localStorage.removeItem('token');
             setTimeout(() => location.reload(), 1400);
             setBtnSpinner(accessBtn, false);
             return;
@@ -397,12 +402,11 @@
         }
 
         try {
-            // Use protected endpoint that deducts credit and checks access
             const response = await fetch(`${API_BASE}/api/student/exam-set/use-credit`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    Authorization: "Bearer " + getToken()
+                    Authorization: "Bearer " + (getToken() || localStorage.getItem('token'))
                 },
                 body: JSON.stringify({ accessCode })
             });
