@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>D-RICH CBT | Recharge Credit (Admin Email/Username)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <style>
+    .glass-panel { background:rgba(255,255,255,0.93); border-radius:1.7rem; box-shadow:0 4px 32px 0 rgba(31,38,135,0.13);}
+    .input-focus:focus { border-color: #2563eb; box-shadow: 0 0 0 1.5px #2563eb; }
+    .spinner {display:inline-block;width:1.2em;height:1.2em;border:3px solid #fff;border-radius:50%;border-top:3px solid #2563eb;animation:spin 0.8s linear infinite;vertical-align:-0.15em;}
+    @keyframes spin {to{transform:rotate(360deg);}}
+    .fade-in { animation: fadeIn 0.7s ease; }
+    @keyframes fadeIn { from{ opacity:0; transform: translateY(2rem);} to{ opacity:1; transform: none;}}
+    .modal-bg {
+      position: fixed; z-index: 40; inset: 0; background: rgba(30,41,59,0.35);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .modal-panel {
+      background: #fff; border-radius: 1.5em; box-shadow:0 3px 20px #33415515;
+      padding: 2.2rem 1.5rem 1.9rem 1.5rem; max-width: 90vw; min-width: 300px; text-align: center;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+  <main class="w-full max-w-md mx-auto glass-panel p-7 sm:p-11 shadow-2xl fade-in relative">
+    <div class="mb-6 text-center">
+      <i class="fa fa-credit-card text-blue-700 text-4xl mb-2"></i>
+      <h1 class="text-2xl sm:text-3xl font-extrabold text-blue-900 mb-1">Recharge Credit</h1>
+      <p class="text-sm text-blue-500">Assign credit points directly to a student by their email or username and recharge card code</p>
+    </div>
+    <form id="recharge-form" class="flex flex-col gap-6">
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-2" for="identifier">Student Email or Username</label>
+        <input type="text" id="identifier"
+          class="input-focus w-full px-5 py-3 rounded-xl border border-gray-300 text-base shadow-sm"
+          placeholder="student@email.com OR username" required />
+      </div>
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-2" for="cardCode">Recharge Card Code <span class="text-xs text-gray-400 font-normal">(12 characters)</span></label>
+        <input type="text" id="cardCode" maxlength="12" minlength="12"
+          class="input-focus w-full px-5 py-3 rounded-xl border border-gray-300 text-base shadow-sm font-mono tracking-wide uppercase"
+          placeholder="E.g. 8FE28HT2NWB4" pattern="[A-Za-z0-9]{12}" required />
+      </div>
+      <button type="submit" id="recharge-btn"
+        class="w-full py-3 px-6 rounded-xl bg-blue-700 text-white font-bold text-lg shadow-lg hover:bg-blue-800 transition flex items-center gap-2 justify-center">
+        <i class="fas fa-bolt"></i> <span>Assign Credit</span>
+      </button>
+      <div id="form-message" class="text-center mt-1 text-base font-semibold"></div>
+    </form>
+    <div class="text-xs text-center text-gray-500 mt-7">
+      This recharge form will assign points to a student by email or username.<br>
+      Only credit cards issued by admin can be used.
+    </div>
+  </main>
+  <!-- Modal -->
+  <div id="modal-root" style="display:none;"></div>
+  <script>
+    const API_BASE = "https://examguide.onrender.com";
+    const rechargeForm = document.getElementById('recharge-form');
+    const identifierInput = document.getElementById('identifier');
+    const codeInput = document.getElementById('cardCode');
+    const rechargeBtn = document.getElementById('recharge-btn');
+    const formMsg = document.getElementById('form-message');
+    const modalRoot = document.getElementById('modal-root');
+
+    function showModal({title, identifier, code, onConfirm, onCancel}) {
+      modalRoot.style.display = "flex";
+      modalRoot.innerHTML = `
+        <div class="modal-bg">
+          <div class="modal-panel animate-fadeIn">
+            <i class="fa fa-question-circle text-yellow-500 text-5xl mb-2 animate-bounce"></i>
+            <div class="text-lg font-bold text-blue-900 mb-2">${title || "Confirm Recharge"}</div>
+            <div class="mb-2 text-gray-700 text-base">
+              Please carefully confirm the details before proceeding.<br>
+              <div class="mt-3 flex flex-col gap-2 items-center justify-center mx-auto">
+                <div class="text-sm text-gray-500 flex flex-col gap-1 w-full max-w-xs">
+                  <span class="font-bold text-gray-700">Email/Username:</span>
+                  <span class="font-mono text-indigo-700 text-base tracking-wide">${identifier}</span>
+                </div>
+                <div class="text-sm text-gray-500 flex flex-col gap-1 w-full max-w-xs">
+                  <span class="font-bold text-gray-700">Recharge Card Code:</span>
+                  <span class="font-mono text-blue-600 text-base tracking-widest">${code}</span>
+                </div>
+              </div>
+              <hr class="my-3">
+              <span class="text-sm text-red-500 font-semibold">Ensure this email/username is correct; credits cannot be reversed if sent to the wrong student!</span>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-2 mt-7 justify-center">
+              <button id="modal-confirm-btn" class="py-2 px-6 bg-blue-700 hover:bg-blue-900 text-white font-bold rounded-xl flex-1 transition shadow-sm">
+                <i class="fa fa-check-circle mr-1"></i> Confirm & Assign
+              </button>
+              <button id="modal-cancel-btn" class="py-2 px-6 bg-gray-200 text-gray-700 font-bold rounded-xl flex-1 hover:bg-gray-300 transition shadow-sm">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.getElementById('modal-confirm-btn').onclick = function() {
+        hideModal();
+        onConfirm && onConfirm();
+      };
+      document.getElementById('modal-cancel-btn').onclick = function() {
+        hideModal();
+        onCancel && onCancel();
+      };
+    }
+    function hideModal() {
+      modalRoot.innerHTML = "";
+      modalRoot.style.display = "none";
+    }
+
+    rechargeForm.onsubmit = function(e){
+      e.preventDefault();
+      formMsg.textContent = "";
+      formMsg.className = "text-center mt-2 mb-2";
+      const identifier = identifierInput.value.trim();
+      const code = codeInput.value.trim().toUpperCase();
+      // Validate first
+      if (!identifier || !code) {
+        formMsg.textContent = "Fill both fields.";
+        formMsg.className = "text-red-600 text-center font-bold mt-2 mb-2";
+        return;
+      }
+      if (code.length !== 12 || !/^[A-Z0-9]{12}$/.test(code)) {
+        formMsg.textContent = "Code must be 12 alphanumeric characters.";
+        formMsg.className = "text-red-600 text-center font-bold mt-2 mb-2";
+        return;
+      }
+      showModal({
+        title: "Confirm Recharge",
+        identifier,
+        code,
+        onConfirm: async function() {
+          formMsg.textContent = "";
+          rechargeBtn.disabled = true;
+          rechargeBtn.querySelector('span').innerHTML = `<span class="spinner"></span> Processing...`;
+          try {
+            const res = await fetch(`${API_BASE}/api/credit/admin-redeem`, {
+              method: "POST",
+              headers: {"Content-Type":"application/json"},
+              body: JSON.stringify({ identifier, code })
+            });
+            const data = await res.json();
+            rechargeBtn.disabled = false;
+            rechargeBtn.querySelector('span').textContent = "Assign Credit";
+            if (res.ok && data.success) {
+              formMsg.textContent = `Success! ${data.points} points added to ${identifier}.`;
+              formMsg.className = "text-green-700 text-center font-bold mt-2 mb-2";
+              identifierInput.value = ""; codeInput.value = "";
+            } else {
+              formMsg.textContent = data.message || "Operation failed.";
+              formMsg.className = "text-red-600 text-center font-bold mt-2 mb-2";
+            }
+          } catch (e) {
+            formMsg.textContent = "Network/server error. Try again.";
+            formMsg.className = "text-red-600 text-center font-bold mt-2 mb-2";
+            rechargeBtn.disabled = false;
+            rechargeBtn.querySelector('span').textContent = "Assign Credit";
+          }
+        },
+        onCancel: function() {
+          // No action, simply hides modal
+        }
+      });
+    };
+  </script>
+</body>
+    </html>
