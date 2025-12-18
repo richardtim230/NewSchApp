@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=0.8">
+  <title>D-Rich CBT | Exam Report</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <style>
+    .answer-pill { display:inline-block; border-radius:9999px; padding:0.25em 0.8em; font-weight:700;}
+    .answer-user    { background: #dbeafe; color: #1e3a8a;}
+    .answer-correct { background: #bbf7d0; color: #166534;}
+    .answer-wrong   { background: #fee2e2; color: #991b1b;}
+    .explanation { background: #f9fafb; border-left: 4px solid #38bdf8; padding: 1em 1.3em; border-radius:0.5em; font-size: 1.02rem;}
+    .qcard { background: #fff; border-radius: 1.2em; box-shadow: 0 3px 18px #039be514; margin-bottom: 2.5rem; padding: 2rem 1.5rem;}
+    .qcard.correct { border: 2px solid #16a34a; }
+    .qcard.incorrect { border: 2px solid #dc2626; }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen py-10 px-2">
+  <div class="max-w-3xl mx-auto bg-white rounded-3xl shadow-xl p-8" id="report-main">
+    <div class="flex flex-col sm:flex-row items-center sm:justify-between">
+      <div>
+        <h1 class="text-3xl font-black text-blue-800 flex items-center mb-1">
+          <i class="fa fa-award text-yellow-400 mr-2"></i> Exam Report
+        </h1>
+        <div class="text-base text-blue-600 font-semibold mb-3" id="subject"></div>
+      </div>
+      <button onclick="location.href='cbt.html'" class="py-1 px-4 rounded text-xs bg-blue-200 text-blue-800 font-bold hover:bg-blue-300 mb-2 sm:mb-0">Retake Exam</button>
+    </div>
+    <div class="border-b border-gray-200 mb-6 pb-4">
+      <span class="mr-6 font-bold"><i class="fa fa-user text-blue-700 mr-1"></i> <span id="name"></span></span>
+      <span class="mr-6 font-bold"><i class="fa fa-id-card mr-1"></i> <span id="regnum"></span></span>
+      <span class="font-bold"><i class="fa fa-clock mr-1"></i> <span id="time"></span></span>
+    </div>
+    <div class="text-xl font-semibold mb-1 text-gray-700" id="score-area"></div>
+    <div class="text-gray-500 mb-8" id="score-feedback"></div>
+    <div id="results-list"></div>
+  </div>
+  <script>
+    // 1. Load previous answers and exam info
+    let examInfo, answers;
+    try {
+      examInfo = JSON.parse(sessionStorage.getItem('cbt_exam_info') || '{}');
+      answers = JSON.parse(sessionStorage.getItem('cbt_user_answers') || '{}');
+    } catch { examInfo = {}; answers = {}; }
+
+    // 2. Get full question list again (for answer/marking purposes, required to show correct/wrong/explanations)
+    async function fetchQuestions() {
+      const accessCode = localStorage.getItem("exam_access_code");
+      if (!accessCode) return { questions: [], subject: "" };
+      try {
+        const res = await fetch("https://examguide.onrender.com/api/exam-set/by-access?accessCode="+encodeURIComponent(accessCode));
+        if(!res.ok) return {questions:[],subject:""};
+        const js = await res.json();
+        return { questions: js.questions||[], subject: js.examSet?.subject||"" };
+      } catch {
+        return { questions: [], subject: "" };
+      }
+    }
+
+    function getTimeString(iso) {
+      if (!iso) return "";
+      const d = new Date(iso);
+      return d.toLocaleString(undefined, {dateStyle:"medium", timeStyle:"short"});
+    }
+
+    function answerFeedbackMark(userAns, correctAns) {
+      if (!userAns) return '<span class="answer-pill answer-user text-gray-600" title="No answer">N/A</span>';
+      if (userAns === correctAns) return `<span class="answer-pill answer-correct">Correct</span>`;
+      return `<span class="answer-pill answer-wrong">Wrong</span>`;
+    }
+
+    function getScoreTally(results) {
+      let correct = 0;
+      results.forEach(r => { if (r.isCorrect) correct++; });
+      return [correct, results.length];
+    }
+
+    function feedbackRemark(pct) {
+      if(pct === 100) return "Excellent! You aced it!";
+      if(pct>=80) return "Great work! Almost perfect.";
+      if(pct>=60) return "Good. Room for more study.";
+      if(pct>=40) return "Keep practicing and revisit the topic.";
+      return "Don't give up! Review the material and try again.";
+    }
+
+    async function main() {
+      // 1. Info
+      document.getElementById('name').textContent = examInfo.student || "No info";
+      document.getElementById('regnum').textContent = examInfo.regnum || "";
+      document.getElementById('time').textContent = getTimeString(examInfo.timeCompleted);
+
+      // 2. Get full questions from server
+      const {questions,subject} = await fetchQuestions();
+      document.getElementById('subject').textContent = subject || "CBT Report";
+
+      // 3. Build detailed result list
+      let results = [];
+      let resultsList = document.getElementById('results-list');
+      resultsList.innerHTML = "";
+
+      for(let i=0;i<questions.length;i++){
+        let q = questions[i];
+        let userAns = answers[q._id] || answers[q.id] || "";
+        let correctAns = q.answer;
+        let isCorrect = (userAns === correctAns);
+        results.push({ isCorrect });
+        // Find option text for user/answer
+        const opt = q.options || [];
+        const userOpt = opt.find(o=>o.key===userAns);
+        const correctOpt = opt.find(o=>o.key===correctAns);
+
+        resultsList.innerHTML += `
+        <div class="qcard mt-2 ${isCorrect?"correct":"incorrect"}">
+          <div class="text-base font-bold mb-2 text-gray-800 flex items-center">
+            <span class="inline-block w-8 h-8 mr-3 bg-blue-100 text-blue-800 text-center rounded-full font-extrabold">${i+1}</span>
+            <span>${q.question}</span>
+          </div>
+          <div class="mb-2">
+            <div class="flex flex-wrap items-center gap-3 mb-1">
+              <span class="font-semibold text-gray-700">Your Answer: </span>
+              <span class="answer-pill answer-user">${userAns ? `${userAns}${userOpt?`. ${userOpt.text}`:""}` : "N/A"}</span>
+              ${userAns ?
+                (userAns === correctAns
+                  ? `<span class="ml-2 answer-pill answer-correct"><i class="fa fa-check mr-1"></i> Correct</span>`
+                  : `<span class="ml-2 answer-pill answer-wrong"><i class="fa fa-times mr-1"></i> Wrong</span>`)
+                : `<span class="ml-2 answer-pill" style="background:#f1f5f9;color:#64748b;"><i class="fa fa-minus mr-1"></i> Not Answered</span>`
+              }
+            </div>
+            <div class="flex flex-wrap items-center gap-3">
+              <span class="font-semibold text-gray-700">Correct Answer:</span>
+              <span class="answer-pill answer-correct">${correctAns}${correctOpt?`. ${correctOpt.text}`:""}</span>
+            </div>
+          </div>
+          <details class="mt-2 explanation">
+            <summary class="font-bold text-blue-900 cursor-pointer">Explanation</summary>
+            <div class="pt-2">${q.explanation ? q.explanation : "<em>No explanation for this question.</em>"}</div>
+          </details>
+        </div>
+        `;
+      }
+
+      // 4. Score and feedback
+      let [correct, total] = getScoreTally(results);
+      let percent = total ? Math.round(correct/total*100) : 0;
+      document.getElementById('score-area').innerHTML = `
+        <span class="text-3xl font-black text-blue-700">${correct} / ${total}</span>
+        <span class="text-lg text-gray-700 ml-3">(${percent}%)</span>
+      `;
+      document.getElementById('score-feedback').textContent = feedbackRemark(percent);
+
+      // Optionally: Clean up sessionStorage so user can't refresh + see again (uncomment if desired)
+      // sessionStorage.removeItem('cbt_exam_info');
+      // sessionStorage.removeItem('cbt_user_answers');
+    }
+
+    window.addEventListener('DOMContentLoaded', main);
+  </script>
+</body>
+</html>
