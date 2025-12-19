@@ -3,8 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=0.8">
-  <title>D-Rich CBT | Exam Report</title>
+  <title>OAU ExamGuard CBT | Exam Report</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Add jsPDF & html2canvas for PDF generation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
   <style>
     .answer-pill { display:inline-block; border-radius:9999px; padding:0.25em 0.8em; font-weight:700;}
@@ -26,7 +29,12 @@
         </h1>
         <div class="text-base text-blue-600 font-semibold mb-3" id="subject"></div>
       </div>
-      <button onclick="location.href='exam-in-session'" class="py-1 px-4 rounded text-xs bg-blue-200 text-blue-800 font-bold hover:bg-blue-300 mb-2 sm:mb-0">Retake Exam</button>
+      <div>
+        <button onclick="location.href='cbt.html'" class="py-1 px-4 rounded text-xs bg-blue-200 text-blue-800 font-bold hover:bg-blue-300 mb-2 sm:mb-0">Retake Exam</button>
+        <button id="download-pdf-btn" class="py-1 px-4 rounded text-xs bg-green-200 text-green-800 font-bold hover:bg-green-300 mb-2 sm:mb-0 ml-2">
+          <i class="fa fa-download mr-1"></i>Download PDF
+        </button>
+      </div>
     </div>
     <div class="border-b border-gray-200 mb-6 pb-4">
       <span class="mr-6 font-bold"><i class="fa fa-user text-blue-700 mr-1"></i> <span id="name"></span></span>
@@ -88,6 +96,7 @@
     async function main() {
       // 1. Info
       document.getElementById('name').textContent = examInfo.student || "No info";
+      // Below ensures we use 'matric' key as per previously fixed save
       document.getElementById('regnum').textContent = examInfo.matric || "";
       document.getElementById('time').textContent = getTimeString(examInfo.timeCompleted);
 
@@ -156,6 +165,61 @@
     }
 
     window.addEventListener('DOMContentLoaded', main);
+
+    // --------- PDF Download Button Handler ----------
+    document.addEventListener('DOMContentLoaded', function() {
+      const btn = document.getElementById('download-pdf-btn');
+      if (!btn) return;
+      btn.onclick = async function() {
+        const reportMain = document.getElementById('report-main');
+        // Temporarily set a white background for better PDF result
+        const prevBg = reportMain.style.background;
+        reportMain.style.background = "#fff";
+        // Use html2canvas to rasterize the node
+        const canvas = await html2canvas(reportMain, { scale: 2, useCORS: true, backgroundColor: "#fff" });
+        reportMain.style.background = prevBg;
+        const imgData = canvas.toDataURL("image/png");
+
+        // Set PDF page size
+        const pdf = new jspdf.jsPDF({
+          orientation: 'portrait',
+          unit: 'pt',
+          format: 'a4'
+        });
+        // Calculate width/height to fit in A4
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+
+        // Make the image fit (leave some margin)
+        const margin = 24;
+        const imgWidth = pageWidth - margin * 2;
+        const imgHeight = canvas.height * (imgWidth / canvas.width);
+
+        let y = margin;
+        if(imgHeight < pageHeight - margin*2) {
+          pdf.addImage(imgData, 'PNG', margin, y, imgWidth, imgHeight, '', 'FAST');
+        } else {
+          // Multi-page if needed
+          let renderedHeight = 0;
+          while (renderedHeight < imgHeight) {
+            pdf.addImage(
+              imgData,
+              'PNG',
+              margin,
+              margin - renderedHeight,
+              imgWidth,
+              imgHeight,
+              '',
+              'FAST'
+            );
+            renderedHeight += pageHeight - margin*2;
+            if (renderedHeight < imgHeight) pdf.addPage();
+          }
+        }
+        pdf.save("exam-report.pdf");
+      };
+    });
+    // -----------------------------------------------
   </script>
 </body>
 </html>
