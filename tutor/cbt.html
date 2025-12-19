@@ -186,6 +186,16 @@
         function getExamAccessCode() { return localStorage.getItem("exam_access_code"); }
         function getExamCourseCode() { return localStorage.getItem("exam_course_code"); }
 
+        // Fisher-Yates shuffle
+        function shuffleArray(arr) {
+            arr = arr.slice(); // non-destructive!
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
         async function fetchStudentProfile() {
             try {
                 const res = await fetch(API_BASE + "/api/auth/me", {
@@ -204,13 +214,8 @@
         }
 
         let userAnswers = {};
-        let examData = null, studentData = null, currentQ = 0, timer = null, duration = 0, courseCode = "";
+        let examData = null, originalQuestionOrder = null, studentData = null, currentQ = 0, timer = null, duration = 0, courseCode = "";
 
-        function regNumFromUser(user) {
-            if (user?.matricNo) return user.matricNo;
-            if (user?.email) return user.email;
-            return "";
-        }
         function showModal(message, opts={}) {
             const root = document.getElementById('modal-root');
             root.innerHTML = `
@@ -231,9 +236,11 @@
                 document.getElementById('modal-action-btn').onclick = ()=>{ root.innerHTML=""; opts.onAction(); };
             }
         }
+
         function persistUserAnswers() {
             sessionStorage.setItem('cbt_user_answers', JSON.stringify(userAnswers));
         }
+
         async function main() {
             // Get access code
             const accessCode = getExamAccessCode();
@@ -255,9 +262,9 @@
                 return;
             }
             document.getElementById('student-name').innerText =
-    studentData.user.fullName || studentData.user.fullname || studentData.user.name || "(No Name)";
-document.getElementById('student-regnum').innerText =
-    studentData.user.studentId || studentData.user.username || "(No Student ID)";
+                studentData.user.fullName || studentData.user.fullname || studentData.user.name || "(No Name)";
+            document.getElementById('student-regnum').innerText =
+                studentData.user.studentId || studentData.user.username || "(No Student ID)";
             
             const result = await fetchExamDataByAccessCode(accessCode);
             if (!result || !result.examSet || !Array.isArray(result.questions)) {
@@ -270,14 +277,30 @@ document.getElementById('student-regnum').innerText =
                 });
                 return;
             }
-            examData = {
-                subject: result.examSet.subject,
-                duration: result.examSet.duration || 3600,
-                questions: result.questions.map((q, idx) => ({
+
+            // --- SHUFFLING QUESTIONS & OPTIONS, WITH CONSISTENCY ---
+            // If questions were previously shuffled/saved for this session (in sessionStorage), use the saved version:
+            let shuffleSession = sessionStorage.getItem('cbt_shuffled_questions');
+            if (shuffleSession) {
+                examData = JSON.parse(shuffleSession);
+            } else {
+                // Otherwise, perform fresh shuffle. Also shuffle options for each question.
+                let shuffledQuestions = shuffleArray(result.questions).map((q) => ({
                     ...q,
-                    id: q._id || (idx + 1)
-                }))
-            };
+                    // Keep track of original keys in options so answer selection is always by key
+                    options: shuffleArray((q.options || []).map(opt =>
+                        ({ ...opt }) // clone option, preserve key
+                    )),
+                    id: q._id || (Math.random().toString(36).slice(2,12)), // unique per session for marking
+                }));
+                examData = {
+                    subject: result.examSet.subject,
+                    duration: result.examSet.duration || 3600,
+                    questions: shuffledQuestions
+                };
+                sessionStorage.setItem('cbt_shuffled_questions', JSON.stringify(examData));
+            }
+
             document.getElementById('exam-subject').innerText = examData.subject || courseCode;
             document.getElementById('exam-duration').innerText = (examData.duration ? Math.round(examData.duration/60) + " mins" : '');
 
@@ -303,12 +326,14 @@ document.getElementById('student-regnum').innerText =
                 <h2 class="text-2xl font-bold text-blue-900 mb-7">Question ${idx+1} of ${total}</h2>
                 <p class="text-lg leading-relaxed text-gray-700 mb-9">${q.question}</p>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-7 mb-10">
-                    ${q.options.map(opt => `
+                    ${
+                        (q.options || []).map(opt => `
                         <label class="option-card flex items-center p-7 cursor-pointer transition-all duration-200">
-                            <input type="radio" name="qSelect" value="${opt.key}" ${savedAnswer===opt.key?'checked':''} class="w-7 h-7 text-yellow-500 focus:ring-yellow-400" />
+                            <input type="radio" name="qSelect" value="${opt.key}" ${(savedAnswer===opt.key)?'checked':''} class="w-7 h-7 text-yellow-500 focus:ring-yellow-400" />
                             <span class="ml-5 text-base md:text-lg">${opt.key}. ${opt.text}</span>
                         </label>
-                    `).join('')}
+                    `).join('')
+                    }
                 </div>
                 <div class="flex flex-col gap-2 sm:flex-row sm:gap-4 justify-between items-center mt-3">
                     <div class="w-full sm:w-auto flex justify-between gap-2 order-1 sm:mb-0">
@@ -383,17 +408,20 @@ document.getElementById('student-regnum').innerText =
                         persistUserAnswers();
                         sessionStorage.setItem('cbt_user_answers', JSON.stringify(userAnswers));
                         sessionStorage.setItem('cbt_exam_info', JSON.stringify({
-    subject: examData.subject,
-    matric: document.getElementById('student-regnum').innerText,
-    student: (studentData.user.fullName || studentData.user.fullname || studentData.user.name || ''),
-    course: courseCode,
-    timeCompleted: new Date().toISOString()
-}));
+                            subject: examData.subject,
+                            matric: document.getElementById('student-regnum').innerText,
+                            student: (studentData.user.fullName || studentData.user.fullname || studentData.user.name || ''),
+                            course: courseCode,
+                            timeCompleted: new Date().toISOString()
+                        }));
+                        // Remove shuffle cache for next time!
+                        sessionStorage.removeItem('cbt_shuffled_questions');
                         window.location.href = "result-summary";
                     }
                 });
             };
         }
+
         function startTimer(secs) {
             let remaining = secs;
             const timerElem = document.getElementById('timer');
@@ -422,6 +450,7 @@ document.getElementById('student-regnum').innerText =
                         onAction: ()=>{
                             persistUserAnswers();
                             sessionStorage.setItem('cbt_user_answers', JSON.stringify(userAnswers));
+                            sessionStorage.removeItem('cbt_shuffled_questions');
                             window.location.href = "result-summary";
                         }
                     });
