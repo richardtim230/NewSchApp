@@ -36,6 +36,15 @@
       padding: 2em 1em;
     }
     .prose img { max-width: 100%; height: auto; }
+
+    /* Extra spacing for edit modal editors */
+    #edit-q-editor .ql-container,
+    #edit-optA .ql-container, #edit-optB .ql-container,
+    #edit-optC .ql-container, #edit-optD .ql-container,
+    #edit-expl-editor .ql-container {
+      min-height: 64px;
+      margin-bottom: 1.25rem; /* 20px */
+    }
   </style>
 </head>
 <body class="bg-gray-50 min-h-screen py-12">
@@ -59,11 +68,14 @@
       <label class="font-bold block mb-2 text-gray-700">Tags (comma separated: e.g. undergraduate,university)</label>
       <input type="text" id="tags" class="w-full px-5 py-3 rounded-xl border border-gray-300" placeholder="Tags"/>
     </div>
-    <div>
+    <div class="flex items-center">
       <button type="button" id="save-examset-btn" class="bg-blue-700 hover:bg-blue-900 text-white font-bold py-3 px-8 rounded-xl shadow-lg">
         Save/Select Exam Set
       </button>
       <span class="ml-2 font-semibold text-gray-600" id="selected-examset"></span>
+      <button type="button" id="delete-examset-btn" class="bg-red-100 border border-red-300 px-4 py-2 rounded font-semibold text-red-800 ml-4">
+        Delete Exam Set
+      </button>
     </div>
     <div id="form-message" class="mt-2 text-base font-medium"></div>
   </form>
@@ -118,33 +130,33 @@
     <div class="mb-2 font-bold text-gray-800">Question Text</div>
     <div id="manual-q-editor" class="mb-3"></div>
 
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 answer-opt-box mb-4">
-      <div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 answer-opt-box mb-4">
+      <div class="mb-6">
         <label class="font-bold block mb-1 text-gray-700">Option A</label>
         <div id="opt-A-editor"></div>
       </div>
-      <div>
+      <div class="mb-6">
         <label class="font-bold block mb-1 text-gray-700">Option B</label>
         <div id="opt-B-editor"></div>
       </div>
-      <div>
+      <div class="mb-6">
         <label class="font-bold block mb-1 text-gray-700">Option C</label>
         <div id="opt-C-editor"></div>
       </div>
-      <div>
+      <div class="mb-6">
         <label class="font-bold block mb-1 text-gray-700">Option D</label>
         <div id="opt-D-editor"></div>
       </div>
     </div>
 
-    <div>
+    <div class="mb-5">
       <label class="mr-2 font-bold">Correct Answer:</label>
       <select id="manual-answer" class="border rounded p-1 font-semibold">
         <option value="A">A</option><option value="B">B</option>
         <option value="C">C</option><option value="D">D</option>
       </select>
     </div>
-    <div class="my-4">
+    <div class="mb-4">
       <label class="font-bold mb-1 text-gray-700 block">Explanation (optional)</label>
       <div id="manual-expl-editor"></div>
     </div>
@@ -211,7 +223,7 @@ async function saveOrGetExamSet(e) {
     return;
   }
   msg.textContent = "Saving/finding exam set...";
-  let res = await fetch(`${API_BASE}/api/exam-set/by-access?accessCode=${encodeURIComponent(accessCode)}&subject=${encodeURIComponent(subject)}&title=${encodeURIComponent(title)}&tags=${encodeURIComponent(tags.join(","))}`);
+  let res = await fetch(`${API_BASE}/api/exam-set/by-access?accessCode=${encodeURIComponent(accessCode)}&subject=${encodeURIComponent(subject)}&title=${encodeURIComponent(title)}&tags=${encodeURIComponent(tags.join(','))}`);
   let data = await res.json();
   if (data.examSet?._id) {
     currentExamSetId = data.examSet._id;
@@ -230,6 +242,31 @@ async function saveOrGetExamSet(e) {
 document.getElementById('save-examset-btn').onclick = saveOrGetExamSet;
 document.getElementById('accessCode').addEventListener('blur', ()=>{ currentExamSetId = null; lastAccessCode = ""; fetchAndRenderQuestions(); });
 document.getElementById('subject').addEventListener('blur', ()=>{ currentExamSetId = null; fetchAndRenderQuestions(); });
+
+/** DELETE EXAM SET **/
+document.getElementById('delete-examset-btn').onclick = async function() {
+  if (!currentExamSetId) {
+    alert("No exam set selected.");
+    return;
+  }
+  if (!confirm("Are you sure you want to delete this Exam Set and ALL its questions? This cannot be undone.")) return;
+  try {
+    const resp = await fetch(`${API_BASE}/api/exam-set/${currentExamSetId}`, { method: "DELETE" });
+    if (resp.ok) {
+      alert("Exam set deleted.");
+      currentExamSetId = null;
+      examSetData = null;
+      lastAccessCode = "";
+      document.getElementById('selected-examset').textContent = "";
+      document.getElementById('form-message').textContent = "";
+      fetchAndRenderQuestions();
+    } else {
+      alert("Failed to delete exam set.");
+    }
+  } catch {
+    alert("Network error while deleting.");
+  }
+};
 
 /** VIEW MODE SWITCH **/
 function showJsonForm() {
@@ -392,15 +429,28 @@ async function fetchAndRenderQuestions(){
     msg.textContent = "Could not find or create the exam set for the provided code/subject.";
     return;
   }
-  // Fetch all questions in this exam set
+  // Fetch all questions in this exam set -- New: fetch ALL by paginating if needed
   try {
-    const listRes = await fetch(`${API_BASE}/api/cbt-questions?examSet=${encodeURIComponent(examSetId)}`);
-    const questions = await listRes.json();
-    if(!Array.isArray(questions) || questions.length === 0){
+    let allQuestions = [];
+    let page = 1;
+    let done = false;
+    const PAGE_LIMIT = 100;
+    while (!done) {
+      const listRes = await fetch(`${API_BASE}/api/cbt-questions?examSet=${encodeURIComponent(examSetId)}&page=${page}&limit=${PAGE_LIMIT}`);
+      const questions = await listRes.json();
+      if(Array.isArray(questions) && questions.length > 0){
+          allQuestions.push(...questions);
+          if(questions.length < PAGE_LIMIT) done = true;
+          else page++;
+      } else {
+          done = true;
+      }
+    }
+    if(!Array.isArray(allQuestions) || allQuestions.length === 0){
       msg.textContent = "No questions found for this exam set.";
       return;
     }
-    questions.forEach((q, idx) => {
+    allQuestions.forEach((q, idx) => {
       const row = document.createElement('tr');
       row.innerHTML = `
         <td class="p-2 border">${idx+1}</td>
@@ -464,43 +514,42 @@ async function showEditModal(id) {
   let q = await res.json();
   editState.question = q;
   let modal = document.getElementById('edit-modal-root');
-  // Modal HTML
   modal.innerHTML = `
     <div class="edit-modal-bg">
       <div class="edit-modal-panel relative w-full max-w-xl mx-auto">
         <button class="absolute right-3 top-3 text-2xl text-gray-400 hover:text-gray-700" id="close-edit-modal">&times;</button>
         <h2 class="mb-3 text-xl font-bold text-blue-700">Edit Question</h2>
-        <form id="edit-form" class="space-y-4">
-          <div>
+        <form id="edit-form" class="space-y-6">
+          <div class="mb-5">
             <label class="block mb-1 text-gray-700 font-semibold">Question</label>
             <div id="edit-q-editor"></div>
           </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="mb-6">
               <label class="block mb-1 text-gray-700 font-semibold">Option A</label>
               <div id="edit-optA"></div>
             </div>
-            <div>
+            <div class="mb-6">
               <label class="block mb-1 text-gray-700 font-semibold">Option B</label>
               <div id="edit-optB"></div>
             </div>
-            <div>
+            <div class="mb-6">
               <label class="block mb-1 text-gray-700 font-semibold">Option C</label>
               <div id="edit-optC"></div>
             </div>
-            <div>
+            <div class="mb-6">
               <label class="block mb-1 text-gray-700 font-semibold">Option D</label>
               <div id="edit-optD"></div>
             </div>
           </div>
-          <div>
+          <div class="mb-5">
             <label class="mr-2 font-bold">Correct Answer:</label>
             <select id="edit-answer" class="border rounded p-1 font-semibold">
               <option value="A">A</option><option value="B">B</option>
               <option value="C">C</option><option value="D">D</option>
             </select>
           </div>
-          <div>
+          <div class="mb-4">
             <label class="block mb-1 text-gray-700 font-semibold">Explanation (optional)</label>
             <div id="edit-expl-editor"></div>
           </div>
