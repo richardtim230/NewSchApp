@@ -1,4 +1,3 @@
-
 (function() {
     const params = new URLSearchParams(window.location.search);
     const ref = params.get('ref');
@@ -68,6 +67,14 @@ facultySelect.addEventListener('change', function() {
     fetchDepartments(this.value);
 });
 
+// ====== Tab switching ======
+const tabBtns = document.querySelectorAll('.tab-btn');
+const forms = {
+    login: document.getElementById('loginForm'),
+    register: document.getElementById('registerForm')
+};
+const messageBox = document.getElementById('messageBox');
+
 document.addEventListener('DOMContentLoaded', function() {
     fetchFaculties();
     showSelectSpinner(deptSelect, "Select faculty first");
@@ -89,15 +96,24 @@ document.addEventListener('DOMContentLoaded', function() {
         tabBtns.forEach(btn => { if (btn.dataset.tab === 'login') btn.classList.add('active'); });
         messageBox.innerHTML = '';
     }
+
+    // ====== Prevent multiple registrations: show notice/block register tab & form ======
+    const regCardSpot = messageBox; // or another dedicated div
+    const savedReg = window.localStorage.getItem('registeredUser');
+    if (savedReg) {
+        const regInfo = JSON.parse(savedReg);
+        regCardSpot.innerHTML = `<div class="message error">
+            <strong>Notice:</strong> The following account has already been registered on this device:<br>
+            <b>${regInfo.username}</b> (${regInfo.email})<br>
+            Registration of multiple accounts is not allowed.
+        </div>`;
+        // Disable and hide register form/tab
+        const regTabBtn = document.querySelector('.tab-btn[data-tab="register"]');
+        if (regTabBtn) regTabBtn.disabled = true;
+        forms.register.style.display = 'none';
+    }
 });
 
-// ====== Tab switching ======
-const tabBtns = document.querySelectorAll('.tab-btn');
-const forms = {
-    login: document.getElementById('loginForm'),
-    register: document.getElementById('registerForm')
-};
-const messageBox = document.getElementById('messageBox');
 tabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
         tabBtns.forEach(b => b.classList.remove('active'));
@@ -105,6 +121,22 @@ tabBtns.forEach(btn => {
         for (const k in forms) forms[k].classList.remove('active');
         forms[btn.dataset.tab].classList.add('active');
         messageBox.innerHTML = '';
+
+        // If register tab is clicked and registration is forbidden, show warning again
+        if (btn.dataset.tab === 'register') {
+            const savedReg = window.localStorage.getItem('registeredUser');
+            if (savedReg) {
+                const regInfo = JSON.parse(savedReg);
+                messageBox.innerHTML = `<div class="message error">
+                    <strong>Notice:</strong> The following account has already been registered on this device:<br>
+                    <b>${regInfo.username}</b> (${regInfo.email})<br>
+                    Registration of multiple accounts is not allowed.
+                </div>`;
+                forms.register.style.display = 'none';
+            } else {
+                forms.register.style.display = '';
+            }
+        }
     });
 });
 
@@ -215,68 +247,93 @@ async function setRegLoading(isLoading) {
 }
 
 // ====== LOGIN HANDLING ======
-    // LOGIN HANDLING
-    forms.login.addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const username = document.getElementById('login-username').value.trim();
-        const password = document.getElementById('login-password').value;
-        if (!validateUsername(username) || !password) {
-            showStatusModal("error","Login Error","Both fields are required!");
+forms.login.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const username = document.getElementById('login-username').value.trim();
+    const password = document.getElementById('login-password').value;
+    if (!validateUsername(username) || !password) {
+        showStatusModal("error","Login Error","Both fields are required!");
+        return;
+    }
+    showLoadingModal("Logging in...","Please wait while we log you in.");
+    await setLoginLoading(true);
+
+    try {
+        let loginResponse = await fetch("https://examguide.onrender.com/api/auth/login", {
+            method: "POST",
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({username, password})
+        });
+        let loginData = await loginResponse.json();
+
+        if (loginResponse.ok) {
+            localStorage.setItem('token', loginData.token);
+            // Get user role and redirect accordingly
+            try {
+                let profileResp = await fetch("https://examguide.onrender.com/api/auth/me", {
+                    headers: { 'Authorization': 'Bearer ' + loginData.token }
+                });
+                let profileData = await profileResp.json();
+                if (profileResp.ok && profileData.user) {
+                    const user = profileData.user;
+                    const role = user.role;
+                    let roleMsg = "Welcome!";
+                    switch (role) {
+                        case 'superadmin': roleMsg = "Welcome, Superadmin!"; break;
+                        case 'admin': roleMsg = "Welcome, Admin!"; break;
+                        case 'uploader': roleMsg = "Welcome, Uploader!"; break;
+                        case 'pq-uploader': roleMsg = "Welcome, PQ-Uploader!"; break;
+                        case 'blogger': roleMsg = "Welcome, Blogger!"; break;
+                        default: roleMsg = "Welcome, Student!";
+                    }
+                    // Store user info (for registration prevention, on login)
+                    try {
+                        window.localStorage.setItem('registeredUser', JSON.stringify({
+                            fullname: user.fullname || "",
+                            username: user.username || "",
+                            email: user.email || "",
+                            faculty: user.facultyName || "", // Adapt if info is there
+                            department: user.departmentName || "",
+                            level: user.level || "",
+                            phone: user.phone || ""
+                        }));
+                    } catch {}
+                    showStatusModal("success", "Login Successful", roleMsg, false);
+                    setTimeout(() => { window.location.href = (role === 'superadmin') ? "supaadmin.html" : "loader.html"; }, 1300);
+                    await setLoginLoading(false);
+                    return;
+                }
+            } catch {
+                showStatusModal("success", "Login Successful", "You have been logged in!", false);
+                setTimeout(() => { window.location.href = "loader.html"; }, 1200);
+            }
+            await setLoginLoading(false);
             return;
         }
-        showLoadingModal("Logging in...","Please wait while we log you in.");
-        await setLoginLoading(true);
-
-        try {
-            let loginResponse = await fetch("https://examguide.onrender.com/api/auth/login", {
-                method: "POST",
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({username, password})
-            });
-            let loginData = await loginResponse.json();
-
-            if (loginResponse.ok) {
-                localStorage.setItem('token', loginData.token);
-                // Get user role and redirect accordingly
-                try {
-                    let profileResp = await fetch("https://examguide.onrender.com/api/auth/me", {
-                        headers: { 'Authorization': 'Bearer ' + loginData.token }
-                    });
-                    let profileData = await profileResp.json();
-                    if (profileResp.ok && profileData.user) {
-                        const role = profileData.user.role;
-                        let roleMsg = "Welcome!";
-                        switch (role) {
-                            case 'superadmin': roleMsg = "Welcome, Superadmin!"; break;
-                            case 'admin': roleMsg = "Welcome, Admin!"; break;
-                            case 'uploader': roleMsg = "Welcome, Uploader!"; break;
-                            case 'pq-uploader': roleMsg = "Welcome, PQ-Uploader!"; break;
-                            case 'blogger': roleMsg = "Welcome, Blogger!"; break;
-                            default: roleMsg = "Welcome, Student!";
-                        }
-                        showStatusModal("success", "Login Successful", roleMsg, false);
-                        setTimeout(() => { window.location.href = (role === 'superadmin') ? "supaadmin.html" : "loader.html"; }, 1300);
-                        await setLoginLoading(false);
-                        return;
-                    }
-                } catch {
-                    showStatusModal("success", "Login Successful", "You have been logged in!", false);
-                    setTimeout(() => { window.location.href = "loader.html"; }, 1200);
-                }
-                await setLoginLoading(false);
-                return;
-            }
-            showStatusModal("error","Login Failed",loginData.message || "Login failed");
-        } catch (err) {
-            showStatusModal("error","Network Error","Network or server error. Please try again.");
-        }
-        await setLoginLoading(false);
-    });
-
+        showStatusModal("error","Login Failed",loginData.message || "Login failed");
+    } catch (err) {
+        showStatusModal("error","Network Error","Network or server error. Please try again.");
+    }
+    await setLoginLoading(false);
+});
 
 // ====== REGISTRATION HANDLING (with confirmation modal) ======
 forms.register.addEventListener('submit', async function(e) {
     e.preventDefault();
+
+    // Prevent duplicate registration on same device
+    const savedReg = window.localStorage.getItem('registeredUser');
+    if (savedReg) {
+        const regInfo = JSON.parse(savedReg);
+        showStatusModal(
+            "error",
+            "Registration Blocked",
+            `An account has already been registered on this device:<br><b>${regInfo.username}</b> (${regInfo.email}).<br><br>Multiple registrations are not permitted.`,
+            true
+        );
+        return;
+    }
+
     // Collect all registration details
     const fullName = document.getElementById('reg-fullname').value.trim();
     const username = document.getElementById('reg-username').value.trim();
@@ -313,7 +370,7 @@ forms.register.addEventListener('submit', async function(e) {
         "Level": level,
         "Phone": phone,
         ...(referralCode ? { "Referral Code": referralCode } : {})
-}, async function proceedReg() {
+    }, async function proceedReg() {
         showLoadingModal("Registering...", "Please wait while we create your account.");
         await setRegLoading(true);
         try {
@@ -336,17 +393,29 @@ forms.register.addEventListener('submit', async function(e) {
             await setRegLoading(false);
 
             if (registerResponse.ok) {
-    showStatusModal("success", "Registration Successful", result.message || "Account created! Redirecting to login...", false);
-    // Auto-close modal and switch to login after short timeout
-    setTimeout(() => {
-        closeModal();
-        forms.login.classList.add('active');
-        forms.register.classList.remove('active');
-        messageBox.innerHTML = '<div class="message success">Your account was created successfully. Please check your email for a verification link before logging in.</div>';
-    }, 1800);
-} else {
-    showStatusModal("error", "Registration Failed", result.message || "Could not register. Try again.");
-}
+                // Save registration info to localStorage on success
+                const userObject = {
+                    fullname: fullName,
+                    username,
+                    email,
+                    faculty: facultyText,
+                    department: departmentText,
+                    level,
+                    phone
+                };
+                window.localStorage.setItem('registeredUser', JSON.stringify(userObject));
+
+                showStatusModal("success", "Registration Successful", result.message || "Account created! Redirecting to login...", false);
+                // Auto-close modal and switch to login after short timeout
+                setTimeout(() => {
+                    closeModal();
+                    forms.login.classList.add('active');
+                    forms.register.classList.remove('active');
+                    messageBox.innerHTML = '<div class="message success">Your account was created successfully. Please check your email for a verification link before logging in.</div>';
+                }, 1800);
+            } else {
+                showStatusModal("error", "Registration Failed", result.message || "Could not register. Try again.");
+            }
         } catch (err) {
             await setRegLoading(false);
             showStatusModal("error", "Network Error", "Could not connect to server.");
@@ -364,4 +433,3 @@ document.querySelectorAll('.social-btn').forEach(btn => {
         );
     });
 });
-
