@@ -2489,7 +2489,8 @@ fetchAvailableTests = async function() {
 
 
 document.getElementById("confirm-logout").onclick = () => {
-  localStorage.clear();
+  localStorage.removeItem("token");
+  // (remove other session keys if needed, but NOT 'registeredUser'!)
   window.location.href = '/mock-icthallb';
 };
 
