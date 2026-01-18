@@ -1343,22 +1343,61 @@ async function fetchMockExams() {
         scheduleExams = resp.schedules;
       }
     }
+    
+document.addEventListener("DOMContentLoaded", function() {
+ 
+  const tbody = document.getElementById("completedExamsTableBody");
 
-    // Fetch completed results (for this user)
-    const resCompleted = await fetch(`${API_BASE_URL}/api/results?me=1`, {
-      headers: { "Authorization": token ? `Bearer ${token}` : undefined }
-    });
-    if (resCompleted.ok) {
-      const results = await resCompleted.json();
-      completedExams = Array.isArray(results) ? results : (results.results || []);
-    }
-
-    renderMockExams(scheduleExams, completedExams);
-  } catch (err) {
-    console.error("Error fetching exams:", err);
-    renderMockExams([], []);
+  function fetchStudentProfile() {
+    return fetch(API_URL + "auth/me", {
+      headers: { Authorization: "Bearer " + token }
+    })
+    .then(resp => resp.json())
+    .then(profile => profile.user);
   }
-}
+
+  function fetchExamHistory(userId) {
+    return fetch(API_URL + "results/user/" + userId, {
+      headers: { Authorization: "Bearer " + token }
+    }).then(resp => resp.json());
+  }
+
+  function renderExamHistory(historyList) {
+    if (!Array.isArray(historyList) || historyList.length === 0) {
+      tbody.innerHTML = `<tr>
+        <td colspan="4" class="py-6 text-center text-gray-400">No completed exams yet.</td>
+      </tr>`;
+      return;
+    }
+    tbody.innerHTML = historyList
+      .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))
+      .map(r => `
+        <tr>
+          <td class="px-5 py-2">${(r.examSet && r.examSet.title) ? r.examSet.title : r.examSet || "-"}</td>
+          <td class="px-5 py-2">${r.submittedAt ? new Date(r.submittedAt).toLocaleString() : "-"}</td>
+          <td class="px-5 py-2 font-bold text-indigo-700">${r.score ?? "-"}</td>
+          <td class="px-5 py-2">
+            <button class="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-semibold px-3 py-1 rounded text-xs"
+              onclick="window.open('review.html?session=${r._id}','_blank')">
+              Review
+            </button>
+          </td>
+        </tr>
+      `).join('');
+  }
+
+  // MAIN
+  fetchStudentProfile()
+    .then(profile => {
+      if (!profile || !profile._id) throw new Error("No user");
+      return fetchExamHistory(profile._id);
+    })
+    .then(renderExamHistory)
+    .catch(() => {
+      tbody.innerHTML = `<tr><td colspan="4" class="py-6 text-center text-red-500">Failed to load exam history.</td></tr>`;
+    });
+});
+
 
 function renderMockExams(schedules, completed) {
   // 1. AVAILABLE: Exams from schedule that are NOT completed by the user (by examSet._id)
