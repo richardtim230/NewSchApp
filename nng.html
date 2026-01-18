@@ -383,7 +383,6 @@ document.addEventListener("DOMContentLoaded", function() {
             <canvas id="gpaChart" height="120"></canvas>
           </div>
         </div>
-        <!-- Tasks Center Section -->
 <!-- Tasks Center Section -->
 <div id="taskscenter-section" class="section-block hidden">
   <div class="max-w-6xl mx-auto py-10 px-2 md:px-6">
@@ -440,18 +439,23 @@ document.addEventListener("DOMContentLoaded", function() {
     </div>
   </div>
 
-  <!-- ... modals unchanged ... -->
-<!-- Article Modal -->
+  <!-- Article Modal -->
   <div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center hidden" id="articleModal">
     <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-8 relative flex flex-col gap-6">
       <button class="absolute top-3 right-4 text-gray-500 hover:text-indigo-700 text-xl" onclick="closeArticleModal()">&times;</button>
       <div id="articleModalContent" class="overflow-auto" style="max-height:60vh;">
         <iframe id="articleFrame" src="" width="100%" height="400" frameborder="0" class="rounded"></iframe>
       </div>
-      <button class="bg-green-600 hover:bg-green-700 text-white font-semibold px-5 py-2 rounded-lg self-end transition">Mark as Done</button>
+      <button id="articleMarkAsDoneBtn" class="bg-green-600 hover:bg-green-700 text-white font-semibold px-5 py-2 rounded-lg self-end transition flex gap-2 items-center" data-taskid="">
+        <span>Mark as Done</span>
+        <svg id="articleMarkAsDoneLoader" class="hidden animate-spin w-5 h-5" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12A8 8 0 018 4v4a4 4 0 00-4 4z"></path>
+        </svg>
+      </button>
     </div>
   </div>
-  
+
   <!-- YouTube Video Modal -->
   <div class="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center hidden" id="videoModal">
     <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-8 relative flex flex-col gap-6">
@@ -459,7 +463,13 @@ document.addEventListener("DOMContentLoaded", function() {
       <div id="videoModalContent" class="overflow-auto" style="max-height:60vh;">
         <iframe id="videoFrame" width="100%" height="360" src="" frameborder="0" allowfullscreen class="rounded"></iframe>
       </div>
-      <button class="bg-green-600 hover:bg-green-700 text-white font-semibold px-5 py-2 rounded-lg self-end transition">Mark as Watched</button>
+      <button id="videoMarkAsDoneBtn" class="bg-green-600 hover:bg-green-700 text-white font-semibold px-5 py-2 rounded-lg self-end transition flex gap-2 items-center" data-taskid="">
+        <span>Mark as Done</span>
+        <svg id="videoMarkAsDoneLoader" class="hidden animate-spin w-5 h-5" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12A8 8 0 018 4v4a4 4 0 00-4 4z"></path>
+        </svg>
+      </button>
     </div>
   </div>
 
@@ -492,35 +502,56 @@ document.addEventListener("DOMContentLoaded", function() {
       }
     }
 
+    // Only quick launch, no Mark as Done in main table!
     function actionCell(task) {
       if (["done", "completed"].includes((task.status||"").toLowerCase())) {
         return `<span class="text-gray-400 text-xs">Completed</span>`;
       }
       // Reading
       if ((task.activityType === "reading" || task.activityType === "article") && task.meta?.url) {
-        return `<button onclick="openArticleModal('${esc(task.meta.url)}')" class="bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-1 font-semibold text-xs shadow">Read</button>
-          <button onclick="markTaskDone('${task._id}')" class="ml-3 bg-green-500 hover:bg-green-700 text-white rounded px-4 py-1 font-semibold text-xs shadow">Mark as Done</button>`;
+        return `<button onclick="openArticleModal('${esc(task.meta.url)}','${task._id}')" class="bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-1 font-semibold text-xs shadow flex gap-2 items-center" data-taskid="${task._id}">
+          <span>Read</span>
+          <svg class="inline w-4 h-4 ml-1" fill="none" stroke="currentColor"><path d="M4 4v16h16V4H4Zm8 0v16" stroke-width="1.5"/></svg>
+        </button>`;
       }
       // Video
       if (task.activityType === "video" && task.meta?.url) {
-        return `<button onclick="openVideoModal('${esc(task.meta.url)}')" class="bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-1 font-semibold text-xs shadow">Watch</button>
-          <button onclick="markTaskDone('${task._id}')" class="ml-3 bg-green-500 hover:bg-green-700 text-white rounded px-4 py-1 font-semibold text-xs shadow">Mark as Done</button>`;
+        return `<button onclick="openVideoModal('${esc(task.meta.url)}','${task._id}')" class="bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-1 font-semibold text-xs shadow flex gap-2 items-center" data-taskid="${task._id}">
+          <span>Watch</span>
+          <svg class="inline w-4 h-4 ml-1" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10" stroke-width="2"/><path d="M10 8l6 4-6 4V8z" stroke-width="1.5"/></svg>
+        </button>`;
       }
       // Social
       if (task.activityType === "social" && task.meta?.url) {
-        return `<a href="${esc(task.meta.url)}" target="_blank" class="bg-blue-700 hover:bg-blue-800 text-white px-4 py-1 rounded font-semibold text-xs shadow">Open</a>
-          <button onclick="markTaskDone('${task._id}')" class="ml-3 bg-green-500 hover:bg-green-700 text-white rounded px-4 py-1 font-semibold text-xs shadow">Mark as Done</button>`;
+        return `<a href="${esc(task.meta.url)}" target="_blank" class="bg-blue-700 hover:bg-blue-800 text-white px-4 py-1 rounded font-semibold text-xs shadow flex gap-2 items-center">
+          <span>Open</span>
+          <svg class="inline w-4 h-4 ml-1" fill="none" stroke="currentColor"><path d="M5 12h14M12 5l7 7-7 7" stroke-width="1.5"/></svg>
+        </a>`;
       }
       // Mock Test
       if (task.activityType === "mocktest" && task.meta?.url) {
-        return `<button onclick="window.location.href='${esc(task.meta.url)}'" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded px-4 py-1 font-semibold text-xs shadow">Start Test</button>
-          <button onclick="markTaskDone('${task._id}')" class="ml-3 bg-green-500 hover:bg-green-700 text-white rounded px-4 py-1 font-semibold text-xs shadow">Mark as Done</button>`;
+        return `<button onclick="window.location.href='${esc(task.meta.url)}'" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded px-4 py-1 font-semibold text-xs shadow flex gap-2 items-center" data-taskid="${task._id}">
+          <span>Start Test</span>
+          <svg class="inline w-4 h-4 ml-1" fill="none" stroke="currentColor"><path d="M12 4a8 8 0 010 16 8 8 0 010-16z" stroke-width="1.5"/></svg>
+        </button>`;
       }
-      // Assignment or custom
-      return `<button onclick="markTaskDone('${task._id}')" class="bg-green-600 hover:bg-green-800 text-white font-semibold rounded px-4 py-1 text-xs">Mark as Done</button>`;
+      // Assignment or custom: just give task details, clicking does nothing
+      return `<span class="text-gray-400 text-xs">No Action</span>`;
     }
 
-    async function markTaskDone(taskId) {
+    // Mark as Done (with loader feedback), modal variant only
+    async function markTaskDone(taskId, modalType) {
+      const setLoader = (loading) => {
+        // Spinner controls
+        if (modalType === "article") {
+          document.getElementById("articleMarkAsDoneLoader").classList.toggle("hidden", !loading);
+          document.getElementById("articleMarkAsDoneBtn").disabled = !!loading;
+        } else if (modalType === "video") {
+          document.getElementById("videoMarkAsDoneLoader").classList.toggle("hidden", !loading);
+          document.getElementById("videoMarkAsDoneBtn").disabled = !!loading;
+        }
+      };
+      setLoader(true);
       const token = localStorage.getItem("token");
       try {
         const res = await fetch(`https://examguide.onrender.com/api/tasks/${taskId}`, {
@@ -532,10 +563,13 @@ document.addEventListener("DOMContentLoaded", function() {
           body: JSON.stringify({ status: "done" })
         });
         if (!res.ok) throw new Error("Could not mark as done");
-        await loadTasks(); // re-render tasks
+        closeArticleModal();
+        closeVideoModal();
+        await loadTasks();
       } catch (e) {
         alert("Failed to mark as done. Please retry.");
       }
+      setLoader(false);
     }
 
     // Fetch & render tasks
@@ -606,7 +640,6 @@ document.addEventListener("DOMContentLoaded", function() {
           }
         ];
       }
-      // Render rows
       const tbody = document.getElementById("tasksTableBody");
       tbody.innerHTML = tasks.map(task => 
         `<tr>
@@ -628,37 +661,53 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     function refreshTasks() { loadTasks(); }
+
     document.addEventListener("DOMContentLoaded", loadTasks);
-// Article modal logic
-    function openArticleModal(url) {
+
+    // Article modal logic
+    function openArticleModal(url, taskId) {
       document.getElementById('articleFrame').src = url;
       document.getElementById('articleModal').classList.remove('hidden');
+      const btn = document.getElementById('articleMarkAsDoneBtn');
+      btn.setAttribute('data-taskid', taskId);
+      // Reset loader
+      document.getElementById('articleMarkAsDoneLoader').classList.add('hidden');
+      btn.disabled = false;
     }
     function closeArticleModal() {
       document.getElementById('articleModal').classList.add('hidden');
       document.getElementById('articleFrame').src = '';
+      document.getElementById('articleMarkAsDoneBtn').setAttribute('data-taskid', '');
     }
     // Video modal logic
-    function openVideoModal(youtubeUrl) {
+    function openVideoModal(youtubeUrl, taskId) {
       document.getElementById('videoFrame').src = youtubeUrl + '?autoplay=1';
       document.getElementById('videoModal').classList.remove('hidden');
+      const btn = document.getElementById('videoMarkAsDoneBtn');
+      btn.setAttribute('data-taskid', taskId);
+      // Reset loader
+      document.getElementById('videoMarkAsDoneLoader').classList.add('hidden');
+      btn.disabled = false;
     }
     function closeVideoModal() {
       document.getElementById('videoModal').classList.add('hidden');
       document.getElementById('videoFrame').src = '';
+      document.getElementById('videoMarkAsDoneBtn').setAttribute('data-taskid', '');
     }
-    // Dummy refresh
-    function refreshTasks() {
-      alert('Tasks have been refreshed!');
-    }
+
+    // Bind modal Mark As Done button
+    document.addEventListener('DOMContentLoaded', function() {
+      document.getElementById('articleMarkAsDoneBtn').onclick = function() {
+        const taskId = this.getAttribute('data-taskid');
+        if (taskId) markTaskDone(taskId, "article");
+      };
+      document.getElementById('videoMarkAsDoneBtn').onclick = function() {
+        const taskId = this.getAttribute('data-taskid');
+        if (taskId) markTaskDone(taskId, "video");
+      };
+    });
   </script>
-</div>
-  
-  
-
-
-    
-      
+</div>      
 
   <!-- Profile Section -->
 <div id="profile-section" class="section-block hidden">
