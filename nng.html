@@ -281,14 +281,15 @@ document.addEventListener("DOMContentLoaded", function() {
 
 <div class="bg-white rounded-lg p-6 shadow flex flex-col items-center w-full">
   <h3 class="text-lg font-bold mb-3 text-indigo-700 w-full text-left">Mock Test Scores</h3>
-  <canvas id="mockScoreChart" height="140"></canvas>
-  <div class="mt-2 text-sm text-gray-600 w-full text-left">
-    <span class="font-semibold">Best Mock:</span> <span id="mockBestStat">-</span><br>
-    <span class="font-semibold">Last Mock:</span> <span id="mockLastStat">-</span>
+  <div class="w-full flex flex-col items-stretch gap-4">
+    <canvas id="mockScoreChart" height="160"></canvas>
+    <div class="mt-2 text-sm text-gray-600 w-full text-left">
+      <span class="font-semibold">Best Mock:</span> <span id="mockBestStat">-</span><br>
+      <span class="font-semibold">Last Mock:</span> <span id="mockLastStat">-</span>
+    </div>
   </div>
 </div>
 
-<!-- Pie Chart Script -->
 <script>
 document.addEventListener("DOMContentLoaded", function() {
   (async function() {
@@ -315,71 +316,107 @@ document.addEventListener("DOMContentLoaded", function() {
       } catch (e) {}
     }
 
-    // Only mock tests.
+    // Filter only mock tests.
     const mockResults = (resultsCache||[]).filter(r => {
       if (!r.examSet) return false;
       const et = typeof r.examSet === "object" ? (r.examSet.type || "").toLowerCase() : "";
       return et === "mock" || et === "mock test" || (r.examSet.title && r.examSet.title.toLowerCase().includes("mock"));
     });
+    // Sort by date, oldest to newest
     const sorted = [...mockResults].sort((a, b) => new Date(a.submittedAt) - new Date(b.submittedAt));
-    function firstWord(str) {
+    // Chart X labels: "Mock N" or abbreviated title, with date
+    function abbrev(str) {
       if (!str) return "-";
-      const match = str.match(/^\w+/);
-      return match ? match[0] : str;
+      const match = str.match(/^[\w\s]{1,12}/);
+      return match ? match[0].trim() : str;
     }
-    const labels = sorted.map(r => (r.examSet && r.examSet.title) ? firstWord(r.examSet.title) : "Mock");
+    function formatShortDate(dateStr) {
+      if (!dateStr) return "";
+      const d = new Date(dateStr);
+      return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    }
+    const labels = sorted.map((r, i) =>
+      (r.examSet && r.examSet.title ? abbrev(r.examSet.title) : "Mock " + (i + 1)) +
+      (r.submittedAt ? " (" + formatShortDate(r.submittedAt) + ")" : "")
+    );
     const scores = sorted.map(r => r.score ?? 0);
 
+    // Best/last stat
     let best = {score:"-", examSet:{title:"-"}}, last = {score:"-", examSet:{title:"-"}};
     if (sorted.length) {
       best = sorted.reduce((acc, curr) => (curr.score > (acc.score??-1) ? curr : acc), sorted[0]);
       last = sorted[sorted.length-1];
     }
-
     if (document.getElementById("mockBestStat"))
-      document.getElementById("mockBestStat").textContent = `${best.score ?? "-"}% (${firstWord(best.examSet?.title)})`;
+      document.getElementById("mockBestStat").textContent = `${best.score ?? "-"}% (${abbrev(best.examSet?.title)})`;
     if (document.getElementById("mockLastStat"))
-      document.getElementById("mockLastStat").textContent = `${last.score ?? "-"}% (${firstWord(last.examSet?.title)})`;
+      document.getElementById("mockLastStat").textContent = `${last.score ?? "-"}% (${abbrev(last.examSet?.title)})`;
 
-    function genColors(n) {
-      const palette = [
-        "#6366f1","#3b82f6","#f59e42","#10b981","#f43f5e",
-        "#a21caf","#bef264","#eab308","#2dd4bf","#ef4444",
-        "#c026d3","#22d3ee","#eab308","#065f46","#ea580c"
-      ];
-      const colors = [];
-      for (let i=0; i<n; i++) colors.push(palette[i%palette.length]);
-      return colors;
-    }
-
-    // Draw pie chart
-    const chartElem = document.getElementById("mockScoreChart");
-    if (window.Chart && chartElem) {
-      const ctx = chartElem.getContext("2d");
-      if (window.mockScoreChart) window.mockScoreChart.destroy();
+    // Chart.js Bar Chart (professional style)
+    const ctx = document.getElementById('mockScoreChart').getContext('2d');
+    if (window.mockScoreChart) window.mockScoreChart.destroy();
+    if (labels.length) {
       window.mockScoreChart = new Chart(ctx, {
-        type: 'pie',
+        type: 'bar',
         data: {
-          labels: labels.length ? labels : ['No Data'],
+          labels,
           datasets: [{
-            label: 'Scores (%)',
-            data: scores.length ? scores : [0],
-            backgroundColor: genColors(labels.length || 1),
-            borderColor: "#fff",
-            borderWidth: 2
+            label: 'Score (%)',
+            data: scores,
+            backgroundColor: sorted.map(r =>
+              (r.score >= 75) ? "#16a34a"    // green for top scores
+              : (r.score >= 50) ? "#6366f1" // indigo for moderate
+              : "#f43f5e"                   // red for low
+            ),
+            borderRadius: 8,
+            maxBarThickness: 36
           }]
         },
         options: {
+          responsive: true,
           plugins: {
-            legend: {display: true, position: "bottom"},
-            tooltip: {}
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: ctx => `Score: ${ctx.raw}%`
+              }
+            },
+            title: {
+              display: false
+            }
+          },
+          scales: {
+            x: {
+              title: { display: true, text: "Mock Exam" },
+              ticks: {
+                font: { weight: "bold" },
+                maxRotation: 50,
+                minRotation: 0,
+                autoSkip: true,
+                maxTicksLimit: 8
+              },
+              grid: { display: false }
+            },
+            y: {
+              title: { display: true, text: "Score (%)" },
+              min: 0, max: 100,
+              beginAtZero: true,
+              grid: { color: "#f3f4f6" }
+            }
           }
         }
       });
+    } else {
+      // Show "No Data" if none
+      ctx.font = "16px sans-serif";
+      ctx.fillStyle = "#9ca3af";
+      ctx.textAlign = "center";
+      ctx.fillText("No mock test results", ctx.canvas.width/2, ctx.canvas.height/2);
     }
   })();
 });
-</script>         
+</script>
+          
           <div class="bg-white rounded-lg p-6 shadow mt-4 md:mt-0 max-w-xl w-full">
             <h3 class="text-lg font-bold mb-3 text-indigo-700">GPA Progress</h3>
             <canvas id="gpaChart" height="120"></canvas>
