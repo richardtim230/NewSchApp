@@ -285,95 +285,99 @@ document.addEventListener("DOMContentLoaded", function() {
     <span class="font-semibold">Last Mock:</span> <span id="mockLastStat">-</span>
   </div>
 </div>
+
+<!-- Pie Chart Script -->
 <script>
-(async function() {
-  const API_URL = "https://examguide.onrender.com/api/";
-  const token = localStorage.getItem("token");
-  let student = null;
-  try {
-    const resp = await fetch(API_URL + "auth/me", {
-      credentials: "include",
-      headers: token ? { Authorization: "Bearer " + token } : {}
-    });
-    const data = await resp.json();
-    student = data.user;
-  } catch (e) {}
-  let resultsCache = [];
-  if (student && student._id) {
+document.addEventListener("DOMContentLoaded", function() {
+  (async function() {
+    const API_URL = "https://examguide.onrender.com/api/";
+    const token = localStorage.getItem("token");
+    let student = null;
     try {
-      const resp = await fetch(API_URL + "results/user/" + student._id, {
+      const resp = await fetch(API_URL + "auth/me", {
         credentials: "include",
         headers: token ? { Authorization: "Bearer " + token } : {}
       });
-      resultsCache = await resp.json();
+      const data = await resp.json();
+      student = data.user;
     } catch (e) {}
-  }
-  // Filter to only mock tests
-  const mockResults = (resultsCache||[]).filter(r => {
-    if (!r.examSet) return false;
-    const et = typeof r.examSet === "object" ? (r.examSet.type || "").toLowerCase() : "";
-    return et === "mock" || et === "mock test" || (r.examSet.title && r.examSet.title.toLowerCase().includes("mock"));
-  });
-  // Sort by submission date
-  const sorted = [...mockResults].sort((a, b) => new Date(a.submittedAt) - new Date(b.submittedAt));
-  // Get first word of exam title
-  function firstWord(str) {
-    if (!str) return "-";
-    const match = str.match(/^\w+/);
-    return match ? match[0] : str;
-  }
-  const labels = sorted.map(r => (r.examSet && r.examSet.title) ? firstWord(r.examSet.title) : "Mock");
-  const scores = sorted.map(r => r.score ?? 0);
 
-  let best = {score:"-", examSet:{title:"-"}}, last = {score:"-", examSet:{title:"-"}};
-  if (sorted.length) {
-    best = sorted.reduce((acc, curr) => (curr.score > (acc.score??-1) ? curr : acc), sorted[0]);
-    last = sorted[sorted.length-1];
-  }
-  // Update page elements
-  if (document.getElementById("mockBestStat"))
-    document.getElementById("mockBestStat").textContent = `${best.score ?? "-"}% (${firstWord(best.examSet?.title)})`;
-  if (document.getElementById("mockLastStat"))
-    document.getElementById("mockLastStat").textContent = `${last.score ?? "-"}% (${firstWord(last.examSet?.title)})`;
+    let resultsCache = [];
+    if (student && student._id) {
+      try {
+        const resp = await fetch(API_URL + "results/user/" + student._id, {
+          credentials: "include",
+          headers: token ? { Authorization: "Bearer " + token } : {}
+        });
+        resultsCache = await resp.json();
+      } catch (e) {}
+    }
 
-  // Pie chart colors
-  function genColors(n) {
-    const palette = [
-      "#6366f1","#3b82f6","#f59e42","#10b981","#f43f5e",
-      "#a21caf","#bef264","#eab308","#2dd4bf","#ef4444",
-      "#c026d3","#22d3ee","#eab308","#065f46","#ea580c"
-    ];
-    const colors = [];
-    for (let i=0; i<n; i++) colors.push(palette[i%palette.length]);
-    return colors;
-  }
-
-  // Chart.js pie chart
-  if (window.Chart && document.getElementById("mockScoreChart")) {
-    const ctx = document.getElementById("mockScoreChart").getContext("2d");
-    if (window.mockScoreChart) window.mockScoreChart.destroy();
-    window.mockScoreChart = new Chart(ctx, {
-      type: 'pie',
-      data: {
-        labels: labels.length ? labels : ['No Data'],
-        datasets: [{
-          label: 'Scores (%)',
-          data: scores.length ? scores : [0],
-          backgroundColor: genColors(labels.length || 1),
-          borderColor: "#fff",
-          borderWidth: 2
-        }]
-      },
-      options: {
-        plugins: {
-          legend: {display: true, position: "bottom"},
-          tooltip: {}
-        }
-      }
+    // Only mock tests.
+    const mockResults = (resultsCache||[]).filter(r => {
+      if (!r.examSet) return false;
+      const et = typeof r.examSet === "object" ? (r.examSet.type || "").toLowerCase() : "";
+      return et === "mock" || et === "mock test" || (r.examSet.title && r.examSet.title.toLowerCase().includes("mock"));
     });
-  }
-})();
-</script>
+    const sorted = [...mockResults].sort((a, b) => new Date(a.submittedAt) - new Date(b.submittedAt));
+    function firstWord(str) {
+      if (!str) return "-";
+      const match = str.match(/^\w+/);
+      return match ? match[0] : str;
+    }
+    const labels = sorted.map(r => (r.examSet && r.examSet.title) ? firstWord(r.examSet.title) : "Mock");
+    const scores = sorted.map(r => r.score ?? 0);
+
+    let best = {score:"-", examSet:{title:"-"}}, last = {score:"-", examSet:{title:"-"}};
+    if (sorted.length) {
+      best = sorted.reduce((acc, curr) => (curr.score > (acc.score??-1) ? curr : acc), sorted[0]);
+      last = sorted[sorted.length-1];
+    }
+
+    if (document.getElementById("mockBestStat"))
+      document.getElementById("mockBestStat").textContent = `${best.score ?? "-"}% (${firstWord(best.examSet?.title)})`;
+    if (document.getElementById("mockLastStat"))
+      document.getElementById("mockLastStat").textContent = `${last.score ?? "-"}% (${firstWord(last.examSet?.title)})`;
+
+    function genColors(n) {
+      const palette = [
+        "#6366f1","#3b82f6","#f59e42","#10b981","#f43f5e",
+        "#a21caf","#bef264","#eab308","#2dd4bf","#ef4444",
+        "#c026d3","#22d3ee","#eab308","#065f46","#ea580c"
+      ];
+      const colors = [];
+      for (let i=0; i<n; i++) colors.push(palette[i%palette.length]);
+      return colors;
+    }
+
+    // Draw pie chart
+    const chartElem = document.getElementById("mockScoreChart");
+    if (window.Chart && chartElem) {
+      const ctx = chartElem.getContext("2d");
+      if (window.mockScoreChart) window.mockScoreChart.destroy();
+      window.mockScoreChart = new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels: labels.length ? labels : ['No Data'],
+          datasets: [{
+            label: 'Scores (%)',
+            data: scores.length ? scores : [0],
+            backgroundColor: genColors(labels.length || 1),
+            borderColor: "#fff",
+            borderWidth: 2
+          }]
+        },
+        options: {
+          plugins: {
+            legend: {display: true, position: "bottom"},
+            tooltip: {}
+          }
+        }
+      });
+    }
+  })();
+});
+</script>         
           <div class="bg-white rounded-lg p-6 shadow mt-4 md:mt-0 max-w-xl w-full">
             <h3 class="text-lg font-bold mb-3 text-indigo-700">GPA Progress</h3>
             <canvas id="gpaChart" height="120"></canvas>
