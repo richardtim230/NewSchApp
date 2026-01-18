@@ -1382,17 +1382,6 @@ document.addEventListener("DOMContentLoaded", function() {
           <!-- Add more resources similarly -->
         </tbody>
       </table>
-
-      <!-- Empty state -->
-      <!--
-      <div class="p-10 flex flex-col items-center text-gray-400">
-        <svg class="w-14 h-14 mb-2" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-          <path d="M5 12h14M12 5l7 7-7 7"></path>
-        </svg>
-        <div class="font-semibold text-xl">No resources found.</div>
-        <div class="text-sm">Try adjusting your filters above.</div>
-      </div>
-      -->
     </div>
 
     <!-- Quick Shortcuts & Tips -->
@@ -1589,10 +1578,10 @@ document.addEventListener("DOMContentLoaded", function() {
 
   </div>
 </div>
-<!-- Mock Tests / Exams Section -->
-<!-- Mock Tests / Exams Section -->
+<!-- Mock Tests / Exams Section (Paginated) -->
 <div id="mocktests-section" class="section-block hidden">
   <div class="max-w-5xl mx-auto py-8">
+    <!-- AVAILABLE MOCKS -->
     <div class="mb-8">
       <h2 class="text-2xl font-semibold text-indigo-800 mb-2">Available Mock Exams</h2>
       <div class="overflow-x-auto rounded-xl shadow">
@@ -1610,8 +1599,14 @@ document.addEventListener("DOMContentLoaded", function() {
           </tbody>
         </table>
       </div>
+      <div class="flex items-center justify-end gap-3 mt-2">
+        <button id="mockAvailablePrevBtn" class="bg-gray-200 px-3 py-1 rounded hover:bg-gray-300 font-bold" disabled>Previous</button>
+        <span id="mockAvailablePageInfo" class="text-gray-700">Page 1</span>
+        <button id="mockAvailableNextBtn" class="bg-gray-200 px-3 py-1 rounded hover:bg-gray-300 font-bold" disabled>Next</button>
+      </div>
     </div>
 
+    <!-- COMPLETED MOCKS -->
     <div class="mb-2">
       <h2 class="text-2xl font-semibold text-indigo-800 mb-2">Completed Mock Exams</h2>
       <div class="overflow-x-auto rounded-xl shadow">
@@ -1629,10 +1624,21 @@ document.addEventListener("DOMContentLoaded", function() {
           </tbody>
         </table>
       </div>
+      <div class="flex items-center justify-end gap-3 mt-2">
+        <button id="mockCompletedPrevBtn" class="bg-gray-200 px-3 py-1 rounded hover:bg-gray-300 font-bold" disabled>Previous</button>
+        <span id="mockCompletedPageInfo" class="text-gray-700">Page 1</span>
+        <button id="mockCompletedNextBtn" class="bg-gray-200 px-3 py-1 rounded hover:bg-gray-300 font-bold" disabled>Next</button>
+      </div>
     </div>
   </div>
 </div>
+
 <script>
+const MOCK_PAGE_SIZE = 6;
+let availableMocks = [];
+let completedMocks = [];
+let availableMockPage = 1;
+let completedMockPage = 1;
 
 function formatDate(dateStr) {
   if (!dateStr) return "";
@@ -1644,6 +1650,7 @@ function formatTime(dateStr) {
   const date = new Date(dateStr);
   return date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 }
+function esc(str) { return String(str || "").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
 async function fetchCurrentUser() {
   try {
@@ -1663,15 +1670,18 @@ async function fetchCurrentUser() {
 
 async function fetchMockExams() {
   const token = localStorage.getItem("token") || sessionStorage.getItem("token");
-  let scheduleExams = [];
-  let completedExams = [];
+  availableMocks = [];
+  completedMocks = [];
+  availableMockPage = 1;
+  completedMockPage = 1;
   try {
     const user = await fetchCurrentUser();
-    const availableTbody = document.getElementById("mockExamsTableBody");
-    const completedTbody = document.getElementById("completedExamsTableBody");
     if (!user) {
-      if (availableTbody) availableTbody.innerHTML = '<tr><td colspan="4" class="px-5 py-5 text-center text-gray-400">Please login</td></tr>';
-      if (completedTbody) completedTbody.innerHTML = '<tr><td colspan="4" class="px-5 py-5 text-center text-gray-400">Please login</td></tr>';
+      document.getElementById("mockExamsTableBody").innerHTML =
+        '<tr><td colspan="4" class="px-5 py-5 text-center text-gray-400">Please login</td></tr>';
+      document.getElementById("completedExamsTableBody").innerHTML =
+        '<tr><td colspan="4" class="px-5 py-5 text-center text-gray-400">Please login</td></tr>';
+      updatePaginationControls();
       return;
     }
     let faculty = user.faculty && (user.faculty._id || user.faculty);
@@ -1683,6 +1693,7 @@ async function fetchMockExams() {
     const resExams = await fetch(url, {
       headers: { "Authorization": token ? `Bearer ${token}` : undefined }
     });
+    let scheduleExams = [];
     if (resExams.ok) {
       const resp = await resExams.json();
       if (Array.isArray(resp)) {
@@ -1691,6 +1702,7 @@ async function fetchMockExams() {
         scheduleExams = resp.schedules;
       }
     }
+
     // Fetch completed exams (history)
     let completed = [];
     const resCompleted = await fetch(`${API_BASE_URL}/api/results/user/${user._id}`, {
@@ -1700,98 +1712,140 @@ async function fetchMockExams() {
       const data = await resCompleted.json();
       if (Array.isArray(data)) completed = data;
     }
-    renderMockExams(scheduleExams, completed);
-  } catch (e) {
-    const availableTbody = document.getElementById("mockExamsTableBody");
-    const completedTbody = document.getElementById("completedExamsTableBody");
-    if (availableTbody) availableTbody.innerHTML = `<tr><td colspan="4" class="px-5 py-5 text-center text-red-500">Failed to load exams.</td></tr>`;
-    if (completedTbody) completedTbody.innerHTML = `<tr><td colspan="4" class="px-5 py-5 text-center text-red-500">Failed to load exams.</td></tr>`;
-  }
-}
 
-function renderMockExams(schedules, completed) {
-  // Gather completed examSet IDs
-  const completedExamSetIDs = new Set(
-    completed
-      .map(r =>
-        r.examSet?._id ||
-        r.examSet ||
-        r.examSetId ||
-        (typeof r.examSet === 'object' && r.examSet?._id)
-      )
-      .filter(Boolean)
-      .map(String)
-  );
+    // Gather completed examSet IDs
+    const completedExamSetIDs = new Set(
+      completed
+        .map(r =>
+          r.examSet?._id ||
+          r.examSet ||
+          r.examSetId ||
+          (typeof r.examSet === 'object' && r.examSet?._id)
+        )
+        .filter(Boolean)
+        .map(String)
+    );
 
-  // --- Render Available (not completed) ---
-  const tbody = document.getElementById("mockExamsTableBody");
-  if (tbody) {
-    tbody.innerHTML = "";
-    const available = schedules.filter(sch => {
+    // Available (not completed)
+    availableMocks = scheduleExams.filter(sch => {
       const examSetId = sch.examSet?._id || sch.examSet || sch.examSetId || sch._id;
       return !completedExamSetIDs.has(String(examSetId));
     });
-    if (!available.length) {
-      tbody.innerHTML = `<tr><td colspan="4" class="text-gray-400 px-5 py-5 text-center">No available mock exams</td></tr>`;
-    } else {
-      available.forEach(sch => {
-        const examSet = sch.examSet || {};
-        const title = examSet.title || sch.title || "Untitled";
-        const startTime = sch.start || sch.startTime || sch.date || examSet.startTime || "";
-        const status = (sch.status || examSet.status || "").toLowerCase();
-        let now = new Date();
-        let examStartTime = new Date(startTime);
 
-        let statusLabel = "";
-        let actionBtn = "";
-        if ((status === "active" || status === "open") && examStartTime <= now) {
-          statusLabel = `<span class="inline-flex items-center px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold">Available</span>`;
-          actionBtn = `<button class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow text-xs" onclick="startExam('${examSet._id || sch._id}')">Start</button>`;
-        } else if (status === "closed") {
-          statusLabel = `<span class="inline-flex items-center px-3 py-1 bg-gray-200 text-gray-700 rounded-full text-xs font-bold">Closed</span>`;
-          actionBtn = `<button class="px-4 py-2 bg-gray-200 text-gray-400 font-semibold rounded-lg shadow text-xs cursor-not-allowed" disabled>Closed</button>`;
-        } else {
-          statusLabel = `<span class="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-bold">Upcoming</span>`;
-          actionBtn = `<button class="px-4 py-2 bg-blue-100 text-blue-500 font-semibold rounded-lg shadow text-xs cursor-not-allowed" disabled>Upcoming</button>`;
-        }
-        tbody.innerHTML += `
-          <tr class="border-b hover:bg-indigo-50/50">
-            <td class="px-5 py-4 font-medium">${title}</td>
-            <td class="px-5 py-4 text-sm">${formatDate(startTime)} ${formatTime(startTime)}</td>
-            <td class="px-5 py-4">${statusLabel}</td>
-            <td class="px-5 py-4">${actionBtn}</td>
-          </tr>
-        `;
-      });
-    }
-  }
+    // Completed
+    completedMocks = completed;
 
-  // --- Render Completed (all user results, even if unrelated to current schedule) ---
-  const completedTbody = document.getElementById("completedExamsTableBody");
-  if (completedTbody) {
-    if (!completed.length) {
-      completedTbody.innerHTML = `<tr><td colspan="4" class="text-gray-400 px-5 py-5 text-center">No completed mock exams yet</td></tr>`;
-    } else {
-      completedTbody.innerHTML = completed.map(res => {
-        let title =
-          (res.examSet && (res.examSet.title || res.examSet.name)) ||
-          res.examTitle || res.title || "Untitled";
-        let dateCompleted = res.completedAt || res.date || res.createdAt || res.submittedAt;
-        let score = res.score || res.percentage || (res.result ? `${res.result}` : "");
-        return `
-          <tr class="border-b hover:bg-indigo-50/50">
-            <td class="px-5 py-4 font-medium">${title}</td>
-            <td class="px-5 py-4 text-sm">${formatDate(dateCompleted)}</td>
-            <td class="px-5 py-4 font-semibold text-green-700">${score ? (score + '%') : ''}</td>
-            <td class="px-5 py-4">
-              <button class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow text-xs" onclick="reviewExam('${res._id}')">Review</button>
-            </td>
-          </tr>
-        `;
-      }).join('');
-    }
+    renderAvailableMocks();
+    renderCompletedMocks();
+    updatePaginationControls();
+  } catch (e) {
+    document.getElementById("mockExamsTableBody").innerHTML =
+      `<tr><td colspan="4" class="px-5 py-5 text-center text-red-500">Failed to load exams.</td></tr>`;
+    document.getElementById("completedExamsTableBody").innerHTML =
+      `<tr><td colspan="4" class="px-5 py-5 text-center text-red-500">Failed to load exams.</td></tr>`;
+    updatePaginationControls();
   }
 }
+
+function renderAvailableMocks() {
+  const tbody = document.getElementById("mockExamsTableBody");
+  const start = (availableMockPage-1)*MOCK_PAGE_SIZE;
+  const pageMocks = availableMocks.slice(start, start+MOCK_PAGE_SIZE);
+  tbody.innerHTML = "";
+  if (!pageMocks.length) {
+    tbody.innerHTML = `<tr><td colspan="4" class="text-gray-400 px-5 py-5 text-center">No available mock exams</td></tr>`;
+    return;
+  }
+  pageMocks.forEach(sch => {
+    const examSet = sch.examSet || {};
+    const title = esc(examSet.title || sch.title || "Untitled");
+    const startTime = sch.start || sch.startTime || sch.date || examSet.startTime || "";
+    const status = (sch.status || examSet.status || "").toLowerCase();
+    let now = new Date();
+    let examStartTime = new Date(startTime);
+
+    let statusLabel = "";
+    let actionBtn = "";
+    if ((status === "active" || status === "open") && examStartTime <= now) {
+      statusLabel = `<span class="inline-flex items-center px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold">Available</span>`;
+      actionBtn = `<button class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow text-xs" onclick="startExam('${examSet._id || sch._id}')">Start</button>`;
+    } else if (status === "closed") {
+      statusLabel = `<span class="inline-flex items-center px-3 py-1 bg-gray-200 text-gray-700 rounded-full text-xs font-bold">Closed</span>`;
+      actionBtn = `<button class="px-4 py-2 bg-gray-200 text-gray-400 font-semibold rounded-lg shadow text-xs cursor-not-allowed" disabled>Closed</button>`;
+    } else {
+      statusLabel = `<span class="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-bold">Upcoming</span>`;
+      actionBtn = `<button class="px-4 py-2 bg-blue-100 text-blue-500 font-semibold rounded-lg shadow text-xs cursor-not-allowed" disabled>Upcoming</button>`;
+    }
+    tbody.innerHTML += `
+      <tr class="border-b hover:bg-indigo-50/50">
+        <td class="px-5 py-4 font-medium">${title}</td>
+        <td class="px-5 py-4 text-sm">${formatDate(startTime)} ${formatTime(startTime)}</td>
+        <td class="px-5 py-4">${statusLabel}</td>
+        <td class="px-5 py-4">${actionBtn}</td>
+      </tr>
+    `;
+  });
+}
+
+function renderCompletedMocks() {
+  const tbody = document.getElementById("completedExamsTableBody");
+  const start = (completedMockPage-1)*MOCK_PAGE_SIZE;
+  const pageMocks = completedMocks.slice(start, start+MOCK_PAGE_SIZE);
+  if (!pageMocks.length) {
+    tbody.innerHTML = `<tr><td colspan="4" class="text-gray-400 px-5 py-5 text-center">No completed mock exams yet</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = pageMocks.map(res => {
+    let title =
+      esc((res.examSet && (res.examSet.title || res.examSet.name)) ||
+      res.examTitle || res.title || "Untitled");
+    let dateCompleted = res.completedAt || res.date || res.createdAt || res.submittedAt;
+    let score = res.score || res.percentage || (res.result ? `${res.result}` : "");
+    return `
+      <tr class="border-b hover:bg-indigo-50/50">
+        <td class="px-5 py-4 font-medium">${title}</td>
+        <td class="px-5 py-4 text-sm">${formatDate(dateCompleted)}</td>
+        <td class="px-5 py-4 font-semibold text-green-700">${score ? (score + '%') : ''}</td>
+        <td class="px-5 py-4">
+          <button class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow text-xs" onclick="reviewExam('${res._id}')">Review</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function updatePaginationControls() {
+  // Available
+  const totalAvailable = Math.ceil(availableMocks.length / MOCK_PAGE_SIZE) || 1;
+  document.getElementById("mockAvailablePageInfo").textContent = `Page ${availableMockPage} of ${totalAvailable}`;
+  document.getElementById("mockAvailablePrevBtn").disabled = availableMockPage <= 1;
+  document.getElementById("mockAvailableNextBtn").disabled = availableMockPage >= totalAvailable;
+  // Completed
+  const totalCompleted = Math.ceil(completedMocks.length / MOCK_PAGE_SIZE) || 1;
+  document.getElementById("mockCompletedPageInfo").textContent = `Page ${completedMockPage} of ${totalCompleted}`;
+  document.getElementById("mockCompletedPrevBtn").disabled = completedMockPage <= 1;
+  document.getElementById("mockCompletedNextBtn").disabled = completedMockPage >= totalCompleted;
+}
+
+// Event Listeners for Pagination
+document.addEventListener("DOMContentLoaded", function() {
+  document.getElementById("mockAvailablePrevBtn").onclick = function() {
+    if (availableMockPage > 1) { availableMockPage--; renderAvailableMocks(); updatePaginationControls(); }
+  };
+  document.getElementById("mockAvailableNextBtn").onclick = function() {
+    const total = Math.ceil(availableMocks.length / MOCK_PAGE_SIZE) || 1;
+    if (availableMockPage < total) { availableMockPage++; renderAvailableMocks(); updatePaginationControls(); }
+  };
+  document.getElementById("mockCompletedPrevBtn").onclick = function() {
+    if (completedMockPage > 1) { completedMockPage--; renderCompletedMocks(); updatePaginationControls(); }
+  };
+  document.getElementById("mockCompletedNextBtn").onclick = function() {
+    const total = Math.ceil(completedMocks.length / MOCK_PAGE_SIZE) || 1;
+    if (completedMockPage < total) { completedMockPage++; renderCompletedMocks(); updatePaginationControls(); }
+  };
+
+  fetchMockExams();
+});
 
 function startExam(examId) {
   window.location.href = `/mock-exam/${examId}`;
@@ -1799,9 +1853,6 @@ function startExam(examId) {
 function reviewExam(resultId) {
   window.location.href = `/mock-exam/review/${resultId}`;
 }
-
-// Entry point
-document.addEventListener("DOMContentLoaded", fetchMockExams);
 </script>
         <!-- Past Questions Section -->
 <div id="pastquestions-section" class="section-block hidden">
