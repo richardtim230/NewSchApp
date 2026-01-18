@@ -383,7 +383,7 @@ document.addEventListener("DOMContentLoaded", function() {
             <canvas id="gpaChart" height="120"></canvas>
           </div>
         </div>
-<!-- Tasks Center Section -->
+<!-- Tasks Center Section (with Pagination) -->
 <div id="taskscenter-section" class="section-block hidden">
   <div class="max-w-6xl mx-auto py-10 px-2 md:px-6">
     <!-- Section Header -->
@@ -438,6 +438,13 @@ document.addEventListener("DOMContentLoaded", function() {
         </tbody>
       </table>
     </div>
+
+    <!-- Pagination controls -->
+    <div class="flex items-center justify-end gap-3 mt-4" id="tasksPaginationControls">
+      <button id="tasksPrevBtn" class="bg-gray-200 px-3 py-1 rounded hover:bg-gray-300 font-bold" disabled>Previous</button>
+      <span id="tasksPageInfo" class="text-gray-700">Page 1</span>
+      <button id="tasksNextBtn" class="bg-gray-200 px-3 py-1 rounded hover:bg-gray-300 font-bold" disabled>Next</button>
+    </div>
   </div>
 
   <!-- Article Modal (With Description + Loader) -->
@@ -477,6 +484,11 @@ document.addEventListener("DOMContentLoaded", function() {
   </div>
 
   <script>
+    // --- Pagination Globals ---
+    let tasksCurrentPage = 1;
+    const tasksPerPage = 6;
+    let tasksTotalPages = 1;
+
     // For 1 minute disabling mechanic
     const modalDisabledUntil = {};
 
@@ -515,14 +527,14 @@ document.addEventListener("DOMContentLoaded", function() {
       }
       // Reading
       if ((task.activityType === "reading" || task.activityType === "article") && task.meta?.url) {
-        return `<button onclick="openArticleModal('${esc(task.meta.url)}','${task._id}')" class="bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-1 font-semibold text-xs shadow flex gap-2 items-center" data-taskid="${task._id}">
+        return `<button onclick="openArticleModal('${esc(task.meta.url)}','${task._id}')" class="bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-1 font-semibold text-xs shadow flex gap-2 items-center">
           <span>Read</span>
           <svg class="inline w-4 h-4 ml-1" fill="none" stroke="currentColor"><path d="M4 4v16h16V4H4Zm8 0v16" stroke-width="1.5"/></svg>
         </button>`;
       }
       // Video
       if (task.activityType === "video" && task.meta?.url) {
-        return `<button onclick="openVideoModal('${esc(task.meta.url)}','${task._id}')" class="bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-1 font-semibold text-xs shadow flex gap-2 items-center" data-taskid="${task._id}">
+        return `<button onclick="openVideoModal('${esc(task.meta.url)}','${task._id}')" class="bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-1 font-semibold text-xs shadow flex gap-2 items-center">
           <span>Watch</span>
           <svg class="inline w-4 h-4 ml-1" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10" stroke-width="2"/><path d="M10 8l6 4-6 4V8z" stroke-width="1.5"/></svg>
         </button>`;
@@ -536,7 +548,7 @@ document.addEventListener("DOMContentLoaded", function() {
       }
       // Mock Test
       if (task.activityType === "mocktest" && task.meta?.url) {
-        return `<button onclick="window.location.href='${esc(task.meta.url)}'" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded px-4 py-1 font-semibold text-xs shadow flex gap-2 items-center" data-taskid="${task._id}">
+        return `<button onclick="window.location.href='${esc(task.meta.url)}'" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded px-4 py-1 font-semibold text-xs shadow flex gap-2 items-center">
           <span>Start Test</span>
           <svg class="inline w-4 h-4 ml-1" fill="none" stroke="currentColor"><path d="M12 4a8 8 0 010 16 8 8 0 010-16z" stroke-width="1.5"/></svg>
         </button>`;
@@ -544,8 +556,136 @@ document.addEventListener("DOMContentLoaded", function() {
       return `<span class="text-gray-400 text-xs">No Action</span>`;
     }
 
-    // --- Modal and "Mark as Done" controls ---
+    // Pagination-aware task loader
+    async function loadTasks(page = 1) {
+      const API_URL = "https://examguide.onrender.com/api/";
+      let token = localStorage.getItem("token");
+      let student = null;
+      try {
+        const resp = await fetch(API_URL + "auth/me", {
+          credentials: "include",
+          headers: token ? { Authorization: "Bearer " + token } : {}
+        });
+        const data = await resp.json();
+        student = data.user;
+      } catch (e) {}
+      let tasks = [];
+      if (student && student._id) {
+        try {
+          const resp = await fetch(`${API_URL}tasks/user/${student._id}`, {
+            credentials: "include",
+            headers: token ? { Authorization: "Bearer " + token } : {}
+          });
+          tasks = await resp.json();
+        } catch (e) {}
+      }
+      if (!Array.isArray(tasks) || !tasks.length) {
+        // Fallback demo tasks, all with descriptions
+        tasks = [
+          {
+            _id: "demo1",
+            title: `Read: "5 Quick Ways to Beat Procrastination"`,
+            activityType: "reading",
+            points: 15,
+            status: "active",
+            description: "Boost your productivity with these simple strategies for overcoming procrastination.",
+            meta: { duration: "10 min", url: "https://medium.com/the-mission/5-quick-ways-to-beat-procrastination-626edf2e5a9" }
+          },
+          {
+            _id: "demo2",
+            title: `Watch: Study Motivation — How to Stay Focused`,
+            activityType: "video",
+            points: 10,
+            status: "active",
+            description: "Motivational tips and tricks to help you keep your mind on your studies.",
+            meta: { duration: "7 min", url: "https://www.youtube.com/embed/Oe421EPjeBE" }
+          },
+          {
+            _id: "demo3",
+            title: `Like ExamGuard Facebook Page`,
+            activityType: "social",
+            points: 8,
+            status: "active",
+            description: "Support ExamGuard by liking our Facebook page.",
+            meta: { url: "https://facebook.com/examguardpage", platform: "Facebook" }
+          },
+          {
+            _id: "demo4",
+            title: `Participate in "Math Practice Test"`,
+            activityType: "mocktest",
+            points: 20,
+            status: "active",
+            description: "Apply your Math knowledge in a quick mock test session.",
+            meta: { url: "#mocktest", status: "Available" }
+          },
+          {
+            _id: "demo5",
+            title: "Complete your profile information",
+            activityType: "profile",
+            points: 5,
+            status: "done",
+            description: "Help us know you better by completing your entire profile."
+          },
+          {
+            _id: "demo6",
+            title: "Read: Study Techniques for Finals",
+            activityType: "reading",
+            points: 12,
+            status: "active",
+            description: "Essential reading before finals week.",
+            meta: { duration: "15 min", url: "https://example.com/finals-study" }
+          },
+          {
+            _id: "demo7",
+            title: "Watch: Time Management for Students",
+            activityType: "video",
+            points: 9,
+            status: "active",
+            description: "Practical advice for balancing study and life.",
+            meta: { duration: "8 min", url: "https://www.youtube.com/embed/time-management" }
+          }
+        ];
+      }
+      window.tasksList = tasks;
 
+      // ---- Pagination logic ----
+      tasksTotalPages = Math.ceil(tasks.length / tasksPerPage) || 1;
+      if (page < 1) page = 1;
+      if (page > tasksTotalPages) page = tasksTotalPages;
+      tasksCurrentPage = page;
+      const startIdx = (page - 1) * tasksPerPage;
+      const pageTasks = tasks.slice(startIdx, startIdx + tasksPerPage);
+
+      const tbody = document.getElementById("tasksTableBody");
+      tbody.innerHTML = pageTasks.map(task =>
+        `<tr>
+          <td class="px-6 py-4 font-semibold text-blue-900 whitespace-nowrap">${esc(task.title)}</td>
+          <td class="px-6 py-4 text-gray-700">${esc(task.description || "")}</td>
+          <td class="px-6 py-4 whitespace-nowrap">${activityTypePill(task.activityType, task.meta)}</td>
+          <td class="px-6 py-4 text-center font-bold text-indigo-600 whitespace-nowrap">${esc(task.points) ?? 0}</td>
+          <td class="px-6 py-4 whitespace-nowrap">${statusPill(task.status)}</td>
+          <td class="px-6 py-4 whitespace-nowrap">${actionCell(task)}</td>
+        </tr>`).join("");
+
+      // Progress overview
+      const active = tasks.filter(t => (t.status||"").toLowerCase() === "active").length;
+      const done = tasks.filter(t => ["done","completed"].includes((t.status||"").toLowerCase())).length;
+      const overdue = tasks.filter(t => (t.status||"").toLowerCase() === "overdue").length;
+      const points = tasks.reduce((sum, t) => sum + (t.points||0), 0);
+      document.getElementById("activeTasksCount").textContent = active;
+      document.getElementById("completedTasksCount").textContent = done;
+      document.getElementById("overdueTasksCount").textContent = overdue;
+      document.getElementById("pointsCount").textContent = points;
+
+      // Pagination controls update
+      document.getElementById("tasksPageInfo").textContent = `Page ${tasksCurrentPage} of ${tasksTotalPages}`;
+      document.getElementById("tasksPrevBtn").disabled = (tasksCurrentPage === 1);
+      document.getElementById("tasksNextBtn").disabled = (tasksCurrentPage === tasksTotalPages);
+    }
+
+    function refreshTasks() { loadTasks(1); }
+
+    // --- Modal and "Mark as Done" controls (existing code) here ---
     function getModalBtnAndLoader(modalType) {
       if (modalType === "article") {
         return {
@@ -563,11 +703,9 @@ document.addEventListener("DOMContentLoaded", function() {
       return {};
     }
 
-    // Mark as Done, disables for 1 minute with proper loader/reset
     async function markTaskDone(taskId, modalType) {
       const { btn, loader, span } = getModalBtnAndLoader(modalType);
       if (!btn || btn.disabled) return; // Skip if currently disabled (locked)
-
       btn.disabled = true;
       loader.classList.remove("hidden");
       span.textContent = "Marking...";
@@ -588,7 +726,7 @@ document.addEventListener("DOMContentLoaded", function() {
         if (!res.ok) throw new Error("Could not mark as done");
         closeArticleModal();
         closeVideoModal();
-        await loadTasks();
+        await loadTasks(tasksCurrentPage);
       } catch (e) {
         alert("Failed to mark as done. Please retry.");
       }
@@ -596,7 +734,6 @@ document.addEventListener("DOMContentLoaded", function() {
       loader.classList.add("hidden");
       span.textContent = "Disabled for 1 min...";
       btn.disabled = true;
-
       setTimeout(() => {
         if (modalDisabledUntil[disableKey] <= Date.now()) {
           btn.disabled = false;
@@ -605,7 +742,6 @@ document.addEventListener("DOMContentLoaded", function() {
       }, 60000);
     }
 
-    // -- Modal logic, showing description field --
     function openArticleModal(url, taskId) {
       const task = window.tasksList?.find(t => t._id === taskId) || {};
       document.getElementById('articleFrame').src = url;
@@ -686,104 +822,17 @@ document.addEventListener("DOMContentLoaded", function() {
         const taskId = this.getAttribute('data-taskid');
         if (taskId && !this.disabled) markTaskDone(taskId, "video");
       };
+
+      // Pagination controls handlers
+      document.getElementById("tasksPrevBtn").onclick = function() {
+        if (tasksCurrentPage > 1) loadTasks(tasksCurrentPage - 1);
+      };
+      document.getElementById("tasksNextBtn").onclick = function() {
+        if (tasksCurrentPage < tasksTotalPages) loadTasks(tasksCurrentPage + 1);
+      };
+
+      loadTasks(1);
     });
-
-   // ---- Fetch & render tasks: add description column to table
-    async function loadTasks() {
-      const API_URL = "https://examguide.onrender.com/api/";
-      let token = localStorage.getItem("token");
-      let student = null;
-      try {
-        const resp = await fetch(API_URL + "auth/me", {
-          credentials: "include",
-          headers: token ? { Authorization: "Bearer " + token } : {}
-        });
-        const data = await resp.json();
-        student = data.user;
-      } catch (e) {}
-      let tasks = [];
-      if (student && student._id) {
-        try {
-          const resp = await fetch(`${API_URL}tasks/user/${student._id}`, {
-            credentials: "include",
-            headers: token ? { Authorization: "Bearer " + token } : {}
-          });
-          tasks = await resp.json();
-        } catch (e) {}
-      }
-      if (!Array.isArray(tasks) || !tasks.length) {
-        // Fallback demo tasks, all with descriptions
-        tasks = [
-          {
-            _id: "demo1",
-            title: `Read: "5 Quick Ways to Beat Procrastination"`,
-            activityType: "reading",
-            points: 15,
-            status: "active",
-            description: "Boost your productivity with these simple strategies for overcoming procrastination.",
-            meta: { duration: "10 min", url: "https://medium.com/the-mission/5-quick-ways-to-beat-procrastination-626edf2e5a9" }
-          },
-          {
-            _id: "demo2",
-            title: `Watch: Study Motivation — How to Stay Focused`,
-            activityType: "video",
-            points: 10,
-            status: "active",
-            description: "Motivational tips and tricks to help you keep your mind on your studies.",
-            meta: { duration: "7 min", url: "https://www.youtube.com/embed/Oe421EPjeBE" }
-          },
-          {
-            _id: "demo3",
-            title: `Like ExamGuard Facebook Page`,
-            activityType: "social",
-            points: 8,
-            status: "active",
-            description: "Support ExamGuard by liking our Facebook page.",
-            meta: { url: "https://facebook.com/examguardpage", platform: "Facebook" }
-          },
-          {
-            _id: "demo4",
-            title: `Participate in "Math Practice Test"`,
-            activityType: "mocktest",
-            points: 20,
-            status: "active",
-            description: "Apply your Math knowledge in a quick mock test session.",
-            meta: { url: "#mocktest", status: "Available" }
-          },
-          {
-            _id: "demo5",
-            title: "Complete your profile information",
-            activityType: "profile",
-            points: 5,
-            status: "done",
-            description: "Help us know you better by completing your entire profile."
-          }
-        ];
-      }
-      window.tasksList = tasks;
-      const tbody = document.getElementById("tasksTableBody");
-      tbody.innerHTML = tasks.map(task =>
-        `<tr>
-          <td class="px-6 py-4 font-semibold text-blue-900 whitespace-nowrap">${esc(task.title)}</td>
-          <td class="px-6 py-4 text-gray-700">${esc(task.description || "")}</td>
-          <td class="px-6 py-4 whitespace-nowrap">${activityTypePill(task.activityType, task.meta)}</td>
-          <td class="px-6 py-4 text-center font-bold text-indigo-600 whitespace-nowrap">${esc(task.points) ?? 0}</td>
-          <td class="px-6 py-4 whitespace-nowrap">${statusPill(task.status)}</td>
-          <td class="px-6 py-4 whitespace-nowrap">${actionCell(task)}</td>
-        </tr>`).join("");
-      // Progress overview
-      const active = tasks.filter(t => (t.status||"").toLowerCase() === "active").length;
-      const done = tasks.filter(t => ["done","completed"].includes((t.status||"").toLowerCase())).length;
-      const overdue = tasks.filter(t => (t.status||"").toLowerCase() === "overdue").length;
-      const points = tasks.reduce((sum, t) => sum + (t.points||0), 0);
-      document.getElementById("activeTasksCount").textContent = active;
-      document.getElementById("completedTasksCount").textContent = done;
-      document.getElementById("overdueTasksCount").textContent = overdue;
-      document.getElementById("pointsCount").textContent = points;
-    }
-
-    function refreshTasks() { loadTasks(); }
-    document.addEventListener("DOMContentLoaded", loadTasks);
   </script>
 </div>
 
