@@ -1994,69 +1994,42 @@ document.addEventListener('DOMContentLoaded', () => {
       randomMotivation();
     });
 
-async function fetchTopScorers() {
-  try {
-    const res = await fetch(`${API_BASE_URL}/api/results/leaderboard/top`);
-    if (!res.ok) throw new Error('Failed to fetch leaderboard');
-    const data = await res.json();
-    // Expected: [{ fullname, username, totalScore, position }, ...]
-    renderTopScorers(data);
-  } catch(err) {
-    document.getElementById('topScorersList').innerHTML =
-      `<div class="text-center text-gray-400 py-6">Unable to load leaderboard.</div>`;
-  }
-}
 
-function renderTopScorers(scorers) {
-  const medals = [
-    { icon: '🥇', classes: 'text-yellow-400', bg: 'bg-indigo-50', badge: { color: 'bg-indigo-600 text-white', text: '1st' }},
-    { icon: '🥈', classes: 'text-gray-400', bg: 'bg-gray-50', badge: { color: 'bg-gray-300 text-gray-700', text: '2nd' }},
-    { icon: '🥉', classes: 'text-orange-400', bg: 'bg-orange-50', badge: { color: 'bg-orange-300 text-white', text: '3rd' }},
-  ];
-  const container = document.getElementById('topScorersList');
-  if (!Array.isArray(scorers) || !scorers.length) {
-    container.innerHTML = `<div class="text-center text-gray-400 py-6">No top scorers data available.</div>`;
-    return;
+(async function() {
+  // You may need to modify API URL and Auth logic as needed
+  const API_URL = "https://examguide.onrender.com/api/";
+  async function fetchLeaderboard() {
+    // No auth
+    try {
+      const resp = await fetch(API_URL + "results/leaderboard/top");
+      return await resp.json();
+    } catch (e) {
+      return [];
+    }
   }
 
-  // Show only top 3 with medals, then the rest (position badge as e.g. 4th, 5th etc)
-  container.innerHTML = scorers.slice(0, 5).map((scorer, i) => {
-    const medal = medals[i] || {
-      icon: '',
-      classes: 'text-indigo-400',
-      bg: 'bg-white',
-      badge: { color: 'bg-indigo-100 text-indigo-800', text: `${scorer.position || (i+1)}${getOrdinal(i+1)}`}
-    };
-    return `
-      <div class="flex items-center gap-4 ${medal.bg} rounded-lg px-3 py-2 shadow-sm">
-        <span class="text-${i<3 ? (i===0 ? '3xl' : '2xl') : 'xl'} font-bold ${medal.classes}">${medal.icon}</span>
-        <div class="flex-1">
-          <div class="font-bold text-indigo-900">${scorer.fullname || scorer.username || 'Anonymous'}</div>
-          <div class="text-[13px] text-indigo-600">Total Mock Score: ${scorer.totalScore || 0}</div>
+  function renderTopScorers(list) {
+    const el = document.getElementById('topScorersList');
+    if (!el) return;
+    if (!Array.isArray(list) || list.length === 0) {
+      el.innerHTML = '<div class="text-gray-400">No scorer data yet.</div>';
+      return;
+    }
+    el.innerHTML = list.slice(0, 3).map((stu, idx) => `
+      <div class="flex items-center gap-3">
+        <img src="${stu.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(stu.fullname||stu.username||'User')}&background=ede9fe&color=3b82f6&rounded=true`}" class="w-10 h-10 rounded-full border-2 border-indigo-400 shadow" alt="">
+        <div>
+            <div class="font-semibold text-indigo-900">${stu.fullname || stu.username || 'User'}</div>
+            <div class="text-xs text-gray-500">${stu.totalScore || 0} pts</div>
         </div>
-        <span class="${medal.badge.color} px-3 py-1 rounded-lg text-sm font-semibold">${medal.badge.text}</span>
+        <span class="text-2xl ml-auto">${['🥇','🥈','🥉'][idx]||''}</span>
       </div>
-    `;
-  }).join('');
-}
-
-// Helper to generate ordinal suffix (4th, 5th, ...)
-function getOrdinal(n) {
-  if ([11,12,13].includes(n%100)) return "th";
-  switch(n%10) {
-    case 1: return "st";
-    case 2: return "nd";
-    case 3: return "rd";
-    default: return "th";
+    `).join('');
   }
-}
 
-// Auto-fetch when section is shown
-document.addEventListener('DOMContentLoaded', () => {
-  if (document.getElementById('topScorersList')) {
-    fetchTopScorers();
-  }
-});
+  const list = await fetchLeaderboard();
+  renderTopScorers(list);
+})();
 </script>
 </body>
 </html>
