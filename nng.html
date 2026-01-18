@@ -440,247 +440,221 @@ document.addEventListener("DOMContentLoaded", function() {
     </div>
   </div>
 
-  <!-- ... modals<!-- ...existing tasks section markup, remove "Mark as Done" from the table action cell... -->
-<script>
-/* Helper functions for escape, pills, etc. unchanged */
-
-let modalTaskId = null, modalTaskType = null, modalTaskDurationSec = 0, modalTimer = null, spinnerEl = null;
-
-// Duration converter ("10 min" to 600, "3:00" to 180, etc)
-function parseDuration(str) {
-  if (!str) return 0;
-  if (/^\d+(\.\d+)?\s*min/.test(str)) {
-    return parseFloat(str) * 60;
-  } else if (/^\d+(\.\d+)?\s*sec/.test(str)) {
-    return parseFloat(str);
-  } else if (/\:/.test(str)) { // e.g. "03:15"
-    let p = str.split(":").map(Number);
-    if (p.length == 2) return p[0]*60 + p[1];
-    if (p.length == 3) return p[0]*3600 + p[1]*60 + p[2];
-  } else if (!isNaN(Number(str))) {
-    return Number(str);
-  }
-  return 0;
-}
-
-function renderSpinner() {
-  return `<svg class="animate-spin -ml-1 mr-1 h-5 w-5 text-white inline align-middle" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>`;
-}
-
-// Override modal functions with loading & time locking logic
-function openArticleModal(url, task) {
-  modalTaskId = task?._id; modalTaskType = "article";
-  // For reading: use duration (e.g. "10 min") in meta
-  modalTaskDurationSec = parseDuration(task?.meta?.duration || "0");
-  document.getElementById('articleFrame').src = url;
-  document.getElementById('articleModal').classList.remove('hidden');
-  setupMarkAsDoneModalButton('article-done-btn', modalTaskDurationSec);
-}
-function openVideoModal(url, task) {
-  modalTaskId = task?._id; modalTaskType = "video";
-  // For video: use duration (e.g. "7 min") in meta
-  modalTaskDurationSec = parseDuration(task?.meta?.duration || "0");
-  document.getElementById('videoFrame').src = url + '?autoplay=1';
-  document.getElementById('videoModal').classList.remove('hidden');
-  setupMarkAsDoneModalButton('video-done-btn', modalTaskDurationSec);
-}
-function closeArticleModal() {
-  document.getElementById('articleModal').classList.add('hidden');
-  document.getElementById('articleFrame').src = '';
-  clearMarkAsDoneModal();
-}
-function closeVideoModal() {
-  document.getElementById('videoModal').classList.add('hidden');
-  document.getElementById('videoFrame').src = '';
-  clearMarkAsDoneModal();
-}
-function clearMarkAsDoneModal() {
-  modalTaskId = null;
-  modalTaskType = null;
-  modalTaskDurationSec = 0;
-  if (modalTimer) { clearTimeout(modalTimer); modalTimer = null; }
-  if (spinnerEl) spinnerEl.innerHTML = "";
-  const btnA = document.getElementById('article-done-btn');
-  const btnV = document.getElementById('video-done-btn');
-  if (btnA) { btnA.disabled = false; btnA.querySelector(".spinner")?.remove(); }
-  if (btnV) { btnV.disabled = false; btnV.querySelector(".spinner")?.remove(); }
-}
-
-// Mark as done logic, only enabled after proper time
-function setupMarkAsDoneModalButton(btnId, waitSec) {
-  const btn = document.getElementById(btnId);
-  if (!btn) return;
-  btn.disabled = true;
-  btn.querySelector(".spinner")?.remove();
-  btn.textContent = "Mark as Complete";
-  if (waitSec <= 0) { btn.disabled = false; return; }
-  let seconds = waitSec;
-  btn.textContent = `Wait ${seconds}s...`;
-  modalTimer = setInterval(() => {
-    seconds--;
-    btn.textContent = seconds > 0 ? `Wait ${seconds}s...` : "Mark as Complete";
-    if (seconds <= 0) {
-      clearInterval(modalTimer);
-      btn.disabled = false;
-    }
-  }, 1000);
-}
-
-async function markTaskDoneFromModal(btnId) {
-  const btn = document.getElementById(btnId);
-  if (!modalTaskId) return;
-  btn.disabled = true;
-  btn.innerHTML = renderSpinner() + "Completing...";
-  spinnerEl = btn;
-  const token = localStorage.getItem("token");
-  try {
-    const res = await fetch(`https://examguide.onrender.com/api/tasks/${modalTaskId}`, {
-      method: "PATCH",
-      headers: { 
-        "Content-Type": "application/json",
-        ...(token ? {Authorization: "Bearer "+token} : {})
-      },
-      body: JSON.stringify({ status: "done" })
-    });
-    if (!res.ok) throw new Error("Could not mark as complete");
-    btn.innerHTML = 'Complete!';
-    setTimeout(() => {
-      btn.closest(".fixed").classList.add("hidden");
-      loadTasks();
-      clearMarkAsDoneModal();
-    }, 900); // slight delay for feedback
-  } catch (e) {
-    btn.innerHTML = "Failed! Try again";
-    btn.disabled = false;
-  }
-}
-
-// --- LOAD/RENDER TASKS (shortened - call openArticleModal/openVideoModal with task obj) ---
-async function loadTasks() {
-  // ...existing as before; but in actionCell, pass the task object, not just URL
-  const API_URL = "https://examguide.onrender.com/api/";
-  let token = localStorage.getItem("token");
-  let student = null;
-  try {
-    const resp = await fetch(API_URL + "auth/me", {
-      credentials: "include",
-      headers: token ? { Authorization: "Bearer " + token } : {}
-    });
-    const data = await resp.json();
-    student = data.user;
-  } catch (e) {}
-  let tasks = [];
-  if (student && student._id) {
-    try {
-      const resp = await fetch(`${API_URL}tasks/user/${student._id}`, {
-        credentials: "include",
-        headers: token ? { Authorization: "Bearer " + token } : {}
-      });
-      tasks = await resp.json();
-    } catch (e) {}
-  }
-  // fallback (same as before)...
-  if (!Array.isArray(tasks) || !tasks.length) tasks = [
-    {
-      _id: "demo1",
-      title: `Read: "5 Quick Ways to Beat Procrastination"`,
-      activityType: "reading",
-      points: 15,
-      status: "active",
-      meta: { duration: "10 min", url: "https://medium.com/the-mission/5-quick-ways-to-beat-procrastination-626edf2e5a9" }
-    },
-    {
-      _id: "demo2",
-      title: `Watch: Study Motivation — How to Stay Focused`,
-      activityType: "video",
-      points: 10,
-      status: "active",
-      meta: { duration: "7 min", url: "https://www.youtube.com/embed/Oe421EPjeBE" }
-    },
-    {
-      _id: "demo3",
-      title: `Like ExamGuard Facebook Page`,
-      activityType: "social",
-      points: 8,
-      status: "active",
-      meta: { url: "https://facebook.com/examguardpage", platform: "Facebook" }
-    },
-    {
-      _id: "demo4",
-      title: `Participate in "Math Practice Test"`,
-      activityType: "mocktest",
-      points: 20,
-      status: "active",
-      meta: { url: "#mocktest", status: "Available" }
-    },
-    {
-      _id: "demo5",
-      title: "Complete your profile information",
-      activityType: "profile",
-      points: 5,
-      status: "done"
-    }
-  ];
-  // Render rows
-  const tbody = document.getElementById("tasksTableBody");
-  tbody.innerHTML = tasks.map(task => 
-    `<tr>
-      <td class="px-6 py-4 font-semibold text-blue-900 whitespace-nowrap">${esc(task.title)}</td>
-      <td class="px-6 py-4 whitespace-nowrap">${activityTypePill(task.activityType, task.meta)}</td>
-      <td class="px-6 py-4 text-center font-bold text-indigo-600 whitespace-nowrap">${esc(task.points||0)}</td>
-      <td class="px-6 py-4 whitespace-nowrap">${statusPill(task.status)}</td>
-      <td class="px-6 py-4 whitespace-nowrap">
-      ${
-        (task.activityType === "reading" && task.meta?.url)
-        ? `<button onclick='openArticleModal("${esc(task.meta.url)}", ${JSON.stringify(task).replace(/'/g, "\\'")})' class="bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-1 font-semibold text-xs shadow">Read</button>`
-        : (task.activityType === "video" && task.meta?.url)
-        ? `<button onclick='openVideoModal("${esc(task.meta.url)}", ${JSON.stringify(task).replace(/'/g, "\\'")})' class="bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-1 font-semibold text-xs shadow">Watch</button>`
-        : (task.activityType === "social" && task.meta?.url)
-        ? `<a href="${esc(task.meta.url)}" target="_blank" class="bg-blue-700 hover:bg-blue-800 text-white px-4 py-1 rounded font-semibold text-xs shadow">Open</a>`
-        : (task.activityType === "mocktest" && task.meta?.url)
-        ? `<button onclick='window.location.href="${esc(task.meta.url)}"' class="bg-indigo-600 hover:bg-indigo-700 text-white rounded px-4 py-1 font-semibold text-xs shadow">Start Test</button>`
-        : `<span class='text-gray-400 text-xs'>-</span>`
-      }
-      </td>
-    </tr>`
-  ).join("");
-  // Progress overview (same as before)
-  const active = tasks.filter(t => (t.status||"").toLowerCase() === "active").length;
-  const done = tasks.filter(t => ["done","completed"].includes((t.status||"").toLowerCase())).length;
-  const overdue = tasks.filter(t => (t.status||"").toLowerCase() === "overdue").length;
-  const points = tasks.reduce((sum, t) => sum + (t.points||0), 0);
-  document.getElementById("activeTasksCount").textContent = active;
-  document.getElementById("completedTasksCount").textContent = done;
-  document.getElementById("overdueTasksCount").textContent = overdue;
-  document.getElementById("pointsCount").textContent = points;
-}
-
-function refreshTasks() { loadTasks(); }
-document.addEventListener("DOMContentLoaded", loadTasks);
-</script>
-
-<!-- Updated modals: add Mark as Complete btns -->
+  <!-- ... modals unchanged ... -->
 <!-- Article Modal -->
-<div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center hidden" id="articleModal">
-  <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-8 relative flex flex-col gap-6">
-    <button class="absolute top-3 right-4 text-gray-500 hover:text-indigo-700 text-xl" onclick="closeArticleModal()">&times;</button>
-    <div id="articleModalContent" class="overflow-auto" style="max-height:60vh;">
-      <iframe id="articleFrame" src="" width="100%" height="400" frameborder="0" class="rounded"></iframe>
+  <div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center hidden" id="articleModal">
+    <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-8 relative flex flex-col gap-6">
+      <button class="absolute top-3 right-4 text-gray-500 hover:text-indigo-700 text-xl" onclick="closeArticleModal()">&times;</button>
+      <div id="articleModalContent" class="overflow-auto" style="max-height:60vh;">
+        <iframe id="articleFrame" src="" width="100%" height="400" frameborder="0" class="rounded"></iframe>
+      </div>
+      <button class="bg-green-600 hover:bg-green-700 text-white font-semibold px-5 py-2 rounded-lg self-end transition">Mark as Done</button>
     </div>
-    <button id="article-done-btn" class="bg-green-600 hover:bg-green-700 text-white font-semibold px-5 py-2 rounded-lg self-end transition" onclick="markTaskDoneFromModal('article-done-btn')">Mark as Complete</button>
   </div>
-</div>
+  
+  <!-- YouTube Video Modal -->
+  <div class="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center hidden" id="videoModal">
+    <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-8 relative flex flex-col gap-6">
+      <button class="absolute top-3 right-4 text-gray-500 hover:text-indigo-700 text-xl" onclick="closeVideoModal()">&times;</button>
+      <div id="videoModalContent" class="overflow-auto" style="max-height:60vh;">
+        <iframe id="videoFrame" width="100%" height="360" src="" frameborder="0" allowfullscreen class="rounded"></iframe>
+      </div>
+      <button class="bg-green-600 hover:bg-green-700 text-white font-semibold px-5 py-2 rounded-lg self-end transition">Mark as Watched</button>
+    </div>
+  </div>
 
-<!-- Video Modal -->
-<div class="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center hidden" id="videoModal">
-  <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-8 relative flex flex-col gap-6">
-    <button class="absolute top-3 right-4 text-gray-500 hover:text-indigo-700 text-xl" onclick="closeVideoModal()">&times;</button>
-    <div id="videoModalContent" class="overflow-auto" style="max-height:60vh;">
-      <iframe id="videoFrame" width="100%" height="360" src="" frameborder="0" allowfullscreen class="rounded"></iframe>
-    </div>
-    <button id="video-done-btn" class="bg-green-600 hover:bg-green-700 text-white font-semibold px-5 py-2 rounded-lg self-end transition" onclick="markTaskDoneFromModal('video-done-btn')">Mark as Complete</button>
-  </div>
-</div>                          
+  <script>
+    function esc(str) { return String(str || "").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+    function activityTypePill(type, meta) {
+      switch ((type||"").toLowerCase()) {
+        case "reading": return `<span class="bg-green-100 text-green-700 rounded-full px-3 py-1 font-semibold text-xs">Reading</span>
+          ${meta?.duration ? `<div class="text-xs text-gray-500 mt-1">${esc(meta.duration)}</div>` : ""}`;
+        case "video": return `<span class="bg-pink-100 text-pink-700 rounded-full px-3 py-1 font-semibold text-xs">Video</span>
+          ${meta?.duration ? `<div class="text-xs text-gray-500 mt-1">${esc(meta.duration)}</div>` : ""}`;
+        case "social": return `<span class="bg-blue-100 text-blue-700 rounded-full px-3 py-1 font-semibold text-xs">Social</span>
+          ${meta?.platform ? `<div class="text-xs text-gray-500 mt-1">${esc(meta.platform)}</div>` : ""}`;
+        case "mocktest": return `<span class="bg-indigo-100 text-indigo-600 rounded-full px-3 py-1 font-semibold text-xs">Mock Test</span>
+          ${meta?.status ? `<div class="text-xs text-gray-500 mt-1">${esc(meta.status)}</div>` : ""}`;
+        case "profile": return `<span class="bg-purple-100 text-purple-700 rounded-full px-3 py-1 font-semibold text-xs">Profile</span>
+          <div class="text-xs text-gray-500 mt-1">One time</div>`;
+        default:
+          return `<span class="bg-gray-200 text-gray-700 rounded-full px-3 py-1 font-semibold text-xs">${esc(type)}</span>`;
+      }
+    }
+
+    function statusPill(status) {
+      switch ((status||"").toLowerCase()) {
+        case "active": return `<span class="bg-yellow-100 text-yellow-800 font-semibold px-3 py-1 rounded-full text-xs">Active</span>`;
+        case "overdue": return `<span class="bg-red-100 text-red-700 font-semibold px-3 py-1 rounded-full text-xs">Overdue</span>`;
+        case "done": case "completed": return `<span class="bg-green-100 text-green-700 font-semibold px-3 py-1 rounded-full text-xs">Done</span>`;
+        default: return `<span class="bg-gray-100 text-gray-700 font-semibold px-3 py-1 rounded-full text-xs">${esc(status)}</span>`;
+      }
+    }
+
+    function actionCell(task) {
+      if (["done", "completed"].includes((task.status||"").toLowerCase())) {
+        return `<span class="text-gray-400 text-xs">Completed</span>`;
+      }
+      // Reading
+      if ((task.activityType === "reading" || task.activityType === "article") && task.meta?.url) {
+        return `<button onclick="openArticleModal('${esc(task.meta.url)}')" class="bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-1 font-semibold text-xs shadow">Read</button>
+          <button onclick="markTaskDone('${task._id}')" class="ml-3 bg-green-500 hover:bg-green-700 text-white rounded px-4 py-1 font-semibold text-xs shadow">Mark as Done</button>`;
+      }
+      // Video
+      if (task.activityType === "video" && task.meta?.url) {
+        return `<button onclick="openVideoModal('${esc(task.meta.url)}')" class="bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-1 font-semibold text-xs shadow">Watch</button>
+          <button onclick="markTaskDone('${task._id}')" class="ml-3 bg-green-500 hover:bg-green-700 text-white rounded px-4 py-1 font-semibold text-xs shadow">Mark as Done</button>`;
+      }
+      // Social
+      if (task.activityType === "social" && task.meta?.url) {
+        return `<a href="${esc(task.meta.url)}" target="_blank" class="bg-blue-700 hover:bg-blue-800 text-white px-4 py-1 rounded font-semibold text-xs shadow">Open</a>
+          <button onclick="markTaskDone('${task._id}')" class="ml-3 bg-green-500 hover:bg-green-700 text-white rounded px-4 py-1 font-semibold text-xs shadow">Mark as Done</button>`;
+      }
+      // Mock Test
+      if (task.activityType === "mocktest" && task.meta?.url) {
+        return `<button onclick="window.location.href='${esc(task.meta.url)}'" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded px-4 py-1 font-semibold text-xs shadow">Start Test</button>
+          <button onclick="markTaskDone('${task._id}')" class="ml-3 bg-green-500 hover:bg-green-700 text-white rounded px-4 py-1 font-semibold text-xs shadow">Mark as Done</button>`;
+      }
+      // Assignment or custom
+      return `<button onclick="markTaskDone('${task._id}')" class="bg-green-600 hover:bg-green-800 text-white font-semibold rounded px-4 py-1 text-xs">Mark as Done</button>`;
+    }
+
+    async function markTaskDone(taskId) {
+      const token = localStorage.getItem("token");
+      try {
+        const res = await fetch(`https://examguide.onrender.com/api/tasks/${taskId}`, {
+          method: "PATCH",
+          headers: { 
+            "Content-Type": "application/json",
+            ...(token ? {Authorization: "Bearer "+token} : {})
+          },
+          body: JSON.stringify({ status: "done" })
+        });
+        if (!res.ok) throw new Error("Could not mark as done");
+        await loadTasks(); // re-render tasks
+      } catch (e) {
+        alert("Failed to mark as done. Please retry.");
+      }
+    }
+
+    // Fetch & render tasks
+    async function loadTasks() {
+      const API_URL = "https://examguide.onrender.com/api/";
+      let token = localStorage.getItem("token");
+      let student = null;
+      // Get user
+      try {
+        const resp = await fetch(API_URL + "auth/me", {
+          credentials: "include",
+          headers: token ? { Authorization: "Bearer " + token } : {}
+        });
+        const data = await resp.json();
+        student = data.user;
+      } catch (e) {}
+      let tasks = [];
+      if (student && student._id) {
+        try {
+          const resp = await fetch(`${API_URL}tasks/user/${student._id}`, {
+            credentials: "include",
+            headers: token ? { Authorization: "Bearer " + token } : {}
+          });
+          tasks = await resp.json();
+        } catch (e) {}
+      }
+      if (!Array.isArray(tasks) || !tasks.length) {
+        // Fallback to demo tasks
+        tasks = [
+          {
+            _id: "demo1",
+            title: `Read: "5 Quick Ways to Beat Procrastination"`,
+            activityType: "reading",
+            points: 15,
+            status: "active",
+            meta: { duration: "10 min", url: "https://medium.com/the-mission/5-quick-ways-to-beat-procrastination-626edf2e5a9" }
+          },
+          {
+            _id: "demo2",
+            title: `Watch: Study Motivation — How to Stay Focused`,
+            activityType: "video",
+            points: 10,
+            status: "active",
+            meta: { duration: "7 min", url: "https://www.youtube.com/embed/Oe421EPjeBE" }
+          },
+          {
+            _id: "demo3",
+            title: `Like ExamGuard Facebook Page`,
+            activityType: "social",
+            points: 8,
+            status: "active",
+            meta: { url: "https://facebook.com/examguardpage", platform: "Facebook" }
+          },
+          {
+            _id: "demo4",
+            title: `Participate in "Math Practice Test"`,
+            activityType: "mocktest",
+            points: 20,
+            status: "active",
+            meta: { url: "#mocktest", status: "Available" }
+          },
+          {
+            _id: "demo5",
+            title: "Complete your profile information",
+            activityType: "profile",
+            points: 5,
+            status: "done"
+          }
+        ];
+      }
+      // Render rows
+      const tbody = document.getElementById("tasksTableBody");
+      tbody.innerHTML = tasks.map(task => 
+        `<tr>
+          <td class="px-6 py-4 font-semibold text-blue-900 whitespace-nowrap">${esc(task.title)}</td>
+          <td class="px-6 py-4 whitespace-nowrap">${activityTypePill(task.activityType, task.meta)}</td>
+          <td class="px-6 py-4 text-center font-bold text-indigo-600 whitespace-nowrap">${esc(task.points) ?? 0}</td>
+          <td class="px-6 py-4 whitespace-nowrap">${statusPill(task.status)}</td>
+          <td class="px-6 py-4 whitespace-nowrap">${actionCell(task)}</td>
+        </tr>`).join("");
+      // Progress overview
+      const active = tasks.filter(t => (t.status||"").toLowerCase() === "active").length;
+      const done = tasks.filter(t => ["done","completed"].includes((t.status||"").toLowerCase())).length;
+      const overdue = tasks.filter(t => (t.status||"").toLowerCase() === "overdue").length;
+      const points = tasks.reduce((sum, t) => sum + (t.points||0), 0);
+      document.getElementById("activeTasksCount").textContent = active;
+      document.getElementById("completedTasksCount").textContent = done;
+      document.getElementById("overdueTasksCount").textContent = overdue;
+      document.getElementById("pointsCount").textContent = points;
+    }
+
+    function refreshTasks() { loadTasks(); }
+    document.addEventListener("DOMContentLoaded", loadTasks);
+// Article modal logic
+    function openArticleModal(url) {
+      document.getElementById('articleFrame').src = url;
+      document.getElementById('articleModal').classList.remove('hidden');
+    }
+    function closeArticleModal() {
+      document.getElementById('articleModal').classList.add('hidden');
+      document.getElementById('articleFrame').src = '';
+    }
+    // Video modal logic
+    function openVideoModal(youtubeUrl) {
+      document.getElementById('videoFrame').src = youtubeUrl + '?autoplay=1';
+      document.getElementById('videoModal').classList.remove('hidden');
+    }
+    function closeVideoModal() {
+      document.getElementById('videoModal').classList.add('hidden');
+      document.getElementById('videoFrame').src = '';
+    }
+    // Dummy refresh
+    function refreshTasks() {
+      alert('Tasks have been refreshed!');
+    }
+  </script>
+</div>
+  
+  
 
 
     
