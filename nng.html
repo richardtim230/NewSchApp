@@ -259,24 +259,121 @@ document.addEventListener("DOMContentLoaded", function() {
   </div>
 </div>
 
-            <div class="grid grid-cols-2 md:grid-cols-2 gap-4 md:w-2/3 w-full">
-              <div class="bg-white rounded-xl shadow p-6 text-center flex flex-col justify-center">
-                <span class="text-3xl font-bold mb-1 text-indigo-800 block">4</span>
-                <div class="font-semibold text-gray-700">Courses</div>
-              </div>
-              <div class="bg-white rounded-xl shadow p-6 text-center flex flex-col justify-center">
-                <span class="text-3xl font-bold mb-1 text-indigo-800 block">78%</span>
-                <div class="font-semibold text-gray-700">Avg. Mock Score</div>
-              </div>
-              <div class="bg-white rounded-xl shadow p-6 text-center flex flex-col justify-center">
-                <span class="text-3xl font-bold mb-1 text-indigo-800 block">3</span>
-                <div class="font-semibold text-gray-700">Assignments Due</div>
-              </div>
-              <div class="bg-white rounded-xl shadow p-6 text-center flex flex-col justify-center">
-                <span class="text-3xl font-bold mb-1 text-indigo-800 block">A-</span>
-                <div class="font-semibold text-gray-700">Current GPA</div>
-              </div>
-            </div>
+<div class="grid grid-cols-2 md:grid-cols-3 gap-4 md:w-2/3 w-full">
+  <!-- 1. Total Exams Taken -->
+  <div class="bg-white rounded-xl shadow p-6 text-center flex flex-col justify-center">
+    <span class="text-3xl font-bold mb-1 text-indigo-800 block" id="stat-total-exams">-</span>
+    <div class="font-semibold text-gray-700">Total Exams Taken</div>
+  </div>
+  <!-- 2. Avg Score -->
+  <div class="bg-white rounded-xl shadow p-6 text-center flex flex-col justify-center">
+    <span class="text-3xl font-bold mb-1 text-indigo-800 block" id="stat-avg-score">-</span>
+    <div class="font-semibold text-gray-700">Average Score</div>
+  </div>
+  <!-- 3. Total Available Exams -->
+  <div class="bg-white rounded-xl shadow p-6 text-center flex flex-col justify-center">
+    <span class="text-3xl font-bold mb-1 text-indigo-800 block" id="stat-available-exams">-</span>
+    <div class="font-semibold text-gray-700">Total Available Exams</div>
+  </div>
+  <!-- 4. Scholarship/Internship Opportunity -->
+  <div class="bg-white rounded-xl shadow p-6 text-center flex flex-col justify-center">
+    <span class="text-3xl font-bold mb-1 text-indigo-800 block" id="stat-scholarship-oppty">-</span>
+    <div class="font-semibold text-gray-700">Scholarship/Internship Opportunity</div>
+  </div>
+  <!-- 5. Total Credit Point -->
+  <div class="bg-white rounded-xl shadow p-6 text-center flex flex-col justify-center">
+    <span class="text-3xl font-bold mb-1 text-indigo-800 block" id="stat-credit-points">-</span>
+    <div class="font-semibold text-gray-700">Total Credit Points</div>
+  </div>
+  <!-- 6. Total Score Points (From Tasks) -->
+  <div class="bg-white rounded-xl shadow p-6 text-center flex flex-col justify-center">
+    <span class="text-3xl font-bold mb-1 text-indigo-800 block" id="stat-task-points">-</span>
+    <div class="font-semibold text-gray-700">Total Score Points (Tasks)</div>
+  </div>
+</div>
+
+<script>
+// Example: Plug in values after fetching data
+async function updateStatsPanel() {
+  // Example API fetch logic -- replace API_URL with your actual endpoint!
+  const API_URL = "https://examguide.onrender.com/api/";
+  const token = localStorage.getItem("token");
+  let student, mockResults = [], totalAvailableExams = 0, totalCreditPoints = 0, totalTaskPoints = 0;
+  let scholarshipChance = "-";
+  try {
+    // Get student
+    const resp = await fetch(API_URL + "auth/me", {
+      credentials: "include",
+      headers: token ? { Authorization: "Bearer " + token } : {}
+    });
+    const data = await resp.json();
+    student = data.user;
+
+    // Get exam results
+    let resultsResp = await fetch(API_URL + "results/user/" + student._id, {
+      credentials: "include",
+      headers: token ? { Authorization: "Bearer " + token } : {}
+    });
+    mockResults = await resultsResp.json();
+
+    // Only mock/exam tests.
+    const filteredResults = (mockResults||[]).filter(r => {
+      // Adjust "examSet" and type detection as needed for your backend
+      if (!r.examSet) return false;
+      const et = typeof r.examSet === "object" ? (r.examSet.type || "").toLowerCase() : "";
+      return et === "mock" || et === "mock test" ||
+             et === "exam" ||
+             (r.examSet.title && r.examSet.title.toLowerCase().match(/mock|exam/));
+    });
+
+    document.getElementById("stat-total-exams").textContent = filteredResults.length;
+
+    // Average Score
+    let avg = "-";
+    if (filteredResults.length) {
+      avg = Math.round(filteredResults.reduce((sum, r) => sum + (parseFloat(r.score) || 0), 0) / filteredResults.length);
+      avg = avg + "%";
+    }
+    document.getElementById("stat-avg-score").textContent = avg;
+
+    // Total Available Exams
+    let examRes = await fetch(API_URL + "schedules", { credentials: "include", headers: token ? { Authorization: "Bearer " + token } : {} });
+    let examData = await examRes.json();
+    if (Array.isArray(examData)) totalAvailableExams = examData.length;
+    else if (examData.schedules && Array.isArray(examData.schedules)) totalAvailableExams = examData.schedules.length;
+    document.getElementById("stat-available-exams").textContent = totalAvailableExams;
+
+    // Scholarship/Internship Opportunity (dummy logic - replace as needed)
+    // Example: if avg score >= 70, opportunity is 85%, else 45%, or get from API!
+    if (typeof(avg) === "string" && avg !== "-") {
+      const avgNum = parseInt(avg);
+      scholarshipChance = (avgNum >= 70 ? "85%" : "45%");
+    }
+    document.getElementById("stat-scholarship-oppty").textContent = scholarshipChance;
+
+    // Total Credit Point (add your own logic or API call as needed)
+    if (student && typeof student.totalCreditPoint !== "undefined")
+      totalCreditPoints = student.totalCreditPoint;
+    document.getElementById("stat-credit-points").textContent = totalCreditPoints || "-";
+
+    // Total Score Points (From Tasks)
+    let tasksRes = await fetch(API_URL + "tasks/user/" + student._id, { credentials: "include", headers: token ? { Authorization: "Bearer " + token } : {} });
+    let tasksData = await tasksRes.json();
+    if (Array.isArray(tasksData)) {
+      totalTaskPoints = tasksData.reduce((sum, t) => sum + (t.points||0), 0);
+    }
+    document.getElementById("stat-task-points").textContent = totalTaskPoints || "-";
+
+  } catch(e) {
+    // fallback
+    ["stat-total-exams","stat-avg-score","stat-available-exams","stat-scholarship-oppty","stat-credit-points","stat-task-points"].forEach(id=>{
+      if(document.getElementById(id))document.getElementById(id).textContent="-";
+    });
+  }
+}
+// run after DOM
+document.addEventListener("DOMContentLoaded", updateStatsPanel);
+</script>
           </div>
 
 <div class="bg-white rounded-lg p-6 shadow flex flex-col items-center w-full">
