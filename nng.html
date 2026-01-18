@@ -277,8 +277,7 @@ document.addEventListener("DOMContentLoaded", function() {
             </div>
           </div>
 
-          <!-- Mock Test Scores & Recent Activity; GPA Progress -->
-     <div class="bg-white rounded-lg p-6 shadow flex flex-col items-center w-full">
+<div class="bg-white rounded-lg p-6 shadow flex flex-col items-center w-full">
   <h3 class="text-lg font-bold mb-3 text-indigo-700 w-full text-left">Mock Test Scores</h3>
   <canvas id="mockScoreChart" height="140"></canvas>
   <div class="mt-2 text-sm text-gray-600 w-full text-left">
@@ -292,50 +291,83 @@ document.addEventListener("DOMContentLoaded", function() {
   const token = localStorage.getItem("token");
   let student = null;
   try {
-    const resp = await fetch(API_URL + "auth/me", { credentials: "include", headers: token ? { Authorization: "Bearer " + token } : {} });
+    const resp = await fetch(API_URL + "auth/me", { 
+      credentials: "include", 
+      headers: token ? { Authorization: "Bearer " + token } : {} 
+    });
     const data = await resp.json();
     student = data.user;
   } catch (e) {}
   let resultsCache = [];
   if (student && student._id) {
     try {
-      const resp = await fetch(API_URL + "results/user/" + student._id, { credentials: "include", headers: token ? { Authorization: "Bearer " + token } : {} });
+      const resp = await fetch(API_URL + "results/user/" + student._id, { 
+        credentials: "include", 
+        headers: token ? { Authorization: "Bearer " + token } : {} 
+      });
       resultsCache = await resp.json();
     } catch (e) {}
   }
+  // Only mock tests
   const mockResults = (resultsCache||[]).filter(r => {
     if (!r.examSet) return false;
     const et = typeof r.examSet === "object" ? (r.examSet.type || "").toLowerCase() : "";
     return et === "mock" || et === "mock test" || (r.examSet.title && r.examSet.title.toLowerCase().includes("mock"));
   });
   const sorted = [...mockResults].sort((a, b) => new Date(a.submittedAt) - new Date(b.submittedAt));
-  const labels = sorted.map(r => (r.examSet && r.examSet.title) ? r.examSet.title : "Mock");
+  // Use only first word of exam title
+  function firstWord(str) {
+    if (!str) return "-";
+    const match = str.match(/^\w+/);
+    return match ? match[0] : str;
+  }
+  const labels = sorted.map(r => (r.examSet && r.examSet.title) ? firstWord(r.examSet.title) : "Mock");
   const scores = sorted.map(r => r.score ?? 0);
+
   let best = {score:"-", examSet:{title:"-"}}, last = {score:"-", examSet:{title:"-"}};
   if (sorted.length) {
     best = sorted.reduce((acc, curr) => (curr.score > (acc.score??-1) ? curr : acc), sorted[0]);
     last = sorted[sorted.length-1];
   }
+
   if (document.getElementById("mockBestStat"))
-    document.getElementById("mockBestStat").textContent = `${best.score ?? "-"}% (${best.examSet?.title||"-"})`;
+    document.getElementById("mockBestStat").textContent = `${best.score ?? "-"}% (${firstWord(best.examSet?.title)})`;
   if (document.getElementById("mockLastStat"))
-    document.getElementById("mockLastStat").textContent = `${last.score ?? "-"}% (${last.examSet?.title||"-"})`;
+    document.getElementById("mockLastStat").textContent = `${last.score ?? "-"}% (${firstWord(last.examSet?.title)})`;
+
+  // Generate pie colors
+  function genColors(n) {
+    const palette = [
+      "#6366f1","#3b82f6","#f59e42","#10b981","#f43f5e",
+      "#a21caf","#bef264","#eab308","#2dd4bf","#ef4444",
+      "#c026d3","#22d3ee","#eab308","#065f46","#ea580c"
+    ];
+    const colors = [];
+    for (let i=0; i<n; i++) colors.push(palette[i%palette.length]);
+    return colors;
+  }
+
+  // Chart.js PIE!
   if (window.Chart && document.getElementById("mockScoreChart")) {
     const ctx = document.getElementById("mockScoreChart").getContext("2d");
+    if (window.mockScoreChart) window.mockScoreChart.destroy();
     window.mockScoreChart = new Chart(ctx, {
-      type: 'bar',
+      type: 'pie',
       data: {
         labels: labels.length ? labels : ['No Data'],
         datasets: [{
-          label: 'Score (%)',
-          backgroundColor: '#6366f1',
-          borderColor: '#6366f1',
+          label: 'Scores (%)',
           data: scores.length ? scores : [0],
+          backgroundColor: genColors(labels.length || 1),
+          borderColor: "#fff",
+          borderWidth: 2
         }]
       },
       options: {
-        scales: { y: { beginAtZero: true, max: 100 }},
-        plugins: { legend: {display: false} }
+        plugins: {
+          legend: {display: true, position: "bottom"},
+          tooltip: {} // default
+        }
       }
     });
   }
