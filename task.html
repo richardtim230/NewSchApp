@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-50">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ExamGuide — Admin Tasks</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.css"/>
+  <style>
+    /* small helpers */
+    .clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  </style>
+</head>
+<body class="min-h-screen text-gray-800">
+  <div class="min-h-screen flex flex-col md:flex-row">
+    <!-- Sidebar -->
+    <aside class="w-full md:w-64 bg-indigo-700 text-white p-4">
+      <div class="flex items-center gap-3 mb-6">
+        <div class="w-10 h-10 bg-white/10 rounded flex items-center justify-center font-bold">AG</div>
+        <div>
+          <div class="text-lg font-bold">ExamGuide Admin</div>
+          <div class="text-xs opacity-80">Tasks Management</div>
+        </div>
+      </div>
+
+      <nav class="space-y-2 text-sm">
+        <a href="#create" class="block py-2 px-3 rounded hover:bg-white/10">Create Task</a>
+        <a href="#list" class="block py-2 px-3 rounded hover:bg-white/10">All Tasks</a>
+        <a id="refreshAll" href="javascript:void(0)" class="block py-2 px-3 rounded hover:bg-white/10">Refresh</a>
+      </nav>
+
+      <div class="mt-6 text-xs text-white/80">
+        <div>Signed in as: <span id="adminName" class="font-semibold">Admin</span></div>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="flex-1 p-4">
+      <header class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+        <h1 class="text-2xl font-bold">Tasks Admin</h1>
+        <div class="flex items-center gap-3">
+          <input id="globalSearch" type="search" placeholder="Search tasks..." class="px-3 py-2 border rounded-md w-64" />
+          <select id="filterType" class="px-3 py-2 border rounded-md">
+            <option value="">All Types</option>
+            <option value="reading">Reading</option>
+            <option value="video">Video</option>
+            <option value="mocktest">Mock Test</option>
+            <option value="social">Social</option>
+            <option value="profile">Profile</option>
+            <option value="custom">Custom</option>
+          </select>
+          <select id="filterStatus" class="px-3 py-2 border rounded-md">
+            <option value="">All Status</option>
+            <option value="active">Active</option>
+            <option value="pending">Pending</option>
+            <option value="overdue">Overdue</option>
+            <option value="done">Done</option>
+          </select>
+          <button id="clearFilters" class="px-3 py-2 bg-gray-100 rounded border">Clear</button>
+        </div>
+      </header>
+
+      <!-- Create form -->
+      <section id="create" class="bg-white rounded-lg p-6 shadow mb-6">
+        <h2 class="text-lg font-bold mb-4">Create / Import Task</h2>
+
+        <form id="taskForm" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="space-y-2">
+            <label class="text-sm font-semibold">Assign to (user)</label>
+            <div class="flex gap-2">
+              <select id="userSelect" class="flex-1 px-3 py-2 border rounded">
+                <option value="">(fetching users...)</option>
+              </select>
+              <input id="userFreeText" placeholder="Or paste user id/email..." class="px-3 py-2 border rounded w-64" />
+            </div>
+            <div class="text-xs text-gray-500">Select a user where available or paste a user id/email.</div>
+          </div>
+
+          <div class="space-y-2">
+            <label class="text-sm font-semibold">Activity Type</label>
+            <select id="activityType" class="w-full px-3 py-2 border rounded">
+              <option value="reading">reading</option>
+              <option value="video">video</option>
+              <option value="mocktest">mocktest</option>
+              <option value="social">social</option>
+              <option value="profile">profile</option>
+              <option value="custom">custom</option>
+              <option value="assignment">assignment</option>
+              <option value="practice">practice</option>
+            </select>
+          </div>
+
+          <div class="space-y-2 md:col-span-2">
+            <label class="text-sm font-semibold">Title</label>
+            <input id="title" class="w-full px-3 py-2 border rounded" placeholder="Task title (required)" required />
+          </div>
+
+          <div class="space-y-2 md:col-span-2">
+            <label class="text-sm font-semibold">Description</label>
+            <textarea id="description" class="w-full px-3 py-2 border rounded" rows="3" placeholder="Optional long description"></textarea>
+          </div>
+
+          <div>
+            <label class="text-sm font-semibold">Points</label>
+            <input id="points" type="number" min="0" class="w-full px-3 py-2 border rounded" value="10" />
+          </div>
+
+          <div>
+            <label class="text-sm font-semibold">Due Date</label>
+            <input id="dueDate" type="date" class="w-full px-3 py-2 border rounded" />
+          </div>
+
+          <!-- dynamic meta fields -->
+          <div id="metaFields" class="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <!-- injected by JS based on activity type -->
+          </div>
+
+          <div class="md:col-span-2 flex items-center gap-3">
+            <button id="createBtn" type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">Create Task</button>
+            <button id="resetForm" type="button" class="px-4 py-2 border rounded">Reset</button>
+            <div id="formMessage" class="text-sm text-green-600 hidden"></div>
+          </div>
+        </form>
+      </section>
+
+      <!-- Tasks list -->
+      <section id="list" class="bg-white rounded-lg p-4 shadow">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-bold">Tasks</h2>
+          <div class="flex items-center gap-2">
+            <button id="bulkMarkDone" class="px-3 py-2 bg-green-600 text-white rounded disabled:opacity-50" disabled>Mark Selected Done</button>
+            <button id="bulkDelete" class="px-3 py-2 bg-red-600 text-white rounded disabled:opacity-50" disabled>Delete Selected</button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm" id="tasksTable">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="p-3"><input id="selectAll" type="checkbox" /></th>
+                <th class="p-3 text-left">Title</th>
+                <th class="p-3 text-left">Type</th>
+                <th class="p-3 text-left">User</th>
+                <th class="p-3 text-left">Points</th>
+                <th class="p-3 text-left">Status</th>
+                <th class="p-3 text-left">Due</th>
+                <th class="p-3 text-left">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="tasksTbody" class="bg-white divide-y"></tbody>
+          </table>
+        </div>
+
+        <!-- pagination -->
+        <div class="mt-4 flex items-center justify-between">
+          <div class="text-sm text-gray-600" id="paginationInfo">0 tasks</div>
+          <div class="flex items-center gap-2">
+            <button id="prevPage" class="px-3 py-1 border rounded disabled:opacity-50">Prev</button>
+            <button id="nextPage" class="px-3 py-1 border rounded disabled:opacity-50">Next</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Edit Modal -->
+  <div id="editModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black bg-opacity-50 p-4">
+    <div class="bg-white rounded-lg w-full max-w-2xl p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-bold">Edit Task</h3>
+        <button id="closeEdit" class="text-gray-500">&times;</button>
+      </div>
+      <form id="editForm" class="grid grid-cols-1 gap-3">
+        <input id="editTaskId" type="hidden" />
+        <label>Title<input id="editTitle" class="w-full px-3 py-2 border rounded" /></label>
+        <label>Description<textarea id="editDescription" class="w-full px-3 py-2 border rounded"></textarea></label>
+        <div class="grid grid-cols-2 gap-2">
+          <label>Activity Type<select id="editActivityType" class="w-full px-3 py-2 border rounded"></select></label>
+          <label>Points<input id="editPoints" type="number" class="w-full px-3 py-2 border rounded" /></label>
+        </div>
+        <div class="flex gap-2 justify-end mt-3">
+          <button type="button" id="saveEdit" class="px-4 py-2 bg-indigo-600 text-white rounded">Save</button>
+          <button type="button" id="cancelEdit" class="px-4 py-2 border rounded">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- small toast -->
+  <div id="toast" class="fixed right-4 bottom-4 bg-gray-800 text-white px-4 py-2 rounded shadow hidden"></div>
+
+  <script>
+    (function() {
+      const API_ROOT = "https://examguide.onrender.com/api/tasks"; // adjust if API is mounted differently
+      const USERS_API = "https://examguide.onrender.com/api/users"; // optional (if you have a users endpoint)
+      const token = localStorage.getItem("token");
+      let allTasks = [];
+      let filteredTasks = [];
+      let currentPage = 1;
+      const perPage = 10;
+      let usersList = [];
+
+      // helpers
+      function t(msg, timeout = 3000) {
+        const el = document.getElementById("toast");
+        el.textContent = msg;
+        el.classList.remove("hidden");
+        setTimeout(()=>el.classList.add("hidden"), timeout);
+      }
+
+      function authHeaders() {
+        return token ? { Authorization: "Bearer " + token, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
+      }
+
+      async function tryFetchUsers() {
+        const sel = document.getElementById("userSelect");
+        sel.innerHTML = '<option value="">(loading users...)</option>';
+        try {
+          const res = await fetch(USERS_API, { headers: authHeaders() });
+          if (!res.ok) throw new Error("no users endpoint");
+          const data = await res.json();
+          // assuming data is array of users { _id, fullname, email, username }
+          usersList = Array.isArray(data) ? data : (data.users || []);
+          sel.innerHTML = `<option value="">(choose user)</option>` + usersList.map(u => `<option value="${u._id}">${u.fullname || u.username || u.email}</option>`).join("");
+        } catch (e) {
+          sel.innerHTML = '<option value="">(no users endpoint)</option>';
+        }
+      }
+
+      // dynamic meta fields based on type
+      function renderMetaFor(type, container) {
+        const htmlByType = {
+          reading: `
+            <div><label class="text-sm">URL<input id="meta_url" placeholder="https://..." class="w-full px-3 py-2 border rounded" /></label></div>
+            <div><label class="text-sm">Duration<input id="meta_duration" placeholder="e.g. 10 min" class="w-full px-3 py-2 border rounded" /></label></div>`,
+          video: `
+            <div><label class="text-sm">Embed/Watch URL<input id="meta_url" placeholder="https://youtube.com/embed/..." class="w-full px-3 py-2 border rounded" /></label></div>
+            <div><label class="text-sm">Duration<input id="meta_duration" placeholder="e.g. 8 min" class="w-full px-3 py-2 border rounded" /></label></div>`,
+          social: `
+            <div><label class="text-sm">URL<input id="meta_url" placeholder="https://facebook.com/..." class="w-full px-3 py-2 border rounded" /></label></div>
+            <div><label class="text-sm">Platform<input id="meta_platform" placeholder="e.g. Facebook" class="w-full px-3 py-2 border rounded" /></label></div>`,
+          mocktest: `
+            <div><label class="text-sm">URL<input id="meta_url" placeholder="#mocktest or https://..." class="w-full px-3 py-2 border rounded" /></label></div>
+            <div><label class="text-sm">Status<select id="meta_status" class="w-full px-3 py-2 border rounded"><option>Available</option><option>Closed</option></select></label></div>`,
+          default: `
+            <div><label class="text-sm">Meta URL<input id="meta_url" placeholder="Optional URL" class="w-full px-3 py-2 border rounded" /></label></div>`
+        };
+        container.innerHTML = htmlByType[type] || htmlByType.default;
+      }
+
+      // form create
+      async function createTask(evt) {
+        evt.preventDefault();
+        const userSelect = document.getElementById("userSelect").value;
+        const userFree = document.getElementById("userFreeText").value.trim();
+        const user = userSelect || userFree || undefined;
+        const activityType = document.getElementById("activityType").value;
+        const title = document.getElementById("title").value.trim();
+        if (!title) return t("Title is required");
+        const description = document.getElementById("description").value;
+        const points = Number(document.getElementById("points").value) || 0;
+        const dueDate = document.getElementById("dueDate").value || undefined;
+
+        // meta gather
+        const meta = {};
+        const urlEl = document.getElementById("meta_url");
+        if (urlEl) meta.url = urlEl.value || undefined;
+        const durationEl = document.getElementById("meta_duration");
+        if (durationEl) meta.duration = durationEl.value || undefined;
+        const platformEl = document.getElementById("meta_platform");
+        if (platformEl) meta.platform = platformEl.value || undefined;
+        const statusEl = document.getElementById("meta_status");
+        if (statusEl) meta.status = statusEl.value || undefined;
+
+        const payload = {
+          title, description, points, activityType, meta, dueDate,
+        };
+        if (user) payload.user = user;
+
+        try {
+          const res = await fetch(API_ROOT, { method: "POST", headers: authHeaders(), body: JSON.stringify(payload) });
+          if (!res.ok) {
+            const err = await res.json().catch(()=>({message:"Failed"}));
+            throw new Error(err.message || "Create failed");
+          }
+          const created = await res.json();
+          t("Task created");
+          document.getElementById("taskForm").reset();
+          document.getElementById("metaFields").innerHTML = "";
+          await loadTasks(1);
+        } catch (e) {
+          t("Create failed: " + e.message);
+        }
+      }
+
+      // load tasks (admin all)
+      async function loadTasks(page = 1) {
+        currentPage = page;
+        const q = [];
+        const type = document.getElementById("filterType").value;
+        const status = document.getElementById("filterStatus").value;
+        if (type) q.push("activityType=" + encodeURIComponent(type));
+        if (status) q.push("status=" + encodeURIComponent(status));
+        const url = API_ROOT + (q.length ? "?" + q.join("&") : "");
+        try {
+          const res = await fetch(url, { headers: authHeaders() });
+          if (!res.ok) throw new Error("Failed to fetch tasks");
+          const tasks = await res.json();
+          // tasks should be array
+          allTasks = Array.isArray(tasks) ? tasks : [];
+          applySearchAndRender();
+        } catch (e) {
+          t("Failed to fetch tasks");
+          allTasks = [];
+          renderTable();
+        }
+      }
+
+      function applySearchAndRender() {
+        const q = document.getElementById("globalSearch").value.trim().toLowerCase();
+        filteredTasks = allTasks.filter(t =>
+          !q ||
+          (t.title && t.title.toLowerCase().includes(q)) ||
+          (t.description && t.description.toLowerCase().includes(q)) ||
+          (t.activityType && t.activityType.toLowerCase().includes(q)) ||
+          (t.user && (t.user.fullname || t.user.username || t.user.email || "").toLowerCase().includes(q))
+        );
+        renderTable();
+      }
+
+      function renderTable() {
+        const tbody = document.getElementById("tasksTbody");
+        tbody.innerHTML = "";
+        const start = (currentPage - 1) * perPage;
+        const pageTasks = filteredTasks.slice(start, start + perPage);
+        if (!pageTasks.length) {
+          tbody.innerHTML = `<tr><td class="p-4 text-sm text-gray-500" colspan="8">No tasks found.</td></tr>`;
+        } else {
+          tbody.innerHTML = pageTasks.map(t => {
+            const userLabel = t.user ? (t.user.fullname || t.user.username || t.user.email || t.user._id) : (t.userId || "");
+            const due = t.dueDate ? (new Date(t.dueDate).toLocaleDateString()) : "-";
+            return `<tr class="hover:bg-gray-50">
+              <td class="p-2 text-center"><input class="rowCheckbox" data-id="${t._id}" type="checkbox" /></td>
+              <td class="p-2"><div class="font-semibold">${escapeHtml(t.title)}</div><div class="text-xs text-gray-500 clamp-2">${escapeHtml(t.description||"")}</div></td>
+              <td class="p-2">${escapeHtml(t.activityType)}</td>
+              <td class="p-2">${escapeHtml(userLabel)}</td>
+              <td class="p-2">${escapeHtml(String(t.points||0))}</td>
+              <td class="p-2">${escapeHtml(t.status||"")}</td>
+              <td class="p-2">${escapeHtml(due)}</td>
+              <td class="p-2">
+                <div class="flex gap-2">
+                  <button class="editBtn px-2 py-1 bg-yellow-100 rounded text-xs" data-id="${t._id}">Edit</button>
+                  <button class="doneBtn px-2 py-1 bg-green-100 rounded text-xs" data-id="${t._id}">Mark Done</button>
+                  <button class="delBtn px-2 py-1 bg-red-100 rounded text-xs" data-id="${t._id}">Delete</button>
+                </div>
+              </td>
+            </tr>`;
+          }).join("");
+        }
+
+        document.getElementById("paginationInfo").textContent = `${filteredTasks.length} task(s) — page ${currentPage}`;
+        document.getElementById("prevPage").disabled = currentPage === 1;
+        document.getElementById("nextPage").disabled = (currentPage * perPage) >= filteredTasks.length;
+
+        // wire up row controls
+        document.querySelectorAll(".editBtn").forEach(b => b.onclick = openEditFromBtn);
+        document.querySelectorAll(".delBtn").forEach(b => b.onclick = onDeleteBtn);
+        document.querySelectorAll(".doneBtn").forEach(b => b.onclick = onDoneBtn);
+        document.querySelectorAll(".rowCheckbox").forEach(cb => cb.onchange = updateBulkButtons);
+        document.getElementById("selectAll").checked = false;
+        updateBulkButtons();
+      }
+
+      function updateBulkButtons() {
+        const selected = Array.from(document.querySelectorAll(".rowCheckbox")).filter(cb=>cb.checked).map(cb=>cb.dataset.id);
+        document.getElementById("bulkMarkDone").disabled = selected.length === 0;
+        document.getElementById("bulkDelete").disabled = selected.length === 0;
+      }
+
+      // actions
+      async function onDoneBtn(e) {
+        const id = e.currentTarget.dataset.id;
+        await patchTask(id, { status: "done" });
+      }
+      async function onDeleteBtn(e) {
+        const id = e.currentTarget.dataset.id;
+        if (!confirm("Delete this task?")) return;
+        await deleteTask(id);
+      }
+
+      async function patchTask(id, body) {
+        try {
+          const res = await fetch(`${API_ROOT}/${id}`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify(body) });
+          if (!res.ok) {
+            const err = await res.json().catch(()=>({message:"Failed"}));
+            throw new Error(err.message || "Failed to update");
+          }
+          t("Updated");
+          await loadTasks(currentPage);
+        } catch (e) {
+          t("Update failed");
+        }
+      }
+
+      async function deleteTask(id) {
+        try {
+          const res = await fetch(`${API_ROOT}/${id}`, { method: "DELETE", headers: authHeaders() });
+          if (!res.ok) throw new Error("Delete failed");
+          t("Deleted");
+          await loadTasks(currentPage);
+        } catch (e) {
+          t("Delete failed");
+        }
+      }
+
+      // bulk
+      async function bulkMarkDone() {
+        const selected = Array.from(document.querySelectorAll(".rowCheckbox")).filter(cb=>cb.checked).map(cb=>cb.dataset.id);
+        if (!selected.length) return;
+        if (!confirm(`Mark ${selected.length} task(s) done?`)) return;
+        await Promise.all(selected.map(id => patchTask(id, { status: "done" })));
+        await loadTasks(currentPage);
+      }
+
+      async function bulkDelete() {
+        const selected = Array.from(document.querySelectorAll(".rowCheckbox")).filter(cb=>cb.checked).map(cb=>cb.dataset.id);
+        if (!selected.length) return;
+        if (!confirm(`Delete ${selected.length} task(s)?`)) return;
+        await Promise.all(selected.map(id => deleteTask(id)));
+        await loadTasks(currentPage);
+      }
+
+      // edit modal
+      function openEditFromBtn(e) {
+        const id = e.currentTarget.dataset.id;
+        const task = allTasks.find(x => x._id === id);
+        if (!task) return t("Task not found");
+        document.getElementById("editTaskId").value = task._id;
+        document.getElementById("editTitle").value = task.title || "";
+        document.getElementById("editDescription").value = task.description || "";
+        const et = document.getElementById("editActivityType");
+        et.innerHTML = ["reading","video","mocktest","social","profile","custom","assignment","practice"].map(v => `<option value="${v}" ${task.activityType===v?'selected':''}>${v}</option>`).join("");
+        document.getElementById("editPoints").value = task.points || 0;
+        document.getElementById("editModal").classList.remove("hidden");
+        document.getElementById("editModal").classList.add("flex");
+      }
+
+      async function saveEdit() {
+        const id = document.getElementById("editTaskId").value;
+        const body = {
+          title: document.getElementById("editTitle").value,
+          description: document.getElementById("editDescription").value,
+          activityType: document.getElementById("editActivityType").value,
+          points: Number(document.getElementById("editPoints").value) || 0
+        };
+        await patchTask(id, body);
+        closeEdit();
+      }
+
+      function closeEdit() {
+        document.getElementById("editModal").classList.add("hidden");
+        document.getElementById("editModal").classList.remove("flex");
+      }
+
+      // delete all selection handlers
+      document.getElementById("selectAll").addEventListener("change", (e)=>{
+        const all = document.querySelectorAll(".rowCheckbox");
+        all.forEach(cb => cb.checked = e.target.checked);
+        updateBulkButtons();
+      });
+
+      // util
+      function escapeHtml(s) {
+        if (!s) return "";
+        return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
+      }
+
+      // wire DOM events
+      document.getElementById("taskForm").addEventListener("submit", createTask);
+      document.getElementById("activityType").addEventListener("change", (e) => {
+        renderMetaFor(e.target.value, document.getElementById("metaFields"));
+      });
+      document.getElementById("resetForm").addEventListener("click", ()=> {
+        document.getElementById("taskForm").reset();
+        document.getElementById("metaFields").innerHTML = "";
+      });
+      document.getElementById("globalSearch").addEventListener("input", ()=> { applySearchAndRender(); });
+      document.getElementById("filterType").addEventListener("change", ()=> loadTasks(1));
+      document.getElementById("filterStatus").addEventListener("change", ()=> loadTasks(1));
+      document.getElementById("clearFilters").addEventListener("click", ()=> { document.getElementById("filterType").value=""; document.getElementById("filterStatus").value=""; loadTasks(1); });
+      document.getElementById("prevPage").addEventListener("click", ()=> { if (currentPage>1) { currentPage--; renderTable(); }});
+      document.getElementById("nextPage").addEventListener("click", ()=> { if ((currentPage*perPage) < filteredTasks.length) { currentPage++; renderTable(); }});
+      document.getElementById("refreshAll").addEventListener("click", ()=> loadTasks(1));
+      document.getElementById("bulkMarkDone").addEventListener("click", bulkMarkDone);
+      document.getElementById("bulkDelete").addEventListener("click", bulkDelete);
+      document.getElementById("closeEdit").addEventListener("click", closeEdit);
+      document.getElementById("cancelEdit").addEventListener("click", closeEdit);
+      document.getElementById("saveEdit").addEventListener("click", saveEdit);
+
+      // initial load
+      (async function init() {
+        await tryFetchUsers();
+        // default meta render
+        renderMetaFor(document.getElementById("activityType").value || "reading", document.getElementById("metaFields"));
+        await loadTasks(1);
+        // show admin name where possible
+        try {
+          const me = await fetch("/api/auth/me", { headers: authHeaders() }).then(r=>r.json());
+          if (me && me.user && me.user.fullname) document.getElementById("adminName").textContent = me.user.fullname;
+        } catch (e) {}
+      })();
+
+    })();
+  </script>
+</body>
+</html>
