@@ -1591,7 +1591,6 @@ document.addEventListener("DOMContentLoaded", () => {
               <option value="other">Other</option>
             </select>
           </div>
-
           <div>
             <label class="font-medium mb-1 block">Thumbnail (optional)</label>
             <div class="flex items-center gap-3">
@@ -1607,23 +1606,19 @@ document.addEventListener("DOMContentLoaded", () => {
             </div>
           </div>
         </div>
-
         <div>
           <label class="font-medium mb-1 block">Upload File</label>
           <input name="file" type="file" id="resourceFileInput" class="border rounded-lg px-2 py-1 w-full" />
           <div class="text-xs text-gray-500 mt-1">Optional — if provided it'll be uploaded to the server and used instead of the external link.</div>
         </div>
-
         <div>
           <label class="font-medium mb-1 block">External Link</label>
           <input name="link" id="resourceLink" type="url" class="border rounded-lg p-2 w-full" placeholder="https://..." />
         </div>
-
         <div>
           <label class="font-medium mb-1 block">Description</label>
           <textarea name="description" id="resourceDescription" class="border rounded-lg p-2 w-full min-h-[120px]"></textarea>
         </div>
-
         <div class="flex items-center gap-3 mt-2">
           <button id="uploadResourceSubmit" type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded px-6 py-2">Upload Resource</button>
           <button type="button" id="cancelUploadBtn" class="border rounded px-4 py-2">Cancel</button>
@@ -1633,12 +1628,25 @@ document.addEventListener("DOMContentLoaded", () => {
     </div>
   </div>
 
+  <!-- Resource Viewer Modal (hidden by default) -->
+  <div id="resourceViewerModal" class="fixed inset-0 bg-black bg-opacity-40 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl mx-4 p-6 relative max-h-[95vh] overflow-auto flex flex-col" style="min-height:340px;">
+      <button id="closeViewerModal" class="absolute top-4 right-5 text-gray-400 hover:text-indigo-600 text-2xl">&times;</button>
+      <div id="resourceViewerContent" class="flex-1 flex items-center justify-center min-h-[280px]">
+        <!-- Will be injected here -->
+      </div>
+      <div id="viewerFileActions" class="mt-4 flex justify-end gap-3">
+        <!-- Download button added by JS -->
+      </div>
+    </div>
+  </div>
+
   <script>
     (function(){
       // Endpoints
       const API_ROOT = "https://examguide.onrender.com/api/resources";
       const COURSES_EP = API_ROOT + "/courses";
-      const TOKEN_KEY = "token"; // same pattern as other components
+      const TOKEN_KEY = "token";
       const token = () => localStorage.getItem(TOKEN_KEY);
       const authHeaders = () => token() ? { Authorization: "Bearer " + token() } : {};
 
@@ -1660,6 +1668,12 @@ document.addEventListener("DOMContentLoaded", () => {
       const closeUploadModal = document.getElementById("closeUploadModal");
       const cancelUploadBtn = document.getElementById("cancelUploadBtn");
 
+      // Viewer Elements
+      const viewerModal = document.getElementById("resourceViewerModal");
+      const viewerContent = document.getElementById("resourceViewerContent");
+      const closeViewerModal = document.getElementById("closeViewerModal");
+      const viewerFileActions = document.getElementById("viewerFileActions");
+
       // Thumbnail elements
       const thumbnailInput = document.getElementById("resourceThumbnail");
       const thumbnailPreview = document.getElementById("thumbnailPreview");
@@ -1672,7 +1686,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const perPage = 10;
       let total = 0, pages = 1;
 
-      // Init
       document.addEventListener("DOMContentLoaded", init);
 
       function debounce(fn, wait = 300) {
@@ -1700,23 +1713,81 @@ document.addEventListener("DOMContentLoaded", () => {
 
         thumbnailInput.addEventListener("change", onThumbnailSelected);
         clearThumbnailBtn.addEventListener("click", clearThumbnail);
+
+        // Resource viewer modal events
+        closeViewerModal.addEventListener("click", closeViewerModalHandler);
+        viewerModal.addEventListener("click", function(ev) {
+          if (ev.target === viewerModal) closeViewerModalHandler();
+        });
       }
 
       function openUploadModal() {
         uploadModal.classList.remove("hidden");
-        // prevent background scrolling
         document.body.style.overflow = "hidden";
-        // ensure modal scrolls to top initially
         const inner = uploadModal.querySelector("[role='dialog']") || uploadModal.querySelector("div");
         if (inner) inner.scrollTop = 0;
       }
 
       function closeUploadModalHandler() {
         uploadModal.classList.add("hidden");
-        // restore background scrolling
         document.body.style.overflow = "";
-        // clear thumbnail preview and form partially
         clearThumbnail();
+      }
+
+      function openResourceViewer(data) {
+        viewerContent.innerHTML = "";
+        viewerFileActions.innerHTML = "";
+
+        // Title
+        let titleBlock = `<div class="mb-3 text-xl font-bold text-indigo-900 text-center">${escapeHtml(data.title || 'Resource Viewer')}</div>`;
+
+        // Determine content based on type
+        let fileUrl = data.fileUrl || data.link || data.url || '';
+        let extension = '';
+        // Extract file extension if possible
+        if (fileUrl) {
+          let match = fileUrl.match(/\.(\w+)(?:[#?].*)?$/);
+          extension = match ? match[1].toLowerCase() : '';
+        }
+
+        let viewerHtml = '';
+        if (data.type === "pdf" || extension === "pdf") {
+          viewerHtml = `<iframe src="${fileUrl}" class="w-full h-[600px] rounded shadow-lg border" frameborder="0"></iframe>`;
+        } else if (data.type === "video" || ["mp4", "webm", "mov"].includes(extension)) {
+          viewerHtml = `<video src="${fileUrl}" controls class="w-full max-h-[600px] rounded shadow-lg"></video>`;
+        } else if (data.type === "audio" || ["mp3", "ogg", "wav"].includes(extension)) {
+          viewerHtml = `<audio src="${fileUrl}" controls class="w-full mt-10"></audio>`;
+        } else if (data.type === "notes" || ["txt", "md"].includes(extension)) {
+          viewerHtml = `<iframe src="${fileUrl}" class="w-full h-[600px] rounded shadow-lg border" frameborder="0"></iframe>`;
+        } else if (data.type === "link") {
+          viewerHtml = `<iframe src="${fileUrl}" class="w-full h-[600px] rounded shadow-lg border" frameborder="0"></iframe>`;
+        } else { // fallback
+          viewerHtml = `<iframe src="${fileUrl}" class="w-full h-[600px] rounded shadow-lg border" frameborder="0"></iframe>
+                        <p class="mt-4 text-sm text-gray-400 text-center">Format not directly supported. <a href="${fileUrl}" target="_blank" class="text-indigo-700 underline">Open externally</a></p>`;
+        }
+
+        viewerContent.innerHTML = titleBlock + viewerHtml;
+
+        // Add download button if fileUrl is available
+        if (fileUrl) {
+          let downloadBtn = document.createElement("a");
+          downloadBtn.href = fileUrl;
+          downloadBtn.target = "_blank";
+          downloadBtn.download = "";
+          downloadBtn.className = "bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded px-6 py-2 transition";
+          downloadBtn.textContent = "Download Resource";
+          viewerFileActions.appendChild(downloadBtn);
+        }
+
+        viewerModal.classList.remove("hidden");
+        document.body.style.overflow = "hidden";
+      }
+
+      function closeViewerModalHandler() {
+        viewerModal.classList.add("hidden");
+        document.body.style.overflow = "";
+        viewerContent.innerHTML = "";
+        viewerFileActions.innerHTML = "";
       }
 
       async function populateCourses() {
@@ -1725,10 +1796,8 @@ document.addEventListener("DOMContentLoaded", () => {
           if (!res.ok) return;
           const data = await res.json();
           courseSelect.innerHTML = `<option value="">All Courses</option>` + data.map(c => `<option value="${c}">${c}</option>`).join("");
-          // also set upload-course input datalist (optional)
           const uploadCourse = document.getElementById("resourceCourse");
           if (uploadCourse) {
-            // create datalist for suggestions
             let dl = document.getElementById("coursesDatalist");
             if (!dl) {
               dl = document.createElement("datalist"); dl.id = "coursesDatalist";
@@ -1793,7 +1862,6 @@ document.addEventListener("DOMContentLoaded", () => {
           const row = document.createElement("tr");
           row.className = "hover:bg-indigo-50/40 transition";
 
-          // Choose thumbnail: prefer r.thumbnailUrl or r.fileUrl (for videos/pdf a preview may exist)
           const thumbUrl = r.thumbnailUrl || r.thumbUrl || (r.fileUrl && r.type === "video" ? r.fileUrl : "");
           const thumbHtml = thumbUrl
             ? `<img src="${thumbUrl}" alt="thumbnail" class="w-20 h-12 object-cover rounded" />`
@@ -1831,13 +1899,48 @@ document.addEventListener("DOMContentLoaded", () => {
 
           tableBody.appendChild(row);
 
-          // wire buttons
-          row.querySelector(".viewBtn").addEventListener("click", () => window.open(`${API_ROOT}/${r._id}/download`, "_blank"));
+          // Wire buttons
+          row.querySelector(".viewBtn").addEventListener("click", async () => {
+            // Fetch resource details for viewer modal
+            try {
+              let res = await fetch(`${API_ROOT}/${r._id}`, { headers: authHeaders() });
+              if (!res.ok) throw new Error("Unable to fetch resource info.");
+              let resourceData = await res.json();
+              // Use resourceData and patched url info
+              let viewData = {
+                _id: resourceData._id,
+                title: resourceData.title || r.title,
+                type: resourceData.type || r.type,
+                fileUrl: resourceData.fileUrl || resourceData.link || r.fileUrl || r.link,
+                link: resourceData.link || r.link,
+                url: resourceData.fileUrl || resourceData.link || r.fileUrl || r.link
+              };
+              openResourceViewer(viewData);
+            } catch (e) {
+              alert("Could not open viewer. Try again.");
+            }
+          });
           row.querySelector(".downloadBtn").addEventListener("click", () => window.open(`${API_ROOT}/${r._id}/download`, "_blank"));
           row.querySelector(".favBtn").addEventListener("click", () => onSaveToggle(r._id, row.querySelector(".favBtn")));
-          row.querySelector(".resource-title")?.addEventListener("click", (ev) => {
+          row.querySelector(".resource-title")?.addEventListener("click", async (ev) => {
             ev.preventDefault();
-            window.open(`${API_ROOT}/${r._id}`, "_blank");
+            // Open viewer modal instead of new tab
+            try {
+              let res = await fetch(`${API_ROOT}/${r._id}`, { headers: authHeaders() });
+              if (!res.ok) throw new Error("Unable to fetch resource info.");
+              let resourceData = await res.json();
+              let viewData = {
+                _id: resourceData._id,
+                title: resourceData.title || r.title,
+                type: resourceData.type || r.type,
+                fileUrl: resourceData.fileUrl || resourceData.link || r.fileUrl || r.link,
+                link: resourceData.link || r.link,
+                url: resourceData.fileUrl || resourceData.link || r.fileUrl || r.link
+              };
+              openResourceViewer(viewData);
+            } catch(e) {
+              alert("Could not open viewer. Try again.");
+            }
           });
         }
       }
@@ -1889,12 +1992,9 @@ document.addEventListener("DOMContentLoaded", () => {
         if (description) form.append("description", description);
         if (link) form.append("link", link);
 
-        // append file if chosen
         if (fileInput && fileInput.files && fileInput.files[0]) {
           form.append("file", fileInput.files[0], fileInput.files[0].name);
         }
-
-        // append thumbnail if chosen
         if (thumbnailInput && thumbnailInput.files && thumbnailInput.files[0]) {
           form.append("thumbnail", thumbnailInput.files[0], thumbnailInput.files[0].name);
         }
@@ -1925,7 +2025,6 @@ document.addEventListener("DOMContentLoaded", () => {
         thumbnailPreview.classList.remove("hidden");
         thumbnailPlaceholder.classList.add("hidden");
         clearThumbnailBtn.classList.remove("hidden");
-        // ensure modal scrolls to top so preview visible
         const inner = uploadModal.querySelector("div");
         if (inner) inner.scrollTop = 0;
       }
@@ -1943,7 +2042,6 @@ document.addEventListener("DOMContentLoaded", () => {
         return String(s).replace(/&/g, "&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
       }
 
-      // Expose loadResources for other parts
       window.loadResourcesSection = loadResources;
 
     })();
