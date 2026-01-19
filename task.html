@@ -6,13 +6,10 @@
   <title>ExamGuide — Admin Tasks</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.css"/>
-  <style>
-    .clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  </style>
+  <style>.clamp-2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}</style>
 </head>
 <body class="min-h-screen text-gray-800">
   <div class="min-h-screen flex flex-col md:flex-row">
-    <!-- Sidebar -->
     <aside class="w-full md:w-64 bg-indigo-700 text-white p-4">
       <div class="flex items-center gap-3 mb-6">
         <div class="w-10 h-10 bg-white/10 rounded flex items-center justify-center font-bold">AG</div>
@@ -21,19 +18,16 @@
           <div class="text-xs opacity-80">Tasks Management</div>
         </div>
       </div>
-
       <nav class="space-y-2 text-sm">
         <a href="#create" class="block py-2 px-3 rounded hover:bg-white/10">Create Task</a>
         <a href="#list" class="block py-2 px-3 rounded hover:bg-white/10">All Tasks</a>
         <a id="refreshAll" href="javascript:void(0)" class="block py-2 px-3 rounded hover:bg-white/10">Refresh</a>
       </nav>
-
       <div class="mt-6 text-xs text-white/80">
         <div>Signed in as: <span id="adminName" class="font-semibold">Admin</span></div>
       </div>
     </aside>
 
-    <!-- Main content -->
     <main class="flex-1 p-4">
       <header class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
         <h1 class="text-2xl font-bold">Tasks Admin</h1>
@@ -79,7 +73,6 @@
         </div>
       </header>
 
-      <!-- Create form -->
       <section id="create" class="bg-white rounded-lg p-6 shadow mb-6">
         <h2 class="text-lg font-bold mb-4">Create / Import Task</h2>
 
@@ -129,9 +122,23 @@
             <input id="dueDate" type="date" class="w-full px-3 py-2 border rounded" />
           </div>
 
-          <!-- dynamic meta fields -->
-          <div id="metaFields" class="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <!-- injected by JS based on activity type -->
+          <div id="metaFields" class="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+
+          <!-- Bulk assignment options -->
+          <div class="md:col-span-2 flex items-center gap-3">
+            <label class="inline-flex items-center gap-2">
+              <input id="assignToMatched" type="checkbox" class="form-checkbox" />
+              <span class="text-sm">Assign to all users matching the current filters</span>
+            </label>
+            <button id="previewMatched" type="button" class="px-3 py-2 border rounded bg-gray-50">Preview matched</button>
+            <div id="matchedInfo" class="text-sm text-gray-600"></div>
+          </div>
+
+          <div class="md:col-span-2 flex items-center gap-3">
+            <label class="inline-flex items-center gap-2">
+              <input id="skipIfExists" type="checkbox" class="form-checkbox" />
+              <span class="text-sm">Skip users who already have a non-done task with same title</span>
+            </label>
           </div>
 
           <div class="md:col-span-2 flex items-center gap-3">
@@ -142,7 +149,6 @@
         </form>
       </section>
 
-      <!-- Tasks list -->
       <section id="list" class="bg-white rounded-lg p-4 shadow">
         <div class="flex items-center justify-between mb-4">
           <h2 class="text-lg font-bold">Tasks</h2>
@@ -174,7 +180,6 @@
           </table>
         </div>
 
-        <!-- pagination -->
         <div class="mt-4 flex items-center justify-between">
           <div class="text-sm text-gray-600" id="paginationInfo">0 tasks</div>
           <div class="flex items-center gap-2">
@@ -186,7 +191,7 @@
     </main>
   </div>
 
-  <!-- Edit Modal -->
+  <!-- Edit Modal + toast (same as previous UI) -->
   <div id="editModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black bg-opacity-50 p-4">
     <div class="bg-white rounded-lg w-full max-w-2xl p-6">
       <div class="flex items-center justify-between mb-4">
@@ -209,7 +214,6 @@
     </div>
   </div>
 
-  <!-- small toast -->
   <div id="toast" class="fixed right-4 bottom-4 bg-gray-800 text-white px-4 py-2 rounded shadow hidden"></div>
 
   <script>
@@ -219,11 +223,7 @@
       const FACULTIES_API = "https://examguide.onrender.com/api/faculties";
       const DEPTS_API = "https://examguide.onrender.com/api/departments";
       const token = localStorage.getItem("token");
-      let allTasks = [];
-      let filteredTasks = [];
-      let currentPage = 1;
-      const perPage = 10;
-      let usersList = [];
+      let allTasks = [], filteredTasks = [], currentPage = 1, perPage = 10, usersList = [];
 
       function t(msg, timeout = 3000) {
         const el = document.getElementById("toast");
@@ -231,7 +231,6 @@
         el.classList.remove("hidden");
         setTimeout(()=>el.classList.add("hidden"), timeout);
       }
-
       function authHeaders() {
         return token ? { Authorization: "Bearer " + token, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
       }
@@ -243,7 +242,6 @@
           const res = await fetch(USERS_API, { headers: authHeaders() });
           if (!res.ok) throw new Error("no users endpoint");
           const data = await res.json();
-          // if users endpoint is paginated, adapt; otherwise expect array
           usersList = Array.isArray(data) ? data : (data.users || []);
           sel.innerHTML = `<option value="">(choose user)</option>` + usersList.map(u => `<option value="${u._id}">${u.fullname || u.username || u.email}</option>`).join("");
         } catch (e) {
@@ -251,7 +249,6 @@
         }
       }
 
-      // fetch faculties and departments to fill filters
       async function populateFacultyAndDepartments() {
         try {
           const fRes = await fetch(FACULTIES_API);
@@ -261,7 +258,6 @@
             selF.innerHTML = `<option value="">All Faculties</option>` + facs.map(f => `<option value="${f._id}">${f.name}</option>`).join("");
           }
         } catch (e) {}
-        // departments: we will fetch all (no faculty filter initially)
         try {
           const dRes = await fetch(DEPTS_API);
           if (dRes.ok) {
@@ -272,7 +268,6 @@
         } catch (e) {}
       }
 
-      // when faculty changes, fetch departments for that faculty
       document.getElementById("filterFaculty").addEventListener("change", async (e) => {
         const fid = e.target.value;
         const dsel = document.getElementById("filterDepartment");
@@ -288,32 +283,23 @@
         loadTasks(1);
       });
 
-      // dynamic meta fields by type
       function renderMetaFor(type, container) {
         const htmlByType = {
-          reading: `
-            <div><label class="text-sm">URL<input id="meta_url" placeholder="https://..." class="w-full px-3 py-2 border rounded" /></label></div>
-            <div><label class="text-sm">Duration<input id="meta_duration" placeholder="e.g. 10 min" class="w-full px-3 py-2 border rounded" /></label></div>`,
-          video: `
-            <div><label class="text-sm">Embed/Watch URL<input id="meta_url" placeholder="https://youtube.com/embed/..." class="w-full px-3 py-2 border rounded" /></label></div>
-            <div><label class="text-sm">Duration<input id="meta_duration" placeholder="e.g. 8 min" class="w-full px-3 py-2 border rounded" /></label></div>`,
-          social: `
-            <div><label class="text-sm">URL<input id="meta_url" placeholder="https://facebook.com/..." class="w-full px-3 py-2 border rounded" /></label></div>
-            <div><label class="text-sm">Platform<input id="meta_platform" placeholder="e.g. Facebook" class="w-full px-3 py-2 border rounded" /></label></div>`,
-          mocktest: `
-            <div><label class="text-sm">URL<input id="meta_url" placeholder="#mocktest or https://..." class="w-full px-3 py-2 border rounded" /></label></div>
-            <div><label class="text-sm">Status<select id="meta_status" class="w-full px-3 py-2 border rounded"><option>Available</option><option>Closed</option></select></label></div>`,
-          default: `
-            <div><label class="text-sm">Meta URL<input id="meta_url" placeholder="Optional URL" class="w-full px-3 py-2 border rounded" /></label></div>`
+          reading: `<div><label class="text-sm">URL<input id="meta_url" placeholder="https://..." class="w-full px-3 py-2 border rounded" /></label></div><div><label class="text-sm">Duration<input id="meta_duration" placeholder="e.g. 10 min" class="w-full px-3 py-2 border rounded" /></label></div>`,
+          video: `<div><label class="text-sm">Embed/Watch URL<input id="meta_url" placeholder="https://youtube.com/embed/..." class="w-full px-3 py-2 border rounded" /></label></div><div><label class="text-sm">Duration<input id="meta_duration" placeholder="e.g. 8 min" class="w-full px-3 py-2 border rounded" /></label></div>`,
+          social: `<div><label class="text-sm">URL<input id="meta_url" placeholder="https://facebook.com/..." class="w-full px-3 py-2 border rounded" /></label></div><div><label class="text-sm">Platform<input id="meta_platform" placeholder="e.g. Facebook" class="w-full px-3 py-2 border rounded" /></label></div>`,
+          mocktest: `<div><label class="text-sm">URL<input id="meta_url" placeholder="#mocktest or https://..." class="w-full px-3 py-2 border rounded" /></label></div><div><label class="text-sm">Status<select id="meta_status" class="w-full px-3 py-2 border rounded"><option>Available</option><option>Closed</option></select></label></div>`,
+          default: `<div><label class="text-sm">Meta URL<input id="meta_url" placeholder="Optional URL" class="w-full px-3 py-2 border rounded" /></label></div>`
         };
         container.innerHTML = htmlByType[type] || htmlByType.default;
       }
 
       async function createTask(evt) {
         evt.preventDefault();
+        const assignToMatched = document.getElementById("assignToMatched").checked;
         const userSelect = document.getElementById("userSelect").value;
         const userFree = document.getElementById("userFreeText").value.trim();
-        const user = userSelect || userFree || undefined;
+        const selectedUser = userSelect || userFree || undefined;
         const activityType = document.getElementById("activityType").value;
         const title = document.getElementById("title").value.trim();
         if (!title) return t("Title is required");
@@ -331,15 +317,40 @@
         const statusEl = document.getElementById("meta_status");
         if (statusEl) meta.status = statusEl.value || undefined;
 
-        const payload = {
-          title, description, points, activityType, meta, dueDate,
-        };
-        if (user) payload.user = user;
+        // If assignToMatched: call bulk endpoint with current filters
+        if (assignToMatched) {
+          const filters = {
+            level: document.getElementById("filterLevel").value || undefined,
+            faculty: document.getElementById("filterFaculty").value || undefined,
+            department: document.getElementById("filterDepartment").value || undefined,
+            sex: document.getElementById("filterSex").value || undefined,
+            q: document.getElementById("globalSearch").value.trim() || undefined
+          };
+          const skipIfExists = document.getElementById("skipIfExists").checked;
+          // send bulk request
+          try {
+            const payload = { title, description, points, activityType, meta, dueDate, filters, skipIfExists };
+            const res = await fetch(API_ROOT + "/bulk", { method: "POST", headers: authHeaders(), body: JSON.stringify(payload) });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || data.error || "Bulk create failed");
+            t(`Bulk created: ${data.created || 0} tasks (matched ${data.totalMatched || 0})`);
+            document.getElementById("taskForm").reset();
+            document.getElementById("metaFields").innerHTML = "";
+            document.getElementById("matchedInfo").textContent = "";
+            await loadTasks(1);
+          } catch (e) {
+            t("Bulk create failed: " + e.message);
+          }
+          return;
+        }
 
+        // Single create (for specific user or for admin to self)
+        const payload = { title, description, points, activityType, meta, dueDate };
+        if (selectedUser) payload.user = selectedUser;
         try {
           const res = await fetch(API_ROOT, { method: "POST", headers: authHeaders(), body: JSON.stringify(payload) });
           if (!res.ok) {
-            const err = await res.json().catch(()=>({message:"Failed"}));
+            const err = await res.json().catch(()=>({message:"Create failed"}));
             throw new Error(err.message || "Create failed");
           }
           t("Task created");
@@ -351,7 +362,26 @@
         }
       }
 
-      // load tasks with filters (sends faculty/department/level/sex if selected)
+      // Preview matched users
+      async function previewMatched() {
+        const filters = {
+          level: document.getElementById("filterLevel").value || undefined,
+          faculty: document.getElementById("filterFaculty").value || undefined,
+          department: document.getElementById("filterDepartment").value || undefined,
+          sex: document.getElementById("filterSex").value || undefined,
+          q: document.getElementById("globalSearch").value.trim() || undefined
+        };
+        const qs = Object.entries(filters).filter(([k,v])=>v).map(([k,v])=>`${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("&");
+        try {
+          const res = await fetch(API_ROOT + "/match-users" + (qs ? `?${qs}` : ""), { headers: authHeaders() });
+          if (!res.ok) throw new Error("Failed to preview");
+          const data = await res.json();
+          document.getElementById("matchedInfo").textContent = `${data.total || 0} users matched. Sample: ${data.sample ? data.sample.slice(0,5).map(u=>u.fullname||u.username||u.email).join(", ") : ""}`;
+        } catch (e) {
+          t("Preview failed");
+        }
+      }
+
       async function loadTasks(page = 1) {
         currentPage = page;
         const qparams = [];
@@ -371,14 +401,13 @@
         if (sex) qparams.push("sex=" + encodeURIComponent(sex));
         if (search) qparams.push("q=" + encodeURIComponent(search));
         qparams.push("page=" + encodeURIComponent(page));
-        qparams.push("limit=" + encodeURIComponent(1000)); // fetch large set server-side supports pagination too
+        qparams.push("limit=" + encodeURIComponent(1000));
 
         const url = API_ROOT + (qparams.length ? "?" + qparams.join("&") : "");
         try {
           const res = await fetch(url, { headers: authHeaders() });
           if (!res.ok) throw new Error("Failed to fetch tasks");
           const data = await res.json();
-          // data.meta, data.tasks expected
           allTasks = Array.isArray(data.tasks) ? data.tasks : (data.tasks || []);
           applySearchAndRender();
         } catch (e) {
@@ -389,7 +418,6 @@
       }
 
       function applySearchAndRender() {
-        // server side already filtered; client-side search just narrows further
         const q = document.getElementById("globalSearch").value.trim().toLowerCase();
         filteredTasks = allTasks.filter(t =>
           !q ||
@@ -457,15 +485,8 @@
         document.getElementById("bulkDelete").disabled = selected.length === 0;
       }
 
-      async function onDoneBtn(e) {
-        const id = e.currentTarget.dataset.id;
-        await patchTask(id, { status: "done" });
-      }
-      async function onDeleteBtn(e) {
-        const id = e.currentTarget.dataset.id;
-        if (!confirm("Delete this task?")) return;
-        await deleteTask(id);
-      }
+      async function onDoneBtn(e) { const id = e.currentTarget.dataset.id; await patchTask(id, { status: "done" }); }
+      async function onDeleteBtn(e) { const id = e.currentTarget.dataset.id; if (!confirm("Delete this task?")) return; await deleteTask(id); }
 
       async function patchTask(id, body) {
         try {
@@ -476,22 +497,16 @@
           }
           t("Updated");
           await loadTasks(currentPage);
-        } catch (e) {
-          t("Update failed");
-        }
+        } catch (e) { t("Update failed"); }
       }
-
       async function deleteTask(id) {
         try {
           const res = await fetch(`${API_ROOT}/${id}`, { method: "DELETE", headers: authHeaders() });
           if (!res.ok) throw new Error("Delete failed");
           t("Deleted");
           await loadTasks(currentPage);
-        } catch (e) {
-          t("Delete failed");
-        }
+        } catch (e) { t("Delete failed"); }
       }
-
       async function bulkMarkDone() {
         const selected = Array.from(document.querySelectorAll(".rowCheckbox")).filter(cb=>cb.checked).map(cb=>cb.dataset.id);
         if (!selected.length) return;
@@ -499,7 +514,6 @@
         await Promise.all(selected.map(id => patchTask(id, { status: "done" })));
         await loadTasks(currentPage);
       }
-
       async function bulkDelete() {
         const selected = Array.from(document.querySelectorAll(".rowCheckbox")).filter(cb=>cb.checked).map(cb=>cb.dataset.id);
         if (!selected.length) return;
@@ -521,7 +535,6 @@
         document.getElementById("editModal").classList.remove("hidden");
         document.getElementById("editModal").classList.add("flex");
       }
-
       async function saveEdit() {
         const id = document.getElementById("editTaskId").value;
         const body = {
@@ -533,32 +546,15 @@
         await patchTask(id, body);
         closeEdit();
       }
+      function closeEdit() { document.getElementById("editModal").classList.add("hidden"); document.getElementById("editModal").classList.remove("flex"); }
+      document.getElementById("selectAll").addEventListener("change", (e)=> { const all = document.querySelectorAll(".rowCheckbox"); all.forEach(cb => cb.checked = e.target.checked); updateBulkButtons(); });
 
-      function closeEdit() {
-        document.getElementById("editModal").classList.add("hidden");
-        document.getElementById("editModal").classList.remove("flex");
-      }
+      function escapeHtml(s) { if (!s) return ""; return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
 
-      document.getElementById("selectAll").addEventListener("change", (e)=>{
-        const all = document.querySelectorAll(".rowCheckbox");
-        all.forEach(cb => cb.checked = e.target.checked);
-        updateBulkButtons();
-      });
-
-      function escapeHtml(s) {
-        if (!s) return "";
-        return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
-      }
-
-      // wire DOM events
+      // events
       document.getElementById("taskForm").addEventListener("submit", createTask);
-      document.getElementById("activityType").addEventListener("change", (e) => {
-        renderMetaFor(e.target.value, document.getElementById("metaFields"));
-      });
-      document.getElementById("resetForm").addEventListener("click", ()=> {
-        document.getElementById("taskForm").reset();
-        document.getElementById("metaFields").innerHTML = "";
-      });
+      document.getElementById("activityType").addEventListener("change", (e) => { renderMetaFor(e.target.value, document.getElementById("metaFields")); });
+      document.getElementById("resetForm").addEventListener("click", ()=> { document.getElementById("taskForm").reset(); document.getElementById("metaFields").innerHTML = ""; });
       document.getElementById("globalSearch").addEventListener("input", ()=> { applySearchAndRender(); });
       document.getElementById("filterType").addEventListener("change", ()=> loadTasks(1));
       document.getElementById("filterStatus").addEventListener("change", ()=> loadTasks(1));
@@ -574,6 +570,7 @@
       document.getElementById("closeEdit").addEventListener("click", closeEdit);
       document.getElementById("cancelEdit").addEventListener("click", closeEdit);
       document.getElementById("saveEdit").addEventListener("click", saveEdit);
+      document.getElementById("previewMatched").addEventListener("click", previewMatched);
 
       (async function init() {
         await tryFetchUsers();
@@ -585,7 +582,6 @@
           if (me && me.user && me.user.fullname) document.getElementById("adminName").textContent = me.user.fullname;
         } catch (e) {}
       })();
-
     })();
   </script>
 </body>
