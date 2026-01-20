@@ -9,6 +9,23 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+
+  <!-- MathJax v3: render LaTeX inside questions, options and explanations -->
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['\\(', '\\)'], ['$', '$']],
+        displayMath: [['$$','$$'], ['\\[','\\]']],
+        packages: {'[+]': ['noerrors']}
+      },
+      options: {
+        skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+      },
+      svg: { fontCache: 'global' }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" id="MathJax-script" async></script>
+
   <style>
     .answer-pill { display:inline-block; border-radius:9999px; padding:0.25em 0.8em; font-weight:700;}
     .answer-user    { background: #dbeafe; color: #1e3a8a;}
@@ -45,15 +62,18 @@
     <div class="text-gray-500 mb-8" id="score-feedback"></div>
     <div id="results-list"></div>
   </div>
-  <script>
-    // 1. Load previous answers and exam info
-    let examInfo, answers;
-    try {
-      examInfo = JSON.parse(sessionStorage.getItem('cbt_exam_info') || '{}');
-      answers = JSON.parse(sessionStorage.getItem('cbt_user_answers') || '{}');
-    } catch { examInfo = {}; answers = {}; }
 
-    // 2. Get full question list again (for answer/marking purposes, required to show correct/wrong/explanations)
+  <script>
+    // Load previous answers and exam info
+    let examInfo = {}, answers = {};
+    try {
+      examInfo = JSON.parse(sessionStorage.getItem('cbt_exam_info') || '{}') || {};
+      answers = JSON.parse(sessionStorage.getItem('cbt_user_answers') || '{}') || {};
+    } catch (e) {
+      examInfo = {}; answers = {};
+    }
+
+    // Fetch questions from server (original source)
     async function fetchQuestions() {
       const accessCode = localStorage.getItem("exam_access_code");
       if (!accessCode) return { questions: [], subject: "" };
@@ -73,12 +93,6 @@
       return d.toLocaleString(undefined, {dateStyle:"medium", timeStyle:"short"});
     }
 
-    function answerFeedbackMark(userAns, correctAns) {
-      if (!userAns) return '<span class="answer-pill answer-user text-gray-600" title="No answer">N/A</span>';
-      if (userAns === correctAns) return `<span class="answer-pill answer-correct">Correct</span>`;
-      return `<span class="answer-pill answer-wrong">Wrong</span>`;
-    }
-
     function getScoreTally(results) {
       let correct = 0;
       results.forEach(r => { if (r.isCorrect) correct++; });
@@ -93,113 +107,155 @@
       return "Don't give up! Review the material and try again.";
     }
 
+    // --- Normalize LaTeX within HTML strings so MathJax will typeset them ---
+    function normalizeQuestionMath(html) {
+      if (!html || typeof html !== 'string') return html;
+
+      // Unescape double backslashes that may have been introduced by JSON/string escaping
+      let s = html.replace(/\\\\/g, '\\');
+
+      // If the string already contains explicit math delimiters, assume it's fine.
+      if (/\\\(|\\\[|\$\$?/.test(s)) return s;
+
+      // Wrap common LaTeX command patterns with inline delimiters.
+      const cmdRegex = /\\(?:frac|sqrt|sum|int|lim|left|right|cdot|times|pi|alpha|beta|gamma|theta|log|ln|Delta|delta)(?:\{[^}]*\}|\^[^{\s]+|\_[^{\s]+)*/g;
+      s = s.replace(cmdRegex, function(m) { return `\\(${m}\\)`; });
+
+      // Wrap simple superscript/subscript patterns like x^2, x^{2}, x_1, x_{10}
+      const expRegex = /([A-Za-z0-9])\^(?:\{[^}]+\}|\d+)/g;
+      s = s.replace(expRegex, function(m) { return `\\(${m}\\)`; });
+
+      const subRegex = /([A-Za-z0-9])_(?:\{[^}]+\}|\d+)/g;
+      s = s.replace(subRegex, function(m) { return `\\(${m}\\)`; });
+
+      return s;
+    }
+
+    // Main render
     async function main() {
-      // 1. Info
       document.getElementById('name').textContent = examInfo.student || "No info";
-      // Below ensures we use 'matric' key as per previously fixed save
       document.getElementById('regnum').textContent = examInfo.matric || "";
       document.getElementById('time').textContent = getTimeString(examInfo.timeCompleted);
 
-      // 2. Get full questions from server
       const {questions,subject} = await fetchQuestions();
       document.getElementById('subject').textContent = subject || "CBT Report";
 
-      // 3. Build detailed result list
       let results = [];
-      let resultsList = document.getElementById('results-list');
+      const resultsList = document.getElementById('results-list');
       resultsList.innerHTML = "";
 
-      for(let i=0;i<questions.length;i++){
-        let q = questions[i];
-        let userAns = answers[q._id] || answers[q.id] || "";
-        let correctAns = q.answer;
-        let isCorrect = (userAns === correctAns);
+      for (let i = 0; i < questions.length; i++) {
+        const q = questions[i];
+        const qid = q._id || q.id || `q${i}`;
+        const userAns = answers[qid] || answers[q._id] || answers[q.id] || "";
+        const correctAns = q.answer;
+        const isCorrect = (userAns === correctAns);
         results.push({ isCorrect });
-        // Find option text for user/answer
+
+        // Find option texts (if any) and normalize
         const opt = q.options || [];
-        const userOpt = opt.find(o=>o.key===userAns);
-        const correctOpt = opt.find(o=>o.key===correctAns);
+        const userOpt = opt.find(o => o.key === userAns);
+        const correctOpt = opt.find(o => o.key === correctAns);
+
+        // Normalize question, option texts and explanation so MathJax can render them
+        const questionHtml = normalizeQuestionMath(q.question || '');
+        const userOptText = userOpt ? normalizeQuestionMath(userOpt.text || '') : '';
+        const correctOptText = correctOpt ? normalizeQuestionMath(correctOpt.text || '') : '';
+        const explanationHtml = normalizeQuestionMath(q.explanation || '');
 
         resultsList.innerHTML += `
-        <div class="qcard mt-2 ${isCorrect?"correct":"incorrect"}">
-          <div class="text-base font-bold mb-2 text-gray-800 flex items-center">
-            <span class="inline-block w-8 h-8 mr-3 bg-blue-100 text-blue-800 text-center rounded-full font-extrabold">${i+1}</span>
-            <span>${q.question}</span>
-          </div>
-          <div class="mb-2">
-            <div class="flex flex-wrap items-center gap-3 mb-1">
-              <span class="font-semibold text-gray-700">Your Answer: </span>
-              <span class="answer-pill answer-user">${userAns ? `${userAns}${userOpt?`. ${userOpt.text}`:""}` : "N/A"}</span>
-              ${userAns ?
-                (userAns === correctAns
-                  ? `<span class="ml-2 answer-pill answer-correct"><i class="fa fa-check mr-1"></i> Correct</span>`
-                  : `<span class="ml-2 answer-pill answer-wrong"><i class="fa fa-times mr-1"></i> Wrong</span>`)
-                : `<span class="ml-2 answer-pill" style="background:#f1f5f9;color:#64748b;"><i class="fa fa-minus mr-1"></i> Not Answered</span>`
-              }
+          <div class="qcard mt-2 ${isCorrect ? "correct" : "incorrect"}">
+            <div class="text-base font-bold mb-2 text-gray-800 flex items-center">
+              <span class="inline-block w-8 h-8 mr-3 bg-blue-100 text-blue-800 text-center rounded-full font-extrabold">${i+1}</span>
+              <span>${questionHtml}</span>
             </div>
-            <div class="flex flex-wrap items-center gap-3">
-              <span class="font-semibold text-gray-700">Correct Answer:</span>
-              <span class="answer-pill answer-correct">${correctAns}${correctOpt?`. ${correctOpt.text}`:""}</span>
+            <div class="mb-2">
+              <div class="flex flex-wrap items-center gap-3 mb-1">
+                <span class="font-semibold text-gray-700">Your Answer: </span>
+                <span class="answer-pill answer-user">${userAns ? `${userAns}${userOptText ? `. ${userOptText}` : ""}` : "N/A"}</span>
+                ${userAns ?
+                  (userAns === correctAns
+                    ? `<span class="ml-2 answer-pill answer-correct"><i class="fa fa-check mr-1"></i> Correct</span>`
+                    : `<span class="ml-2 answer-pill answer-wrong"><i class="fa fa-times mr-1"></i> Wrong</span>`)
+                  : `<span class="ml-2 answer-pill" style="background:#f1f5f9;color:#64748b;"><i class="fa fa-minus mr-1"></i> Not Answered</span>`
+                }
+              </div>
+              <div class="flex flex-wrap items-center gap-3">
+                <span class="font-semibold text-gray-700">Correct Answer:</span>
+                <span class="answer-pill answer-correct">${correctAns}${correctOptText ? `. ${correctOptText}` : ""}</span>
+              </div>
             </div>
+            <details class="mt-2 explanation">
+              <summary class="font-bold text-blue-900 cursor-pointer">Explanation</summary>
+              <div class="pt-2">${explanationHtml ? explanationHtml : "<em>No explanation for this question.</em>"}</div>
+            </details>
           </div>
-          <details class="mt-2 explanation">
-            <summary class="font-bold text-blue-900 cursor-pointer">Explanation</summary>
-            <div class="pt-2">${q.explanation ? q.explanation : "<em>No explanation for this question.</em>"}</div>
-          </details>
-        </div>
         `;
       }
 
-      // 4. Score and feedback
-      let [correct, total] = getScoreTally(results);
-      let percent = total ? Math.round(correct/total*100) : 0;
+      // Request MathJax to typeset the newly inserted HTML so LaTeX renders
+      // Wait for MathJax if available
+      if (window.MathJax && MathJax.typesetPromise) {
+        try {
+          await MathJax.typesetPromise([resultsList]);
+        } catch (err) {
+          console.warn("MathJax typeset error:", err && err.message);
+        }
+      }
+
+      // Score and feedback
+      const [correct, total] = getScoreTally(results);
+      const percent = total ? Math.round(correct/total*100) : 0;
       document.getElementById('score-area').innerHTML = `
         <span class="text-3xl font-black text-blue-700">${correct} / ${total}</span>
         <span class="text-lg text-gray-700 ml-3">(${percent}%)</span>
       `;
       document.getElementById('score-feedback').textContent = feedbackRemark(percent);
-
-      // Optionally: Clean up sessionStorage so user can't refresh + see again (uncomment if desired)
-      // sessionStorage.removeItem('cbt_exam_info');
-      // sessionStorage.removeItem('cbt_user_answers');
     }
 
     window.addEventListener('DOMContentLoaded', main);
 
-    // --------- PDF Download Button Handler ----------
+    // PDF Download button: ensure MathJax rendering is complete before capture
     document.addEventListener('DOMContentLoaded', function() {
       const btn = document.getElementById('download-pdf-btn');
       if (!btn) return;
       btn.onclick = async function() {
         const reportMain = document.getElementById('report-main');
+        // Ensure MathJax completed typesetting any SVGs
+        if (window.MathJax && MathJax.typesetPromise) {
+          try {
+            await MathJax.typesetPromise();
+            // give browsers a tick to finish layout
+            await new Promise(r => setTimeout(r, 50));
+          } catch (err) {
+            console.warn("MathJax typeset before PDF error:", err && err.message);
+          }
+        }
+
         // Temporarily set a white background for better PDF result
         const prevBg = reportMain.style.background;
         reportMain.style.background = "#fff";
+
         // Use html2canvas to rasterize the node
         const canvas = await html2canvas(reportMain, { scale: 2, useCORS: true, backgroundColor: "#fff" });
         reportMain.style.background = prevBg;
         const imgData = canvas.toDataURL("image/png");
 
-        // Set PDF page size
+        // Create PDF
         const pdf = new jspdf.jsPDF({
           orientation: 'portrait',
           unit: 'pt',
           format: 'a4'
         });
-        // Calculate width/height to fit in A4
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();
-
-        // Make the image fit (leave some margin)
         const margin = 24;
         const imgWidth = pageWidth - margin * 2;
         const imgHeight = canvas.height * (imgWidth / canvas.width);
 
-        let y = margin;
-        if(imgHeight < pageHeight - margin*2) {
-          pdf.addImage(imgData, 'PNG', margin, y, imgWidth, imgHeight, '', 'FAST');
+        if (imgHeight < pageHeight - margin*2) {
+          pdf.addImage(imgData, 'PNG', margin, margin, imgWidth, imgHeight, '', 'FAST');
         } else {
-          // Multi-page if needed
           let renderedHeight = 0;
           while (renderedHeight < imgHeight) {
             pdf.addImage(
@@ -219,7 +275,6 @@
         pdf.save("exam-report.pdf");
       };
     });
-    // -----------------------------------------------
   </script>
 </body>
 </html>
