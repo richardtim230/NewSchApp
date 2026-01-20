@@ -18,7 +18,7 @@
         tex: {
           inlineMath: [['\\(', '\\)'], ['$', '$']],
           displayMath: [['$$','$$'], ['\\[','\\]']],
-          packages: {'[+]': ['noerrors']} // optional: helps avoid hard failures
+          packages: {'[+]': ['noerrors']}
         },
         options: {
           skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
@@ -202,12 +202,15 @@
         function getToken() { return localStorage.getItem("student_jwt_token"); }
         function getExamAccessCode() { return localStorage.getItem("exam_access_code"); }
         function getExamCourseCode() { return localStorage.getItem("exam_course_code"); }
+
+        // Reset session after a reload/navigation.reload guard (safe check)
         if (performance.navigation && performance.navigation.type === 1) {
             sessionStorage.removeItem('cbt_user_answers');
             sessionStorage.removeItem('cbt_shuffled_questions');
             sessionStorage.removeItem('cbt_exam_info');
             location.replace(location.pathname + location.search);
         }
+
         // Fisher-Yates shuffle
         function shuffleArray(arr) {
             arr = arr.slice(); // non-destructive!
@@ -216,6 +219,39 @@
                 [arr[i], arr[j]] = [arr[j], arr[i]];
             }
             return arr;
+        }
+
+        // Normalize question/option HTML so MathJax will typeset common LaTeX fragments.
+        // - Unescape double backslashes (\\ -> \).
+        // - If the string does not already contain math delimiters, wrap common LaTeX fragments
+        //   (e.g. \frac{...}{...}, \sqrt{...}, \sum, superscripts/subscripts like x^2 or x_{1}) with \( ... \).
+        // This is conservative: if math delimiters already exist we leave the string alone.
+        function normalizeQuestionMath(html) {
+            if (!html || typeof html !== 'string') return html;
+
+            // Unescape double backslashes that may have been introduced by JSON/string escaping
+            let s = html.replace(/\\\\/g, '\\');
+
+            // If the string already contains explicit math delimiters, assume it's fine.
+            if (/\\\(|\\\[|\$\$?/.test(s)) return s;
+
+            // Wrap common LaTeX command patterns with inline delimiters.
+            // Note: we operate on text including HTML tags; this is pragmatic — avoid wrapping inside tags.
+            // Wrap \frac{...}{...}, \sqrt{...}, \sum, \int, \lim, basic Greek names, etc.
+            const cmdRegex = /\\(?:frac|sqrt|sum|int|lim|left|right|cdot|times|pi|alpha|beta|gamma|theta|log|ln)(?:\{[^}]*\}|\^[^{\s]+|\_[^{\s]+)*/g;
+            s = s.replace(cmdRegex, function(m) { return `\\(${m}\\)`; });
+
+            // Wrap simple superscript/subscript patterns like x^2, x^{2}, x_1, x_{10}
+            const expRegex = /([A-Za-z0-9])\^(?:\{[^}]+\}|\d+)/g;
+            s = s.replace(expRegex, function(m) { return `\\(${m}\\)`; });
+
+            const subRegex = /([A-Za-z0-9])_(?:\{[^}]+\}|\d+)/g;
+            s = s.replace(subRegex, function(m) { return `\\(${m}\\)`; });
+
+            // Also, if there are isolated parentheses-style expressions that look like math fractions without
+            // an explicit backslash command, we leave them alone (avoid over-wrapping).
+
+            return s;
         }
 
         async function fetchStudentProfile() {
@@ -345,19 +381,22 @@
             const q = examData.questions[idx];
             const savedAnswer = userAnswers[q.id] || "";
 
+            // Normalize question and option texts so MathJax can render them reliably.
+            const questionHtml = normalizeQuestionMath(q.question || '');
+
             // OPTION LABELS: always visual A, B, C, D etc per displayed order
             qa.innerHTML = `
                 <h2 class="text-2xl font-bold text-blue-900 mb-7">Question ${idx+1} of ${total}</h2>
-                <p class="text-lg leading-relaxed text-gray-700 mb-9">${q.question}</p>
+                <div class="text-lg leading-relaxed text-gray-700 mb-9">${questionHtml}</div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-7 mb-10">
                     ${
                         (q.options || []).map((opt, i) => {
                             const label = String.fromCharCode(65 + i); // 65 = 'A'
-                            // opt.text may contain LaTeX delimiters like \( ... \) or $...$
+                            const optHtml = normalizeQuestionMath(opt.text || '');
                             return `
                                 <label class="option-card flex items-center p-7 cursor-pointer transition-all duration-200">
                                     <input type="radio" name="qSelect" value="${opt.key}" ${(savedAnswer===opt.key)?'checked':''} class="w-7 h-7 text-yellow-500 focus:ring-yellow-400" />
-                                    <span class="ml-5 text-base md:text-lg">${label}. ${opt.text}</span>
+                                    <span class="ml-5 text-base md:text-lg">${label}. ${optHtml}</span>
                                 </label>
                             `;
                         }).join('')
@@ -382,7 +421,6 @@
                     </div>
                 </div>
             `;
-
             // Navigator
             const pallet = document.getElementById("question-nav-list");
             let navHtml = "";
@@ -406,9 +444,7 @@
 
             // If MathJax is available, typeset the newly inserted content so LaTeX renders
             if (window.MathJax && MathJax.typesetPromise) {
-                // typeset only the question-area to improve performance
                 MathJax.typesetPromise([qa]).catch((err) => {
-                    // don't break UI if MathJax fails; log for diagnostics
                     console.warn("MathJax typeset error:", err && err.message);
                 });
             }
@@ -497,6 +533,8 @@
                 }
             }, 1000);
         }
+
+        // set footer year
         document.getElementById('year').textContent = new Date().getFullYear();
         window.addEventListener("DOMContentLoaded", main);
     </script>
