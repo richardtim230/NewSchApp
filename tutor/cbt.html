@@ -11,6 +11,21 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.js"></script>
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+    <!-- MathJax configuration & loader (renders LaTeX like \( ... \), $$ ... $$) -->
+    <script>
+      window.MathJax = {
+        tex: {
+          inlineMath: [['\\(', '\\)'], ['$', '$']],
+          displayMath: [['$$','$$'], ['\\[','\\]']]
+        },
+        options: {
+          skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+        },
+        svg: { fontCache: 'global' }
+      };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" id="MathJax-script" async></script>
+
     <style>
         body {
             background: #f7fafc;
@@ -185,12 +200,12 @@
         function getToken() { return localStorage.getItem("student_jwt_token"); }
         function getExamAccessCode() { return localStorage.getItem("exam_access_code"); }
         function getExamCourseCode() { return localStorage.getItem("exam_course_code"); }
-if (performance.navigation.type === 1) {
-        sessionStorage.removeItem('cbt_user_answers');
-        sessionStorage.removeItem('cbt_shuffled_questions');
-        sessionStorage.removeItem('cbt_exam_info');
-        location.replace(location.pathname + location.search);
-    }
+        if (performance.navigation.type === 1) {
+            sessionStorage.removeItem('cbt_user_answers');
+            sessionStorage.removeItem('cbt_shuffled_questions');
+            sessionStorage.removeItem('cbt_exam_info');
+            location.replace(location.pathname + location.search);
+        }
         // Fisher-Yates shuffle
         function shuffleArray(arr) {
             arr = arr.slice(); // non-destructive!
@@ -371,11 +386,12 @@ if (performance.navigation.type === 1) {
                 const navId = examData.questions[j].id;
                 const attempted = !!userAnswers[navId];
                 const curr = j===idx;
+                const navClass = curr ? "qp-current" : (attempted ? "qp-done" : "bg-white text-gray-600");
                 navHtml += `
                     <li>
                         <a href="#" data-qp="${j}" 
-                           ${curr?'aria-current="page"':''} 
-                           class="block px-3 py-2 leading-tight text-xs sm:text-base border border-gray-300 hover:bg-yellow-100 ${curr ? "qp-current" : attempted ? "qp-done" : "bg-white text-gray-600"}"
+                           ${curr?'aria-current="page"':''}
+                           class="block px-3 py-2 leading-tight text-xs sm:text-base border border-gray-300 hover:bg-yellow-100 ${navClass}" 
                            style="text-align:center;">
                            ${j+1}
                         </a>
@@ -383,6 +399,12 @@ if (performance.navigation.type === 1) {
                 `;
             }
             pallet.innerHTML = navHtml;
+
+            // typeset any math inside the newly inserted HTML (if MathJax is available)
+            if (window.MathJax && MathJax.typesetPromise) {
+                MathJax.typesetPromise([qa]).catch((err)=>{ console.warn("MathJax typeset error:", err && err.message); });
+            }
+
             // Save response
             document.querySelectorAll('input[name="qSelect"]').forEach(input => {
                 input.onchange = function() {
@@ -405,7 +427,7 @@ if (performance.navigation.type === 1) {
                 a.onclick = ev => { ev.preventDefault(); 
                     currentQ = parseInt(a.getAttribute('data-qp')); 
                     renderQuestion(currentQ);
-                }
+                };
             });
             // Submit
             document.getElementById("submit-btn").onclick = function(e){
