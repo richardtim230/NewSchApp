@@ -11,12 +11,14 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.js"></script>
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
-    <!-- MathJax configuration & loader (renders LaTeX like \( ... \), $$ ... $$) -->
+
+    <!-- MathJax v3: enables rendering of LaTeX expressions like \( ... \), \[ ... \], $...$, $$...$$ -->
     <script>
       window.MathJax = {
         tex: {
-          inlineMath: [['\\(', '\\)'], ['\(', '\)'], ['$', '$']],
-          displayMath: [['$$','$$'], ['\[','\]'], ['\\[','\\]']]
+          inlineMath: [['\\(', '\\)'], ['$', '$']],
+          displayMath: [['$$','$$'], ['\\[','\\]']],
+          packages: {'[+]': ['noerrors']} // optional: helps avoid hard failures
         },
         options: {
           skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
@@ -200,7 +202,7 @@
         function getToken() { return localStorage.getItem("student_jwt_token"); }
         function getExamAccessCode() { return localStorage.getItem("exam_access_code"); }
         function getExamCourseCode() { return localStorage.getItem("exam_course_code"); }
-        if (performance.navigation.type === 1) {
+        if (performance.navigation && performance.navigation.type === 1) {
             sessionStorage.removeItem('cbt_user_answers');
             sessionStorage.removeItem('cbt_shuffled_questions');
             sessionStorage.removeItem('cbt_exam_info');
@@ -351,6 +353,7 @@
                     ${
                         (q.options || []).map((opt, i) => {
                             const label = String.fromCharCode(65 + i); // 65 = 'A'
+                            // opt.text may contain LaTeX delimiters like \( ... \) or $...$
                             return `
                                 <label class="option-card flex items-center p-7 cursor-pointer transition-all duration-200">
                                     <input type="radio" name="qSelect" value="${opt.key}" ${(savedAnswer===opt.key)?'checked':''} class="w-7 h-7 text-yellow-500 focus:ring-yellow-400" />
@@ -379,6 +382,7 @@
                     </div>
                 </div>
             `;
+
             // Navigator
             const pallet = document.getElementById("question-nav-list");
             let navHtml = "";
@@ -390,7 +394,7 @@
                 navHtml += `
                     <li>
                         <a href="#" data-qp="${j}" 
-                           ${curr?'aria-current="page"':''}
+                           ${curr?'aria-current="page"':''} 
                            class="block px-3 py-2 leading-tight text-xs sm:text-base border border-gray-300 hover:bg-yellow-100 ${navClass}" 
                            style="text-align:center;">
                            ${j+1}
@@ -400,9 +404,13 @@
             }
             pallet.innerHTML = navHtml;
 
-            // typeset any math inside the newly inserted HTML (if MathJax is available)
+            // If MathJax is available, typeset the newly inserted content so LaTeX renders
             if (window.MathJax && MathJax.typesetPromise) {
-                MathJax.typesetPromise([qa]).catch((err)=>{ console.warn("MathJax typeset error:", err && err.message); });
+                // typeset only the question-area to improve performance
+                MathJax.typesetPromise([qa]).catch((err) => {
+                    // don't break UI if MathJax fails; log for diagnostics
+                    console.warn("MathJax typeset error:", err && err.message);
+                });
             }
 
             // Save response
