@@ -618,10 +618,9 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 </script>
       
-<!-- Tasks Center Section (with Pagination) -->
+<!-- TASKS CENTER SECTION -->
 <div id="taskscenter-section" class="section-block hidden">
   <div class="max-w-6xl mx-auto py-10 px-2 md:px-6">
-    <!-- Section Header -->
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
       <div>
         <h2 class="text-3xl font-bold text-indigo-800">Tasks Center</h2>
@@ -682,11 +681,11 @@ document.addEventListener("DOMContentLoaded", () => {
     </div>
   </div>
 
-  <!-- Article Modal (With Description + Loader) -->
+  <!-- Article/Reading Modal -->
   <div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center hidden" id="articleModal">
     <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-8 relative flex flex-col gap-6">
       <button class="absolute top-3 right-4 text-gray-500 hover:text-indigo-700 text-xl" onclick="closeArticleModal()">&times;</button>
-      <div id="articleModalContent" class="overflow-auto" style="max-height:60vh;">
+      <div>
         <iframe id="articleFrame" src="" width="100%" height="400" frameborder="0" class="rounded mb-5"></iframe>
         <div id="articleDescription" class="text-gray-700 text-sm mt-2"></div>
       </div>
@@ -700,11 +699,11 @@ document.addEventListener("DOMContentLoaded", () => {
     </div>
   </div>
 
-  <!-- YouTube Video Modal (With Description + Loader) -->
+  <!-- Video Modal -->
   <div class="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center hidden" id="videoModal">
     <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-8 relative flex flex-col gap-6">
       <button class="absolute top-3 right-4 text-gray-500 hover:text-indigo-700 text-xl" onclick="closeVideoModal()">&times;</button>
-      <div id="videoModalContent" class="overflow-auto" style="max-height:60vh;">
+      <div>
         <iframe id="videoFrame" width="100%" height="360" src="" frameborder="0" allowfullscreen class="rounded mb-5"></iframe>
         <div id="videoDescription" class="text-gray-700 text-sm mt-2"></div>
       </div>
@@ -718,356 +717,400 @@ document.addEventListener("DOMContentLoaded", () => {
     </div>
   </div>
 
+  <!-- Assignment Modal -->
+  <div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center hidden" id="assignmentModal">
+    <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-8 relative flex flex-col gap-6">
+      <button class="absolute top-3 right-4 text-gray-500 hover:text-orange-700 text-xl" onclick="closeAssignmentModal()">&times;</button>
+      <div id="assignmentModalContent" class="overflow-auto" style="max-height:60vh;">
+        <div id="assignmentInstructions" class="text-gray-700 text-base mb-2"></div>
+        <iframe id="assignmentFrame" src="" width="100%" height="320" frameborder="0" class="rounded mb-3 hidden"></iframe>
+        <div id="assignmentDeadline" class="text-xs text-gray-500 mt-2"></div>
+      </div>
+      <button id="assignmentMarkAsDoneBtn" class="bg-green-600 hover:bg-green-700 text-white font-semibold px-5 py-2 rounded-lg self-end transition flex gap-2 items-center" data-taskid="">
+        <span>Mark as Done</span>
+        <svg id="assignmentMarkAsDoneLoader" class="hidden animate-spin w-5 h-5" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12A8 8 0 018 4v4a4 4 0 00-4 4z"></path>
+        </svg>
+      </button>
+    </div>
+  </div>
+
   <script>
-    // --- Pagination Globals ---
-    let tasksCurrentPage = 1;
-    const tasksPerPage = 6;
-    let tasksTotalPages = 1;
+// =============== CONFIGURATION ===============
+const TASK_TYPES = {
+  reading: {
+    display: "Reading",
+    color: "green",
+    modal: "article",
+  },
+  article: {
+    display: "Article",
+    color: "emerald",
+    modal: "article",
+  },
+  video: {
+    display: "Video",
+    color: "pink",
+    modal: "video",
+  },
+  mocktest: {
+    display: "Mock Test",
+    color: "indigo",
+    // Action is just link, no modal, direct launch
+  },
+  social: {
+    display: "Social",
+    color: "blue"
+    // Action is just link
+  },
+  assignment: {
+    display: "Assignment",
+    color: "orange",
+    modal: "assignment"
+  },
+  goal: {
+    display: "Goal",
+    color: "teal"
+    // Maybe just info
+  },
+  profile: {
+    display: "Profile",
+    color: "purple"
+    // Just a button to update profile
+  },
+  custom: {
+    display: "Custom",
+    color: "gray"
+    // Fallback link
+  },
+};
+// ============ UTILITY ==============
+function esc(str) {
+  return String(str || "")
+    .replace(/'/g, "\\'")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+function statusPill(status) {
+  switch ((status || "").toLowerCase()) {
+    case "active": return `<span class="bg-yellow-100 text-yellow-800 font-semibold px-3 py-1 rounded-full text-xs">Active</span>`;
+    case "overdue": return `<span class="bg-red-100 text-red-700 font-semibold px-3 py-1 rounded-full text-xs">Overdue</span>`;
+    case "done": case "completed": return `<span class="bg-green-100 text-green-700 font-semibold px-3 py-1 rounded-full text-xs">Done</span>`;
+    default: return `<span class="bg-gray-100 text-gray-700 font-semibold px-3 py-1 rounded-full text-xs">${esc(status)}</span>`;
+  }
+}
+function activityTypePill(type, meta) {
+  const t = (type || "custom").toLowerCase();
+  const conf = TASK_TYPES[t] || { display: t.charAt(0).toUpperCase() + t.substring(1), color: "gray" };
+  let extra = "";
+  if (t === "reading" || t === "article") extra = meta?.duration ? `<div class="text-xs text-gray-500 mt-1">${esc(meta.duration)}</div>` : "";
+  if (t === "video") extra = meta?.duration ? `<div class="text-xs text-gray-500 mt-1">${esc(meta.duration)}</div>` : "";
+  if (t === "social") extra = meta?.platform ? `<div class="text-xs text-gray-500 mt-1">${esc(meta.platform)}</div>` : "";
+  if (t === "mocktest") extra = meta?.status ? `<div class="text-xs text-gray-500 mt-1">${esc(meta.status)}</div>` : "";
+  if (t === "profile") extra = '<div class="text-xs text-gray-500 mt-1">One time</div>';
+  return `<span class="bg-${conf.color}-100 text-${conf.color}-700 rounded-full px-3 py-1 font-semibold text-xs">${esc(conf.display)}</span>${extra}`;
+}
+function actionCell(task) {
+  const t = (task.activityType || "custom").toLowerCase();
+  const status = (task.status || "").toLowerCase();
+  const meta = task.meta || {};
+  // Completed tasks: show gray
+  if (["done", "completed"].includes(status))
+    return `<span class="text-gray-400 text-xs">Completed</span>`;
+  // Reading/Article
+  if (["reading", "article"].includes(t) && meta.url) {
+    return `<button onclick="openArticleModal('${esc(meta.url)}','${esc(task._id)}')" class="bg-blue-600 hover:bg-blue-700 text-white rounded px-3 py-1 font-semibold text-xs shadow flex gap-2 items-center"><span>Read</span></button>`;
+  }
+  // Video
+  if (t === "video" && meta.url) {
+    return `<button onclick="openVideoModal('${esc(meta.url)}','${esc(task._id)}')" class="bg-pink-600 hover:bg-pink-700 text-white rounded px-3 py-1 font-semibold text-xs shadow flex gap-2 items-center"><span>Watch</span></button>`;
+  }
+  // Assignment
+  if (t === "assignment") {
+    return `<button onclick="openAssignmentModal('${esc(task._id)}')" class="bg-orange-600 hover:bg-orange-700 text-white rounded px-3 py-1 font-semibold text-xs shadow flex gap-2 items-center"><span>Open</span></button>`;
+  }
+  // MockTest
+  if (t === "mocktest" && meta.url) {
+    return `<button onclick="window.location.href='${esc(meta.url)}'" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded px-3 py-1 font-semibold text-xs shadow flex gap-2 items-center"><span>Start Test</span></button>`;
+  }
+  // Social
+  if (t === "social" && meta.url) {
+    return `<a href="${esc(meta.url)}" target="_blank" class="bg-blue-700 hover:bg-blue-800 text-white px-3 py-1 rounded font-semibold text-xs shadow flex gap-2 items-center"><span>Open</span></a>`;
+  }
+  // Profile
+  if (t === "profile") {
+    return `<button onclick="switchSection('profile')" class="bg-purple-600 hover:bg-purple-700 text-white rounded px-3 py-1 font-semibold text-xs shadow flex gap-2 items-center"><span>Update Profile</span></button>`;
+  }
+  // Goal/custom/other
+  return `<span class="text-gray-400 text-xs">No Action</span>`;
+}
+// -------------- MODALS state -------------
+let modalDisabledUntil = {};
+let windowTasksList = [];
 
-    // For 1 minute disabling mechanic
-    const modalDisabledUntil = {};
+// -- Modal: Article/Reading --
+function openArticleModal(url, taskId) {
+  const task = windowTasksList.find((t) => t._id == taskId) || {};
+  document.getElementById("articleFrame").src = url;
+  document.getElementById("articleDescription").textContent = task.description || "";
+  document.getElementById("articleModal").classList.remove("hidden");
+  const btn = document.getElementById("articleMarkAsDoneBtn");
+  btn.setAttribute("data-taskid", taskId);
+  modalMarkBtnState("article", taskId, btn, document.getElementById("articleMarkAsDoneLoader"));
+}
+function closeArticleModal() {
+  document.getElementById("articleModal").classList.add("hidden");
+  document.getElementById("articleFrame").src = "";
+  document.getElementById("articleMarkAsDoneBtn").setAttribute("data-taskid", "");
+  document.getElementById("articleDescription").textContent = "";
+}
 
-    function esc(str) { return String(str || "").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+// -- Modal: Video --
+function openVideoModal(url, taskId) {
+  const task = windowTasksList.find((t) => t._id == taskId) || {};
+  document.getElementById("videoFrame").src = url + "?autoplay=1";
+  document.getElementById("videoDescription").textContent = task.description || "";
+  document.getElementById("videoModal").classList.remove("hidden");
+  const btn = document.getElementById("videoMarkAsDoneBtn");
+  btn.setAttribute("data-taskid", taskId);
+  modalMarkBtnState("video", taskId, btn, document.getElementById("videoMarkAsDoneLoader"));
+}
+function closeVideoModal() {
+  document.getElementById("videoModal").classList.add("hidden");
+  document.getElementById("videoFrame").src = "";
+  document.getElementById("videoMarkAsDoneBtn").setAttribute("data-taskid", "");
+  document.getElementById("videoDescription").textContent = "";
+}
 
-    function activityTypePill(type, meta) {
-      switch ((type||"").toLowerCase()) {
-        case "reading": return `<span class="bg-green-100 text-green-700 rounded-full px-3 py-1 font-semibold text-xs">Reading</span>
-          ${meta?.duration ? `<div class="text-xs text-gray-500 mt-1">${esc(meta.duration)}</div>` : ""}`;
-        case "video": return `<span class="bg-pink-100 text-pink-700 rounded-full px-3 py-1 font-semibold text-xs">Video</span>
-          ${meta?.duration ? `<div class="text-xs text-gray-500 mt-1">${esc(meta.duration)}</div>` : ""}`;
-        case "social": return `<span class="bg-blue-100 text-blue-700 rounded-full px-3 py-1 font-semibold text-xs">Social</span>
-          ${meta?.platform ? `<div class="text-xs text-gray-500 mt-1">${esc(meta.platform)}</div>` : ""}`;
-        case "mocktest": return `<span class="bg-indigo-100 text-indigo-600 rounded-full px-3 py-1 font-semibold text-xs">Mock Test</span>
-          ${meta?.status ? `<div class="text-xs text-gray-500 mt-1">${esc(meta.status)}</div>` : ""}`;
-        case "profile": return `<span class="bg-purple-100 text-purple-700 rounded-full px-3 py-1 font-semibold text-xs">Profile</span>
-          <div class="text-xs text-gray-500 mt-1">One time</div>`;
-        default:
-          return `<span class="bg-gray-200 text-gray-700 rounded-full px-3 py-1 font-semibold text-xs">${esc(type)}</span>`;
+// -- Modal: Assignment (shows instructions, deadline, and attached file/link if present) --
+function openAssignmentModal(taskId) {
+  const task = windowTasksList.find((t) => t._id == taskId) || {};
+  document.getElementById("assignmentInstructions").innerHTML = (task.meta?.instructions ? esc(task.meta.instructions) : "No instructions provided.");
+  if (task.meta?.url) {
+    document.getElementById("assignmentFrame").src = task.meta.url;
+    document.getElementById("assignmentFrame").classList.remove("hidden");
+  } else {
+    document.getElementById("assignmentFrame").src = "";
+    document.getElementById("assignmentFrame").classList.add("hidden");
+  }
+  document.getElementById("assignmentDeadline").textContent = task.meta?.deadline
+    ? "Deadline: " + new Date(task.meta.deadline).toLocaleString()
+    : "";
+  document.getElementById("assignmentModal").classList.remove("hidden");
+  const btn = document.getElementById("assignmentMarkAsDoneBtn");
+  btn.setAttribute("data-taskid", taskId);
+  modalMarkBtnState("assignment", taskId, btn, document.getElementById("assignmentMarkAsDoneLoader"));
+}
+function closeAssignmentModal() {
+  document.getElementById("assignmentModal").classList.add("hidden");
+  document.getElementById("assignmentFrame").src = "";
+  document.getElementById("assignmentMarkAsDoneBtn").setAttribute("data-taskid", "");
+  document.getElementById("assignmentInstructions").textContent = "";
+  document.getElementById("assignmentDeadline").textContent = "";
+}
+
+// -- Mark as done disable/enable utility for modals --
+function modalMarkBtnState(modalType, taskId, btn, loader) {
+  const disableKey = modalType + "_" + String(taskId);
+  const now = Date.now(), until = modalDisabledUntil[disableKey] || 0;
+  const span = btn.querySelector("span");
+  if (until > now) {
+    btn.disabled = true; loader.classList.add("hidden"); span.textContent = "Disabled for 1 min...";
+    setTimeout(() => {
+      if (modalDisabledUntil[disableKey] <= Date.now()) {
+        btn.disabled = false; span.textContent = "Mark as Done";
       }
-    }
+    }, until - now);
+  } else {
+    btn.disabled = false; loader.classList.add("hidden"); span.textContent = "Mark as Done";
+  }
+}
 
-    function statusPill(status) {
-      switch ((status||"").toLowerCase()) {
-        case "active": return `<span class="bg-yellow-100 text-yellow-800 font-semibold px-3 py-1 rounded-full text-xs">Active</span>`;
-        case "overdue": return `<span class="bg-red-100 text-red-700 font-semibold px-3 py-1 rounded-full text-xs">Overdue</span>`;
-        case "done": case "completed": return `<span class="bg-green-100 text-green-700 font-semibold px-3 py-1 rounded-full text-xs">Done</span>`;
-        default: return `<span class="bg-gray-100 text-gray-700 font-semibold px-3 py-1 rounded-full text-xs">${esc(status)}</span>`;
-      }
-    }
+async function markTaskDone(taskId, modalType) {
+  let btn, loader;
+  if (modalType === "article") {
+    btn = document.getElementById("articleMarkAsDoneBtn");
+    loader = document.getElementById("articleMarkAsDoneLoader");
+  } else if (modalType === "video") {
+    btn = document.getElementById("videoMarkAsDoneBtn");
+    loader = document.getElementById("videoMarkAsDoneLoader");
+  } else if (modalType === "assignment") {
+    btn = document.getElementById("assignmentMarkAsDoneBtn");
+    loader = document.getElementById("assignmentMarkAsDoneLoader");
+  }
+  if (!btn) return;
+  btn.disabled = true; loader.classList.remove("hidden");
+  btn.querySelector("span").textContent = "Marking...";
 
-    // Table action quick launch, NO 'Mark as Done' here
-    function actionCell(task) {
-      if (["done", "completed"].includes((task.status||"").toLowerCase())) {
-        return `<span class="text-gray-400 text-xs">Completed</span>`;
-      }
-      // Reading
-      if ((task.activityType === "reading" || task.activityType === "article") && task.meta?.url) {
-        return `<button onclick="openArticleModal('${esc(task.meta.url)}','${task._id}')" class="bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-1 font-semibold text-xs shadow flex gap-2 items-center">
-          <span>Read</span>
-          <svg class="inline w-4 h-4 ml-1" fill="none" stroke="currentColor"><path d="M4 4v16h16V4H4Zm8 0v16" stroke-width="1.5"/></svg>
-        </button>`;
-      }
-      // Video
-      if (task.activityType === "video" && task.meta?.url) {
-        return `<button onclick="openVideoModal('${esc(task.meta.url)}','${task._id}')" class="bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-1 font-semibold text-xs shadow flex gap-2 items-center">
-          <span>Watch</span>
-          <svg class="inline w-4 h-4 ml-1" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10" stroke-width="2"/><path d="M10 8l6 4-6 4V8z" stroke-width="1.5"/></svg>
-        </button>`;
-      }
-      // Social
-      if (task.activityType === "social" && task.meta?.url) {
-        return `<a href="${esc(task.meta.url)}" target="_blank" class="bg-blue-700 hover:bg-blue-800 text-white px-4 py-1 rounded font-semibold text-xs shadow flex gap-2 items-center">
-          <span>Open</span>
-          <svg class="inline w-4 h-4 ml-1" fill="none" stroke="currentColor"><path d="M5 12h14M12 5l7 7-7 7" stroke-width="1.5"/></svg>
-        </a>`;
-      }
-      // Mock Test
-      if (task.activityType === "mocktest" && task.meta?.url) {
-        return `<button onclick="window.location.href='${esc(task.meta.url)}'" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded px-4 py-1 font-semibold text-xs shadow flex gap-2 items-center">
-          <span>Start Test</span>
-          <svg class="inline w-4 h-4 ml-1" fill="none" stroke="currentColor"><path d="M12 4a8 8 0 010 16 8 8 0 010-16z" stroke-width="1.5"/></svg>
-        </button>`;
-      }
-      return `<span class="text-gray-400 text-xs">No Action</span>`;
-    }
-
-    // Pagination-aware task loader
-    async function loadTasks(page = 1) {
-      const API_URL = "https://examguide.onrender.com/api/";
-      let token = localStorage.getItem("token");
-      let student = null;
-      try {
-        const resp = await fetch(API_URL + "auth/me", {
-          credentials: "include",
-          headers: token ? { Authorization: "Bearer " + token } : {}
-        });
-        const data = await resp.json();
-        student = data.user;
-      } catch (e) {}
-      let tasks = [];
-      if (student && student._id) {
-        try {
-          const resp = await fetch(`${API_URL}tasks/user/${student._id}`, {
-            credentials: "include",
-            headers: token ? { Authorization: "Bearer " + token } : {}
-          });
-          tasks = await resp.json();
-        } catch (e) {}
-      }
-      if (!Array.isArray(tasks) || !tasks.length) {
-        // Fallback demo tasks, all with descriptions
-        tasks = [
-          {
-            _id: "demo1",
-            title: `Read: "5 Quick Ways to Beat Procrastination"`,
-            activityType: "reading",
-            points: 15,
-            status: "active",
-            description: "Boost your productivity with these simple strategies for overcoming procrastination.",
-            meta: { duration: "10 min", url: "https://medium.com/the-mission/5-quick-ways-to-beat-procrastination-626edf2e5a9" }
-          },
-          {
-            _id: "demo2",
-            title: `Watch: Study Motivation — How to Stay Focused`,
-            activityType: "video",
-            points: 10,
-            status: "active",
-            description: "Motivational tips and tricks to help you keep your mind on your studies.",
-            meta: { duration: "7 min", url: "https://www.youtube.com/embed/Oe421EPjeBE" }
-          },
-          {
-            _id: "demo3",
-            title: `Like ExamGuard Facebook Page`,
-            activityType: "social",
-            points: 8,
-            status: "active",
-            description: "Support ExamGuard by liking our Facebook page.",
-            meta: { url: "https://facebook.com/examguardpage", platform: "Facebook" }
-          },
-          {
-            _id: "demo4",
-            title: `Participate in "Math Practice Test"`,
-            activityType: "mocktest",
-            points: 20,
-            status: "active",
-            description: "Apply your Math knowledge in a quick mock test session.",
-            meta: { url: "#mocktest", status: "Available" }
-          },
-          {
-            _id: "demo5",
-            title: "Complete your profile information",
-            activityType: "profile",
-            points: 5,
-            status: "done",
-            description: "Help us know you better by completing your entire profile."
-          },
-          {
-            _id: "demo6",
-            title: "Read: Study Techniques for Finals",
-            activityType: "reading",
-            points: 12,
-            status: "active",
-            description: "Essential reading before finals week.",
-            meta: { duration: "15 min", url: "https://example.com/finals-study" }
-          },
-          {
-            _id: "demo7",
-            title: "Watch: Time Management for Students",
-            activityType: "video",
-            points: 9,
-            status: "active",
-            description: "Practical advice for balancing study and life.",
-            meta: { duration: "8 min", url: "https://www.youtube.com/embed/time-management" }
-          }
-        ];
-      }
-      window.tasksList = tasks;
-
-      // ---- Pagination logic ----
-      tasksTotalPages = Math.ceil(tasks.length / tasksPerPage) || 1;
-      if (page < 1) page = 1;
-      if (page > tasksTotalPages) page = tasksTotalPages;
-      tasksCurrentPage = page;
-      const startIdx = (page - 1) * tasksPerPage;
-      const pageTasks = tasks.slice(startIdx, startIdx + tasksPerPage);
-
-      const tbody = document.getElementById("tasksTableBody");
-      tbody.innerHTML = pageTasks.map(task =>
-        `<tr>
-          <td class="px-6 py-4 font-semibold text-blue-900 whitespace-nowrap">${esc(task.title)}</td>
-          <td class="px-6 py-4 text-gray-700">${esc(task.description || "")}</td>
-          <td class="px-6 py-4 whitespace-nowrap">${activityTypePill(task.activityType, task.meta)}</td>
-          <td class="px-6 py-4 text-center font-bold text-indigo-600 whitespace-nowrap">${esc(task.points) ?? 0}</td>
-          <td class="px-6 py-4 whitespace-nowrap">${statusPill(task.status)}</td>
-          <td class="px-6 py-4 whitespace-nowrap">${actionCell(task)}</td>
-        </tr>`).join("");
-
-      // Progress overview
-      const active = tasks.filter(t => (t.status||"").toLowerCase() === "active").length;
-      const done = tasks.filter(t => ["done","completed"].includes((t.status||"").toLowerCase())).length;
-      const overdue = tasks.filter(t => (t.status||"").toLowerCase() === "overdue").length;
-      const points = tasks.reduce((sum, t) => sum + (t.points||0), 0);
-      document.getElementById("activeTasksCount").textContent = active;
-      document.getElementById("completedTasksCount").textContent = done;
-      document.getElementById("overdueTasksCount").textContent = overdue;
-      document.getElementById("pointsCount").textContent = points;
-
-      // Pagination controls update
-      document.getElementById("tasksPageInfo").textContent = `Page ${tasksCurrentPage} of ${tasksTotalPages}`;
-      document.getElementById("tasksPrevBtn").disabled = (tasksCurrentPage === 1);
-      document.getElementById("tasksNextBtn").disabled = (tasksCurrentPage === tasksTotalPages);
-    }
-
-    function refreshTasks() { loadTasks(1); }
-
-    // --- Modal and "Mark as Done" controls (existing code) here ---
-    function getModalBtnAndLoader(modalType) {
-      if (modalType === "article") {
-        return {
-          btn: document.getElementById("articleMarkAsDoneBtn"),
-          loader: document.getElementById("articleMarkAsDoneLoader"),
-          span: document.getElementById("articleMarkAsDoneBtn").querySelector("span")
-        };
-      } else if (modalType === "video") {
-        return {
-          btn: document.getElementById("videoMarkAsDoneBtn"),
-          loader: document.getElementById("videoMarkAsDoneLoader"),
-          span: document.getElementById("videoMarkAsDoneBtn").querySelector("span")
-        };
-      }
-      return {};
-    }
-
-    async function markTaskDone(taskId, modalType) {
-      const { btn, loader, span } = getModalBtnAndLoader(modalType);
-      if (!btn || btn.disabled) return; // Skip if currently disabled (locked)
-      btn.disabled = true;
-      loader.classList.remove("hidden");
-      span.textContent = "Marking...";
-
-      const disableKey = modalType + "_" + String(taskId);
-      modalDisabledUntil[disableKey] = Date.now() + 60000;
-
-      const token = localStorage.getItem("token");
-      try {
-        const res = await fetch(`https://examguide.onrender.com/api/tasks/${taskId}`, {
-          method: "PATCH",
-          headers: { 
-            "Content-Type": "application/json",
-            ...(token ? {Authorization: "Bearer "+token} : {})
-          },
-          body: JSON.stringify({ status: "done" })
-        });
-        if (!res.ok) throw new Error("Could not mark as done");
-        closeArticleModal();
-        closeVideoModal();
-        await loadTasks(tasksCurrentPage);
-      } catch (e) {
-        alert("Failed to mark as done. Please retry.");
-      }
-
-      loader.classList.add("hidden");
-      span.textContent = "Disabled for 1 min...";
-      btn.disabled = true;
-      setTimeout(() => {
-        if (modalDisabledUntil[disableKey] <= Date.now()) {
-          btn.disabled = false;
-          span.textContent = "Mark as Done";
-        }
-      }, 60000);
-    }
-
-    function openArticleModal(url, taskId) {
-      const task = window.tasksList?.find(t => t._id === taskId) || {};
-      document.getElementById('articleFrame').src = url;
-      document.getElementById('articleModal').classList.remove('hidden');
-      const btn = document.getElementById('articleMarkAsDoneBtn');
-      btn.setAttribute('data-taskid', taskId);
-      document.getElementById('articleDescription').textContent = task.description || "";
-
-      // 1min lock check
-      const disableKey = "article_" + String(taskId);
-      const now = Date.now(), until = modalDisabledUntil[disableKey]||0;
-      const loader = document.getElementById('articleMarkAsDoneLoader');
-      const span = btn.querySelector("span");
-      if (until > now) {
-        btn.disabled = true;
-        loader.classList.add("hidden");
-        span.textContent = "Disabled for 1 min...";
-        setTimeout(() => {
-          if (modalDisabledUntil[disableKey] <= Date.now()) {
-            btn.disabled = false;
-            span.textContent = "Mark as Done";
-          }
-        }, until-now);
-      } else {
-        btn.disabled = false;
-        loader.classList.add("hidden");
-        span.textContent = "Mark as Done";
-      }
-    }
-    function closeArticleModal() {
-      document.getElementById('articleModal').classList.add('hidden');
-      document.getElementById('articleFrame').src = '';
-      document.getElementById('articleMarkAsDoneBtn').setAttribute('data-taskid', '');
-      document.getElementById('articleDescription').textContent = "";
-    }
-    function openVideoModal(youtubeUrl, taskId) {
-      const task = window.tasksList?.find(t => t._id === taskId) || {};
-      document.getElementById('videoFrame').src = youtubeUrl + '?autoplay=1';
-      document.getElementById('videoModal').classList.remove('hidden');
-      const btn = document.getElementById('videoMarkAsDoneBtn');
-      btn.setAttribute('data-taskid', taskId);
-      document.getElementById('videoDescription').textContent = task.description || "";
-
-      // Disable if locked (1 min interval)
-      const disableKey = "video_" + String(taskId);
-      const now = Date.now(), until = modalDisabledUntil[disableKey]||0;
-      const loader = document.getElementById('videoMarkAsDoneLoader');
-      const span = btn.querySelector("span");
-      if (until > now) {
-        btn.disabled = true;
-        loader.classList.add("hidden");
-        span.textContent = "Disabled for 1 min...";
-        setTimeout(() => {
-          if (modalDisabledUntil[disableKey] <= Date.now()) {
-            btn.disabled = false;
-            span.textContent = "Mark as Done";
-          }
-        }, until-now);
-      } else {
-        btn.disabled = false;
-        loader.classList.add("hidden");
-        span.textContent = "Mark as Done";
-      }
-    }
-    function closeVideoModal() {
-      document.getElementById('videoModal').classList.add('hidden');
-      document.getElementById('videoFrame').src = '';
-      document.getElementById('videoMarkAsDoneBtn').setAttribute('data-taskid', '');
-      document.getElementById('videoDescription').textContent = "";
-    }
-
-    document.addEventListener('DOMContentLoaded', function() {
-      document.getElementById('articleMarkAsDoneBtn').onclick = function() {
-        const taskId = this.getAttribute('data-taskid');
-        if (taskId && !this.disabled) markTaskDone(taskId, "article");
-      };
-      document.getElementById('videoMarkAsDoneBtn').onclick = function() {
-        const taskId = this.getAttribute('data-taskid');
-        if (taskId && !this.disabled) markTaskDone(taskId, "video");
-      };
-
-      // Pagination controls handlers
-      document.getElementById("tasksPrevBtn").onclick = function() {
-        if (tasksCurrentPage > 1) loadTasks(tasksCurrentPage - 1);
-      };
-      document.getElementById("tasksNextBtn").onclick = function() {
-        if (tasksCurrentPage < tasksTotalPages) loadTasks(tasksCurrentPage + 1);
-      };
-
-      loadTasks(1);
+  // Lock for 1 min
+  const disableKey = modalType + "_" + String(taskId);
+  modalDisabledUntil[disableKey] = Date.now() + 60000;
+  try {
+    const token = localStorage.getItem("token");
+    await fetch(`https://examguide.onrender.com/api/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
+      body: JSON.stringify({ status: "done" }),
     });
+    if (modalType === "article") closeArticleModal();
+    if (modalType === "video") closeVideoModal();
+    if (modalType === "assignment") closeAssignmentModal();
+    await loadTasks(tasksCurrentPage);
+  } catch (e) {
+    alert("Failed to mark as done. Please retry.");
+  }
+  loader.classList.add("hidden");
+  btn.querySelector("span").textContent = "Disabled for 1 min...";
+  setTimeout(() => {
+    if (modalDisabledUntil[disableKey] <= Date.now()) {
+      btn.disabled = false;
+      btn.querySelector("span").textContent = "Mark as Done";
+    }
+  }, 60000);
+}
+
+// --------- Pagination and main loader ---------
+let tasksCurrentPage = 1;
+const tasksPerPage = 6;
+let tasksTotalPages = 1;
+
+async function loadTasks(page = 1) {
+  const API_URL = "https://examguide.onrender.com/api/";
+  let token = localStorage.getItem("token");
+  let student = null;
+  try {
+    const resp = await fetch(API_URL + "auth/me", {
+      credentials: "include",
+      headers: token ? { Authorization: "Bearer " + token } : {},
+    });
+    const data = await resp.json();
+    student = data.user;
+  } catch (e) {}
+  let tasks = [];
+  if (student && student._id) {
+    try {
+      const resp = await fetch(`${API_URL}tasks/user/${student._id}`, {
+        credentials: "include",
+        headers: token ? { Authorization: "Bearer " + token } : {},
+      });
+      tasks = await resp.json();
+    } catch (e) {}
+  }
+  if (!Array.isArray(tasks) || !tasks.length) {
+    // Fallback demo tasks
+    tasks = [
+      {
+        _id: "demo1",
+        title: `Read: "5 Quick Ways to Beat Procrastination"`,
+        activityType: "reading",
+        points: 15,
+        status: "active",
+        description: "Boost your productivity with these simple strategies for overcoming procrastination.",
+        meta: { duration: "10 min", url: "https://medium.com/the-mission/5-quick-ways-to-beat-procrastination-626edf2e5a9" }
+      },
+      {
+        _id: "demo2",
+        title: `Watch: Study Motivation — How to Stay Focused`,
+        activityType: "video",
+        points: 10,
+        status: "active",
+        description: "Motivational tips and tricks to help you keep your mind on your studies.",
+        meta: { duration: "7 min", url: "https://www.youtube.com/embed/Oe421EPjeBE" }
+      },
+      {
+        _id: "demo3",
+        title: `Like ExamGuard Facebook Page`,
+        activityType: "social",
+        points: 8,
+        status: "active",
+        description: "Support ExamGuard by liking our Facebook page.",
+        meta: { url: "https://facebook.com/examguardpage", platform: "Facebook" }
+      },
+      {
+        _id: "demo4",
+        title: `Assignment: Essay Submission`,
+        activityType: "assignment",
+        points: 20,
+        status: "active",
+        description: "Write a short essay on your exam preparation strategy.",
+        meta: { deadline: new Date(Date.now() + 86400000).toISOString(), instructions: "500 words minimum. Submit in the text area or as a PDF.", url: "" }
+      },
+      {
+        _id: "demo5",
+        title: "Complete your profile information",
+        activityType: "profile",
+        points: 5,
+        status: "done",
+        description: "Help us know you better by completing your entire profile."
+      }
+    ];
+  }
+  windowTasksList = tasks;
+
+  // Pagination
+  tasksTotalPages = Math.ceil(tasks.length / tasksPerPage) || 1;
+  if (page < 1) page = 1;
+  if (page > tasksTotalPages) page = tasksTotalPages;
+  tasksCurrentPage = page;
+  const startIdx = (page - 1) * tasksPerPage;
+  const pageTasks = tasks.slice(startIdx, startIdx + tasksPerPage);
+
+  // Table
+  const tbody = document.getElementById("tasksTableBody");
+  tbody.innerHTML = pageTasks
+    .map(
+      (task) => `<tr>
+    <td class="px-6 py-4 font-semibold text-blue-900 whitespace-nowrap">${esc(task.title)}</td>
+    <td class="px-6 py-4 text-gray-700">${esc(task.description || "")}</td>
+    <td class="px-6 py-4 whitespace-nowrap">${activityTypePill(task.activityType, task.meta)}</td>
+    <td class="px-6 py-4 text-center font-bold text-indigo-600 whitespace-nowrap">${esc(task.points) ?? 0}</td>
+    <td class="px-6 py-4 whitespace-nowrap">${statusPill(task.status)}</td>
+    <td class="px-6 py-4 whitespace-nowrap">${actionCell(task)}</td>
+  </tr>`
+    )
+    .join("");
+
+  // Stats
+  const active = tasks.filter((t) => (t.status || "").toLowerCase() === "active").length;
+  const done = tasks.filter((t) => ["done", "completed"].includes((t.status || "").toLowerCase())).length;
+  const overdue = tasks.filter((t) => (t.status || "").toLowerCase() === "overdue").length;
+  const points = tasks.reduce((sum, t) => sum + (t.points || 0), 0);
+  document.getElementById("activeTasksCount").textContent = active;
+  document.getElementById("completedTasksCount").textContent = done;
+  document.getElementById("overdueTasksCount").textContent = overdue;
+  document.getElementById("pointsCount").textContent = points;
+
+  // Pagination controls
+  document.getElementById("tasksPageInfo").textContent = `Page ${tasksCurrentPage} of ${tasksTotalPages}`;
+  document.getElementById("tasksPrevBtn").disabled = tasksCurrentPage === 1;
+  document.getElementById("tasksNextBtn").disabled = tasksCurrentPage === tasksTotalPages;
+}
+
+function refreshTasks() { loadTasks(1); }
+
+document.addEventListener("DOMContentLoaded", function () {
+  document.getElementById('articleMarkAsDoneBtn').onclick = function() {
+    const taskId = this.getAttribute('data-taskid');
+    if (taskId && !this.disabled) markTaskDone(taskId, "article");
+  };
+  document.getElementById('videoMarkAsDoneBtn').onclick = function() {
+    const taskId = this.getAttribute('data-taskid');
+    if (taskId && !this.disabled) markTaskDone(taskId, "video");
+  };
+  document.getElementById('assignmentMarkAsDoneBtn').onclick = function() {
+    const taskId = this.getAttribute('data-taskid');
+    if (taskId && !this.disabled) markTaskDone(taskId, "assignment");
+  };
+  document.getElementById("tasksPrevBtn").onclick = function () {
+    if (tasksCurrentPage > 1) loadTasks(tasksCurrentPage - 1);
+  };
+  document.getElementById("tasksNextBtn").onclick = function () {
+    if (tasksCurrentPage < tasksTotalPages) loadTasks(tasksCurrentPage + 1);
+  };
+  loadTasks(1);
+});
   </script>
 </div>
 
