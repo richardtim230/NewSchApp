@@ -545,7 +545,6 @@ document.addEventListener("DOMContentLoaded", function() {
     <h3 class="text-lg font-bold mb-3 text-indigo-700">GPA Progress</h3>
     <canvas id="gpaChart" height="120"></canvas>
   </div>
-
 <!-- Sliding News -->
 <div class="bg-white rounded-lg p-6 shadow mt-4 md:mt-0 max-w-md w-full flex flex-col justify-between relative overflow-hidden">
   <h3 class="text-lg font-bold mb-3 text-indigo-700">Latest News</h3>
@@ -564,51 +563,54 @@ document.addEventListener("DOMContentLoaded", function() {
   <!-- Indicators -->
   <div id="news-indicators" class="w-full flex justify-center gap-2 mt-4"></div>
 </div>
-</div>
-</div>
 <script>
-// -- CONFIGURE THIS FOR YOUR API BASE (should match your other usage) --
-const NEWS_API = "https://examguard-jmvj.onrender.com/api/posts/filter?category=News&page=1&limit=5"; // Adjust category param as needed
-
+const NEWS_API = "https://examguide.onrender.com/api/posts/filter?category=General&limit=8";
 let newsItems = [];
 let currentNews = 0;
 
-// Animate fade-in utility
-const style = document.createElement('style');
-style.innerHTML = `
-@keyframes fadeIn {
-  0% {opacity:0; transform: translateY(8px);}
-  100% {opacity:1; transform: translateY(0);}
-}
-.animate-fadeIn { animation: fadeIn .6s; }
-.line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;}
-`;
-document.head.appendChild(style);
-
 function renderNewsSlide(idx) {
-  if (!newsItems[idx]) return '';
+  if (!newsItems[idx]) return "";
   const news = newsItems[idx];
+  // Try to trim description (by content or summary)
+  const descr =
+    news.summary ||
+    (news.content && news.content.length > 150 ? news.content.slice(0, 150) + "..." : news.content) ||
+    "";
   return `
     <div class="w-full h-full flex flex-col items-center animate-fadeIn">
       <div class="w-full h-40 rounded-lg overflow-hidden mb-2 flex-shrink-0">
-        <img src="${news.imageUrl || news.image || 'https://images.unsplash.com/photo-1503676382389-4809596d5290?auto=format&fit=crop&w=400&q=80'}" alt="${news.title}" class="w-full h-full object-cover object-center transition-all duration-300"/>
+        <img src="${news.imageUrl || news.image || 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=500&q=80'}"
+          alt="${news.title || "ExamGuard News"}" class="w-full h-full object-cover object-center transition-all duration-300"/>
       </div>
-      <h4 class="text-md font-bold text-indigo-700 mb-1 mt-2">${news.title}</h4>
-      <p class="text-gray-600 text-sm line-clamp-2">${news.summary || (news.content ? news.content.slice(0, 100) + '...' : '')}</p>
+      <h4 class="text-md font-bold text-indigo-700 mb-1 mt-2">${news.title || "Untitled"}</h4>
+      <p class="text-gray-600 text-sm line-clamp-2">${descr}</p>
       <a href="campus-news-update?id=${news._id || news.id}" class="mt-4 inline-block bg-indigo-50 text-indigo-700 font-semibold px-4 py-2 rounded hover:bg-indigo-700 hover:text-white transition">Read More</a>
     </div>
   `;
 }
 
+// Animate fade-in utility
+(function(){
+  const style = document.createElement('style');
+  style.innerHTML = `
+  @keyframes fadeIn {
+    0% {opacity:0; transform: translateY(8px);}
+    100% {opacity:1; transform: translateY(0);}
+  }
+  .animate-fadeIn { animation: fadeIn .6s; }
+  .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;}
+  `;
+  document.head.appendChild(style);
+})();
+
 function updateNewsCarousel() {
   const carousel = document.getElementById("news-carousel");
   if (!carousel) return;
   if (!newsItems.length) {
-    carousel.innerHTML = `<div class="w-full h-full flex items-center justify-center text-gray-400">No news found.</div>`;
-    document.getElementById("news-indicators").innerHTML = "";
-    return;
+    carousel.innerHTML = `<div class="w-full h-full flex items-center justify-center text-gray-400">No news yet.</div>`;
+  } else {
+    carousel.innerHTML = renderNewsSlide(currentNews);
   }
-  carousel.innerHTML = renderNewsSlide(currentNews);
 
   // Indicators
   const indicators = document.getElementById("news-indicators");
@@ -621,30 +623,37 @@ function updateNewsCarousel() {
 async function fetchNews() {
   try {
     const res = await fetch(NEWS_API);
-    if (!res.ok) throw new Error("News fetch failed");
-    let data = await res.json();
-    // If backend returns array, use as is. If object, check for .articles or similar
-    if (!Array.isArray(data)) data = data.articles || data.docs || [];
-    newsItems = data || [];
-  } catch (error) {
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        newsItems = data;
+      } else if (Array.isArray(data.posts)) {
+        newsItems = data.posts;
+      } else {
+        newsItems = [];
+      }
+    } else {
+      newsItems = [];
+    }
+  } catch {
     newsItems = [];
   }
-  currentNews = 0;
-  updateNewsCarousel();
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  fetchNews();
-
-  document.getElementById("news-prev").onclick = () => {
-    if (!newsItems.length) return;
-    currentNews = (currentNews - 1 + newsItems.length) % newsItems.length;
-    updateNewsCarousel();
+document.addEventListener("DOMContentLoaded", async () => {
+  await fetchNews();
+  updateNewsCarousel();
+  document.getElementById("news-prev").onclick = function() {
+    if (newsItems.length) {
+      currentNews = (currentNews - 1 + newsItems.length) % newsItems.length;
+      updateNewsCarousel();
+    }
   };
-  document.getElementById("news-next").onclick = () => {
-    if (!newsItems.length) return;
-    currentNews = (currentNews + 1) % newsItems.length;
-    updateNewsCarousel();
+  document.getElementById("news-next").onclick = function() {
+    if (newsItems.length) {
+      currentNews = (currentNews + 1) % newsItems.length;
+      updateNewsCarousel();
+    }
   };
 });
 </script>
