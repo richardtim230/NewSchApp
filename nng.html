@@ -2948,7 +2948,7 @@ document.getElementById("pq-upload-form").onsubmit = async function(e){
   }
 };
 </script>
-        <!-- MESSAGES SECTION - dynamic, backend-integrated, current look preserved -->
+<!-- MESSAGES SECTION - dynamic, backend-integrated, updated for contacts by department/level and group creation -->
 <div id="messages-section" class="section-block hidden">
   <div class="flex flex-col md:flex-row gap-4 h-[80vh]">
     <!-- Sidebar: Chats -->
@@ -2958,10 +2958,18 @@ document.getElementById("pq-upload-form").onsubmit = async function(e){
         <span class="absolute left-6 top-3.5 text-gray-400"></span>
       </div>
       <div class="flex-1 overflow-y-auto min-h-0">
-        <ul id="msg-contacts-list"></ul>
+        <div>
+          <div class="text-xs font-bold px-4 pt-2 pb-1 text-gray-400">Your Chats</div>
+          <ul id="msg-contacts-list"></ul>
+        </div>
+        <div>
+          <div class="text-xs font-bold px-4 pt-2 pb-1 text-gray-400">People in Your Department & Level</div>
+          <ul id="msg-similar-list"></ul>
+        </div>
         <div>
           <div class="text-xs font-bold px-4 pt-2 pb-1 text-gray-400">Group conversation</div>
           <ul id="msg-groups-list"></ul>
+          <button class="bg-indigo-500 text-white w-full mt-3 px-3 py-2 rounded" onclick="showGroupModal()">+ Create Group Chat</button>
         </div>
       </div>
     </div>
@@ -2986,6 +2994,19 @@ document.getElementById("pq-upload-form").onsubmit = async function(e){
   </div>
 </div>
 
+<!-- Group Creation Modal -->
+<div id="group-modal" class="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 hidden">
+  <div class="bg-white rounded-xl p-6 w-full max-w-md shadow-xl relative">
+    <button onclick="closeGroupModal()" class="absolute top-2 right-3 text-gray-400 font-bold text-lg">&times;</button>
+    <h3 class="text-lg font-bold mb-3">Create a New Group Chat</h3>
+    <input id="group-name" placeholder="Group name" class="border p-2 w-full rounded mb-2" />
+    <div class="text-sm text-gray-700 mb-2">Select members from your department and level:</div>
+    <div id="group-users" class="overflow-y-auto max-h-48 border rounded px-3 py-2 mb-2 bg-gray-50"></div>
+    <button onclick="submitGroup()" class="w-full bg-blue-700 text-white px-3 py-2 rounded font-semibold hover:bg-blue-800">Create Group</button>
+    <div id="group-modal-result" class="text-center mt-3"></div>
+  </div>
+</div>
+
 <script>
 // --- Config ---
 const MSG_API_BASE = "https://examguide.onrender.com/api/messages"; // Adjust if needed
@@ -2994,6 +3015,7 @@ let chats = [];         // All conversations (from backend)
 let groups = [];        // All group conversations (from backend)
 let currentChat = null; // Current chat object (user or group)
 let messages = [];      // Messages in active conversation
+let similarUsers = [];  // Users from same department+level
 
 // Fetch "Me" (user's own id for rendering self-messages)
 async function getMyId() {
@@ -3005,7 +3027,10 @@ async function getMyId() {
     }
   } catch { myUserId = null; }
 }
-getMyId().then(loadChats);
+getMyId().then(()=>{
+  loadChats();
+  loadSimilarUsers();
+});
 
 function esc(s) {
   return String(s ?? "").replace(/[<>&"']/g, c =>
@@ -3014,16 +3039,36 @@ function esc(s) {
 
 // CHAT SIDEBAR LOAD & SEARCH
 async function loadChats() {
-  // Fetch chats and groups from backend
   let res = await fetch(MSG_API_BASE + "/chats", { credentials: "include" });
   let dat = await res.json();
   chats = dat.chats || [];
   groups = dat.groups || [];
   renderSidebarContacts();
   renderSidebarGroups();
-  // Optionally, open first chat by default
   if (chats[0]) openChat(chats[0]);
 }
+
+// Similar users: Same department+level (for extra contacts/group creation)
+async function loadSimilarUsers() {
+  let res = await fetch(MSG_API_BASE + "/similar-users", { credentials: "include" });
+  similarUsers = await res.json();
+  renderSimilarContacts();
+}
+function renderSimilarContacts() {
+  let lis = similarUsers.map(u=> `
+    <li class="flex items-center px-4 py-2 group cursor-pointer hover:bg-gray-50"
+        onclick="openChatById('${u._id}', false)">
+      <img src="${esc(u.avatar ?? 'https://ui-avatars.com/api/?name=' + esc(u.fullname||u.username))}" class="w-8 h-8 rounded-full mr-2"/>
+      <div>
+        <span class="font-semibold text-sm">${esc(u.fullname||u.username)}</span>
+        <span class="text-xs text-gray-400">Level: ${esc(u.level)}</span>
+        <span class="text-xs text-gray-400 ml-2">Dept: ${esc(u.department ?? "")}</span>
+      </div>
+    </li>
+  `).join("");
+  document.getElementById("msg-similar-list").innerHTML = lis || '<div class="text-sm text-gray-400 px-4 py-2">No similar contacts.</div>';
+}
+
 function renderSidebarContacts(filter = "") {
   let lis = chats
     .filter(c => c.username?.toLowerCase().includes(filter.toLowerCase()) || c.fullname?.toLowerCase().includes(filter.toLowerCase()))
@@ -3054,19 +3099,17 @@ function renderSidebarGroups() {
   `).join("");
   document.getElementById("msg-groups-list").innerHTML = lis || '<div class="text-sm text-gray-400 px-4 py-2">No groups.</div>';
 }
-// Sidebar search
 document.getElementById("msg-search").oninput = function() {
   renderSidebarContacts(this.value ?? "");
 };
 
 // CHAT SELECTORS
 window.openChatById = async function(id, isGroup = false) {
-  // Find chat by id in contacts/groups
-  currentChat = (isGroup ? groups : chats).find(x => x._id === id);
+  currentChat = (isGroup ? groups : chats).find(x => x._id === id)
+    || similarUsers.find(x => x._id === id); // allow opening similar contacts
   if (!currentChat) return;
   renderChatHeader();
   document.getElementById("msg-chat-body").innerHTML = '<div class="text-gray-400 text-sm text-center py-10">Loading...</div>';
-  // Fetch messages from backend
   try {
     let url = isGroup
       ? `${MSG_API_BASE}/group/${encodeURIComponent(id)}/messages`
@@ -3164,8 +3207,46 @@ async function sendMsg() {
     credentials: "include"
   });
   input.value = "";
-  // Reload messages after send
   openChatById(currentChat._id, !!currentChat.isGroup);
+}
+
+// --- Group Creation Modal Logic ---
+function showGroupModal() {
+  // Render checkboxes for similar users
+  let html = similarUsers.map(u => `
+    <label class="block py-1"><input type="checkbox" value="${u._id}" /> ${esc(u.fullname || u.username)} (${esc(u.level)})</label>
+  `).join("");
+  document.getElementById("group-users").innerHTML = html;
+  document.getElementById("group-modal-result").textContent = "";
+  document.getElementById("group-modal").classList.remove("hidden");
+}
+function closeGroupModal() {
+  document.getElementById("group-modal").classList.add("hidden");
+}
+
+async function submitGroup() {
+  let name = document.getElementById("group-name").value.trim();
+  let boxes = Array.from(document.querySelectorAll("#group-users input:checked"));
+  let memberIds = boxes.map(b => b.value);
+  if (!name || memberIds.length === 0) {
+    document.getElementById("group-modal-result").textContent = "Please enter a group name and select members.";
+    return;
+  }
+  let res = await fetch(MSG_API_BASE + "/groups/create", {
+    method: "POST",
+    body: JSON.stringify({ name, memberIds }),
+    headers: { "Content-Type": "application/json" },
+    credentials: "include"
+  });
+  let out = await res.json();
+  if (out.success) {
+    document.getElementById("group-modal-result").innerHTML = 
+      `<div class="text-green-600">Group created! Invite code: <b>${out.code}</b></div>`;
+    loadChats(); // refresh groups list
+    setTimeout(closeGroupModal, 2000);
+  } else {
+    document.getElementById("group-modal-result").innerHTML = `<div class="text-red-600">${out.error}</div>`;
+  }
 }
 
 </script>
