@@ -2541,13 +2541,14 @@ function openReviewTab(sessionId) {
 }
 
 </script>
-<!-- Replace your current Past Questions Section and JS with this fully patched code block -->
+<!-- Full PATCH: Past Questions Section – now supports multiple images per question and "PDF-like" multi-image preview! -->
 
 <!-- Past Questions Section -->
 <div id="pastquestions-section" class="section-block hidden">
   <div class="max-w-6xl mx-auto py-8">
     <!-- Filter Form -->
     <form id="pastQuestionsFilterForm" class="bg-white rounded-xl shadow px-6 py-5 mb-8 flex flex-col md:flex-row gap-4 md:items-end">
+      <!-- ... (unchanged) ... -->
       <div class="flex flex-col flex-1">
         <label class="font-medium text-gray-700 mb-1" for="pqf-course">Course</label>
         <input type="text" id="pqf-course" name="course" class="border rounded-lg p-2 text-gray-700 focus:ring focus:border-blue-400 outline-none" placeholder="e.g., Physics, Chemistry">
@@ -2605,7 +2606,7 @@ function openReviewTab(sessionId) {
             <div class="flex-1">
               <label class="block font-medium mb-1 text-gray-700" for="pq-upload-type">Exam Type</label>
               <select name="type" id="pq-upload-type" class="w-full border rounded-lg p-2 text-gray-800 focus:ring focus:border-indigo-400 outline-none">
-                <option value="midterm">Midterm</option>
+                <option value="midterm">Midsemester Exam</option>
                 <option value="final">Final</option>
                 <option value="quiz">Quiz</option>
               </select>
@@ -2617,7 +2618,8 @@ function openReviewTab(sessionId) {
           </div>
           <div>
             <label class="block font-medium mb-1 text-gray-700" for="pq-upload-file">File <span class="text-gray-400 text-xs">(PDF, Images, etc)</span></label>
-            <input required type="file" name="file" id="pq-upload-file" accept=".pdf,image/*,application/msword,.docx" class="w-full border rounded-lg p-2 text-gray-800" />
+            <input required type="file" name="file" id="pq-upload-file" accept=".pdf,image/*,application/msword,.docx" multiple class="w-full border rounded-lg p-2 text-gray-800" />
+            <span class="block text-xs text-gray-500 mt-1">You may upload a single PDF/DOC, or <b>multiple images</b> (for scanned past questions).</span>
           </div>
           <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 rounded mt-2">
             Upload
@@ -2647,17 +2649,15 @@ function openReviewTab(sessionId) {
       id="pq-view-modal-close"
       aria-label="Close"
     >&times;</button>
-    <div class="p-6" id="pq-view-modal-body">
-      <!-- Content is injected here -->
-    </div>
+    <div class="p-6" id="pq-view-modal-body"></div>
   </div>
 </div>
 
 <script>
 const PQ_API_URL = "https://examguide.onrender.com/api/pastquestions";
 let currentUserId = null;
+// ... fetchCurrentUserId() as previous ...
 
-// Fetch logged-in user's ID for action buttons
 async function fetchCurrentUserId() {
   try {
     const resp = await fetch("https://examguide.onrender.com/api/auth/me", { credentials: "include" });
@@ -2671,15 +2671,6 @@ async function fetchCurrentUserId() {
 }
 fetchCurrentUserId();
 
-// Add extension if needed for viewer compatibility
-function appendFileExtension(url, mimetype) {
-  if (/\.(pdf|doc|docx|jpg|jpeg|png|gif)$/i.test(url)) return url;
-  if (mimetype === "application/pdf") return url + ".pdf";
-  if (mimetype === "application/msword") return url + ".doc";
-  if (mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return url + ".docx";
-  return url;
-}
-
 function pq_esc(str) {
   return String(str||"").replace(/[<>&"']/g, c =>
     c === '<' ? '&lt;'
@@ -2688,6 +2679,7 @@ function pq_esc(str) {
     : c === '"' ? '&quot;' : '&#39;');
 }
 
+// --- Modal Utility --- //
 function openPQModal(html) {
   document.getElementById('pq-view-modal-body').innerHTML = html;
   document.getElementById('pq-view-modal').classList.remove('hidden');
@@ -2702,41 +2694,42 @@ document.getElementById('pq-view-modal').onclick = function(e) {
 };
 document.addEventListener('keydown', e=>{ if (e.key==="Escape") closePQModal(); });
 
+function appendFileExtension(url, mimetype) {
+  if (/\.(pdf|doc|docx|jpg|jpeg|png|gif)$/i.test(url)) return url;
+  if (Array.isArray(mimetype)) mimetype = mimetype[0];
+  if (mimetype === "application/pdf") return url + ".pdf";
+  if (mimetype === "application/msword") return url + ".doc";
+  if (mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return url + ".docx";
+  return url;
+}
+
 function renderPQCard(item) {
-  // get fileUrl with extension for compatibility
-  let fileUrl = appendFileExtension(item.fileUrl || item.file || "", item.mimetype || "");
   let colorClass = {
     midterm:"bg-purple-100 text-purple-700",
     final:"bg-green-100 text-green-700",
     quiz:"bg-red-100 text-red-700"
   }[item.type?.toLowerCase()] || 'bg-indigo-100 text-indigo-800';
 
+  // multi-image aware
+  let isMultiImage = Array.isArray(item.fileUrl) && item.fileUrl.length > 1 && item.fileUrl.every(url => /\.(jpg|jpeg|png|gif)$/i.test(url));
+  let fileUrl = Array.isArray(item.fileUrl) ? item.fileUrl[0] : (item.fileUrl || item.file || "");
+  let mimetype = Array.isArray(item.mimetype) ? item.mimetype[0] : (item.mimetype || '');
+  fileUrl = appendFileExtension(fileUrl, mimetype);
+
   let isPDF = fileUrl.toLowerCase().endsWith(".pdf");
   let isImage = /\.(jpg|jpeg|png|gif)$/i.test(fileUrl);
-  let isDoc = /\.(docx?)$/i.test(fileUrl);
+  let isDoc = /\.docx?$/i.test(fileUrl);
 
   let showActions = item.uploadedBy && currentUserId && (item.uploadedBy === currentUserId || item.uploadedBy._id === currentUserId);
-  
-  // Delete function
-  function jsDeletePQ(pqid) {
-    if (!confirm("Are you sure you want to delete this past question?")) return;
-    fetch(PQ_API_URL + "/" + pqid, { method: "DELETE", credentials: "include" })
-      .then(r => {
-        if (r.ok) fetchAndRenderPastQuestions();
-        else alert("Delete failed.");
-      });
-  }
 
   let actionsHtml = showActions ? `
     <div class="mt-2 flex gap-2">
       <button class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm font-semibold"
         onclick="jsDeletePQ('${item._id || item.id}')">Delete</button>
-      <!-- <button class="bg-yellow-400 hover:bg-yellow-500 text-black px-3 py-1 rounded text-sm font-semibold disabled">Edit</button> -->
     </div>
   ` : "";
 
-  // Pass file info for modal
-  let jsFunc = `pqShowPreviewModal(${JSON.stringify(item).replace(/"/g,'&quot;')},'${pq_esc(fileUrl)}',${isPDF},${isImage},${isDoc})`;
+  let jsFunc = `pqShowPreviewModal(${JSON.stringify(item).replace(/"/g,'&quot;')})`;
 
   return `
     <div class="bg-white rounded-2xl shadow-lg p-6 flex flex-col hover:shadow-xl transition">
@@ -2768,7 +2761,42 @@ window.jsDeletePQ = function(pqid){
   });
 };
 
-function pqShowPreviewModal(item, fileUrl, isPDF, isImage, isDoc) {
+function pqShowPreviewModal(item) {
+  // Multi-image PDF-style preview:
+  if (Array.isArray(item.fileUrl) && item.fileUrl.length > 1 && item.fileUrl.every(url=> /\.(jpg|jpeg|png|gif)$/i.test(url))) {
+    let images = item.fileUrl.map((url, i) =>
+      `<div class="flex justify-center w-full my-4"><img src="${pq_esc(url)}" alt="Scan page ${i+1}" class="max-w-full max-h-[60vh] rounded border shadow" /></div>`
+    ).join("");
+    let content = `
+      <div class="mb-2">
+        <div class="flex items-center gap-2">
+          <span class="bg-indigo-100 text-indigo-800 font-semibold px-3 py-1 rounded-lg text-xs">${pq_esc(item.course)}</span>
+          <span class="bg-yellow-100 text-yellow-700 font-semibold px-2 py-1 rounded-lg text-xs">${pq_esc(item.year)}</span>
+          <span class="bg-gray-50 text-gray-700 px-2 py-1 rounded-lg text-xs font-semibold">${pq_esc(item.type)}</span>
+        </div>
+        <h3 class="font-bold text-2xl text-indigo-900">${pq_esc(item.title) || pq_esc(item.course) + " " + pq_esc(item.year)}</h3>
+        <p class="text-gray-600 text-sm">${pq_esc(item.description) || "Past question."}</p>
+      </div>
+      <div class="border bg-gray-50 rounded p-2 overflow-x-auto max-h-[64vh]">
+        ${images}
+      </div>
+      <div class="mt-2 text-xs text-gray-500 text-center">
+        This is a multi-page scanned past question uploaded as images.<br>
+        Use <b>Download</b> on the card to get single images.
+      </div>
+    `;
+    openPQModal(content);
+    return;
+  }
+  // Single file
+  let fileUrl = Array.isArray(item.fileUrl) ? item.fileUrl[0] : (item.fileUrl || item.file || "");
+  let mimetype = Array.isArray(item.mimetype) ? item.mimetype[0] : (item.mimetype || '');
+  fileUrl = appendFileExtension(fileUrl, mimetype);
+
+  let isPDF = fileUrl.toLowerCase().endsWith(".pdf");
+  let isImage = /\.(jpg|jpeg|png|gif)$/i.test(fileUrl);
+  let isDoc = /\.docx?$/i.test(fileUrl);
+
   let content = `
     <div class="flex flex-col gap-1 mb-3">
       <div class="flex items-center gap-3">
