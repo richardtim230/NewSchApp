@@ -7,6 +7,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <!-- Tailwind CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Load jsPDF for image-to-PDF. Place in <head> or before your script: -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <!-- Flowbite (carousel etc) -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.css"/>
   <!-- Chart.js -->
@@ -2656,7 +2658,6 @@ function openReviewTab(sessionId) {
 <script>
 const PQ_API_URL = "https://examguide.onrender.com/api/pastquestions";
 let currentUserId = null;
-// ... fetchCurrentUserId() as previous ...
 
 async function fetchCurrentUserId() {
   try {
@@ -2679,7 +2680,39 @@ function pq_esc(str) {
     : c === '"' ? '&quot;' : '&#39;');
 }
 
-// --- Modal Utility --- //
+// --- jsPDF download utility ---
+async function downloadImagesAsPDF(imgUrls, fileName = "PastQuestion.pdf") {
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+  for (let i = 0; i < imgUrls.length; i++) {
+    let imgUrl = imgUrls[i];
+    let img = await loadImageAsDataUrl(imgUrl);
+    let imgProps = pdf.getImageProperties(img);
+    let pdfWidth = pdf.internal.pageSize.getWidth();
+    let pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+    if (pdfHeight > pdf.internal.pageSize.getHeight()) {
+      pdfHeight = pdf.internal.pageSize.getHeight();
+      pdfWidth = (imgProps.width * pdfHeight) / imgProps.height;
+    }
+    if (i > 0) pdf.addPage();
+    pdf.addImage(img, imgProps.fileType || "JPEG", 0, 0, pdfWidth, pdfHeight);
+  }
+  pdf.save(fileName);
+}
+function loadImageAsDataUrl(url) {
+  return fetch(url)
+    .then(r => r.blob())
+    .then(blob =>
+      new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      })
+    );
+}
+
+// Modal utility, unchanged
 function openPQModal(html) {
   document.getElementById('pq-view-modal-body').innerHTML = html;
   document.getElementById('pq-view-modal').classList.remove('hidden');
@@ -2710,7 +2743,6 @@ function renderPQCard(item) {
     quiz:"bg-red-100 text-red-700"
   }[item.type?.toLowerCase()] || 'bg-indigo-100 text-indigo-800';
 
-  // multi-image aware
   let isMultiImage = Array.isArray(item.fileUrl) && item.fileUrl.length > 1 && item.fileUrl.every(url => /\.(jpg|jpeg|png|gif)$/i.test(url));
   let fileUrl = Array.isArray(item.fileUrl) ? item.fileUrl[0] : (item.fileUrl || item.file || "");
   let mimetype = Array.isArray(item.mimetype) ? item.mimetype[0] : (item.mimetype || '');
@@ -2721,7 +2753,6 @@ function renderPQCard(item) {
   let isDoc = /\.docx?$/i.test(fileUrl);
 
   let showActions = item.uploadedBy && currentUserId && (item.uploadedBy === currentUserId || item.uploadedBy._id === currentUserId);
-
   let actionsHtml = showActions ? `
     <div class="mt-2 flex gap-2">
       <button class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm font-semibold"
@@ -2730,6 +2761,18 @@ function renderPQCard(item) {
   ` : "";
 
   let jsFunc = `pqShowPreviewModal(${JSON.stringify(item).replace(/"/g,'&quot;')})`;
+
+  // --- Download Button Logic ---
+  let downloadBtn = '';
+  if (isMultiImage) {
+    downloadBtn = `<button
+        class="flex-1 bg-gray-100 hover:bg-indigo-50 text-indigo-700 transition px-4 py-2 rounded-lg font-semibold text-center"
+        onclick='downloadImagesAsPDF(${JSON.stringify(item.fileUrl)}, "${pq_esc(item.title || item.course || "PastQuestion")}.pdf")'
+      >Download as PDF</button>`;
+  } else {
+    downloadBtn = `<a class="flex-1 bg-gray-100 hover:bg-indigo-50 text-indigo-700 transition px-4 py-2 rounded-lg font-semibold text-center"
+      href="${pq_esc(fileUrl)}" target="_blank" download>Download</a>`;
+  }
 
   return `
     <div class="bg-white rounded-2xl shadow-lg p-6 flex flex-col hover:shadow-xl transition">
@@ -2743,8 +2786,7 @@ function renderPQCard(item) {
       <div class="flex gap-2 mt-auto">
         <button type="button" class="flex-1 bg-blue-600 hover:bg-blue-700 transition text-white px-4 py-2 rounded-lg font-semibold shadow"
           onclick="${jsFunc}">View</button>
-        <a class="flex-1 bg-gray-100 hover:bg-indigo-50 text-indigo-700 transition px-4 py-2 rounded-lg font-semibold text-center"
-          href="${pq_esc(fileUrl)}" target="_blank" download>Download</a>
+        ${downloadBtn}
       </div>
       ${actionsHtml}
     </div>
@@ -2762,7 +2804,6 @@ window.jsDeletePQ = function(pqid){
 };
 
 function pqShowPreviewModal(item) {
-  // Multi-image PDF-style preview:
   if (Array.isArray(item.fileUrl) && item.fileUrl.length > 1 && item.fileUrl.every(url=> /\.(jpg|jpeg|png|gif)$/i.test(url))) {
     let images = item.fileUrl.map((url, i) =>
       `<div class="flex justify-center w-full my-4"><img src="${pq_esc(url)}" alt="Scan page ${i+1}" class="max-w-full max-h-[60vh] rounded border shadow" /></div>`
@@ -2782,13 +2823,13 @@ function pqShowPreviewModal(item) {
       </div>
       <div class="mt-2 text-xs text-gray-500 text-center">
         This is a multi-page scanned past question uploaded as images.<br>
-        Use <b>Download</b> on the card to get single images.
+        Use <b>Download as PDF</b> on the card to export all pages to a single file.
       </div>
     `;
     openPQModal(content);
     return;
   }
-  // Single file
+  // Single file (PDF/Image/Doc)
   let fileUrl = Array.isArray(item.fileUrl) ? item.fileUrl[0] : (item.fileUrl || item.file || "");
   let mimetype = Array.isArray(item.mimetype) ? item.mimetype[0] : (item.mimetype || '');
   fileUrl = appendFileExtension(fileUrl, mimetype);
