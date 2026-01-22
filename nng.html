@@ -2641,7 +2641,7 @@ function openReviewTab(sessionId) {
 const PQ_API_URL = "https://examguide.onrender.com/api/pastquestions";
 let currentUserId = null;
 
-// Fetch logged-in user's ID once at startup
+// Fetch logged-in user's ID for action buttons
 async function fetchCurrentUserId() {
   try {
     const resp = await fetch("https://examguide.onrender.com/api/auth/me", { credentials: "include" });
@@ -2655,7 +2655,15 @@ async function fetchCurrentUserId() {
 }
 fetchCurrentUserId();
 
-// --- Utility to safely escape HTML (minimal) ---
+// Add extension if needed for viewer compatibility
+function appendFileExtension(url, mimetype) {
+  if (/\.(pdf|doc|docx|jpg|jpeg|png|gif)$/i.test(url)) return url;
+  if (mimetype === "application/pdf") return url + ".pdf";
+  if (mimetype === "application/msword") return url + ".doc";
+  if (mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return url + ".docx";
+  return url;
+}
+
 function pq_esc(str) {
   return String(str||"").replace(/[<>&"']/g, c =>
     c === '<' ? '&lt;'
@@ -2664,7 +2672,6 @@ function pq_esc(str) {
     : c === '"' ? '&quot;' : '&#39;');
 }
 
-// --- Modal Utility --- //
 function openPQModal(html) {
   document.getElementById('pq-view-modal-body').innerHTML = html;
   document.getElementById('pq-view-modal').classList.remove('hidden');
@@ -2679,31 +2686,29 @@ document.getElementById('pq-view-modal').onclick = function(e) {
 };
 document.addEventListener('keydown', e=>{ if (e.key==="Escape") closePQModal(); });
 
-// --- Render one past question card, showing user actions if owner ---
 function renderPQCard(item) {
+  // get fileUrl with extension for compatibility
+  let fileUrl = appendFileExtension(item.fileUrl || item.file || "", item.mimetype || "");
   let colorClass = {
     midterm:"bg-purple-100 text-purple-700",
     final:"bg-green-100 text-green-700",
     quiz:"bg-red-100 text-red-700"
   }[item.type?.toLowerCase()] || 'bg-indigo-100 text-indigo-800';
 
-  let fileUrl = item.fileUrl || item.file || "";
-  let isPDF = String(fileUrl).toLowerCase().endsWith(".pdf");
+  let isPDF = fileUrl.toLowerCase().endsWith(".pdf");
   let isImage = /\.(jpg|jpeg|png|gif)$/i.test(fileUrl);
-  let isDoc = /\.docx?$/i.test(fileUrl);
+  let isDoc = /\.(docx?)$/i.test(fileUrl);
 
   let showActions = item.uploadedBy && currentUserId && (item.uploadedBy === currentUserId || item.uploadedBy._id === currentUserId);
-
+  
   // Delete function
   function jsDeletePQ(pqid) {
     if (!confirm("Are you sure you want to delete this past question?")) return;
-    fetch(PQ_API_URL + "/" + pqid, {
-      method: "DELETE",
-      credentials: "include"
-    }).then(r => {
-      if (r.ok) fetchAndRenderPastQuestions();
-      else alert("Delete failed.");
-    });
+    fetch(PQ_API_URL + "/" + pqid, { method: "DELETE", credentials: "include" })
+      .then(r => {
+        if (r.ok) fetchAndRenderPastQuestions();
+        else alert("Delete failed.");
+      });
   }
 
   let actionsHtml = showActions ? `
@@ -2714,6 +2719,7 @@ function renderPQCard(item) {
     </div>
   ` : "";
 
+  // Pass file info for modal
   let jsFunc = `pqShowPreviewModal(${JSON.stringify(item).replace(/"/g,'&quot;')},'${pq_esc(fileUrl)}',${isPDF},${isImage},${isDoc})`;
 
   return `
@@ -2727,8 +2733,7 @@ function renderPQCard(item) {
       <p class="text-gray-600 mb-4 text-sm">${pq_esc(item.description) || "Past question."}</p>
       <div class="flex gap-2 mt-auto">
         <button type="button" class="flex-1 bg-blue-600 hover:bg-blue-700 transition text-white px-4 py-2 rounded-lg font-semibold shadow"
-          onclick="${jsFunc}"
-        >View</button>
+          onclick="${jsFunc}">View</button>
         <a class="flex-1 bg-gray-100 hover:bg-indigo-50 text-indigo-700 transition px-4 py-2 rounded-lg font-semibold text-center"
           href="${pq_esc(fileUrl)}" target="_blank" download>Download</a>
       </div>
@@ -2736,8 +2741,6 @@ function renderPQCard(item) {
     </div>
   `;
 }
-
-// Make delete function globally available for inline onclick
 window.jsDeletePQ = function(pqid){
   if (!confirm("Are you sure you want to delete this past question?")) return;
   fetch(PQ_API_URL + "/" + pqid, {
@@ -2796,10 +2799,8 @@ function pqShowPreviewModal(item, fileUrl, isPDF, isImage, isDoc) {
   openPQModal(content);
 }
 
-// Data state
 let pq_lastFetched = [], pq_loading = false;
 
-// Fetch & Render all
 async function fetchAndRenderPastQuestions(q={}) {
   pq_loading = true;
   document.getElementById("pq-no-results").classList.add("hidden");
