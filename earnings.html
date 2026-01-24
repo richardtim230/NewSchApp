@@ -1,291 +1,601 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en" class="h-full bg-gray-100">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>OAU ExamGuard - Earnings Dashboard</title>
-  <!-- Tailwind CSS + Flowbite -->
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.css" rel="stylesheet" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>OAU ExamGuard — Earnings & Finance</title>
+
+  <!-- Tailwind CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.js"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- jsPDF (for PDF export) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
   <style>
-    body {
-      font-family: 'Poppins', sans-serif;
-      background: linear-gradient(120deg, #f0f4ff 0%, #fef6e4 100%);
-      min-height: 100vh;
-    }
-    .earnings-hero {
-      background: linear-gradient(120deg, rgba(42,55,135,0.1) 0%, #ffd70010 100%);
-      border-radius: 1.25rem;
-    }
-    .earnings-shadow {
-      box-shadow: 0 6px 32px 0 rgba(31,38,135,0.08);
-    }
-    .gradient-text {
-      background: linear-gradient(90deg, #FFD700 30%, #16396C 100%);
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-      font-weight: 800;
-    }
-    .glass-badge {
-      background: rgba(255,255,255,0.55);
-      backdrop-filter: blur(6px);
-      border-radius: 9999px;
-      color: #16396C;
-      font-weight: 600;
-      box-shadow: 0 2px 8px 0 #ffd70022;
-    }
-    .earnings-card {
-      background: #fff;
-      border-radius: 1.25rem;
-      box-shadow: 0 4px 32px 0 rgba(80,100,180,0.11);
-      overflow: hidden;
-    }
+    /* small utilities consistent with other pages */
+    .card-glow { background: linear-gradient(180deg, #ffffff, #fbfdff); box-shadow: 0 8px 20px rgba(99,102,241,0.08); }
+    .muted { color: #6b7280; }
+    .dot-credit { width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block;margin-right:6px;}
+    .dot-debit { width:8px;height:8px;border-radius:50%;background:#ef4444;display:inline-block;margin-right:6px;}
+    .hide-scrollbar::-webkit-scrollbar { display:none; }
   </style>
 </head>
-<body class="relative min-h-screen">
-  <!-- Navbar -->
-  <nav class="bg-white border-b border-gray-200 sticky top-0 z-50">
-    <div class="max-w-7xl mx-auto flex items-center justify-between py-3 px-4">
+<body class="h-full bg-gray-100 font-sans text-sm">
+
+  <!-- Header -->
+  <header class="fixed top-0 left-0 right-0 bg-white border-b z-40">
+    <div class="max-w-6xl mx-auto px-4 md:px-6 py-3 flex items-center justify-between">
       <div class="flex items-center gap-3">
-        <img src="logo.png" alt="Logo" class="h-11 w-11 rounded-full border-2 border-indigo-200 shadow" />
-        <span class="font-extrabold text-indigo-700 text-2xl tracking-wide">OAU ExamGuard</span>
+        <button class="md:hidden p-2 rounded-full bg-indigo-600 text-white" aria-label="open menu">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <div>
+          <div class="text-indigo-800 font-bold">OAU ExamGuard</div>
+          <div class="text-xs muted">Earnings & Finance</div>
+        </div>
       </div>
-      <button id="logout-btn" class="inline-flex items-center px-5 py-2 text-base font-semibold text-white bg-indigo-700 rounded-full shadow hover:bg-indigo-800 transition">
-        <svg class="w-5 h-5 mr-2 -ml-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1m0-13V4"></path></svg>
-        Logout
-      </button>
-    </div>
-  </nav>
 
-  <!-- Hero Greeting Card -->
-  <section class="max-w-3xl mx-auto mt-10">
-    <div class="earnings-hero earnings-shadow flex flex-col md:flex-row items-center justify-between gap-6 p-8 relative overflow-hidden">
-      <img src="https://images.unsplash.com/photo-1464983953574-0892a716854b?auto=format&fit=crop&w=900&q=80"
-           alt="Hero Background" class="absolute top-0 left-0 w-full h-full object-cover opacity-30 -z-10 rounded-xl" />
-      <div>
-        <h1 class="text-3xl md:text-4xl font-extrabold gradient-text mb-1 drop-shadow" id="greeting">Hi!</h1>
-        <p class="text-lg text-indigo-800 font-semibold" id="user-level"></p>
-      </div>
-      <div>
-        <span class="glass-badge py-2 px-6 text-xl shadow text-indigo-800" id="user-points">0 points</span>
-      </div>
-    </div>
-  </section>
+      <div class="flex items-center gap-3">
+        <div class="relative w-40 hidden sm:block">
+          <input id="globalSearch" placeholder="Search transactions..." class="w-full rounded-lg border px-3 py-2 text-sm bg-gray-50 focus:outline-none" />
+          <div class="absolute left-3 top-2 text-gray-400">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          </div>
+        </div>
 
-  <!-- Earnings Summary -->
-  <main class="flex flex-col items-center justify-center px-2 mt-8">
-    <div class="w-full max-w-2xl">
-      <div class="earnings-card p-7 mb-8">
-        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-7">
-          <div class="flex-1">
-            <div class="mb-2 flex items-center gap-2">
-              <span class="text-2xl font-bold text-indigo-900">Current Earnings</span>
-              <span class="inline-flex items-center bg-emerald-50 text-emerald-700 rounded-full px-3 py-1 text-lg font-semibold border border-emerald-200 drop-shadow" id="total-naira">₦0.00</span>
-            </div>
-            <p class="text-base text-gray-600">Withdrawable amount in Naira (₦)</p>
-            <button class="mt-6 w-full sm:w-auto px-7 py-2.5 text-base font-bold rounded-full bg-gradient-to-r from-indigo-700 via-indigo-500 to-yellow-400 text-white shadow hover:from-yellow-400 hover:to-indigo-700 transition-opacity duration-150"
-             id="withdraw-btn">
-              <svg class="w-5 h-5 inline-block mr-1 -mt-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 19V5m0 0l-7 7m7-7l7 7"/></svg>
-              Withdraw
-            </button>
-          </div>
-          <div class="flex-1 flex flex-col gap-2 border-l md:pl-7 border-gray-100">
-            <span class="block text-gray-500 font-medium">Points Equivalent</span>
-            <div class="flex items-end gap-2">
-              <span class="text-4xl font-extrabold gradient-text" id="total-points">0</span>
-              <span class="text-base text-gray-400">points</span>
-            </div>
-            <span class="block text-xs text-gray-400 mt-1">1 point = ₦1</span>
-          </div>
+        <button id="notifBtn" class="p-2 rounded-full hover:bg-gray-100">
+          <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5"/></svg>
+        </button>
+
+        <div class="relative">
+          <button id="profileBtn" class="rounded-full overflow-hidden border-2 border-indigo-600 w-9 h-9 bg-indigo-50">
+            <img id="headerProfilePic" class="w-full h-full object-cover" src="https://ui-avatars.com/api/?name=Student&background=ede9fe&color=3b82f6&size=128&rounded=true" alt="profile"/>
+          </button>
         </div>
       </div>
     </div>
+  </header>
 
+  <main class="pt-20 max-w-6xl mx-auto px-4 md:px-6 pb-12">
 
-    <!-- Earnings Breakdown -->
-    <div class="w-full max-w-4xl">
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-        <!-- Practiced Questions -->
-        <div class="earnings-card border-b-4 border-green-400 p-6 flex flex-col gap-3 hover:scale-105 transition-shadow duration-150">
-          <div class="flex items-center gap-3 mb-1">
-            <div class="inline-flex items-center justify-center w-12 h-12 bg-green-100 rounded-full shadow">
-              <svg class="w-7 h-7 text-green-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 19V5m0 0l-7 7m7-7l7 7"/></svg>
-            </div>
-            <span class="text-lg font-bold text-green-700">Practice</span>
+    <!-- Top: Bank Details Card & Quick Earnings Summary -->
+    <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- Bank Card -->
+      <div class="col-span-2 card-glow p-6 rounded-xl">
+        <div class="flex justify-between items-start">
+          <div>
+            <div class="text-xs muted">Primary Account</div>
+            <div id="bankAccountName" class="text-lg font-semibold text-indigo-800 mt-1">Account Name</div>
+            <div id="bankDetailsRow" class="text-sm muted mt-1">Bank · Account number</div>
           </div>
-          <span class="text-2xl font-extrabold text-green-700" id="breakdown-practiced">₦0.00</span>
-          <span class="text-xs text-gray-500">Earn points for scoring above 60% in mock/past questions</span>
+
+          <div class="flex flex-col items-end gap-2">
+            <div class="text-xs muted">Available Balance</div>
+            <div id="balanceDisplay" class="text-2xl font-bold text-indigo-700">₦0.00</div>
+            <div class="flex gap-2 mt-2">
+              <button id="historyBtn" class="bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700 text-sm">History</button>
+              <button id="transferBtn" class="bg-white border border-indigo-200 px-3 py-1 rounded hover:bg-indigo-50 text-sm">Transfer</button>
+            </div>
+          </div>
         </div>
-        <!-- Reading Posts -->
-        <div class="earnings-card border-b-4 border-purple-400 p-6 flex flex-col gap-3 hover:scale-105 transition-shadow duration-150">
-          <div class="flex items-center gap-3 mb-1">
-            <div class="inline-flex items-center justify-center w-12 h-12 bg-purple-100 rounded-full shadow">
-              <svg class="w-7 h-7 text-purple-700" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 19h16M4 15h16M4 11h16M4 7h16"/></svg>
-            </div>
-            <span class="text-lg font-bold text-purple-700">Reading</span>
+
+        <div class="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+          <div>
+            <div class="text-xs muted">Last payout</div>
+            <div id="lastPayout" class="text-sm font-medium">—</div>
           </div>
-          <span class="text-2xl font-extrabold text-purple-700" id="breakdown-reading">₦0.00</span>
-          <span class="text-xs text-gray-500">Earn points for reading and engaging with posts</span>
+          <div class="flex gap-2 justify-start sm:justify-end">
+            <button id="withdrawBtn" class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded font-semibold">Withdraw</button>
+            <button id="exportCsvBtn" class="bg-gray-100 border rounded px-3 py-2 hover:bg-gray-200">Export CSV</button>
+            <button id="downloadPdfBtn" class="bg-gray-100 border rounded px-3 py-2 hover:bg-gray-200">Download PDF</button>
+          </div>
         </div>
-        <!-- Bonus -->
-        <div class="earnings-card border-b-4 border-yellow-400 p-6 flex flex-col gap-3 hover:scale-105 transition-shadow duration-150">
-          <div class="flex items-center gap-3 mb-1">
-            <div class="inline-flex items-center justify-center w-12 h-12 bg-yellow-100 rounded-full shadow">
-              <svg class="w-7 h-7 text-yellow-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+
+        <div class="mt-6 w-full">
+          <div class="text-xs muted">Balance breakdown</div>
+          <div class="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div class="bg-indigo-50 rounded p-3 text-center">
+              <div class="text-xs muted">Total Earned</div>
+              <div id="statTotalEarned" class="text-sm font-semibold text-indigo-700">₦0</div>
             </div>
-            <span class="text-lg font-bold text-yellow-700">Bonus</span>
-          </div>
-          <span class="text-2xl font-extrabold text-yellow-700" id="breakdown-bonus">₦0.00</span>
-          <span class="text-xs text-gray-500">Special bonuses (e.g. promotions, referrals)</span>
-        </div>
-        <!-- Admin -->
-        <div class="earnings-card border-b-4 border-blue-400 p-6 flex flex-col gap-3 hover:scale-105 transition-shadow duration-150">
-          <div class="flex items-center gap-3 mb-1">
-            <div class="inline-flex items-center justify-center w-12 h-12 bg-blue-100 rounded-full shadow">
-              <svg class="w-7 h-7 text-blue-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+            <div class="bg-green-50 rounded p-3 text-center">
+              <div class="text-xs muted">Pending</div>
+              <div id="statPending" class="text-sm font-semibold text-green-700">₦0</div>
             </div>
-            <span class="text-lg font-bold text-blue-700">Admin</span>
+            <div class="bg-red-50 rounded p-3 text-center">
+              <div class="text-xs muted">Withdrawn</div>
+              <div id="statWithdrawn" class="text-sm font-semibold text-red-600">₦0</div>
+            </div>
+            <div class="bg-yellow-50 rounded p-3 text-center">
+              <div class="text-xs muted">Fees</div>
+              <div id="statFees" class="text-sm font-semibold text-amber-600">₦0</div>
+            </div>
           </div>
-          <span class="text-2xl font-extrabold text-blue-700" id="breakdown-admin">₦0.00</span>
-          <span class="text-xs text-gray-500">Manual admin rewards/adjustments</span>
         </div>
       </div>
-    </div>
+
+      <!-- Earnings Chart Card -->
+      <div class="card-glow p-6 rounded-xl">
+        <div class="flex justify-between items-center">
+          <div>
+            <div class="text-xs muted">Earnings (last 6 months)</div>
+            <div class="text-lg font-semibold text-indigo-800 mt-1">Performance</div>
+          </div>
+          <div>
+            <select id="chartRange" class="border rounded px-2 py-1 text-sm">
+              <option value="6">6 months</option>
+              <option value="3">3 months</option>
+              <option value="12">12 months</option>
+            </select>
+          </div>
+        </div>
+        <div class="mt-4">
+          <canvas id="earningsChart" height="220"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- Transactions & Filters -->
+    <section class="mt-8">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h2 class="text-xl font-bold text-indigo-800">Transaction History</h2>
+          <div class="text-xs muted">Recent deposits, payouts and charges</div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-2 items-stretch">
+          <div class="flex gap-2 items-center">
+            <select id="filterType" class="border rounded px-2 py-2 text-sm">
+              <option value="all">All Types</option>
+              <option value="credit">Credits</option>
+              <option value="debit">Debits</option>
+            </select>
+
+            <input id="fromDate" type="date" class="border rounded px-2 py-2 text-sm" />
+            <input id="toDate" type="date" class="border rounded px-2 py-2 text-sm" />
+          </div>
+
+          <div class="flex gap-2">
+            <button id="applyFiltersBtn" class="bg-indigo-600 text-white px-4 py-2 rounded">Apply</button>
+            <button id="resetFiltersBtn" class="bg-white border px-4 py-2 rounded">Reset</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 bg-white rounded-xl shadow overflow-auto">
+        <table class="min-w-full text-left">
+          <thead class="bg-indigo-50 text-indigo-700">
+            <tr>
+              <th class="px-4 py-3">#</th>
+              <th class="px-4 py-3">Date</th>
+              <th class="px-4 py-3">Description</th>
+              <th class="px-4 py-3">Type</th>
+              <th class="px-4 py-3 text-right">Amount</th>
+            </tr>
+          </thead>
+          <tbody id="transactionsBody" class="divide-y divide-gray-100">
+            <!-- rows injected by JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      <div class="mt-4 flex items-center justify-between">
+        <div class="text-sm muted" id="transactionsSummary">Showing 0 transactions</div>
+        <div class="flex items-center gap-2">
+          <button id="prevPage" class="px-3 py-1 rounded bg-gray-100" disabled>Previous</button>
+          <span id="pageInfo" class="text-sm muted">Page 1</span>
+          <button id="nextPage" class="px-3 py-1 rounded bg-gray-100" disabled>Next</button>
+        </div>
+      </div>
+    </section>
   </main>
 
-  <!-- Withdraw Modal (Flowbite) -->
-  <div id="withdraw-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full bg-black/30">
-    <div class="relative w-full max-w-md max-h-full mx-auto mt-28">
-      <div class="relative bg-white rounded-2xl shadow-lg dark:bg-gray-50 border-[1.5px] border-indigo-100">
-        <button type="button" class="absolute top-3 right-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center close-modal">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"></path></svg>
-        </button>
-        <form id="withdraw-form" class="p-7 space-y-5">
-          <h3 class="mb-3 text-2xl font-extrabold text-indigo-900">Withdraw Funds</h3>
-          <div id="withdraw-alert" class="hidden text-sm text-center rounded-lg py-2"></div>
-          <div>
-            <label for="withdraw-amount" class="block mb-2 text-sm font-medium text-gray-900">Amount (₦)</label>
-            <input type="number" min="500" step="500" id="withdraw-amount" name="amount" class="form-input block w-full" required>
-            <small class="text-xs text-gray-400">Min: ₦500, multiples of ₦500</small>
-          </div>
-          <div>
-            <label for="withdraw-bank" class="block mb-2 text-sm font-medium text-gray-900">Bank</label>
-            <input type="text" id="withdraw-bank" name="bank" class="form-input block w-full" required>
-          </div>
-          <div>
-            <label for="withdraw-account-name" class="block mb-2 text-sm font-medium text-gray-900">Account Name</label>
-            <input type="text" id="withdraw-account-name" name="accountName" class="form-input block w-full" required>
-          </div>
-          <div>
-            <label for="withdraw-account-number" class="block mb-2 text-sm font-medium text-gray-900">Account Number</label>
-            <input type="text" maxlength="12" pattern="\d{10,12}" id="withdraw-account-number" name="accountNumber" class="form-input block w-full" required>
-          </div>
-          <button type="submit" class="w-full text-white bg-gradient-to-r from-indigo-700 via-indigo-500 to-yellow-400 hover:from-yellow-400 hover:to-indigo-700 font-bold rounded-xl px-5 py-2.5 text-center transition">
-            Submit Withdrawal
-          </button>
-        </form>
-        <div id="withdraw-success" class="hidden p-7 text-center">
-          <svg class="mx-auto mb-3 w-14 h-14 text-emerald-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
-          <h3 class="mb-2 text-2xl font-semibold text-gray-800">Withdrawal Requested!</h3>
-          <p class="mb-4 text-gray-600">Your withdrawal request has been submitted.<br>Funds will be processed soon.</p>
-          <button class="close-modal bg-indigo-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-indigo-700">Close</button>
-        </div>
+  <!-- Minimal footer -->
+  <footer class="mt-12 text-center text-xs text-gray-400 pb-8">
+    © OAU ExamGuard — Earnings
+  </footer>
+
+  <!-- Modal: Transaction Details -->
+  <div id="txModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center">
+    <div class="bg-white rounded-xl w-full max-w-2xl p-6 relative">
+      <button class="absolute top-3 right-3 text-gray-500" onclick="closeTxModal()">×</button>
+      <h3 class="text-lg font-semibold text-indigo-800" id="txModalTitle">Transaction</h3>
+      <div class="mt-3 text-sm" id="txModalBody"></div>
+      <div class="mt-4 text-right">
+        <button class="px-4 py-2 rounded bg-indigo-600 text-white" onclick="closeTxModal()">Close</button>
       </div>
     </div>
   </div>
-<!-- Fixed Settings Button (Bottom Left) -->
-<a href="settings.html" target="_blank"
-   class="fixed bottom-7 left-7 z-50 bg-indigo-700 hover:bg-indigo-900 text-white shadow-xl rounded-full p-4 flex items-center justify-center transition-all duration-200"
-   style="box-shadow:0 2px 16px #6366f1a8;width:60px;height:60px;">
-   <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v1m6.364 1.636l-.707.707M20 12h-1m-1.636 6.364l-.707-.707M12 20v-1m-6.364-1.636l.707-.707M4 12h1m1.636-6.364l.707.707M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-</a>
-  <!-- ...rest of file... -->
-
-<!-- Fixed Earn More Points Button (Bottom Right) -->
-<button id="earnMoreBtn"
-   class="fixed bottom-7 right-7 z-50 bg-yellow-500 hover:bg-yellow-600 text-indigo-900 shadow-xl rounded-full p-4 flex items-center justify-center transition-all duration-200 font-extrabold text-lg"
-   style="box-shadow:0 2px 16px #ffd700a8;width:60px;height:60px;"
-   title="Earn More Credit Points">
-   <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-     <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
-     <path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-   </svg>
-</button>
-
-<!-- Ad Modal (reuse from practice-result.html) -->
-<div id="adModal" style="
-  display:none;
-  position:fixed;
-  inset:0;
-  z-index:10000;
-  background:rgba(0,0,0,0.92);
-  width:100vw;
-  height:100vh;
-  align-items:center;
-  justify-content:center;">
-  <div style="width:100vw;height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;">
-    <iframe id="adIframe"
-      src="https://nevillequery.com/aphb8wa4g?key=e33b11641a201e15c5c4c5343e791af6"
-      style="width:100vw;height:85vh;border:none;background:#fff;border-radius:0;">
-    </iframe>
-    <div style="width:100vw;text-align:center;background:#fff;padding:18px 0 8px 0;font-size:1.2em;">
-      <span id="adCountdown" style="font-size:1.5em;font-weight:700;color:#6366f1;">20</span>
-      <button id="adCancelBtn" style="display:none;margin-left:18px;padding:6px 24px;background:#eee;border-radius:8px;font-size:1em;">Cancel</button>
-      <div style="font-size:0.99em;color:#888;margin-top:10px;">You will be redirected shortly.</div>
-    </div>
-  </div>
-</div>
 
 <script>
-const SMARTLINK_URL = "https://nevillequery.com/aphb8wa4g?key=e33b11641a201e15c5c4c5343e791af6";
-let adModalTimer = null, adModalCountdown = 20, adModalProceedCallback = null;
+/*
+  Earnings & Finance page script
+  - Fetches finance summary and transactions from API endpoints (fallback to mock data)
+  - Renders chart and table
+  - Supports filtering, pagination, CSV export and simple PDF export
+*/
 
-function showAdModal(proceedCallback) {
-  adModalProceedCallback = proceedCallback;
-  adModalCountdown = 20;
-  document.getElementById("adIframe").src = SMARTLINK_URL;
-  document.getElementById("adModal").style.display = "flex";
-  document.getElementById("adCountdown").textContent = adModalCountdown;
-  document.getElementById("adCancelBtn").style.display = "none";
-  clearInterval(adModalTimer);
-  adModalTimer = setInterval(() => {
-    adModalCountdown--;
-    document.getElementById("adCountdown").textContent = adModalCountdown;
-    if (adModalCountdown <= 10) {
-      document.getElementById("adCancelBtn").style.display = "block";
-    }
-    if (adModalCountdown <= 0) {
-      closeAdModal(true);
-    }
-  }, 1000);
+const API_BASE = "https://examguide.onrender.com/api/"; // adapt to your API
+let wallet = null;
+let transactions = [];
+let filteredTransactions = [];
+let currentPage = 1;
+const pageSize = 8;
+
+// Utility: format currency
+function formatCurrency(n) {
+  if (n === null || typeof n === "undefined") return "₦0.00";
+  const num = typeof n === "string" ? parseFloat(n) || 0 : (n || 0);
+  return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 2 }).format(num);
 }
-function closeAdModal(proceed) {
-  clearInterval(adModalTimer);
-  document.getElementById("adModal").style.display = "none";
-  document.getElementById("adIframe").src = "";
-  if (proceed && typeof adModalProceedCallback === "function") {
-    adModalProceedCallback();
-    adModalProceedCallback = null;
+
+// Sample fallback data
+const MOCK_WALLET = {
+  accountName: "Alex Johnson",
+  accountNumber: "0123456789",
+  bankName: "First National Bank",
+  balance: 45230.75,
+  totalEarned: 125000.50,
+  pending: 4500,
+  withdrawn: 72000,
+  fees: 1269.5,
+  lastPayout: "2026-01-10T09:20:00Z"
+};
+
+const MOCK_TXS = [
+  { id: "t1", date: "2026-01-10T09:20:00Z", desc: "Payout: January", type: "debit", amount: 15000 },
+  { id: "t2", date: "2026-01-05T13:12:00Z", desc: "Sale: Mock Test Package", type: "credit", amount: 3500 },
+  { id: "t3", date: "2025-12-28T18:02:00Z", desc: "Referral bonus", type: "credit", amount: 1200 },
+  { id: "t4", date: "2025-11-21T08:30:00Z", desc: "Withdrawal", type: "debit", amount: 20000 },
+  { id: "t5", date: "2025-11-15T10:00:00Z", desc: "Sale: E-book", type: "credit", amount: 800 },
+  { id: "t6", date: "2025-10-10T09:50:00Z", desc: "Payout: Oct", type: "debit", amount: 12000 },
+  { id: "t7", date: "2025-09-12T12:00:00Z", desc: "Sale: Premium Mock", type: "credit", amount: 9500 },
+  { id: "t8", date: "2025-08-30T11:30:00Z", desc: "Fee", type: "debit", amount: 269.5 },
+  { id: "t9", date: "2025-07-21T08:20:00Z", desc: "Sale: Course", type: "credit", amount: 22000 },
+  { id: "t10", date: "2025-06-05T14:00:00Z", desc: "Referral bonus", type: "credit", amount: 1000 }
+];
+
+// DOM refs
+const bankAccountNameEl = document.getElementById("bankAccountName");
+const bankDetailsRowEl = document.getElementById("bankDetailsRow");
+const balanceDisplayEl = document.getElementById("balanceDisplay");
+const lastPayoutEl = document.getElementById("lastPayout");
+const statTotalEarnedEl = document.getElementById("statTotalEarned");
+const statPendingEl = document.getElementById("statPending");
+const statWithdrawnEl = document.getElementById("statWithdrawn");
+const statFeesEl = document.getElementById("statFees");
+const transactionsBody = document.getElementById("transactionsBody");
+const transactionsSummary = document.getElementById("transactionsSummary");
+const pageInfo = document.getElementById("pageInfo");
+const prevPageBtn = document.getElementById("prevPage");
+const nextPageBtn = document.getElementById("nextPage");
+
+const globalSearchInput = document.getElementById("globalSearch");
+const filterType = document.getElementById("filterType");
+const fromDate = document.getElementById("fromDate");
+const toDate = document.getElementById("toDate");
+const applyFiltersBtn = document.getElementById("applyFiltersBtn");
+const resetFiltersBtn = document.getElementById("resetFiltersBtn");
+const exportCsvBtn = document.getElementById("exportCsvBtn");
+const downloadPdfBtn = document.getElementById("downloadPdfBtn");
+const historyBtn = document.getElementById("historyBtn");
+
+// Chart
+let earningsChart = null;
+
+// Fetch wallet summary & transactions
+async function loadFinance() {
+  try {
+    // Attempt to fetch wallet
+    const token = localStorage.getItem("token");
+    let walletRes = await fetch(API_BASE + "finance/wallet", { credentials: "include", headers: token ? { Authorization: "Bearer " + token } : {} });
+    if (!walletRes.ok) throw new Error("wallet fetch failed");
+    const walletData = await walletRes.json();
+    // Adapt if API wraps object differently
+    wallet = walletData.wallet || walletData || MOCK_WALLET;
+  } catch (e) {
+    wallet = MOCK_WALLET;
   }
+
+  try {
+    // Attempt to fetch transactions
+    const token = localStorage.getItem("token");
+    let txRes = await fetch(API_BASE + "finance/transactions", { credentials: "include", headers: token ? { Authorization: "Bearer " + token } : {} });
+    if (!txRes.ok) throw new Error("tx fetch failed");
+    const txData = await txRes.json();
+    transactions = Array.isArray(txData) ? txData : (txData.transactions || MOCK_TXS);
+  } catch (e) {
+    transactions = MOCK_TXS;
+  }
+
+  renderWallet();
+  applyFiltersAndRender();
+  renderEarningsChart();
 }
-document.getElementById("adCancelBtn").onclick = function() {
-  closeAdModal(false);
-};
 
-document.getElementById("earnMoreBtn").onclick = function(e) {
-  e.preventDefault();
-  showAdModal(() => {
-    window.location.href = "earn-more.html";
+// Render wallet card values
+function renderWallet() {
+  bankAccountNameEl.textContent = wallet.accountName || "—";
+  bankDetailsRowEl.textContent = `${wallet.bankName || "Bank"} · ${wallet.accountNumber || "—"}`;
+  balanceDisplayEl.textContent = formatCurrency(wallet.balance || 0);
+  lastPayoutEl.textContent = wallet.lastPayout ? new Date(wallet.lastPayout).toLocaleDateString() : "—";
+  statTotalEarnedEl.textContent = formatCurrency(wallet.totalEarned || 0);
+  statPendingEl.textContent = formatCurrency(wallet.pending || 0);
+  statWithdrawnEl.textContent = formatCurrency(wallet.withdrawn || 0);
+  statFeesEl.textContent = formatCurrency(wallet.fees || 0);
+}
+
+// Filters & pagination
+function applyFiltersAndRender(page = 1) {
+  const q = (globalSearchInput?.value || "").trim().toLowerCase();
+  const type = filterType?.value || "all";
+  const from = fromDate?.value ? new Date(fromDate.value) : null;
+  const to = toDate?.value ? new Date(toDate.value) : null;
+
+  filteredTransactions = transactions.filter(tx => {
+    const tdesc = (tx.desc || tx.description || "").toString().toLowerCase();
+    if (q) {
+      if (!(tdesc.includes(q) || (tx.id || "").toLowerCase().includes(q))) return false;
+    }
+    if (type !== "all") {
+      if ((tx.type || "").toLowerCase() !== type) return false;
+    }
+    if (from) {
+      const d = new Date(tx.date);
+      if (d < from) return false;
+    }
+    if (to) {
+      const d = new Date(tx.date);
+      // include entire day
+      const toEnd = new Date(to.getFullYear(), to.getMonth(), to.getDate(), 23, 59, 59);
+      if (d > toEnd) return false;
+    }
+    return true;
   });
-};
-</script>
-  <footer class="bg-white border-t border-gray-200 py-8 text-center text-sm text-gray-500 mt-16">
-    © 2025 OAU ExamGuard. All rights reserved.
-  </footer>
 
-  <script src="earnings.js"></script>
+  currentPage = page;
+  renderTransactionsPage();
+}
+
+function renderTransactionsPage() {
+  const start = (currentPage - 1) * pageSize;
+  const end = start + pageSize;
+  const pageItems = filteredTransactions.slice(start, end);
+  transactionsBody.innerHTML = "";
+
+  pageItems.forEach((tx, idx) => {
+    const i = start + idx + 1;
+    const dt = new Date(tx.date);
+    const amount = formatCurrency(tx.amount);
+    const type = (tx.type || "credit").toLowerCase();
+    const color = type === "credit" ? "text-green-600" : "text-red-600";
+    const dot = type === "credit" ? '<span class="dot-credit"></span>' : '<span class="dot-debit"></span>';
+
+    const row = document.createElement("tr");
+    row.className = "hover:bg-gray-50";
+    row.innerHTML = `
+      <td class="px-4 py-3 whitespace-nowrap">${i}</td>
+      <td class="px-4 py-3 whitespace-nowrap">${dt.toLocaleDateString()} <div class="text-xs muted">${dt.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div></td>
+      <td class="px-4 py-3">${tx.desc || tx.description || '—'}</td>
+      <td class="px-4 py-3">${dot}<span class="uppercase text-xs font-semibold ${type === 'credit' ? 'text-green-700' : 'text-red-700'}">${type}</span></td>
+      <td class="px-4 py-3 text-right font-semibold ${color}">${amount}</td>
+    `;
+    row.addEventListener("click", () => openTxModal(tx));
+    transactionsBody.appendChild(row);
+  });
+
+  const total = filteredTransactions.length;
+  transactionsSummary.textContent = `Showing ${Math.min(total, start + 1)}–${Math.min(total, end)} of ${total} transactions`;
+  pageInfo.textContent = `Page ${currentPage}`;
+  prevPageBtn.disabled = currentPage <= 1;
+  nextPageBtn.disabled = end >= total;
+}
+
+// Pagination handlers
+prevPageBtn.addEventListener("click", () => {
+  if (currentPage > 1) {
+    currentPage--;
+    renderTransactionsPage();
+  }
+});
+nextPageBtn.addEventListener("click", () => {
+  if ((currentPage * pageSize) < filteredTransactions.length) {
+    currentPage++;
+    renderTransactionsPage();
+  }
+});
+
+// Filters
+applyFiltersBtn.addEventListener("click", () => applyFiltersAndRender(1));
+resetFiltersBtn.addEventListener("click", () => {
+  globalSearchInput.value = "";
+  filterType.value = "all";
+  fromDate.value = "";
+  toDate.value = "";
+  applyFiltersAndRender(1);
+});
+globalSearchInput?.addEventListener("keyup", (e) => {
+  if (e.key === "Enter") applyFiltersAndRender(1);
+});
+
+// Transaction modal
+function openTxModal(tx) {
+  document.getElementById("txModalTitle").textContent = `${tx.desc || tx.description || 'Transaction'}`;
+  document.getElementById("txModalBody").innerHTML = `
+    <div class="grid grid-cols-2 gap-3">
+      <div><div class="text-xs muted">Date</div><div>${new Date(tx.date).toLocaleString()}</div></div>
+      <div><div class="text-xs muted">Type</div><div>${(tx.type || '').toUpperCase()}</div></div>
+      <div><div class="text-xs muted">Amount</div><div class="font-semibold">${formatCurrency(tx.amount)}</div></div>
+      <div><div class="text-xs muted">Reference</div><div>${tx.id || tx.reference || '—'}</div></div>
+    </div>
+    <div class="mt-3 text-xs muted">${tx.notes || ''}</div>
+  `;
+  document.getElementById("txModal").classList.remove("hidden");
+}
+function closeTxModal() {
+  document.getElementById("txModal").classList.add("hidden");
+}
+
+// Chart rendering
+function renderEarningsChart() {
+  // derive monthly totals from transactions
+  const months = parseInt(document.getElementById("chartRange").value || 6);
+  const now = new Date();
+  const labels = [];
+  const sums = [];
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    labels.push(d.toLocaleString('default', { month: 'short', year: 'numeric' }));
+    sums.push(0);
+  }
+  // accumulate credits into sums
+  transactions.forEach(tx => {
+    const d = new Date(tx.date);
+    const idx = labels.findIndex(l => l.startsWith(d.toLocaleString('default', { month: 'short' })));
+    //Better: match year & month
+    const labelForTx = `${d.toLocaleString('default', { month: 'short' })} ${d.getFullYear()}`;
+    const li = labels.indexOf(labelForTx);
+    const monthIndex = labels.findIndex(lbl => lbl === labelForTx);
+    if (monthIndex >= 0 && (tx.type || '').toLowerCase() === 'credit') {
+      sums[monthIndex] = (sums[monthIndex] || 0) + (Number(tx.amount) || 0);
+    }
+  });
+
+  // If months labels do not match due to formatting, fallback: compute months map
+  if (!sums.some(v => v !== 0)) {
+    // fallback strategy: create map by YYYY-MM
+    const map = {};
+    transactions.forEach(tx => {
+      const d = new Date(tx.date);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      if ((tx.type || '').toLowerCase() === 'credit') map[key] = (map[key] || 0) + (Number(tx.amount) || 0);
+    });
+    // fill sums by labels
+    labels.forEach((lbl, i) => {
+      const parts = lbl.split(' ');
+      const mon = new Date(Date.parse(parts[0] + " 1, " + (parts[1] || new Date().getFullYear())));
+      const key = `${mon.getFullYear()}-${mon.getMonth()}`;
+      sums[i] = map[key] || 0;
+    });
+  }
+
+  const ctx = document.getElementById("earningsChart").getContext('2d');
+  if (earningsChart) earningsChart.destroy();
+  earningsChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Credits (₦)',
+        data: sums,
+        borderColor: '#6366f1',
+        backgroundColor: 'rgba(99,102,241,0.08)',
+        tension: 0.3,
+        fill: true,
+        pointRadius: 4,
+        pointBackgroundColor: '#6366f1'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => `₦${Number(ctx.parsed.y || 0).toLocaleString()}`
+          }
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: {
+            callback: v => `₦${Number(v).toLocaleString()}`
+          }
+        }
+      }
+    }
+  });
+}
+
+document.getElementById("chartRange").addEventListener("change", renderEarningsChart);
+
+// Exports
+exportCsvBtn.addEventListener("click", () => {
+  const rows = filteredTransactions.map(tx => ({
+    Date: new Date(tx.date).toLocaleString(),
+    Description: tx.desc || tx.description || '',
+    Type: tx.type || '',
+    Amount: tx.amount || 0,
+    Reference: tx.id || tx.reference || ''
+  }));
+  if (!rows.length) return alert("No transactions to export.");
+  const keys = Object.keys(rows[0]);
+  const csv = [keys.join(",")].concat(rows.map(r => keys.map(k => `"${String(r[k] || '').replace(/"/g,'""')}"`).join(","))).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `transactions_${(new Date()).toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+// Simple PDF export (wallet summary + top transactions)
+downloadPdfBtn.addEventListener("click", async () => {
+  const { jsPDF } = window.jspdf || {};
+  if (!jsPDF) return alert("PDF library not available.");
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  doc.setFontSize(14);
+  doc.text("Earnings Summary", 40, 50);
+  doc.setFontSize(11);
+  doc.text(`Account: ${wallet.accountName || '—'}`, 40, 80);
+  doc.text(`Bank: ${wallet.bankName || '—'} (${wallet.accountNumber || '—'})`, 40, 96);
+  doc.text(`Balance: ${formatCurrency(wallet.balance || 0)}`, 40, 112);
+  doc.text(`Last payout: ${wallet.lastPayout ? new Date(wallet.lastPayout).toLocaleString() : '—'}`, 40, 128);
+
+  // Transactions table (top 8 of filtered)
+  const startY = 160;
+  doc.setFontSize(12);
+  doc.text("Recent transactions:", 40, startY);
+  const headerY = startY + 16;
+  doc.setFontSize(10);
+  doc.text("Date", 40, headerY);
+  doc.text("Description", 130, headerY);
+  doc.text("Type", 360, headerY);
+  doc.text("Amount", 430, headerY);
+
+  let y = headerY + 12;
+  filteredTransactions.slice(0, 12).forEach(tx => {
+    doc.text(new Date(tx.date).toLocaleDateString(), 40, y);
+    doc.text((tx.desc || tx.description || '').toString().slice(0,40), 130, y);
+    doc.text((tx.type || '').toUpperCase(), 360, y);
+    doc.text(formatCurrency(tx.amount || 0), 430, y);
+    y += 14;
+    if (y > 740) {
+      doc.addPage();
+      y = 40;
+    }
+  });
+
+  doc.save(`earnings_${(new Date()).toISOString().slice(0,10)}.pdf`);
+});
+
+// Quick handlers
+historyBtn.addEventListener("click", () => {
+  // Scroll to transactions
+  window.scrollTo({ top: document.querySelector('section.mt-8').offsetTop - 20, behavior: 'smooth' });
+});
+document.getElementById("transferBtn").addEventListener("click", () => alert("Transfer flow is not implemented — wire to your payments flow."));
+document.getElementById("withdrawBtn").addEventListener("click", () => alert("Withdraw flow is not implemented — wire to your payments flow."));
+
+// Init
+document.addEventListener("DOMContentLoaded", loadFinance);
+</script>
 </body>
 </html>
