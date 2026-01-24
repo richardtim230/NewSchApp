@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="en" class="h-full bg-gray-100">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>OAU ExamGuard — Transfer Funds</title>
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { max-width: 100%; overflow-x: hidden; }
+    .muted { color: #6b7280; }
+    .card { background: #fff; border-radius: 12px; box-shadow: 0 6px 18px rgba(15,23,42,0.06); }
+    .min-w-0 { min-width: 0; }
+    .fit-x { max-width: 100%; overflow-wrap: break-word; }
+    .truncate-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    select, input, textarea { max-width: 100%; }
+    .modal-panel { max-width: 720px; width: calc(100% - 32px); }
+    .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    @media (max-width: 640px) {
+      .card { border-radius: 8px; }
+    }
+  </style>
+</head>
+<body class="h-full bg-gray-100 text-sm">
+
+  <!-- Header -->
+  <header class="fixed top-0 left-0 right-0 bg-white border-b z-40">
+    <div class="max-w-screen-xl mx-auto px-4 md:px-6 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div>
+          <div class="text-indigo-800 font-bold">OAU ExamGuard</div>
+          <div class="text-xs muted">Transfer Funds</div>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <button id="backToEarnings" class="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 text-xs">Back to Earnings</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="pt-20 max-w-screen-xl mx-auto px-4 md:px-6 pb-12 fit-x">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 fit-x">
+
+      <!-- Left: Transfer Form -->
+      <section class="col-span-2 card p-6 fit-x">
+        <h1 class="text-xl font-semibold text-indigo-800 mb-2">Transfer Funds</h1>
+        <p class="text-xs muted mb-4">Send money from your ExamGuard wallet to another ExamGuard user. You may also use recipient email or mobile number for cross-platform transfer.</p>
+
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between bg-indigo-50 rounded p-4 mb-4 fit-x">
+          <div class="min-w-0">
+            <div class="text-xs muted">Your wallet balance</div>
+            <div id="availBalance" class="text-2xl font-bold text-indigo-700">₦0.00</div>
+          </div>
+          <div class="text-right mt-3 sm:mt-0">
+            <div class="text-xs muted">Transfer fee</div>
+            <div id="feeDisplay" class="font-semibold">₦0.00</div>
+          </div>
+        </div>
+
+        <form id="transferForm" class="space-y-4 fit-x" onsubmit="return false;">
+          <!-- Recipient -->
+          <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1">Recipient (ExamGuard ID, Email, or Mobile)</label>
+            <input id="recipientInput" type="text" placeholder="Enter recipient ID, email, or phone" class="w-full border rounded px-3 py-2" required />
+            <div class="text-xs muted mt-1" id="recipientHelp">Recipient must be registered on ExamGuard or have a linked payment app.</div>
+          </div>
+          <!-- Amount -->
+          <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1">Amount (NGN)</label>
+            <input id="amountInput" type="number" step="0.01" min="1" placeholder="0.00" class="w-full border rounded px-3 py-2" required />
+            <div class="text-xs muted mt-1" id="amountHelp">Minimum transfer: ₦100 | Maximum: Wallet balance</div>
+          </div>
+          <!-- Transfer Method -->
+          <div class="grid md:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-gray-700 mb-1">Method</label>
+              <select id="methodSelect" class="w-full border rounded px-3 py-2">
+                <option value="peer">ExamGuard User</option>
+                <option value="email">Email transfer</option>
+                <option value="sms">SMS/Mobile Number</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-700 mb-1">Transfer Speed</label>
+              <select id="speedSelect" class="w-full border rounded px-3 py-2">
+                <option value="instant">Instant</option>
+                <option value="standard">Standard (up to 1hr)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Note (optional) -->
+          <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1">Note (optional)</label>
+            <textarea id="noteInput" rows="2" class="w-full border rounded px-3 py-2 text-sm" placeholder="Purpose of transfer..."></textarea>
+          </div>
+          <!-- File (optional) -->
+          <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1">Attachment (optional)</label>
+            <input id="attachmentInput" type="file" accept=".pdf,.jpg,.jpeg,.png" class="w-full text-xs" />
+            <div class="text-xs muted mt-1">Provide a slip, proof, or related document if needed.</div>
+          </div>
+          <!-- Button Row -->
+          <div class="flex items-center gap-3">
+            <button id="previewBtn" class="bg-indigo-600 text-white px-4 py-2 rounded font-semibold" type="button">Preview & Send</button>
+            <button id="cancelDraftBtn" class="bg-white border px-4 py-2 rounded" type="button">Reset</button>
+            <div id="formSpinner" class="hidden ml-auto text-xs text-gray-500">Processing...</div>
+          </div>
+        </form>
+      </section>
+
+      <!-- Right: Tips & Recent Transfers -->
+      <aside class="card p-6 fit-x">
+        <div>
+          <h3 class="font-semibold text-indigo-800 mb-2">Quick transfer tips</h3>
+          <ul class="text-xs muted space-y-2">
+            <li>- Ensure the recipient ID/email/number is correct.</li>
+            <li>- Instant transfers have a flat fee.</li>
+            <li>- You can send a note or attachment for context.</li>
+          </ul>
+        </div>
+        <div class="mt-6">
+          <h3 class="font-semibold text-indigo-800 mb-2">Recent Transfers</h3>
+          <div id="recentTransfers" class="space-y-3 text-xs fit-x">
+            <!-- populated by JS -->
+          </div>
+          <div class="mt-4 text-right">
+            <button id="viewAllTransfersBtn" class="text-indigo-600 text-sm">View all transfers</button>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <!-- Confirm modal -->
+  <div id="confirmModal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black bg-opacity-50 px-4">
+    <div class="bg-white rounded-xl p-6 modal-panel">
+      <h3 class="text-lg font-semibold text-indigo-800">Confirm Transfer</h3>
+      <div id="confirmSummary" class="mt-3 text-sm"></div>
+      <div class="mt-4 flex items-center gap-3 justify-end">
+        <button id="confirmCancel" class="px-4 py-2 rounded border">Cancel</button>
+        <button id="confirmSubmit" class="px-4 py-2 rounded bg-indigo-600 text-white">Send Now</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Success modal -->
+  <div id="successModal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black bg-opacity-50 px-4">
+    <div class="bg-white rounded-xl p-6 modal-panel text-center">
+      <h3 class="text-lg font-semibold text-green-600">Transfer successful</h3>
+      <p class="text-sm muted mt-2">Your transfer has been completed. The recipient has been notified.</p>
+      <div class="mt-4">
+        <button id="successClose" class="px-4 py-2 rounded bg-indigo-600 text-white">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="mt-8 text-center text-xs text-gray-400 pb-8">
+    © OAU ExamGuard — Transfers
+  </footer>
+
+<script>
+/* Transfer page script */
+
+const API_BASE = "https://examguide.onrender.com/api/";
+const WALLET_ENDPOINT = API_BASE + "finance/wallet";
+const TRANSFER_ENDPOINT = API_BASE + "finance/transfers";
+const RECENT_ENDPOINT = API_BASE + "finance/transfers?limit=6";
+const MIN_TRANSFER = 100;
+const INSTANT_FEE = 50;
+const STANDARD_FEE = 20;
+
+/* DOM references */
+const availBalanceEl = document.getElementById("availBalance");
+const feeDisplay = document.getElementById("feeDisplay");
+const recipientInput = document.getElementById("recipientInput");
+const amountInput = document.getElementById("amountInput");
+const methodSelect = document.getElementById("methodSelect");
+const speedSelect = document.getElementById("speedSelect");
+const noteInput = document.getElementById("noteInput");
+const attachmentInput = document.getElementById("attachmentInput");
+const previewBtn = document.getElementById("previewBtn");
+const cancelDraftBtn = document.getElementById("cancelDraftBtn");
+const confirmModal = document.getElementById("confirmModal");
+const confirmSummary = document.getElementById("confirmSummary");
+const confirmCancel = document.getElementById("confirmCancel");
+const confirmSubmit = document.getElementById("confirmSubmit");
+const successModal = document.getElementById("successModal");
+const successClose = document.getElementById("successClose");
+const recentTransfersEl = document.getElementById("recentTransfers");
+const viewAllTransfersBtn = document.getElementById("viewAllTransfersBtn");
+const backToEarnings = document.getElementById("backToEarnings");
+const formSpinner = document.getElementById("formSpinner");
+
+let wallet = null;
+let transfers = [];
+
+/* Currency formatting utility */
+function formatCurrency(n) {
+  const num = typeof n === "string" ? parseFloat(n) || 0 : (n || 0);
+  return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 2 }).format(num);
+}
+
+/* Fee calculation */
+function getFee(speed) {
+  return speed === "instant" ? INSTANT_FEE : STANDARD_FEE;
+}
+
+/* Load initial wallet and recent transfers */
+async function loadInitial() {
+  try {
+    const token = localStorage.getItem("token");
+    const resp = await fetch(WALLET_ENDPOINT, { credentials: 'include', headers: token ? { Authorization: 'Bearer ' + token } : {} });
+    if (!resp.ok) throw new Error("wallet fetch failed");
+    const data = await resp.json();
+    wallet = data.wallet || data;
+  } catch (e) {
+    // fallback mock wallet
+    wallet = { balance: 45230.75 };
+  }
+  availBalanceEl.textContent = formatCurrency(wallet.balance || 0);
+
+  // Load transfers history
+  try {
+    const token = localStorage.getItem("token");
+    const r = await fetch(RECENT_ENDPOINT, { credentials: 'include', headers: token ? { Authorization: 'Bearer ' + token } : {} });
+    if (!r.ok) throw new Error("transfers fetch failed");
+    const resData = await r.json();
+    transfers = Array.isArray(resData) ? resData : (resData.transfers || []);
+  } catch (e) {
+    // fallback mock transfers
+    transfers = [
+      { id: "tr1", to: "alex.johnson", amount: 3500, date: "2026-01-11T09:20:00Z", status: "completed" },
+      { id: "tr2", to: "user@example.com", amount: 8200, date: "2026-01-08T18:00:00Z", status: "completed" },
+      { id: "tr3", to: "08012345678", amount: 1200, date: "2026-01-05T09:10:00Z", status: "pending" }
+    ];
+  }
+  renderRecentTransfers();
+  recalc(); // show fee first
+}
+
+/* Show transfers */
+function renderRecentTransfers() {
+  recentTransfersEl.innerHTML = "";
+  if (!transfers.length) {
+    recentTransfersEl.innerHTML = `<div class="text-xs muted">No recent transfers</div>`;
+    return;
+  }
+  transfers.slice(0, 6).forEach(tr => {
+    const div = document.createElement("div");
+    div.className = "flex items-center justify-between";
+    const left = document.createElement("div");
+    left.innerHTML = `<div class="text-sm font-medium">${formatCurrency(tr.amount)}</div>
+                      <div class="text-xs muted">${new Date(tr.date).toLocaleString()}<br><span class="truncate-ellipsis" title="${tr.to}">To: ${tr.to}</span></div>`;
+    const right = document.createElement("div");
+    right.innerHTML = `<span class="text-xs font-semibold ${tr.status==='completed'?'text-green-700':tr.status==='pending'?'text-yellow-700':'text-red-700'}">
+      ${tr.status}
+    </span>`;
+    div.appendChild(left);
+    div.appendChild(right);
+    recentTransfersEl.appendChild(div);
+  });
+}
+
+/* Recalculate fee display */
+function recalc() {
+  const amount = Number(amountInput.value) || 0;
+  const speed = speedSelect.value;
+  feeDisplay.textContent = formatCurrency(amount >= MIN_TRANSFER ? getFee(speed) : 0);
+}
+
+/* Validate form draft */
+function validateDraft() {
+  const recipient = recipientInput.value.trim();
+  const amount = Number(amountInput.value) || 0;
+  if (!recipient) return { ok: false, msg: "Enter a valid recipient ID, email or number." };
+  if (!/^[\w.-]+@[\w.-]+\.[\w]{2,}$/.test(recipient) && !/^\d+$/.test(recipient) && recipient.length < 3) {
+    return { ok: false, msg: "Recipient format appears invalid." };
+  }
+  if (isNaN(amount) || amount <= 0) return { ok: false, msg: "Enter a valid transfer amount." };
+  if (amount < MIN_TRANSFER) return { ok: false, msg: `Minimum transfer is ${formatCurrency(MIN_TRANSFER)}.` };
+  if (wallet && amount > wallet.balance) return { ok: false, msg: "Insufficient balance." };
+  return { ok: true };
+}
+
+/* Escape HTML for safe insertion */
+function escapeHtml(unsafe) {
+  return String(unsafe || '').replace(/[&<"']/g, function(m) { return ({'&':'&amp;','<':'&lt;','"':'&quot;',"'":"&#039;"})[m]; });
+}
+
+/* Event bindings */
+amountInput.addEventListener("input", recalc);
+speedSelect.addEventListener("change", recalc);
+
+previewBtn.addEventListener("click", () => {
+  const v = validateDraft();
+  if (!v.ok) return alert(v.msg);
+  const fee = getFee(speedSelect.value);
+  const receive = Math.max(0, (Number(amountInput.value) || 0) - fee);
+  confirmSummary.innerHTML = `
+    <div>
+      <div class="mb-2"><strong>Recipient:</strong> ${escapeHtml(recipientInput.value.trim())}</div>
+      <div class="mb-2"><strong>Method:</strong> ${escapeHtml(methodSelect.options[methodSelect.selectedIndex].text)}</div>
+      <div class="mb-2"><strong>Amount:</strong> ${formatCurrency(amountInput.value)}</div>
+      <div class="mb-2"><strong>Fee:</strong> ${formatCurrency(fee)}</div>
+      <div class="mb-2"><strong>Speed:</strong> ${escapeHtml(speedSelect.options[speedSelect.selectedIndex].text)}</div>
+      <div class="mb-2"><strong>Recipient will receive:</strong> <span class="font-semibold text-indigo-700">${formatCurrency(receive)}</span></div>
+      ${noteInput.value ? `<div class="mb-2"><strong>Note:</strong> ${escapeHtml(noteInput.value)}</div>` : ''}
+      ${attachmentInput.files && attachmentInput.files[0] ? `<div class="mb-2"><strong>Attachment:</strong> ${escapeHtml(attachmentInput.files[0].name)}</div>` : ''}
+    </div>
+  `;
+  confirmModal.classList.remove("hidden");
+});
+
+confirmCancel.addEventListener("click", () => confirmModal.classList.add("hidden"));
+
+confirmSubmit.addEventListener("click", async () => {
+  confirmSubmit.disabled = true;
+  confirmSubmit.textContent = "Sending...";
+  formSpinner.classList.remove("hidden");
+  const recipient = recipientInput.value.trim();
+  const amount = Number(amountInput.value) || 0;
+  const method = methodSelect.value;
+  const speed = speedSelect.value;
+  const note = noteInput.value;
+  const file = attachmentInput.files && attachmentInput.files[0];
+
+  try {
+    const token = localStorage.getItem("token");
+    let resp;
+    if (file) {
+      const fd = new FormData();
+      fd.append("recipient", recipient);
+      fd.append("amount", amount);
+      fd.append("method", method);
+      fd.append("speed", speed);
+      fd.append("note", note);
+      fd.append("attachment", file);
+      resp = await fetch(TRANSFER_ENDPOINT, {
+        method: "POST",
+        credentials: 'include',
+        headers: token ? { Authorization: 'Bearer ' + token } : {},
+        body: fd
+      });
+    } else {
+      resp = await fetch(TRANSFER_ENDPOINT, {
+        method: "POST",
+        credentials: 'include',
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: 'Bearer ' + token } : {})
+        },
+        body: JSON.stringify({ recipient, amount, method, speed, note })
+      });
+    }
+
+    if (!resp.ok) {
+      let errText = "Failed to submit transfer.";
+      try { const errJson = await resp.json(); errText = errJson.message || errJson.error || errText; } catch {}
+      throw new Error(errText);
+    }
+
+    const resData = await resp.json();
+    // update front end
+    const created = resData.transfer || resData || { id: "tr_" + Date.now(), to: recipient, amount, date: new Date().toISOString(), status: "pending" };
+    transfers.unshift(created);
+    wallet.balance = (Number(wallet.balance) || 0) - amount;
+    availBalanceEl.textContent = formatCurrency(wallet.balance);
+
+    renderRecentTransfers();
+
+    confirmModal.classList.add("hidden");
+    successModal.classList.remove("hidden");
+  } catch (err) {
+    alert("Error: " + (err.message || err));
+  } finally {
+    formSpinner.classList.add("hidden");
+    confirmSubmit.disabled = false;
+    confirmSubmit.textContent = "Send Now";
+  }
+});
+
+/* Reset form on cancel */
+cancelDraftBtn.addEventListener("click", () => {
+  recipientInput.value = "";
+  amountInput.value = "";
+  methodSelect.value = "peer";
+  speedSelect.value = "instant";
+  noteInput.value = "";
+  attachmentInput.value = "";
+  recalc();
+});
+
+/* Close success modal and reset form */
+successClose.addEventListener("click", () => {
+  successModal.classList.add("hidden");
+  recipientInput.value = "";
+  amountInput.value = "";
+  methodSelect.value = "peer";
+  speedSelect.value = "instant";
+  noteInput.value = "";
+  attachmentInput.value = "";
+  recalc();
+});
+
+/* Navigation buttons */
+viewAllTransfersBtn.addEventListener("click", () => {
+  window.location.href = "/transfers.html";
+});
+backToEarnings.addEventListener("click", () => {
+  window.location.href = "/earnings.html";
+});
+
+/* Init */
+document.addEventListener("DOMContentLoaded", loadInitial);
+</script>
+</body>
+</html>
