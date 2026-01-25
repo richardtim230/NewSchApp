@@ -429,22 +429,10 @@
 </div>
 
 <script>
-/*
-  Dashboard integration with backend (examguide.onrender.com)
-  - Reads token from localStorage 'examguard_token' or sessionStorage
-  - Fetches profile and tutor endpoints, updates the UI
-  - If unauthorized, redirects to login.html
-  - Adds handling for student requests: shows "Review Request" action and modal with Accept/Reject.
-*/
 
 const API_BASE = "https://examguide.onrender.com";
 const tokenKey = "examguard_token"; // frontend login stores this
 const userKey = "examguard_user";
-
-let tutorNotifications = []; // store notifications for quick lookup
-let currentStudentsList = []; // store last fetched students array
-let studentsMap = {}; // id -> student object
-let activeRequestNoteByStudent = {}; // studentId -> notification object
 
 function getToken() {
   return localStorage.getItem(tokenKey) || sessionStorage.getItem(tokenKey);
@@ -522,26 +510,8 @@ async function initDashboard() {
       fetchJSON("/api/tutors/reviews", { method: "GET" }).catch(()=>null),
     ]);
 
-    // store notifications for request handling
-    if (notesRes && notesRes.ok && Array.isArray(notesRes.data)) {
-      tutorNotifications = notesRes.data;
-      // build quick lookup: for each unread tutor-request, map studentId->notification
-      activeRequestNoteByStudent = {};
-      tutorNotifications.forEach(n => {
-        if (n.type === 'tutor-request' && !n.read) {
-          activeRequestNoteByStudent[String(n.from)] = n;
-        }
-      });
-    } else {
-      tutorNotifications = [];
-      activeRequestNoteByStudent = {};
-    }
-
     if (summaryRes && summaryRes.ok) populateSummary(summaryRes.data);
-    if (studentsRes && studentsRes.ok) {
-      currentStudentsList = studentsRes.data;
-      populateStudents(studentsRes.data);
-    }
+    if (studentsRes && studentsRes.ok) populateStudents(studentsRes.data);
     if (sessionsRes && sessionsRes.ok) populateSessions(sessionsRes.data);
     if (messagesRes && messagesRes.ok) populateMessages(messagesRes.data);
     if (assignmentsRes && assignmentsRes.ok) populateAssignments(assignmentsRes.data);
@@ -673,145 +643,6 @@ function populateStudents(students) {
     `;
   });
 }
-
-function populateSessions(sessions) {
-  const container = document.getElementById("sessionsList");
-  if (!container) return;
-  container.innerHTML = "";
-  if (!sessions || !sessions.length) {
-    container.innerHTML = `<div class="text-center py-10 text-gray-400">No sessions yet.</div>`;
-    return;
-  }
-  container.innerHTML = sessions.map(sess => {
-    const when = new Date(sess.date).toLocaleString();
-    const studName = (sess.student && (sess.student.fullname || sess.student.username)) || (sess.student) || "Student";
-    const statusClass = sess.status === "Active" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700";
-    return `
-      <div class="flex flex-col md:flex-row md:items-center justify-between border-b py-3 last:border-none">
-        <div class="mb-1 md:mb-0">
-          <span class="font-bold text-indigo-800 text-base">${sess.title || "Session"}</span>
-          <span class="ml-3 text-xs ${statusClass} px-3 py-1 rounded-full font-semibold">${when}</span>
-          <span class="ml-3 text-xs text-gray-600"><i class="fa-solid fa-user"></i> ${studName}</span>
-        </div>
-        <span class="mt-1 md:mt-0 ${sess.status==='Active' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'} px-3 py-1 rounded-full font-semibold text-xs inline-block">${sess.status || ''}</span>
-      </div>
-    `;
-  }).join("");
-}
-
-function populateMessages(msgs) {
-  const inbox = document.getElementById("messagesInbox");
-  if (!inbox) return;
-  inbox.innerHTML = "";
-  if (!msgs || !msgs.length) {
-    inbox.innerHTML = `<div class="py-8 text-center text-gray-400">No messages yet.</div>`;
-    return;
-  }
-  inbox.innerHTML = msgs.map(m => {
-    const from = (m.from && (m.from.fullname || m.from.username)) || (m.from) || "Sender";
-    const avatar = (m.from && m.from.profilePic) || m.avatar || '';
-    const date = new Date(m.createdAt || m.createdAt || Date.now()).toLocaleString();
-    const unread = !m.read;
-    return `
-      <div class="flex items-center gap-4 py-3 ${unread ? 'bg-indigo-50' : 'bg-white'} hover:bg-indigo-100 px-2 transition cursor-pointer">
-        <img src="${avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(from)}&background=ede9fe&color=3b82f6&size=64`}" class="w-10 h-10 rounded-full object-cover border-2 ${unread ? 'border-indigo-300' : 'border-gray-100'}"/>
-        <div class="flex-1">
-          <div class="font-bold text-indigo-800 text-sm">${from}</div>
-          <div class="text-gray-700 text-xs truncate">${m.text || m.message || ''}</div>
-        </div>
-        <div class="text-xs text-gray-400 font-semibold whitespace-nowrap">${date}</div>
-        <span class="${unread ? 'inline-block w-2 h-2 bg-indigo-500 rounded-full ml-1' : 'hidden'}"></span>
-      </div>
-    `;
-  }).join("");
-  // show notif dot if there are unread
-  const unread = msgs.some(m => !m.read);
-  document.getElementById("notifDot").classList.toggle("hidden", !unread);
-}
-
-function populateAssignments(assignments) {
-  const body = document.getElementById("assignmentsTableBody");
-  const empty = document.getElementById("assignmentsEmptyMsg");
-  body.innerHTML = "";
-  if (!assignments || !assignments.length) {
-    empty.classList.remove("hidden");
-    return;
-  }
-  empty.classList.add("hidden");
-  assignments.forEach(a => {
-    const assignedTo = Array.isArray(a.assignedTo) ? (a.assignedTo.map(x => x.fullname || x.username || x || '').join(", ")) : (a.assignedTo || "All");
-    const submissions = a.submissionsCount || 0;
-    const due = a.dueDate ? new Date(a.dueDate).toLocaleDateString() : (a.dueDate || "—");
-    const status = a.status || "Pending";
-    body.innerHTML += `
-      <tr>
-        <td class="py-3 px-3 font-bold text-indigo-900">${a.title}</td>
-        <td class="py-3 px-3">${a.subject}</td>
-        <td class="py-3 px-3">${due}</td>
-        <td class="py-3 px-3">${assignedTo}</td>
-        <td class="py-3 px-3 text-center">${submissions}</td>
-        <td class="py-3 px-3">${renderAssignStatusPill(status)}</td>
-        <td class="py-3 px-3">
-          <button class="bg-green-500 text-white px-3 py-1 rounded text-xs shadow hover:bg-green-600 mr-1"><i class="fa fa-eye"></i> View</button>
-          <button class="bg-indigo-600 text-white px-3 py-1 rounded text-xs shadow hover:bg-indigo-800"><i class="fa fa-edit"></i> Edit</button>
-        </td>
-      </tr>
-    `;
-  });
-}
-
-function renderAssignStatusPill(status) {
-  switch(status) {
-    case "Pending": return '<span class="bg-yellow-100 text-yellow-800 font-semibold px-3 py-1 rounded-full text-xs">Pending</span>';
-    case "Published": return '<span class="bg-blue-100 text-blue-700 font-semibold px-3 py-1 rounded-full text-xs">Published</span>';
-    case "Graded": return '<span class="bg-green-100 text-green-700 font-semibold px-3 py-1 rounded-full text-xs">Graded</span>';
-    case "Overdue": return '<span class="bg-red-100 text-red-700 font-semibold px-3 py-1 rounded-full text-xs">Overdue</span>';
-    default: return `<span class="bg-gray-100 text-gray-700 font-semibold px-3 py-1 rounded-full text-xs">${status}</span>`;
-  }
-}
-
-function populateEarnings(payload) {
-  if (!payload) return;
-  const earnings = payload.earnings || payload || [];
-  const summary = payload.summary || {};
-  document.getElementById("earnTotal").textContent = `₦${Number(summary.total || 0).toLocaleString()}`;
-  document.getElementById("earnPending").textContent = `₦${Number(summary.pending || 0).toLocaleString()}`;
-  document.getElementById("earnWithdrawn").textContent = `₦${Number(summary.withdrawn || 0).toLocaleString()}`;
-  const tbody = document.getElementById("earningsTableBody");
-  tbody.innerHTML = "";
-  (earnings || []).slice(0, 8).forEach(e => {
-    const date = new Date(e.date || e.createdAt || Date.now()).toLocaleDateString();
-    const amount = Number(e.amount || 0);
-    const type = (e.status && e.status.toLowerCase().includes("withdraw")) ? "Debit" : "Credit";
-    tbody.innerHTML += `
-      <tr>
-        <td class="px-4 py-3">${date}</td>
-        <td class="px-4 py-3">${e.source || e.meta?.source || "Tutoring"}</td>
-        <td class="px-4 py-3">${type == "Credit" ? '<span class="bg-green-100 text-green-700 px-2 rounded-full text-xs font-semibold">Credit</span>' : '<span class="bg-red-100 text-red-700 px-2 rounded-full text-xs font-semibold">Debit</span>'}</td>
-        <td class="px-4 py-3 text-right font-bold">₦${amount.toLocaleString()}</td>
-      </tr>
-    `;
-  });
-}
-
-function populateNotifications(notes) {
-  const list = document.getElementById("notificationList");
-  if (!list) return;
-  list.innerHTML = "";
-  if (!notes || !notes.length) {
-    list.innerHTML = "<li class='text-gray-500'>No notifications</li>";
-    return;
-  }
-  notes.slice(0, 8).forEach(n => {
-    const from = (n.from && (n.from.fullname || n.from.username)) || "";
-    const text = n.title ? `${n.title} — ${n.message || ""}` : (n.message || "");
-    list.innerHTML += `<li><strong>${from ? from + ":" : ""}</strong> ${text}</li>`;
-  });
-  // Show notif dot if any unread
-  const unread = notes.some(n => !n.read);
-  document.getElementById("notifDot").classList.toggle("hidden", !unread);
-}
-
 // ---------- Student request modal logic ----------
 
 function openStudentRequestModal(studentId) {
@@ -954,8 +785,152 @@ async function rejectStudentRequest() {
     btn.disabled = false; btn.textContent = "Reject";
   }
 }
+function populateSessions(sessions) {
+  const container = document.getElementById("sessionsList");
+  if (!container) return;
+  container.innerHTML = "";
+  if (!sessions || !sessions.length) {
+    container.innerHTML = `<div class="text-center py-10 text-gray-400">No sessions yet.</div>`;
+    return;
+  }
+  container.innerHTML = sessions.map(sess => {
+    const when = new Date(sess.date).toLocaleString();
+    const studName = (sess.student && (sess.student.fullname || sess.student.username)) || (sess.student) || "Student";
+    const statusClass = sess.status === "Active" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700";
+    return `
+      <div class="flex flex-col md:flex-row md:items-center justify-between border-b py-3 last:border-none">
+        <div class="mb-1 md:mb-0">
+          <span class="font-bold text-indigo-800 text-base">${sess.title || "Session"}</span>
+          <span class="ml-3 text-xs ${statusClass} px-3 py-1 rounded-full font-semibold">${when}</span>
+          <span class="ml-3 text-xs text-gray-600"><i class="fa-solid fa-user"></i> ${studName}</span>
+        </div>
+        <span class="mt-1 md:mt-0 ${sess.status==='Active' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'} px-3 py-1 rounded-full font-semibold text-xs inline-block">${sess.status || 'Scheduled'}</span>
+      </div>
+    `;
+  }).join("");
+}
 
-// Charts: as before (unchanged)
+function populateMessages(msgs) {
+  const inbox = document.getElementById("messagesInbox");
+  if (!inbox) return;
+  inbox.innerHTML = "";
+  if (!msgs || !msgs.length) {
+    inbox.innerHTML = `<div class="py-8 text-center text-gray-400">No messages yet.</div>`;
+    return;
+  }
+  inbox.innerHTML = msgs.map(m => {
+    const from = (m.from && (m.from.fullname || m.from.username)) || (m.from) || "Sender";
+    const avatar = (m.from && m.from.profilePic) || m.avatar || '';
+    const date = new Date(m.createdAt || m.createdAt || Date.now()).toLocaleString();
+    const unread = !m.read;
+    return `
+      <div class="flex items-center gap-4 py-3 ${unread ? 'bg-indigo-50' : 'bg-white'} hover:bg-indigo-100 px-2 transition cursor-pointer">
+        <img src="${avatar || 'https://ui-avatars.com/api/?name=${encodeURIComponent(from)}&background=ede9fe&color=3b82f6&size=64'}" class="w-10 h-10 rounded-full object-cover border-2 ${unread ? 'border-indigo-400' : 'border-gray-100'}"/>
+        <div class="flex-1">
+          <div class="font-bold text-indigo-800 text-sm">${from}</div>
+          <div class="text-gray-700 text-xs truncate">${m.text || m.message || ''}</div>
+        </div>
+        <div class="text-xs text-gray-400 font-semibold whitespace-nowrap">${date}</div>
+        <span class="${unread ? 'inline-block w-2 h-2 bg-indigo-500 rounded-full ml-1' : 'hidden'}"></span>
+      </div>
+    `;
+  }).join("");
+  // show notif dot if there are unread
+  const unread = msgs.some(m => !m.read);
+  document.getElementById("notifDot").classList.toggle("hidden", !unread);
+}
+
+function populateAssignments(assignments) {
+  const body = document.getElementById("assignmentsTableBody");
+  const empty = document.getElementById("assignmentsEmptyMsg");
+  body.innerHTML = "";
+  if (!assignments || !assignments.length) {
+    empty.classList.remove("hidden");
+    return;
+  }
+  empty.classList.add("hidden");
+  assignments.forEach(a => {
+    const assignedTo = Array.isArray(a.assignedTo) ? (a.assignedTo.map(x => x.fullname || x.username || x || '').join(", ")) : (a.assignedTo || "All");
+    const submissions = a.submissionsCount || 0;
+    const due = a.dueDate ? new Date(a.dueDate).toLocaleDateString() : (a.dueDate || "—");
+    const status = a.status || "Pending";
+    body.innerHTML += `
+      <tr>
+        <td class="py-3 px-3 font-bold text-indigo-900">${a.title}</td>
+        <td class="py-3 px-3">${a.subject}</td>
+        <td class="py-3 px-3">${due}</td>
+        <td class="py-3 px-3">${assignedTo}</td>
+        <td class="py-3 px-3 text-center">${submissions}</td>
+        <td class="py-3 px-3">${renderAssignStatusPill(status)}</td>
+        <td class="py-3 px-3">
+          <button class="bg-green-500 text-white px-3 py-1 rounded text-xs shadow hover:bg-green-600 mr-1"><i class="fa fa-eye"></i> View</button>
+          <button class="bg-indigo-600 text-white px-3 py-1 rounded text-xs shadow hover:bg-indigo-800"><i class="fa fa-edit"></i> Edit</button>
+        </td>
+      </tr>
+    `;
+  });
+}
+
+function renderAssignStatusPill(status) {
+  switch(status) {
+    case "Pending": return '<span class="bg-yellow-100 text-yellow-800 font-semibold px-3 py-1 rounded-full text-xs">Pending</span>';
+    case "Published": return '<span class="bg-blue-100 text-blue-700 font-semibold px-3 py-1 rounded-full text-xs">Published</span>';
+    case "Graded": return '<span class="bg-green-100 text-green-700 font-semibold px-3 py-1 rounded-full text-xs">Graded</span>';
+    case "Overdue": return '<span class="bg-red-100 text-red-700 font-semibold px-3 py-1 rounded-full text-xs">Overdue</span>';
+    default: return `<span class="bg-gray-100 text-gray-700 font-semibold px-3 py-1 rounded-full text-xs">${status}</span>`;
+  }
+}
+
+function populateEarnings(payload) {
+  if (!payload) return;
+  const earnings = payload.earnings || payload || [];
+  const summary = payload.summary || {};
+  document.getElementById("earnTotal").textContent = `₦${Number(summary.total || 0).toLocaleString()}`;
+  document.getElementById("earnPending").textContent = `₦${Number(summary.pending || 0).toLocaleString()}`;
+  document.getElementById("earnWithdrawn").textContent = `₦${Number(summary.withdrawn || 0).toLocaleString()}`;
+  const tbody = document.getElementById("earningsTableBody");
+  tbody.innerHTML = "";
+  (earnings || []).slice(0, 8).forEach(e => {
+    const date = new Date(e.date || e.createdAt || Date.now()).toLocaleDateString();
+    const amount = Number(e.amount || 0);
+    const type = (e.status && e.status.toLowerCase().includes("withdraw")) ? "Debit" : "Credit";
+    tbody.innerHTML += `
+      <tr>
+        <td class="px-4 py-3">${date}</td>
+        <td class="px-4 py-3">${e.source || e.meta?.source || "Tutoring"}</td>
+        <td class="px-4 py-3">${type == "Credit" ? '<span class="bg-green-100 text-green-700 px-2 rounded-full text-xs font-semibold">Credit</span>' : '<span class="bg-red-100 text-red-700 px-2 rounded-full text-xs font-semibold">Debit</span>'}</td>
+        <td class="px-4 py-3 text-right font-bold">₦${amount.toLocaleString()}</td>
+      </tr>
+    `;
+  });
+}
+
+function populateNotifications(notes) {
+  const list = document.getElementById("notificationList");
+  if (!list) return;
+  list.innerHTML = "";
+  if (!notes || !notes.length) {
+    list.innerHTML = "<li class='text-gray-500'>No notifications</li>";
+    return;
+  }
+  notes.slice(0, 8).forEach(n => {
+    const from = (n.from && (n.from.fullname || n.from.username)) || "";
+    const text = n.title ? `${n.title} — ${n.message || ""}` : (n.message || "");
+    list.innerHTML += `<li><strong>${from ? from + ":" : ""}</strong> ${text}</li>`;
+  });
+  // Show notif dot if any unread
+  const unread = notes.some(n => !n.read);
+  document.getElementById("notifDot").classList.toggle("hidden", !unread);
+}
+
+function populateReviews(reviews) {
+  // summary or list; we already use summary from dashboard-summary for avg rating
+  // optionally populate a reviews list somewhere if available
+  console.log("reviews loaded:", reviews && reviews.length ? reviews.length : 0);
+}
+
+// Charts: use provided summary and earnings to synthesize plausible series.
+// If not provided, charts will show demo data.
 function renderCharts(summary = null, earningsPayload = null) {
   const months = Array.from({length:6},(_,i)=> {
     const d = new Date();
@@ -963,9 +938,11 @@ function renderCharts(summary = null, earningsPayload = null) {
     return d.toLocaleString('default',{month:'short'});
   });
 
+  // Students: if summary.studentsCount available, create a monotonic series to that number
   const studentsTarget = summary?.studentsCount ?? 27;
   const studentsData = [Math.max(0, studentsTarget-10), Math.max(0, studentsTarget-6), Math.max(0, studentsTarget-4), Math.max(0, studentsTarget-2), Math.max(0, studentsTarget-1), studentsTarget];
 
+  // Earnings: if earningsPayload.summary.total available, create ramp
   const total = Number(summary?.totalEarnings ?? (earningsPayload?.summary?.total ?? 234000));
   const base = Math.max(0, Math.round(total * 0.4));
   const earningsData = [
@@ -977,6 +954,7 @@ function renderCharts(summary = null, earningsPayload = null) {
     total
   ];
 
+  // Students chart
   const sCtx = document.getElementById("studentsChart").getContext("2d");
   if (window._studentsChart) window._studentsChart.destroy();
   window._studentsChart = new Chart(sCtx, {
@@ -997,6 +975,7 @@ function renderCharts(summary = null, earningsPayload = null) {
     options: { responsive:true, plugins: { legend: { display:false } }, scales: { y: { beginAtZero:true } } }
   });
 
+  // Earnings chart
   const eCtx = document.getElementById("earningsChart").getContext("2d");
   if (window._earningsChart) window._earningsChart.destroy();
   window._earningsChart = new Chart(eCtx, {
@@ -1076,6 +1055,7 @@ function switchProfileTab(tab) {
     document.getElementById('notifTabBtn').className = "tabBtn bg-indigo-100 text-indigo-800 px-6 py-2 rounded-t-lg font-bold border-b-2 border-indigo-500";
   }
 }
+
 </script>
 </body>
 </html>
