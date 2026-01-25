@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-50">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>OAU ExamGuard — Login</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
+  <style>
+    .input-base {
+      background: #fff;
+      border: 1px solid #e6e9ef;
+      border-radius: 10px;
+      padding: 0.85rem 1rem;
+      width: 100%;
+      box-sizing: border-box;
+      font-size: 15px;
+    }
+    .panel {
+      border-radius: 14px;
+      background: #fff;
+      box-shadow: 0 8px 30px rgba(2,6,23,0.06);
+    }
+    .brand {
+      color: #1e293b;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+    }
+    .small-muted { color: #6b7280; font-size: 13px; }
+    .password-toggle { cursor: pointer; color:#6366f1; }
+  </style>
+</head>
+<body class="h-full font-sans">
+
+  <div class="min-h-screen flex items-center justify-center px-4 py-12">
+    <div class="w-full max-w-3xl grid lg:grid-cols-2 gap-8 items-center">
+      <!-- Promo / Info -->
+      <div class="hidden lg:flex flex-col gap-6">
+        <div class="flex items-center gap-3">
+          <img src="https://ui-avatars.com/api/?name=OAU&background=ede9fe&color=3b82f6&size=56" alt="logo" class="w-14 h-14 rounded-md" />
+          <div>
+            <div class="brand text-2xl">OAU ExamGuard</div>
+            <div class="small-muted">Tutors · Students · Campus resources</div>
+          </div>
+        </div>
+        <div class="panel p-8">
+          <h2 class="text-2xl font-bold text-indigo-800">Welcome back</h2>
+          <p class="small-muted mt-2">Sign in to access your dashboard, manage sessions, assignments and earnings. If you don't have an account, <a href="tutor-reg.html" class="text-indigo-600 underline">apply to be a tutor</a>.</p>
+          <ul class="mt-6 text-sm space-y-2 small-muted">
+            <li>• Secure login with JWT tokens</li>
+            <li>• Tutor tools: assignments, sessions, messaging</li>
+            <li>• Fast access to earnings and withdrawals</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Login form -->
+      <div class="panel p-8">
+        <h1 class="text-2xl font-extrabold text-indigo-900 mb-1">Sign in to your account</h1>
+        <p class="small-muted mb-6">Use your username or email and password to sign in.</p>
+
+        <form id="loginForm" class="space-y-4" autocomplete="off">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-2">Username or Email</label>
+            <input id="identifier" name="identifier" class="input-base" type="text" inputmode="email" placeholder="you@example.com or username" required />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-2">Password</label>
+            <div class="relative">
+              <input id="password" name="password" class="input-base pr-12" type="password" placeholder="Enter your password" required />
+              <span id="togglePass" class="absolute right-3 top-3 password-toggle" title="Show / hide password"><i class="fa fa-eye"></i></span>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between">
+            <label class="flex items-center gap-2 text-sm">
+              <input id="remember" type="checkbox" class="h-4 w-4" />
+              <span class="small-muted">Remember me</span>
+            </label>
+            <a href="forgot-password.html" class="text-sm text-indigo-600 hover:underline">Forgot password?</a>
+          </div>
+
+          <div>
+            <button id="submitBtn" type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-lg flex items-center justify-center gap-3">
+              <span id="btnText">Sign in</span>
+              <svg id="spinner" class="hidden animate-spin w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+              </svg>
+            </button>
+          </div>
+
+          <div id="msg" class="text-center text-sm mt-1"></div>
+        </form>
+
+        <div class="mt-6 text-center small-muted">
+          Don't have an account? <a href="tutor-reg.html" class="text-indigo-600 underline">Apply as tutor</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/*
+  Login page
+  - Submits to backend: POST https://examguide.onrender.com/api/auth/login
+  - On success, stores JWT in localStorage under 'examguard_token' (or session if not remember)
+  - Fetches /api/auth/me to obtain user role to redirect appropriately
+*/
+const API_BASE = "https://examguide.onrender.com";
+
+const loginForm = document.getElementById('loginForm');
+const identifierInput = document.getElementById('identifier');
+const passwordInput = document.getElementById('password');
+const rememberCheckbox = document.getElementById('remember');
+const submitBtn = document.getElementById('submitBtn');
+const btnText = document.getElementById('btnText');
+const spinner = document.getElementById('spinner');
+const msg = document.getElementById('msg');
+const togglePass = document.getElementById('togglePass');
+
+togglePass.addEventListener('click', () => {
+  const t = passwordInput.type === 'password' ? 'text' : 'password';
+  passwordInput.type = t;
+  togglePass.innerHTML = t === 'text' ? '<i class="fa fa-eye-slash"></i>' : '<i class="fa fa-eye"></i>';
+});
+
+function setLoading(loading) {
+  submitBtn.disabled = loading;
+  spinner.classList.toggle('hidden', !loading);
+  btnText.textContent = loading ? 'Signing in...' : 'Sign in';
+  msg.textContent = '';
+}
+
+async function login(identifier, password) {
+  const res = await fetch(`${API_BASE}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: identifier, password })
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json?.message || json?.error || res.statusText || 'Login failed');
+  }
+  return json;
+}
+
+async function getCurrentUser(token) {
+  const res = await fetch(`${API_BASE}/api/auth/me`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  if (!res.ok) return null;
+  const json = await res.json();
+  // index.js returns { user } for /api/auth/me
+  return json?.user || null;
+}
+
+loginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  setLoading(true);
+  const identifier = identifierInput.value.trim();
+  const password = passwordInput.value;
+  if (!identifier || !password) {
+    msg.style.color = '#9b1c1c';
+    msg.textContent = 'Please enter username/email and password.';
+    setLoading(false);
+    return;
+  }
+
+  try {
+    const result = await login(identifier, password);
+    const token = result?.token;
+    if (!token) throw new Error('No token returned by server');
+
+    // Save token according to remember checkbox
+    try {
+      if (rememberCheckbox.checked) {
+        localStorage.setItem('examguard_token', token);
+      } else {
+        sessionStorage.setItem('examguard_token', token);
+      }
+    } catch (err) {
+      // Storage might be blocked; fall back to session
+      sessionStorage.setItem('examguard_token', token);
+    }
+
+    // Optionally fetch user profile to redirect correctly
+    const user = await getCurrentUser(token);
+    // Decide redirect:
+    // - tutors go to /tutor-dashboard.html (you may change as needed)
+    // - others to /dashboard.html
+    if (user && user.role === 'tutor') {
+      window.location.href = '/tutor-dashboard.html';
+    } else {
+      window.location.href = '/dashboard.html';
+    }
+  } catch (err) {
+    console.error('Login error', err);
+    msg.style.color = '#9b1c1c';
+    msg.textContent = err.message || 'Login failed. Check credentials.';
+    setLoading(false);
+  }
+});
+</script>
+</body>
+</html>
