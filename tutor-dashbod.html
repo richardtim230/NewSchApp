@@ -146,7 +146,7 @@
     </div>
   </section>
 
-  <!-- STUDENTS -->
+   <!-- STUDENTS -->
   <section id="section-students" class="hidden">
     <div class="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-2">
       <div>
@@ -364,7 +364,62 @@
   </section>
 </main>
 </div>
+<div id="studentRequestModal" class="fixed inset-0 z-50 hidden items-center justify-center eg-modal-bg px-4">
+  <div class="bg-white eg-modal shadow-2xl p-6 relative">
+    <button onclick="closeStudentRequestModal()" class="absolute top-4 right-4 text-gray-500 hover:text-red-600 text-2xl font-bold">&times;</button>
+    <div class="flex gap-6">
+      <div class="w-32 flex-shrink-0">
+        <img id="srmAvatar" src="https://ui-avatars.com/api/?name=Student&background=ede9fe&color=3b82f6&size=256" alt="Student" class="w-32 h-32 rounded-full object-cover border-4 border-indigo-100 shadow"/>
+      </div>
+      <div class="flex-1">
+        <div class="flex items-start justify-between">
+          <div>
+            <div id="srmName" class="text-2xl font-bold text-indigo-900">Student Name</div>
+            <div id="srmAcademicSummary" class="text-sm eg-muted mt-1">Program • Department • Level</div>
+          </div>
+          <div class="text-right">
+            <div id="srmRequestStatus" class="eg-pill">New Request</div>
+          </div>
+        </div>
 
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+          <div>
+            <div class="text-xs text-gray-500">Email</div>
+            <div id="srmEmail" class="font-semibold">—</div>
+          </div>
+          <div>
+            <div class="text-xs text-gray-500">Phone</div>
+            <div id="srmPhone" class="font-semibold">—</div>
+          </div>
+          <div>
+            <div class="text-xs text-gray-500">Department</div>
+            <div id="srmDept" class="font-semibold">—</div>
+          </div>
+          <div>
+            <div class="text-xs text-gray-500">Level</div>
+            <div id="srmLevel" class="font-semibold">—</div>
+          </div>
+        </div>
+
+        <div class="mt-4">
+          <div class="text-xs text-gray-500">Academic Interests / Subjects</div>
+          <div id="srmSubjects" class="flex flex-wrap gap-2 mt-2"></div>
+        </div>
+
+        <div class="mt-4">
+          <div class="text-xs text-gray-500">About (public)</div>
+          <div id="srmBio" class="mt-1 text-gray-700">—</div>
+        </div>
+
+        <div class="mt-6 flex gap-3">
+          <button id="srmAcceptBtn" onclick="acceptStudentRequest()" class="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg font-bold shadow">Accept</button>
+          <button id="srmRejectBtn" onclick="rejectStudentRequest()" class="bg-red-50 hover:bg-red-100 text-red-700 px-5 py-2 rounded-lg font-semibold border border-red-100">Reject</button>
+          <button onclick="closeStudentRequestModal()" class="ml-auto text-sm text-gray-500 hover:underline">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 <script>
 /*
   Dashboard integration with backend (examguide.onrender.com)
@@ -551,21 +606,37 @@ function populateStudents(students) {
   const tbody = document.getElementById("studentsTableBody");
   if (!tbody) return;
   tbody.innerHTML = "";
+  studentsMap = {};
   if (!students || !students.length) {
     tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-gray-400">No students found.</td></tr>`;
     return;
   }
   students.forEach(s => {
+    const sid = s._id || s.id || s.studentId || "";
+    studentsMap[String(sid)] = s;
     const last = s.lastSession || "—";
     const status = s.status || "Active";
+    // detect if there is an unread tutor-request notification from this student
+    const reqNote = activeRequestNoteByStudent[String(sid)];
+    const statusPill = status === 'Active' ? '<span class="bg-green-100 text-green-700 px-2 rounded-full text-xs font-semibold">Active</span>' : `<span class="bg-gray-100 text-gray-500 px-2 rounded-full text-xs font-semibold">${status}</span>`;
+    const subject = (s.meta && s.meta.subject) || (s.subjects && s.subjects[0]) || "—";
+    const actions = [];
+    // If there's a pending request from this student, show "Review Request" action (primary)
+    if (reqNote) {
+      actions.push(`<button onclick="openStudentRequestModal('${sid}')" class="bg-indigo-600 text-white px-3 py-1 rounded text-xs shadow hover:bg-indigo-800 mr-1"><i class="fa fa-user-check mr-1"></i> Review Request</button>`);
+      actions.push(`<button class="bg-gray-100 text-gray-700 px-3 py-1 rounded text-xs shadow" onclick="window.location.href='#'"><i class="fa fa-comment-dots mr-1"></i> Message</button>`);
+    } else {
+      actions.push(`<button class="bg-indigo-700 text-white px-4 py-1 rounded shadow text-xs hover:bg-indigo-800 mr-1"><i class="fa fa-message"></i> Message</button>`);
+    }
+
     tbody.innerHTML += `
       <tr>
-        <td class="px-4 py-3 font-bold text-indigo-900">${s.fullname || s.username || "Student"}</td>
+        <td class="px-4 py-3 font-bold text-indigo-900">${s.fullname || s.username || "Student"} ${reqNote ? '<span class="ml-2 inline-block bg-amber-100 text-amber-700 text-xs font-semibold px-2 py-0.5 rounded">New Request</span>' : ''}</td>
         <td class="px-4 py-3">${s.email || s.phone || "—"}</td>
-        <td class="px-4 py-3">${(s.meta && s.meta.subject) || "—"}</td>
-        <td class="px-4 py-3">${status === 'Active' ? '<span class="bg-green-100 text-green-700 px-2 rounded-full text-xs font-semibold">Active</span>' : '<span class="bg-gray-100 text-gray-500 px-2 rounded-full text-xs font-semibold">Inactive</span>'}</td>
+        <td class="px-4 py-3">${subject}</td>
+        <td class="px-4 py-3">${statusPill}</td>
         <td class="px-4 py-3">${last}</td>
-        <td class="px-4 py-3"><button class="bg-indigo-700 text-white px-4 py-1 rounded shadow text-xs hover:bg-indigo-800">Message</button></td>
+        <td class="px-4 py-3">${actions.join('')}</td>
       </tr>
     `;
   });
@@ -715,7 +786,147 @@ function populateReviews(reviews) {
   console.log("reviews loaded:", reviews && reviews.length ? reviews.length : 0);
 }
 
-// Charts: use provided summary and earnings to synthesize plausible series.
+// ---------- Student request modal logic ----------
+
+function openStudentRequestModal(studentId) {
+  const s = studentsMap[String(studentId)];
+  if (!s) {
+    alert("Student data not available.");
+    return;
+  }
+  const note = activeRequestNoteByStudent[String(studentId)];
+  // Fill modal fields
+  document.getElementById("srmAvatar").src = s.profilePic || s.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(s.fullname || s.username || "Student")}&background=ede9fe&color=3b82f6&size=256`;
+  document.getElementById("srmName").textContent = s.fullname || s.username || "Student";
+  const program = (s.academic && s.academic.program) || (s.meta && s.meta.program) || s.program || "";
+  const dept = (s.academic && s.academic.department) || (s.meta && s.meta.department) || s.department || "";
+  const level = (s.academic && s.academic.level) || (s.meta && s.meta.level) || s.level || "";
+  document.getElementById("srmAcademicSummary").textContent = [program, dept, level].filter(Boolean).join(" • ") || "Academic details not provided";
+  document.getElementById("srmEmail").textContent = s.email || "—";
+  document.getElementById("srmPhone").textContent = s.phone || "—";
+  document.getElementById("srmDept").textContent = dept || "—";
+  document.getElementById("srmLevel").textContent = level || "—";
+  // subjects / interests
+  const subs = (s.subjects && s.subjects.length) ? s.subjects : (s.interests && s.interests.length ? s.interests : (s.meta && s.meta.subjects) || []);
+  const subsContainer = document.getElementById("srmSubjects");
+  subsContainer.innerHTML = "";
+  (subs || []).slice(0, 12).forEach(sub => {
+    const sp = document.createElement("span");
+    sp.className = "px-2 py-1 bg-indigo-50 text-indigo-700 text-xs rounded-full font-semibold";
+    sp.textContent = sub;
+    subsContainer.appendChild(sp);
+  });
+  document.getElementById("srmBio").textContent = s.about || s.bio || s.publicProfile || "No public bio available.";
+  // store currently viewed student id & notification id on modal buttons via dataset
+  const acceptBtn = document.getElementById("srmAcceptBtn");
+  const rejectBtn = document.getElementById("srmRejectBtn");
+  acceptBtn.dataset.studentId = String(studentId);
+  acceptBtn.dataset.noteId = note ? String(note._id || note.id) : "";
+  rejectBtn.dataset.studentId = String(studentId);
+  rejectBtn.dataset.noteId = note ? String(note._id || note.id) : "";
+
+  // show modal
+  document.getElementById("studentRequestModal").classList.remove("hidden");
+}
+
+function closeStudentRequestModal() {
+  document.getElementById("studentRequestModal").classList.add("hidden");
+  // clear dataset
+  document.getElementById("srmAcceptBtn").dataset.studentId = "";
+  document.getElementById("srmAcceptBtn").dataset.noteId = "";
+  document.getElementById("srmRejectBtn").dataset.studentId = "";
+  document.getElementById("srmRejectBtn").dataset.noteId = "";
+}
+
+// Accept: mark notification read + notify student -> update UI
+async function acceptStudentRequest() {
+  const btn = document.getElementById("srmAcceptBtn");
+  const studentId = btn.dataset.studentId;
+  const noteId = btn.dataset.noteId;
+  if (!studentId) return alert("Missing student id.");
+  btn.disabled = true; btn.textContent = "Accepting...";
+
+  try {
+    // mark notification as read if exists
+    if (noteId) {
+      await fetchJSON(`/api/tutors/notifications/${noteId}/read`, { method: "PATCH" });
+      // update local maps
+      delete activeRequestNoteByStudent[String(studentId)];
+    }
+    // send a message to student to inform acceptance
+    await fetchJSON("/api/tutors/messages", {
+      method: "POST",
+      body: JSON.stringify({
+        to: studentId,
+        text: "Hello! Your request has been accepted by the tutor. Please check your messages to arrange scheduling."
+      })
+    });
+    
+    if (Array.isArray(currentStudentsList)) {
+      // mark local student as 'Assigned' or update as required
+      currentStudentsList = currentStudentsList.map(st => {
+        if (String(st._id) === String(studentId) || String(st.id) === String(studentId)) {
+          st.status = "Assigned";
+        }
+        return st;
+      });
+      populateStudents(currentStudentsList);
+    }
+    // remove notification from list and notifications UI
+    tutorNotifications = tutorNotifications.filter(n => String(n._id || n.id) !== String(noteId));
+    populateNotifications(tutorNotifications);
+    closeStudentRequestModal();
+    alert("Student request accepted. A message has been sent to the student.");
+  } catch (err) {
+    console.error("Accept failed", err);
+    alert("Could not accept the request. See console for details.");
+  } finally {
+    btn.disabled = false; btn.textContent = "Accept";
+  }
+}
+
+// Reject: mark notification read + notify student -> update UI
+async function rejectStudentRequest() {
+  const btn = document.getElementById("srmRejectBtn");
+  const studentId = btn.dataset.studentId;
+  const noteId = btn.dataset.noteId;
+  if (!studentId) return alert("Missing student id.");
+  btn.disabled = true; btn.textContent = "Processing...";
+
+  try {
+    if (noteId) {
+      await fetchJSON(`/api/tutors/notifications/${noteId}/read`, { method: "PATCH" });
+      delete activeRequestNoteByStudent[String(studentId)];
+    }
+    await fetchJSON("/api/tutors/messages", {
+      method: "POST",
+      body: JSON.stringify({
+        to: studentId,
+        text: "Hello. Thank you for your request. Unfortunately, I am unable to take on new tutoring requests at this time."
+      })
+    });
+    // Update UI
+    if (Array.isArray(currentStudentsList)) {
+      currentStudentsList = currentStudentsList.map(st => {
+        if (String(st._id) === String(studentId) || String(st.id) === String(studentId)) {
+          // keep status but remove new-request badge by not adding to activeRequestNoteByStudent
+        }
+        return st;
+      });
+      populateStudents(currentStudentsList);
+    }
+    tutorNotifications = tutorNotifications.filter(n => String(n._id || n.id) !== String(noteId));
+    populateNotifications(tutorNotifications);
+    closeStudentRequestModal();
+    alert("Student request rejected. A message has been sent to the student.");
+  } catch (err) {
+    console.error("Reject failed", err);
+    alert("Could not reject the request. See console for details.");
+  } finally {
+    btn.disabled = false; btn.textContent = "Reject";
+  }
+}
+  
 // If not provided, charts will show demo data.
 function renderCharts(summary = null, earningsPayload = null) {
   const months = Array.from({length:6},(_,i)=> {
