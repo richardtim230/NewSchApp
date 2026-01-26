@@ -1366,8 +1366,8 @@ document.addEventListener("DOMContentLoaded", function () {
     </div>
   </div>
 </div>
-       <script>
-const BROADCAST_API = "https://examguide.onrender.com/api/announcements";
+<script>
+const BROADCAST_API = "https://examguide.onrender.com/api/broadcasts";
 
 const BROADCAST_STYLES = {
   system: { border: "border-indigo-600", text: "text-indigo-900", btn: "bg-indigo-50 text-indigo-700" },
@@ -1376,13 +1376,36 @@ const BROADCAST_STYLES = {
   info: { border: "border-gray-400", text: "text-gray-800", btn: "bg-gray-100 text-gray-700" }
 };
 
+// Fetch broadcasts from API
 async function fetchBroadcasts() {
-  const res = await fetch(BROADCAST_API, { credentials: "include" });
-  if (!res.ok) return [];
-  return res.json();
+  try {
+    const res = await fetch(BROADCAST_API, { credentials: "include" });
+    if (!res.ok) {
+      const message = await res.text();
+      console.error("Broadcast fetch failed", res.status, message);
+      return [];
+    }
+    return res.json();
+  } catch(e) {
+    console.error("Broadcast fetch error", e);
+    return [];
+  }
 }
 
-function renderBroadcasts(list) {
+// Fetch current user ID for 'read' tracking
+async function getCurrentUserId() {
+  try {
+    const res = await fetch("https://examguide.onrender.com/api/auth/me", { credentials: "include" });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.user && (data.user._id || data.user.id);
+  } catch {
+    return null;
+  }
+}
+
+// Display broadcasts and highlight read/unread per user
+function renderBroadcasts(list, currentUserId) {
   const container = document.getElementById("broadcastsFeed");
   if (!container) return;
 
@@ -1396,6 +1419,8 @@ function renderBroadcasts(list) {
 
   container.innerHTML = list.map(b => {
     const style = BROADCAST_STYLES[b.type] || BROADCAST_STYLES.info;
+    // Determine if current user has read this broadcast
+    const read = Array.isArray(b.seenBy) && currentUserId && b.seenBy.includes(currentUserId);
     return `
       <div class="bg-white rounded-xl shadow p-6 flex flex-col md:flex-row gap-6 items-center border-l-4 ${style.border}">
         <div class="flex-1">
@@ -1409,7 +1434,7 @@ function renderBroadcasts(list) {
             ${new Date(b.createdAt).toLocaleDateString()} • ${b.author || "System"}
           </span>
           ${
-            !b.read
+            !read
               ? `<button onclick="markBroadcastRead('${b._id}')"
                    class="mt-2 ${style.btn} font-semibold rounded px-4 py-1 text-xs hover:opacity-80">
                    Mark as read
@@ -1422,18 +1447,34 @@ function renderBroadcasts(list) {
   }).join("");
 }
 
+// Mark a broadcast as read for the current user
 async function markBroadcastRead(id) {
-  await fetch(`${BROADCAST_API}/${id}/read`, {
-    method: "PATCH",
-    credentials: "include"
-  });
+  try {
+    const res = await fetch(`${BROADCAST_API}/${id}/read`, {
+      method: "PATCH",
+      credentials: "include"
+    });
+    if (!res.ok) {
+      const msg = await res.text();
+      console.error("Failed to mark as read:", msg);
+    }
+  } catch(e) {
+    console.error("Error marking as read", e);
+  }
+  // Reload after marking as read
   loadBroadcasts();
 }
 
+// Load and render the broadcasts feed
 async function loadBroadcasts() {
-  const data = await fetchBroadcasts();
-  renderBroadcasts(data);
+  const [broadcasts, userId] = await Promise.all([fetchBroadcasts(), getCurrentUserId()]);
+  renderBroadcasts(broadcasts, userId);
 }
+
+// Load on page ready; if you show/hide this section with tab/SPA, call loadBroadcasts() on section switch!
+document.addEventListener("DOMContentLoaded", () => {
+  loadBroadcasts();
+});
 </script>
 
 <div id="studyPadi-section" class="section-block hidden">
