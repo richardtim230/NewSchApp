@@ -1331,43 +1331,10 @@ document.addEventListener("DOMContentLoaded", function () {
     </div>
 
     <!-- Broadcasts Feed -->
-    <div class="flex flex-col gap-6">
-      <!-- Broadcast Card Example -->
-      <div class="bg-white rounded-xl shadow p-6 flex flex-col md:flex-row gap-6 items-center border-l-4 border-indigo-600">
-        <div class="flex-1">
-          <h3 class="font-bold text-lg text-indigo-900 flex items-center gap-2">
-            <svg class="w-5 h-5 text-yellow-500" fill="none" stroke="currentColor"><path d="M15 17h5l-1.405-1.405M18 14.158V11a6 6 0 10-12 0v3.159" stroke-width="1.5"></path></svg>
-            System Maintenance Scheduled
-          </h3>
-          <div class="text-sm text-gray-600 mt-1">
-            <span>There will be a brief downtime on Jan 5th, 2026 from 2:00am to 3:00am. Please save your work in advance.</span>
-          </div>
-        </div>
-        <div class="flex flex-col items-end md:w-36">
-          <span class="text-xs text-gray-400">Jan 2, 2026 • Admin</span>
-          <button class="mt-2 bg-indigo-50 text-indigo-700 font-semibold rounded px-4 py-1 text-xs hover:bg-indigo-100">Mark as read</button>
-        </div>
-      </div>
-      <!-- Broadcast Card Example 2 -->
-      <div class="bg-white rounded-xl shadow p-6 flex flex-col md:flex-row gap-6 items-center border-l-4 border-green-500">
-        <div class="flex-1">
-          <h3 class="font-bold text-lg text-green-800 flex items-center gap-2">
-            <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10" stroke-width="2"/><path d="M10 12l2 2 4-4" stroke-width="2"/></svg>
-            New Mock Exams Available!
-          </h3>
-          <div class="text-sm text-gray-600 mt-1">
-            <span>Don’t miss our January set of mock exams now open for registration. Visit the Mock Tests section to participate.</span>
-          </div>
-        </div>
-        <div class="flex flex-col items-end md:w-36">
-          <span class="text-xs text-gray-400">Jan 1, 2026 • System</span>
-          <button class="mt-2 bg-green-50 text-green-700 font-semibold rounded px-4 py-1 text-xs hover:bg-green-100">Mark as read</button>
-        </div>
-      </div>
-      <!-- ...add more broadcast cards as needed -->
-    </div>
+<div id="broadcastsFeed" class="flex flex-col gap-6">
+  <!-- injected by JS -->
+</div>
 
-  
 
     <!-- Create Broadcast Modal -->
     <div class="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center hidden" id="createBroadcastModal">
@@ -1399,7 +1366,76 @@ document.addEventListener("DOMContentLoaded", function () {
     </div>
   </div>
 </div>
-        <!-- My StudyPadi Section -->
+       <script>
+const BROADCAST_API = "https://examguide.onrender.com/api/broadcasts";
+
+const BROADCAST_STYLES = {
+  system: { border: "border-indigo-600", text: "text-indigo-900", btn: "bg-indigo-50 text-indigo-700" },
+  success: { border: "border-green-500", text: "text-green-800", btn: "bg-green-50 text-green-700" },
+  warning: { border: "border-yellow-500", text: "text-yellow-800", btn: "bg-yellow-50 text-yellow-700" },
+  info: { border: "border-gray-400", text: "text-gray-800", btn: "bg-gray-100 text-gray-700" }
+};
+
+async function fetchBroadcasts() {
+  const res = await fetch(BROADCAST_API, { credentials: "include" });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+function renderBroadcasts(list) {
+  const container = document.getElementById("broadcastsFeed");
+  if (!container) return;
+
+  if (!list.length) {
+    container.innerHTML = `
+      <div class="text-center text-gray-400 py-10">
+        No broadcasts available.
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = list.map(b => {
+    const style = BROADCAST_STYLES[b.type] || BROADCAST_STYLES.info;
+    return `
+      <div class="bg-white rounded-xl shadow p-6 flex flex-col md:flex-row gap-6 items-center border-l-4 ${style.border}">
+        <div class="flex-1">
+          <h3 class="font-bold text-lg ${style.text}">
+            ${b.title}
+          </h3>
+          <p class="text-sm text-gray-600 mt-1">${b.message}</p>
+        </div>
+        <div class="flex flex-col items-end md:w-40">
+          <span class="text-xs text-gray-400">
+            ${new Date(b.createdAt).toLocaleDateString()} • ${b.author || "System"}
+          </span>
+          ${
+            !b.read
+              ? `<button onclick="markBroadcastRead('${b._id}')"
+                   class="mt-2 ${style.btn} font-semibold rounded px-4 py-1 text-xs hover:opacity-80">
+                   Mark as read
+                 </button>`
+              : `<span class="mt-2 text-xs text-green-600 font-semibold">Read</span>`
+          }
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+async function markBroadcastRead(id) {
+  await fetch(`${BROADCAST_API}/${id}/read`, {
+    method: "PATCH",
+    credentials: "include"
+  });
+  loadBroadcasts();
+}
+
+async function loadBroadcasts() {
+  const data = await fetchBroadcasts();
+  renderBroadcasts(data);
+}
+</script>
+
 <div id="studyPadi-section" class="section-block hidden">
   <div class="max-w-6xl mx-auto py-10 px-2 md:px-6">
     <!-- Section Header -->
