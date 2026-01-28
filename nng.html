@@ -1479,7 +1479,6 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 </script>
 
-
 <div id="studyPadi-section" class="section-block hidden">
   <div class="max-w-6xl mx-auto py-10 px-2 md:px-6">
     <!-- Section Header -->
@@ -1661,13 +1660,13 @@ function spinnerInline() {
 }
 
 // Disable button and show spinner
-function setButtonLoading(btn, loading, labelWhenDone) {
+function setButtonLoading(btn, loading, labelWhenProcessing) {
   if (!btn) return;
   if (loading) {
-    btn.dataset.origHtml = btn.innerHTML;
+    if (!btn.dataset.origHtml) btn.dataset.origHtml = btn.innerHTML;
     btn.disabled = true;
     btn.classList.add('opacity-70', 'pointer-events-none');
-    btn.innerHTML = spinnerInline() + (labelWhenDone || 'Processing');
+    btn.innerHTML = spinnerInline() + (labelWhenProcessing || (btn.dataset.origLabel || btn.innerText || 'Processing'));
   } else {
     btn.disabled = false;
     btn.classList.remove('opacity-70', 'pointer-events-none');
@@ -1678,33 +1677,35 @@ function setButtonLoading(btn, loading, labelWhenDone) {
   }
 }
 
-/* --- Loaders --- */
+/* Normalize backend documents to expose .id for convenience */
+function normalizeGoal(g) { return { ...g, id: g._id || g.id }; }
+function normalizeSession(s) { return { ...s, id: s._id || s.id }; }
+function normalizeTimeline(t) { return { ...t, id: t._id || t.id }; }
+
+/* --- Loaders (normalize _id -> id) --- */
 async function loadGoals() {
   try {
     const data = await apiGET("/goals");
-    goals = Array.isArray(data) ? data : (data.goals || []);
-  } catch (e) {
-    console.error("loadGoals:", e);
-    goals = [];
-  }
+    if (Array.isArray(data)) goals = data.map(normalizeGoal);
+    else if (Array.isArray(data.goals)) goals = data.goals.map(normalizeGoal);
+    else goals = [];
+  } catch (e) { console.error("loadGoals:", e); goals = []; }
 }
 async function loadSessions() {
   try {
     const data = await apiGET("/sessions");
-    sessions = Array.isArray(data) ? data : (data.sessions || []);
-  } catch (e) {
-    console.error("loadSessions:", e);
-    sessions = [];
-  }
+    if (Array.isArray(data)) sessions = data.map(normalizeSession);
+    else if (Array.isArray(data.sessions)) sessions = data.sessions.map(normalizeSession);
+    else sessions = [];
+  } catch (e) { console.error("loadSessions:", e); sessions = []; }
 }
 async function loadTimeline() {
   try {
     const data = await apiGET("/timeline");
-    timeline = Array.isArray(data) ? data : (data.timeline || []);
-  } catch (e) {
-    console.error("loadTimeline:", e);
-    timeline = [];
-  }
+    if (Array.isArray(data)) timeline = data.map(normalizeTimeline);
+    else if (Array.isArray(data.timeline)) timeline = data.timeline.map(normalizeTimeline);
+    else timeline = [];
+  } catch (e) { console.error("loadTimeline:", e); timeline = []; }
 }
 
 async function loadAllBackend() {
@@ -1720,7 +1721,7 @@ function renderCards() {
   // Upcoming session (next that is not ended)
   const upcoming = sessions.filter(s => !s.endedAt && s.status !== 'cancelled').sort((a,b)=> new Date(a.start) - new Date(b.start))[0];
   if (upcoming) {
-    const g = upcoming.goalId ? goals.find(x => x.id === upcoming.goalId) : null;
+    const g = upcoming.goalId ? goals.find(x => x.id === upcoming.goalId || x._id === upcoming.goalId) : null;
     const startLabel = fmtDateTime(upcoming.start);
     const card = document.createElement('div');
     card.className = 'bg-white rounded-xl shadow p-6 flex flex-col gap-3';
@@ -1732,9 +1733,9 @@ function renderCards() {
       <h3 class="font-bold text-lg text-indigo-900 mb-2">${ g ? esc(g.title) : 'Quick Study Session' }</h3>
       <p class="text-gray-600 mb-2 text-sm">Duration: ${esc(upcoming.durationMin)} mins<br>Status: ${esc(upcoming.status || 'scheduled')}</p>
       <div class="flex gap-2">
-        ${upcoming.status === 'in-progress' ? `<button class="action-btn bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded px-4 py-2 text-xs shadow" data-action="end" data-id="${upcoming.id}">End Session</button>`
-        : `<button class="action-btn bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded px-4 py-2 text-xs shadow" data-action="join" data-id="${upcoming.id}">Join Session</button>`}
-        <button class="action-btn bg-white border border-gray-200 text-gray-700 rounded px-3 py-2 text-xs" data-action="cancel" data-id="${upcoming.id}">Cancel</button>
+        ${upcoming.status === 'in-progress' ? `<button class="action-btn action-small bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded px-4 py-2 text-xs shadow" data-action="end" data-id="${upcoming.id}">End Session</button>`
+        : `<button class="action-btn action-small bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded px-4 py-2 text-xs shadow" data-action="join" data-id="${upcoming.id}">Join Session</button>`}
+        <button class="action-btn action-small bg-white border border-gray-200 text-gray-700 rounded px-3 py-2 text-xs" data-action="cancel" data-id="${upcoming.id}">Cancel</button>
       </div>
     `;
     container.appendChild(card);
@@ -1748,7 +1749,7 @@ function renderCards() {
       </div>
       <h3 class="font-bold text-lg text-indigo-900 mb-2">Start a session now</h3>
       <p class="text-gray-600 mb-2 text-sm">Use Quick Session to start a focused study period.</p>
-      <button class="action-btn bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded px-4 py-2 text-xs shadow" id="startQuickBtn">Start Quick Session</button>
+      <button class="action-btn action-small bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded px-4 py-2 text-xs shadow" id="startQuickBtn">Start Quick Session</button>
     `;
     container.appendChild(card);
   }
@@ -1761,6 +1762,8 @@ function renderCards() {
     container.appendChild(empty);
   } else {
     goals.slice().sort((a,b)=> new Date(b.createdAt) - new Date(a.createdAt)).forEach(goal => {
+      // use normalized goal.id (from _id)
+      const idVal = goal.id || goal._id;
       const card = document.createElement('div');
       card.className = 'bg-white rounded-xl shadow p-6 flex flex-col gap-3';
       card.innerHTML = `
@@ -1775,9 +1778,9 @@ function renderCards() {
         </div>
         <p class="text-gray-600 mb-2 text-sm">${esc(goal.description||'')}</p>
         <div class="flex gap-2">
-          <button class="action-btn bg-yellow-100 hover:bg-yellow-200 text-yellow-700 font-bold rounded px-4 py-2 text-xs shadow" data-action="toggleDone" data-id="${goal.id}">${goal.completed ? 'Completed' : 'Mark as Done'}</button>
-          <button class="action-btn bg-white border border-gray-200 text-gray-700 rounded px-3 py-2 text-xs" data-action="edit" data-id="${goal.id}">Edit</button>
-          <button class="action-btn bg-white border border-gray-200 text-red-600 rounded px-3 py-2 text-xs" data-action="delete" data-id="${goal.id}">Delete</button>
+          <button class="action-btn action-small bg-yellow-100 hover:bg-yellow-200 text-yellow-700 font-bold rounded px-4 py-2 text-xs shadow" data-action="toggleDone" data-id="${idVal}">${goal.completed ? 'Completed' : 'Mark as Done'}</button>
+          <button class="action-btn action-small bg-white border border-gray-200 text-gray-700 rounded px-3 py-2 text-xs" data-action="edit" data-id="${idVal}">Edit</button>
+          <button class="action-btn action-small bg-white border border-gray-200 text-red-600 rounded px-3 py-2 text-xs" data-action="delete" data-id="${idVal}">Delete</button>
         </div>
       `;
       container.appendChild(card);
@@ -1845,14 +1848,14 @@ async function removeGoal(id) { return apiDELETE(`/goals/${encodeURIComponent(id
 async function createSession(payload) { return apiPOST("/sessions", payload); }
 async function patchSession(id, payload) { return apiPATCH(`/sessions/${encodeURIComponent(id)}`, payload); }
 
-/* === Centralized delegated handler for card actions === */
+/* === Centralized delegated handler for card actions (single listener) === */
 document.getElementById('padi-cards').addEventListener('click', async function (e) {
   const btn = e.target.closest('[data-action]');
   if (!btn) return;
   const action = btn.dataset.action;
   const id = btn.dataset.id;
 
-  // Use spinner helper on btn
+  // Show spinner on clicked button
   try {
     setButtonLoading(btn, true, action === 'toggleDone' ? (btn.innerText || 'Working') : 'Processing');
 
@@ -1860,15 +1863,15 @@ document.getElementById('padi-cards').addEventListener('click', async function (
       await patchSession(id, { action });
       await loadAllBackend();
     } else if (action === 'toggleDone') {
-      const g = goals.find(x => x.id === id);
+      const g = goals.find(x => (x.id === id) || (x._id === id));
       if (!g) throw new Error('Goal not found');
       await updateGoal(id, { completed: !g.completed });
       await loadAllBackend();
     } else if (action === 'edit') {
-      const g = goals.find(x => x.id === id);
+      const g = goals.find(x => (x.id === id) || (x._id === id));
       if (!g) throw new Error('Goal not found');
       // fill modal
-      document.getElementById('padiId').value = g.id;
+      document.getElementById('padiId').value = g.id || g._id;
       document.getElementById('padiTitle').value = g.title;
       document.getElementById('padiCourse').value = g.course || '';
       document.getElementById('padiDue').value = g.due ? new Date(g.due).toISOString().slice(0,10) : '';
@@ -1878,13 +1881,13 @@ document.getElementById('padi-cards').addEventListener('click', async function (
       document.getElementById('padiDeleteBtn').classList.remove('hidden');
       document.getElementById('addPadiModal').classList.remove('hidden');
 
-      // wire delete button only once per edit open
+      // wire delete button (replace previous handler)
       const delBtn = document.getElementById('padiDeleteBtn');
       delBtn.onclick = async () => {
         if (!confirm('Delete this goal?')) return;
         try {
           setButtonLoading(delBtn, true, 'Deleting');
-          await removeGoal(g.id);
+          await removeGoal(g.id || g._id);
           document.getElementById('addPadiModal').classList.add('hidden');
           await loadAllBackend();
         } catch (err) {
@@ -1907,11 +1910,10 @@ document.getElementById('padi-cards').addEventListener('click', async function (
   }
 });
 
-/* Also attach delegated handler for startQuickBtn if present (card created dynamically) */
+/* Also attach click for startQuickBtn (dynamically created) */
 document.getElementById('padi-cards').addEventListener('click', function(e){
-  if (e.target.id === 'startQuickBtn' || e.target.closest('#startQuickBtn')) {
-    openQuickSession();
-  }
+  const el = e.target.closest('#startQuickBtn');
+  if (el) openQuickSession();
 });
 
 /* Modal wiring */
@@ -1956,7 +1958,7 @@ document.getElementById('padiForm')?.addEventListener('submit', async function(e
 /* Quick session modal wiring */
 function openQuickSession(){
   const sel = document.getElementById('quickSessionGoal');
-  sel.innerHTML = '<option value="">-- None --</option>' + goals.map(g=>`<option value="${esc(g.id)}">${esc(g.title)}</option>`).join('');
+  sel.innerHTML = '<option value="">-- None --</option>' + goals.map(g=>`<option value="${esc(g.id || g._id)}">${esc(g.title)}</option>`).join('');
   const now = new Date();
   document.getElementById('quickStart').value = now.toISOString().slice(0,16);
   document.getElementById('quickSessionModal').classList.remove('hidden');
