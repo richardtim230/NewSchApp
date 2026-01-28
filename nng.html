@@ -1752,120 +1752,162 @@ function setAiUiBusy(b) {
   padiAiSubmitLabel.textContent = b ? 'Converting…' : 'Convert';
 }
 
-function renderExamAiOutput(out) {
-  lastRenderedOut = out;
-  examQuestionSet.innerHTML = '';
+
+function renderAiExamResult(out) {
+  // Helper
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/[&<>"]/g, function(s) {
+        switch(s){
+          case '&':return '&amp;';
+          case '<':return '&lt;';
+          case '>':return '&gt;';
+          case '"':return '&quot;';
+        }
+      });
+  }
+  const examQuestionSet = document.getElementById('examQuestionSet');
+  const examSetStats = document.getElementById('examSetStats');
+  const padiAiResult = document.getElementById('padiAiResult');
+  const padiAiDownload = document.getElementById('padiAiDownload');
+  const padiRevealAnswersWrap = document.getElementById('padiRevealAnswersWrap');
+  const padiRevealAnswers = document.getElementById('padiRevealAnswers');
+
+  padiAiResult.classList.remove('hidden');
   examSetStats.textContent = '';
-  padiRevealAnswers.checked = false;
-  padiRevealAnswersWrap.classList.add('hidden');
-  let title = out.title || out.setTitle || out.examTitle || '';
-  let questions = Array.isArray(out.questions) ? out.questions : [];
-  let qCount = questions.length;
+  padiRevealAnswersWrap.classList.add('hidden'); // hide unless MCQ
+  
+  let questionsArray = null;
+  let examTxt = null;
 
-  if (qCount) {
-    examSetStats.textContent = `(${qCount} questions)`;
+  // Detect structure
+  if (out.questions && Array.isArray(out.questions)) {
+    questionsArray = out.questions;
+  } else if (out.questions && typeof out.questions.raw === 'string') {
+    examTxt = out.questions.raw;
+  } else if (out.questions && Array.isArray(out.questions.raw)) {
+    questionsArray = out.questions.raw;
+  } else if (typeof out.raw === 'string') {
+    examTxt = out.raw;
+  } else if (typeof out.questions === 'string') {
+    examTxt = out.questions;
   }
 
-  // Show reveal toggle for MCQ/short/mixed
-  if (qCount > 0) padiRevealAnswersWrap.classList.remove('hidden');
-  else padiRevealAnswersWrap.classList.add('hidden');
+  if (questionsArray && questionsArray.length) {
+    // MCQ/Short-answer array output
+    examSetStats.textContent = `(${questionsArray.length} questions)`;
+    padiRevealAnswersWrap.classList.remove('hidden');
 
-  let html = '';
-  if (title) {
-    html += `<div class="font-semibold text-indigo-800 text-xl mb-1 mt-2" style="letter-spacing:.01em;">${escapeHtml(title)}</div>`;
-  }
-
-  // Render question cards:
-  html += '<div>';
-  questions.forEach((q, i) => {
-    let qText = q.question || q.text || q.prompt || q.title || `Question ${i+1}`;
-    let opts = q.options || q.choices || null;
-    let answer = q.answer || q.correct || q.key || q.solution || null;
-    let explanation = q.explanation || q.expl || q.reason || null;
-
-    html += `<div class="exam-question-card" id="exam-qcard-${i}">
+    let html = '';
+    questionsArray.forEach((q, i) => {
+      let qText = q.question || q.text || q.prompt || q.title || `Question ${i+1}`;
+      let opts = q.options || q.choices || null;
+      let answer = q.answer || q.correct || q.key || q.solution || null;
+      let explanation = q.explanation || q.expl || q.reason || null;
+      html += `<div class="exam-question-card" id="exam-qcard-${i}">
         <div><span class="exam-qnum">${i+1}.</span> <span class="exam-qtext">${escapeHtml(qText)}</span></div>`;
-
-    // MCQ options
-    if (Array.isArray(opts) && opts.length) {
-      html += `<div class="exam-mcq-opts pt-2">`;
-      opts.forEach((opt, j) => {
-        html += `<div class="exam-mcq-opt">
-                   <label><input name="aiq_${i}" type="radio" value="${escapeHtml(opt)}" disabled />
-                   <span>${String.fromCharCode(65+j)}. ${escapeHtml(opt)}</span></label>
-                 </div>`;
-      });
-      html += `</div>`;
-    }
-
-    // Reveal answer button (one per question) if answer exists
-    if (answer) {
-      html += `<button class="exam-reveal-btn mt-2" type="button" data-idx="${i}">Reveal Answer</button>`;
-      // The answer/explanation rows
-      let ansHtml = '', explHtml = '';
-      // For MCQ, pretty answer badge
-      if (opts && /^\d+$/.test(String(answer))) {
-        let idx = parseInt(answer,10),
-           letter=String.fromCharCode(65+idx),
-           txt=(opts[idx]||answer);
-        ansHtml = `<span class="exam-ans-badge">Correct</span> ${letter}. ${escapeHtml(txt)}`;
-      } else if (opts && typeof answer === 'string') {
-        let idx = opts.findIndex(o => String(o).trim().toLowerCase() === String(answer).trim().toLowerCase());
-        if (idx >= 0)
-          ansHtml = `<span class="exam-ans-badge">Correct</span> ${String.fromCharCode(65+idx)}. ${escapeHtml(answer)}`;
-        else
-          ansHtml = `<span class="exam-ans-badge">Correct</span> ${escapeHtml(answer)}`;
-      } else {
-        ansHtml = `<span class="exam-ans-badge">Answer</span> ${escapeHtml(answer)}`;
+      // MCQ options
+      if (Array.isArray(opts) && opts.length) {
+        html += `<div class="exam-mcq-opts pt-2">`;
+        opts.forEach((opt, j) => {
+          html += `<div class="exam-mcq-opt">
+            <label><input name="aiq_${i}" type="radio" value="${escapeHtml(opt)}" disabled />
+            <span>${String.fromCharCode(65+j)}. ${escapeHtml(opt)}</span></label>
+            </div>`;
+        });
+        html += `</div>`;
       }
-      if (explanation)
-        explHtml = `<div class="exam-expl-row">${escapeHtml(explanation)}</div>`;
+      if (answer) {
+        html += `<button class="exam-reveal-btn mt-2" type="button" data-idx="${i}">Reveal Answer</button>`;
+        let ansHtml = '';
+        if (opts && /^\d+$/.test(String(answer))) {
+          let idx = parseInt(answer,10),
+            letter=String.fromCharCode(65+idx),
+            txt=(opts[idx]||answer);
+          ansHtml = `<span class="exam-ans-badge">Correct</span> ${letter}. ${escapeHtml(txt)}`;
+        } else if (opts && typeof answer === 'string') {
+          let idx = opts.findIndex(o => String(o).trim().toLowerCase() === String(answer).trim().toLowerCase());
+          if (idx >= 0)
+            ansHtml = `<span class="exam-ans-badge">Correct</span> ${String.fromCharCode(65+idx)}. ${escapeHtml(answer)}`;
+          else
+            ansHtml = `<span class="exam-ans-badge">Correct</span> ${escapeHtml(answer)}`;
+        } else {
+          ansHtml = `<span class="exam-ans-badge">Answer</span> ${escapeHtml(answer)}`;
+        }
+        let explHtml = explanation ? `<div class="exam-expl-row">${escapeHtml(explanation)}</div>` : '';
+        html += `<div class="exam-answer-row" id="exam-ans-${i}">${ansHtml}</div>${explHtml}`;
+      }
+      html += `</div>`;
+    });
+    examQuestionSet.innerHTML = html;
 
-      html += `<div class="exam-answer-row" id="exam-ans-${i}">${ansHtml}</div>${explHtml}`;
-    }
-
-    html += `</div>`;
-  });
-  html += `</div>`;
-  examQuestionSet.innerHTML = html;
-
-  // Per-question reveal buttons
-  questions.forEach((q, i) => {
-    let btn = document.querySelector(`#exam-qcard-${i} .exam-reveal-btn`);
-    let ansDiv = document.getElementById(`exam-ans-${i}`);
-    if (btn && ansDiv) {
-      btn.addEventListener('click', function() {
-        let vis = ansDiv.classList.toggle('visible');
-        btn.textContent = vis ? "Hide Answer" : "Reveal Answer";
-      });
-    }
-  });
-
-  // Global 'reveal all answers' toggle
-  function updateRevealAll(checked) {
-    questions.forEach((q, i) => {
-      let ansDiv = document.getElementById(`exam-ans-${i}`);
+    // Per-question reveal
+    questionsArray.forEach((q, i) => {
       let btn = document.querySelector(`#exam-qcard-${i} .exam-reveal-btn`);
-      if (ansDiv) {
-        ansDiv.classList.toggle('visible', checked);
-        if (btn) btn.textContent = checked ? "Hide Answer" : "Reveal Answer";
+      let ansDiv = document.getElementById(`exam-ans-${i}`);
+      if (btn && ansDiv) {
+        btn.addEventListener('click', function() {
+          let vis = ansDiv.classList.toggle('visible');
+          btn.textContent = vis ? "Hide Answer" : "Reveal Answer";
+        });
       }
     });
-  }
-  padiRevealAnswers.onchange = () => updateRevealAll(padiRevealAnswers.checked);
 
-  // Download
-  padiAiDownload.onclick = () => {
-    const blob = new Blob([JSON.stringify(questions, null, 2)], {type: 'application/json'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `questions_${Date.now()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  };
+    // Global reveal all
+    function updateRevealAll(checked) {
+      questionsArray.forEach((q, i) => {
+        let ansDiv = document.getElementById(`exam-ans-${i}`);
+        let btn = document.querySelector(`#exam-qcard-${i} .exam-reveal-btn`);
+        if (ansDiv) {
+          ansDiv.classList.toggle('visible', checked);
+          if (btn) btn.textContent = checked ? "Hide Answer" : "Reveal Answer";
+        }
+      });
+    }
+    padiRevealAnswers.onchange = () => updateRevealAll(padiRevealAnswers.checked);
+
+    // Download as JSON
+    padiAiDownload.onclick = () => {
+      const blob = new Blob([JSON.stringify(questionsArray, null, 2)], {type: 'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `questions_${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    };
+
+  } else if (examTxt) {
+    // Plain text readable output
+    examQuestionSet.innerHTML = `
+      <div style="font-family:serif; padding:.5rem 1rem 0 1rem; font-size:1.08rem; color:#222; line-height:1.85;">
+        ${examTxt.split(/\n{2,}/)
+          .map(p => `<p style="margin:0 0 1.25em 0;">${escapeHtml(p).replace(/\n/g, "<br>")}</p>`)
+          .join('')}
+      </div>`;
+    examSetStats.textContent = '';
+    padiRevealAnswersWrap.classList.add('hidden');
+    // Download as text
+    padiAiDownload.onclick = () => {
+      const blob = new Blob([examTxt], {type: 'text/plain'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `converted_${Date.now()}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    };
+  } else {
+    // Fallback: pretty JSON
+    examQuestionSet.innerHTML = `<pre class="text-xs whitespace-pre-wrap">${escapeHtml(JSON.stringify(out,null,2))}</pre>`;
+    examSetStats.textContent = '';
+    padiRevealAnswersWrap.classList.add('hidden');
+  }
 }
 
 function renderExamPlainText(txt) {
