@@ -1558,7 +1558,7 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>
         <div class="flex gap-2 justify-end">
           <button type="button" id="padiDeleteBtn" class="bg-red-100 text-red-700 px-4 py-2 rounded hidden">Delete</button>
-          <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded px-6 py-2 shadow">Save Goal</button>
+          <button type="submit" id="padiSaveBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded px-6 py-2 shadow">Save Goal</button>
         </div>
       </form>
     </div>
@@ -1587,7 +1587,7 @@ document.addEventListener("DOMContentLoaded", () => {
           </div>
         </div>
         <div class="flex gap-2 justify-end">
-          <button type="submit" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold">Start Session</button>
+          <button type="submit" id="quickSessionSaveBtn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold">Start Session</button>
         </div>
       </form>
     </div>
@@ -1595,20 +1595,17 @@ document.addEventListener("DOMContentLoaded", () => {
 </div>
 
 <script>
-/*
-  Backend-driven StudyPadi client.
-  Replace the API_BASE if your server uses a different path.
-*/
+
 const API_BASE = "https://examguide.onrender.com/api/studypadi";
 let goals = [], sessions = [], timeline = [];
 
-// Auth header helper (reads token from localStorage)
+// Auth header helper
 function getAuthHeaders() {
   const token = localStorage.getItem("token");
   return token ? { "Authorization": "Bearer " + token } : {};
 }
 
-// Fetch helpers
+// Fetch helpers with consistent error handling
 async function apiGET(path) {
   const res = await fetch(API_BASE + path, { credentials: "include", headers: getAuthHeaders() });
   if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`);
@@ -1654,7 +1651,34 @@ async function apiPATCH(path, body) {
   return res.json();
 }
 
-/* --- Load from backend --- */
+/* Utility helpers */
+function esc(s){ if (s==null) return ''; return String(s).replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+function fmtDateTime(ts){ if (!ts) return ''; const d = new Date(ts); return d.toLocaleString(); }
+
+// Spinner HTML (small)
+function spinnerInline() {
+  return `<svg class="animate-spin inline-block w-4 h-4 mr-1" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>`;
+}
+
+// Disable button and show spinner
+function setButtonLoading(btn, loading, labelWhenDone) {
+  if (!btn) return;
+  if (loading) {
+    btn.dataset.origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.classList.add('opacity-70', 'pointer-events-none');
+    btn.innerHTML = spinnerInline() + (labelWhenDone || 'Processing');
+  } else {
+    btn.disabled = false;
+    btn.classList.remove('opacity-70', 'pointer-events-none');
+    if (btn.dataset.origHtml) {
+      btn.innerHTML = btn.dataset.origHtml;
+      delete btn.dataset.origHtml;
+    }
+  }
+}
+
+/* --- Loaders --- */
 async function loadGoals() {
   try {
     const data = await apiGET("/goals");
@@ -1688,18 +1712,13 @@ async function loadAllBackend() {
   renderAll();
 }
 
-/* === Renderers === */
-function esc(s){ if (s==null) return ''; return String(s).replaceAll('<','&lt;').replaceAll('>','&gt;'); }
-function fmtTime(ts){ if (!ts) return ''; const d = new Date(ts); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
-function fmtDateTime(ts){ if (!ts) return ''; const d = new Date(ts); return d.toLocaleString(); }
-
-// Cards (sessions + goals)
+/* --- Renderers --- */
 function renderCards() {
   const container = document.getElementById('padi-cards');
   container.innerHTML = '';
 
   // Upcoming session (next that is not ended)
-  const upcoming = sessions.filter(s => !s.endedAt).sort((a,b)=> new Date(a.start) - new Date(b.start))[0];
+  const upcoming = sessions.filter(s => !s.endedAt && s.status !== 'cancelled').sort((a,b)=> new Date(a.start) - new Date(b.start))[0];
   if (upcoming) {
     const g = upcoming.goalId ? goals.find(x => x.id === upcoming.goalId) : null;
     const startLabel = fmtDateTime(upcoming.start);
@@ -1713,9 +1732,9 @@ function renderCards() {
       <h3 class="font-bold text-lg text-indigo-900 mb-2">${ g ? esc(g.title) : 'Quick Study Session' }</h3>
       <p class="text-gray-600 mb-2 text-sm">Duration: ${esc(upcoming.durationMin)} mins<br>Status: ${esc(upcoming.status || 'scheduled')}</p>
       <div class="flex gap-2">
-        ${upcoming.status === 'in-progress' ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded px-4 py-2 text-xs shadow" data-action="end" data-id="${upcoming.id}">End Session</button>`
-        : `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded px-4 py-2 text-xs shadow" data-action="join" data-id="${upcoming.id}">Join Session</button>`}
-        <button class="bg-white border border-gray-200 text-gray-700 rounded px-3 py-2 text-xs" data-action="cancel" data-id="${upcoming.id}">Cancel</button>
+        ${upcoming.status === 'in-progress' ? `<button class="action-btn bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded px-4 py-2 text-xs shadow" data-action="end" data-id="${upcoming.id}">End Session</button>`
+        : `<button class="action-btn bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded px-4 py-2 text-xs shadow" data-action="join" data-id="${upcoming.id}">Join Session</button>`}
+        <button class="action-btn bg-white border border-gray-200 text-gray-700 rounded px-3 py-2 text-xs" data-action="cancel" data-id="${upcoming.id}">Cancel</button>
       </div>
     `;
     container.appendChild(card);
@@ -1729,10 +1748,9 @@ function renderCards() {
       </div>
       <h3 class="font-bold text-lg text-indigo-900 mb-2">Start a session now</h3>
       <p class="text-gray-600 mb-2 text-sm">Use Quick Session to start a focused study period.</p>
-      <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded px-4 py-2 text-xs shadow" id="startQuickBtn">Start Quick Session</button>
+      <button class="action-btn bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded px-4 py-2 text-xs shadow" id="startQuickBtn">Start Quick Session</button>
     `;
     container.appendChild(card);
-    card.querySelector('#startQuickBtn').addEventListener('click', openQuickSession);
   }
 
   // Goals
@@ -1757,9 +1775,9 @@ function renderCards() {
         </div>
         <p class="text-gray-600 mb-2 text-sm">${esc(goal.description||'')}</p>
         <div class="flex gap-2">
-          <button class="bg-yellow-100 hover:bg-yellow-200 text-yellow-700 font-bold rounded px-4 py-2 text-xs shadow" data-action="toggleDone" data-id="${goal.id}">${goal.completed ? 'Completed' : 'Mark as Done'}</button>
-          <button class="bg-white border border-gray-200 text-gray-700 rounded px-3 py-2 text-xs" data-action="edit" data-id="${goal.id}">Edit</button>
-          <button class="bg-white border border-gray-200 text-red-600 rounded px-3 py-2 text-xs" data-action="delete" data-id="${goal.id}">Delete</button>
+          <button class="action-btn bg-yellow-100 hover:bg-yellow-200 text-yellow-700 font-bold rounded px-4 py-2 text-xs shadow" data-action="toggleDone" data-id="${goal.id}">${goal.completed ? 'Completed' : 'Mark as Done'}</button>
+          <button class="action-btn bg-white border border-gray-200 text-gray-700 rounded px-3 py-2 text-xs" data-action="edit" data-id="${goal.id}">Edit</button>
+          <button class="action-btn bg-white border border-gray-200 text-red-600 rounded px-3 py-2 text-xs" data-action="delete" data-id="${goal.id}">Delete</button>
         </div>
       `;
       container.appendChild(card);
@@ -1767,7 +1785,6 @@ function renderCards() {
   }
 }
 
-// Overview render
 function renderOverview() {
   const el = document.getElementById('padi-overview');
   const goalsDone = goals.filter(g => g.completed).length;
@@ -1789,7 +1806,6 @@ function renderOverview() {
   `;
 }
 
-// Timeline render
 function renderTimeline() {
   const el = document.getElementById('padi-timeline');
   el.innerHTML = `<h3 class="text-lg font-semibold text-indigo-800 mb-3">Learning Timeline</h3>`;
@@ -1820,73 +1836,37 @@ function renderAll() {
   renderCards();
   renderOverview();
   renderTimeline();
-  attachCardEventHandlers(); // wire up newly rendered buttons
 }
 
-/* === Actions: Goals === */
-async function createGoal(payload) {
-  const res = await apiPOST("/goals", payload);
-  return res;
-}
-async function updateGoal(id, payload) {
-  const res = await apiPUT(`/goals/${encodeURIComponent(id)}`, payload);
-  return res;
-}
-async function removeGoal(id) {
-  const res = await apiDELETE(`/goals/${encodeURIComponent(id)}`);
-  return res;
-}
+/* === Actions calling backend === */
+async function createGoal(payload) { return apiPOST("/goals", payload); }
+async function updateGoal(id, payload) { return apiPUT(`/goals/${encodeURIComponent(id)}`, payload); }
+async function removeGoal(id) { return apiDELETE(`/goals/${encodeURIComponent(id)}`); }
+async function createSession(payload) { return apiPOST("/sessions", payload); }
+async function patchSession(id, payload) { return apiPATCH(`/sessions/${encodeURIComponent(id)}`, payload); }
 
-/* === Actions: Sessions === */
-async function createSession(payload) {
-  const res = await apiPOST("/sessions", payload);
-  return res;
-}
-async function patchSession(id, payload) {
-  const res = await apiPATCH(`/sessions/${encodeURIComponent(id)}`, payload);
-  return res;
-}
+/* === Centralized delegated handler for card actions === */
+document.getElementById('padi-cards').addEventListener('click', async function (e) {
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  const action = btn.dataset.action;
+  const id = btn.dataset.id;
 
-/* === UI wiring and event handling === */
-function attachCardEventHandlers(){
-  // session buttons (join/end/cancel)
-  document.querySelectorAll('[data-action="join"]').forEach(btn=>{
-    btn.addEventListener('click', async ()=> {
-      const id = btn.dataset.id;
-      try { await patchSession(id, { action: 'join' }); await loadAllBackend(); }
-      catch(e){ console.error(e); }
-    });
-  });
-  document.querySelectorAll('[data-action="end"]').forEach(btn=>{
-    btn.addEventListener('click', async ()=> {
-      const id = btn.dataset.id;
-      try { await patchSession(id, { action: 'end' }); await loadAllBackend(); }
-      catch(e){ console.error(e); }
-    });
-  });
-  document.querySelectorAll('[data-action="cancel"]').forEach(btn=>{
-    btn.addEventListener('click', async ()=> {
-      const id = btn.dataset.id;
-      try { await patchSession(id, { action: 'cancel' }); await loadAllBackend(); }
-      catch(e){ console.error(e); }
-    });
-  });
+  // Use spinner helper on btn
+  try {
+    setButtonLoading(btn, true, action === 'toggleDone' ? (btn.innerText || 'Working') : 'Processing');
 
-  // goal action buttons
-  document.querySelectorAll('[data-action="toggleDone"]').forEach(btn=>{
-    btn.addEventListener('click', async ()=> {
-      const id = btn.dataset.id;
-      const g = goals.find(x=>x.id === id); if (!g) return;
-      try {
-        await updateGoal(id, { completed: !g.completed });
-        await loadAllBackend();
-      } catch(e){ console.error(e); }
-    });
-  });
-  document.querySelectorAll('[data-action="edit"]').forEach(btn=>{
-    btn.addEventListener('click', ()=> {
-      const id = btn.dataset.id;
-      const g = goals.find(x=>x.id === id); if (!g) return;
+    if (action === 'join' || action === 'end' || action === 'cancel') {
+      await patchSession(id, { action });
+      await loadAllBackend();
+    } else if (action === 'toggleDone') {
+      const g = goals.find(x => x.id === id);
+      if (!g) throw new Error('Goal not found');
+      await updateGoal(id, { completed: !g.completed });
+      await loadAllBackend();
+    } else if (action === 'edit') {
+      const g = goals.find(x => x.id === id);
+      if (!g) throw new Error('Goal not found');
       // fill modal
       document.getElementById('padiId').value = g.id;
       document.getElementById('padiTitle').value = g.title;
@@ -1898,31 +1878,43 @@ function attachCardEventHandlers(){
       document.getElementById('padiDeleteBtn').classList.remove('hidden');
       document.getElementById('addPadiModal').classList.remove('hidden');
 
-      document.getElementById('padiDeleteBtn').onclick = async function(){
+      // wire delete button only once per edit open
+      const delBtn = document.getElementById('padiDeleteBtn');
+      delBtn.onclick = async () => {
         if (!confirm('Delete this goal?')) return;
         try {
+          setButtonLoading(delBtn, true, 'Deleting');
           await removeGoal(g.id);
           document.getElementById('addPadiModal').classList.add('hidden');
           await loadAllBackend();
-        } catch(e){ console.error(e); alert('Delete failed'); }
+        } catch (err) {
+          console.error(err);
+          alert('Delete failed');
+        } finally {
+          setButtonLoading(delBtn, false);
+        }
       };
-    });
-  });
-  document.querySelectorAll('[data-action="delete"]').forEach(btn=>{
-    btn.addEventListener('click', async ()=> {
-      const id = btn.dataset.id;
-      if (!confirm('Delete this goal?')) return;
-      try { await removeGoal(id); await loadAllBackend(); }
-      catch(e){ console.error(e); alert('Delete failed'); }
-    });
-  });
+    } else if (action === 'delete') {
+      if (!confirm('Delete this goal?')) { setButtonLoading(btn, false); return; }
+      await removeGoal(id);
+      await loadAllBackend();
+    }
+  } catch (err) {
+    console.error('action error', err);
+    alert(err.message || 'Action failed');
+  } finally {
+    setButtonLoading(btn, false);
+  }
+});
 
-  // start quick session from card
-  const startQuickBtn = document.getElementById('startQuickBtn');
-  if (startQuickBtn) startQuickBtn.addEventListener('click', openQuickSession);
-}
+/* Also attach delegated handler for startQuickBtn if present (card created dynamically) */
+document.getElementById('padi-cards').addEventListener('click', function(e){
+  if (e.target.id === 'startQuickBtn' || e.target.closest('#startQuickBtn')) {
+    openQuickSession();
+  }
+});
 
-// Modal wiring
+/* Modal wiring */
 document.getElementById('openAddGoalBtn')?.addEventListener('click', ()=> {
   document.getElementById('padiForm').reset();
   document.getElementById('padiId').value = '';
@@ -1932,18 +1924,20 @@ document.getElementById('openAddGoalBtn')?.addEventListener('click', ()=> {
 });
 document.getElementById('closeAddPadiModal')?.addEventListener('click', ()=> document.getElementById('addPadiModal').classList.add('hidden'));
 
-// Save goal (create or update)
 document.getElementById('padiForm')?.addEventListener('submit', async function(e){
   e.preventDefault();
-  const id = document.getElementById('padiId').value || null;
-  const payload = {
-    title: document.getElementById('padiTitle').value.trim(),
-    course: document.getElementById('padiCourse').value.trim(),
-    due: document.getElementById('padiDue').value || null,
-    durationMin: parseInt(document.getElementById('padiDuration').value) || null,
-    description: document.getElementById('padiDesc').value.trim()
-  };
+  const saveBtn = document.getElementById('padiSaveBtn');
   try {
+    setButtonLoading(saveBtn, true, 'Saving');
+    const id = document.getElementById('padiId').value || null;
+    const payload = {
+      title: document.getElementById('padiTitle').value.trim(),
+      course: document.getElementById('padiCourse').value.trim(),
+      due: document.getElementById('padiDue').value || null,
+      durationMin: parseInt(document.getElementById('padiDuration').value) || null,
+      description: document.getElementById('padiDesc').value.trim()
+    };
+    if (!payload.title) throw new Error('Title required');
     if (id) {
       await updateGoal(id, payload);
     } else {
@@ -1953,13 +1947,14 @@ document.getElementById('padiForm')?.addEventListener('submit', async function(e
     await loadAllBackend();
   } catch (err) {
     console.error(err);
-    alert('Failed to save goal.');
+    alert(err.message || 'Failed to save goal.');
+  } finally {
+    setButtonLoading(saveBtn, false);
   }
 });
 
-// Quick session modal wiring
+/* Quick session modal wiring */
 function openQuickSession(){
-  // populate
   const sel = document.getElementById('quickSessionGoal');
   sel.innerHTML = '<option value="">-- None --</option>' + goals.map(g=>`<option value="${esc(g.id)}">${esc(g.title)}</option>`).join('');
   const now = new Date();
@@ -1970,22 +1965,26 @@ document.getElementById('openScheduleSessionBtn')?.addEventListener('click', ope
 document.getElementById('closeQuickSessionModal')?.addEventListener('click', ()=> document.getElementById('quickSessionModal').classList.add('hidden'));
 document.getElementById('quickSessionForm')?.addEventListener('submit', async function(e){
   e.preventDefault();
-  const payload = {
-    goalId: document.getElementById('quickSessionGoal').value || null,
-    start: document.getElementById('quickStart').value ? new Date(document.getElementById('quickStart').value).toISOString() : new Date().toISOString(),
-    durationMin: parseInt(document.getElementById('quickDuration').value) || 30
-  };
+  const saveBtn = document.getElementById('quickSessionSaveBtn');
   try {
+    setButtonLoading(saveBtn, true, 'Starting');
+    const payload = {
+      goalId: document.getElementById('quickSessionGoal').value || null,
+      start: document.getElementById('quickStart').value ? new Date(document.getElementById('quickStart').value).toISOString() : new Date().toISOString(),
+      durationMin: parseInt(document.getElementById('quickDuration').value) || 30
+    };
     await createSession(payload);
     document.getElementById('quickSessionModal').classList.add('hidden');
     await loadAllBackend();
   } catch (err) {
     console.error(err);
     alert('Failed to create session.');
+  } finally {
+    setButtonLoading(saveBtn, false);
   }
 });
 
-/* === Auto-refresh (2 seconds). Will silently refresh UI with no demo data. === */
+/* === Polling and initialization (2s) === */
 let prevSnapshot = null;
 async function pollAndRefresh() {
   try {
@@ -2002,21 +2001,11 @@ async function pollAndRefresh() {
 pollAndRefresh();
 const POLL_INTERVAL_MS = 2000;
 const pollHandle = setInterval(pollAndRefresh, POLL_INTERVAL_MS);
-
-/* Initialize once on page show (useful if section is toggled into view later) */
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') pollAndRefresh();
-});
-
-/* Expose a manual refresh utility */
-window.studyPadiRefresh = pollAndRefresh;
-
-/* On-page unload, clear poll */
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') pollAndRefresh(); });
 window.addEventListener('beforeunload', () => clearInterval(pollHandle));
 
 // Initial load
-loadAllBackend().then(()=> { /* initial render handled in loadAllBackend -> renderAll */ });
-
+loadAllBackend().then(()=> { /* initial render done */ });
 </script>
 <!-- Logout Section -->
 <div id="logout-section" class="section-block hidden">
