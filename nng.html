@@ -1562,7 +1562,170 @@ document.addEventListener("DOMContentLoaded", () => {
       </form>
     </div>
   </div>
+<!-- STUDYPADI: AI Document → Questions (place before or at top of studyPadi section) -->
+<div id="padi-ai-convert" class="max-w-4xl mx-auto py-6 px-2 md:px-6">
+  <div class="bg-white rounded-xl shadow p-4 mb-6">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <h4 class="font-bold text-lg text-indigo-800">Convert Document to Questions (AI)</h4>
+        <p class="text-sm text-gray-600">Upload a document (PDF, DOCX, TXT). Choose question type and desired number (max 40).</p>
+      </div>
+    </div>
 
+    <form id="padiAiForm" class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+      <div class="md:col-span-1">
+        <label class="text-xs font-semibold mb-1 block">Choose file</label>
+        <input id="padiAiFile" type="file" accept=".pdf,.docx,.txt,.md" class="w-full" required />
+      </div>
+
+      <div>
+        <label class="text-xs font-semibold mb-1 block">Question Type</label>
+        <select id="padiAiQType" class="border rounded p-2 w-full">
+          <option value="mcq">Multiple Choice (MCQ)</option>
+          <option value="short">Short Answer</option>
+          <option value="mixed">Mixed (MCQ + Short)</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="text-xs font-semibold mb-1 block">Number of Questions (max 40)</label>
+        <input id="padiAiCount" type="number" min="1" max="40" value="10" class="border rounded p-2 w-full" />
+      </div>
+
+      <div class="md:col-span-3">
+        <label class="text-xs font-semibold mb-1 block">Output format (optional)</label>
+        <select id="padiAiFormat" class="border rounded p-2 w-full">
+          <option value="json">JSON (default schema)</option>
+          <option value="gpt-examset">ExamSet JSON (title, questions[])</option>
+          <option value="plain">Plain text (readable).</option>
+        </select>
+        <div class="text-xs text-gray-400 mt-1">If unsure, choose <strong>JSON</strong>.</div>
+      </div>
+
+      <div class="md:col-span-2">
+        <label class="text-xs font-semibold mb-1 block">Optional instructions</label>
+        <input id="padiAiInstructions" type="text" placeholder="e.g. Focus on basic-level conceptual questions" class="border rounded p-2 w-full" />
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button id="padiAiSubmit" type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded font-semibold flex items-center">
+          <span id="padiAiSubmitLabel">Convert</span>
+        </button>
+        <button id="padiAiCancel" type="button" class="bg-gray-100 text-gray-700 px-3 py-2 rounded hidden">Cancel</button>
+        <div id="padiAiSpinner" class="hidden ml-2 text-sm text-gray-600">Processing…</div>
+      </div>
+    </form>
+
+    <div id="padiAiResult" class="mt-4 hidden">
+      <div class="flex items-center justify-between">
+        <h5 class="font-semibold text-indigo-700">Converted Questions</h5>
+        <div class="flex gap-2">
+          <button id="padiAiDownload" class="bg-white border px-3 py-1 rounded text-sm">Download JSON</button>
+          <button id="padiAiClear" class="bg-gray-50 border px-3 py-1 rounded text-sm">Clear</button>
+        </div>
+      </div>
+      <pre id="padiAiResultPre" class="mt-3 p-3 bg-gray-50 rounded text-sm overflow-auto max-h-72"></pre>
+    </div>
+  </div>
+</div>
+
+<script>
+// Client: AI convert form
+const padiAiForm = document.getElementById('padiAiForm');
+const padiAiFile = document.getElementById('padiAiFile');
+const padiAiQType = document.getElementById('padiAiQType');
+const padiAiCount = document.getElementById('padiAiCount');
+const padiAiFormat = document.getElementById('padiAiFormat');
+const padiAiInstr = document.getElementById('padiAiInstructions');
+const padiAiSubmit = document.getElementById('padiAiSubmit');
+const padiAiSubmitLabel = document.getElementById('padiAiSubmitLabel');
+const padiAiSpinner = document.getElementById('padiAiSpinner');
+const padiAiResult = document.getElementById('padiAiResult');
+const padiAiResultPre = document.getElementById('padiAiResultPre');
+const padiAiDownload = document.getElementById('padiAiDownload');
+const padiAiClear = document.getElementById('padiAiClear');
+
+function setAiUiBusy(b) {
+  if (b) {
+    padiAiSubmit.disabled = true;
+    padiAiSpinner.classList.remove('hidden');
+    padiAiSubmitLabel.textContent = 'Converting…';
+  } else {
+    padiAiSubmit.disabled = false;
+    padiAiSpinner.classList.add('hidden');
+    padiAiSubmitLabel.textContent = 'Convert';
+  }
+}
+
+padiAiForm.addEventListener('submit', async function(e){
+  e.preventDefault();
+  if (!padiAiFile.files || !padiAiFile.files[0]) {
+    return alert('Please choose a file to upload.');
+  }
+  let count = parseInt(padiAiCount.value) || 10;
+  if (count < 1) count = 1;
+  if (count > 40) count = 40;
+
+  const fd = new FormData();
+  fd.append('file', padiAiFile.files[0]);
+  fd.append('qtype', padiAiQType.value);
+  fd.append('count', String(count));
+  fd.append('format', padiAiFormat.value);
+  fd.append('instructions', padiAiInstr.value || '');
+
+  setAiUiBusy(true);
+  padiAiResult.classList.add('hidden');
+  padiAiResultPre.textContent = '';
+
+  try {
+    const resp = await fetch('/api/studypadi/ai/convert-file', {
+      method: 'POST',
+      credentials: 'include',
+      body: fd
+      // Authorization header will be sent automatically by cookie or use getAuthHeaders pattern if you use token header
+    });
+    if (!resp.ok) {
+      const txt = await resp.text();
+      throw new Error(`Server error: ${resp.status} ${txt}`);
+    }
+    const out = await resp.json();
+    // Expect { success: true, questions: [...], raw: "..." } or error
+    if (out.questions) {
+      padiAiResultPre.textContent = JSON.stringify(out.questions, null, 2);
+      padiAiResult.classList.remove('hidden');
+      // prepare download
+      padiAiDownload.onclick = () => {
+        const blob = new Blob([JSON.stringify(out.questions, null, 2)], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `questions_${Date.now()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      };
+    } else if (out.raw) {
+      padiAiResultPre.textContent = out.raw;
+      padiAiResult.classList.remove('hidden');
+    } else {
+      padiAiResultPre.textContent = JSON.stringify(out, null, 2);
+      padiAiResult.classList.remove('hidden');
+    }
+  } catch (err) {
+    console.error(err);
+    alert(err.message || 'Conversion failed');
+  } finally {
+    setAiUiBusy(false);
+  }
+});
+
+padiAiClear.addEventListener('click', () => {
+  padiAiResultPre.textContent = '';
+  padiAiResult.classList.add('hidden');
+  padiAiFile.value = '';
+});
+</script>
   <!-- Quick Session Modal -->
   <div id="quickSessionModal" class="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center hidden">
     <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 flex flex-col gap-4 relative">
