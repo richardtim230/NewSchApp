@@ -1581,7 +1581,6 @@ document.addEventListener("DOMContentLoaded", () => {
 </div>
 
 <script>
-// Client: AI convert form
 const padiAiForm = document.getElementById('padiAiForm');
 const padiAiFile = document.getElementById('padiAiFile');
 const padiAiQType = document.getElementById('padiAiQType');
@@ -1608,6 +1607,159 @@ function setAiUiBusy(b) {
   }
 }
 
+// small HTML escape to prevent naive XSS
+function escapeHtml(str) {
+  return String(str === null || str === undefined ? '' : str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// convert numeric index to letter (0->A, 1->B...)
+function indexToLetter(i) {
+  return String.fromCharCode(65 + i);
+}
+
+// Render questions array into an ordered, readable list
+function renderQuestions(questions) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'p-4 space-y-4';
+
+  const ol = document.createElement('ol');
+  ol.className = 'list-decimal list-inside space-y-4';
+
+  questions.forEach((q, idx) => {
+    const li = document.createElement('li');
+    li.className = 'bg-white rounded-lg shadow-sm p-4';
+
+    // header: number + optional marks/difficulty
+    const header = document.createElement('div');
+    header.className = 'flex justify-between items-start gap-3 mb-2';
+    const leftH = document.createElement('div');
+    leftH.innerHTML = `<div class="font-semibold text-indigo-700">Question ${idx + 1}</div>`;
+    header.appendChild(leftH);
+
+    const metaPieces = [];
+    if (q.marks || q.points) metaPieces.push(`<span class="text-xs text-gray-600">Marks: ${escapeHtml(q.marks ?? q.points)}</span>`);
+    if (q.difficulty) metaPieces.push(`<span class="text-xs text-gray-600">Difficulty: ${escapeHtml(q.difficulty)}</span>`);
+    if (metaPieces.length) {
+      const metaDiv = document.createElement('div');
+      metaDiv.innerHTML = metaPieces.join(' · ');
+      header.appendChild(metaDiv);
+    }
+    li.appendChild(header);
+
+    // question text (preserve simple newlines)
+    const qText = document.createElement('div');
+    qText.className = 'mb-3 text-gray-800';
+    // If question appears to contain small HTML (e.g., <strong>), we still escape to be safe.
+    qText.innerHTML = escapeHtml(q.question || q.text || q.prompt || q.title || '').replace(/\n+/g, '<br>');
+    li.appendChild(qText);
+
+    // options (if provided)
+    if (Array.isArray(q.options) && q.options.length) {
+      const ul = document.createElement('ul');
+      ul.className = 'space-y-2 mb-3';
+      q.options.forEach((opt, oidx) => {
+        const optionItem = document.createElement('li');
+        optionItem.className = 'flex items-start gap-3';
+        const label = document.createElement('div');
+        label.className = 'w-6 h-6 flex items-center justify-center rounded-full bg-indigo-50 text-indigo-700 font-semibold text-sm flex-shrink-0';
+        label.textContent = indexToLetter(oidx);
+        const optText = document.createElement('div');
+        // support object option like {text: "...", image: "..."} or plain string
+        if (typeof opt === 'object' && opt !== null) {
+          optText.innerHTML = escapeHtml(opt.text || opt.label || '').replace(/\n+/g, '<br>');
+          if (opt.image) {
+            optText.innerHTML += `<div class="mt-2"><img src="${escapeHtml(opt.image)}" alt="option image" class="max-w-full rounded"></div>`;
+          }
+        } else {
+          optText.innerHTML = escapeHtml(opt);
+        }
+        optionItem.appendChild(label);
+        optionItem.appendChild(optText);
+
+        // highlight if this option is the answer
+        const answer = (q.answer ?? q.correct ?? q.key);
+        let isCorrect = false;
+        if (answer !== undefined && answer !== null) {
+          // support "A" or 0-based index or text-match
+          if (typeof answer === 'string') {
+            const ansTrim = answer.trim();
+            if (/^[A-Za-z]$/.test(ansTrim)) {
+              isCorrect = (indexToLetter(oidx).toUpperCase() === ansTrim.toUpperCase());
+            } else {
+              // text match fallback
+              isCorrect = String(opt).trim() === ansTrim;
+            }
+          } else if (typeof answer === 'number') {
+            isCorrect = (answer === oidx || answer === oidx + 1);
+          }
+        }
+        if (isCorrect) {
+          optionItem.className += ' bg-green-50 border-l-4 border-green-300 p-2 rounded';
+        } else {
+          optionItem.className += ' bg-gray-50 p-2 rounded';
+        }
+        ul.appendChild(optionItem);
+      });
+      li.appendChild(ul);
+    } else if (q.type && q.type.toLowerCase && q.type.toLowerCase().includes('mcq')) {
+      // empty options but MCQ type => indicate none found
+      const none = document.createElement('div');
+      none.className = 'text-sm text-gray-500 mb-3';
+      none.textContent = 'No options provided.';
+      li.appendChild(none);
+    }
+
+    // Answer block if present and not shown in options highlight
+    if (q.answer && !(Array.isArray(q.options) && q.options.length)) {
+      const ans = document.createElement('div');
+      ans.className = 'mb-2';
+      ans.innerHTML = `<div class="text-sm font-semibold text-gray-700">Answer</div><div class="text-gray-800 mt-1">${escapeHtml(String(q.answer)).replace(/\n+/g, '<br>')}</div>`;
+      li.appendChild(ans);
+    }
+
+    // Explanation/details collapsible
+    if (q.explanation || q.explain || q.solution) {
+      const det = document.createElement('details');
+      det.className = 'mt-2';
+      det.innerHTML = `<summary class="cursor-pointer text-sm font-medium text-indigo-700">Explanation / Solution</summary>
+                       <div class="mt-2 text-gray-700 text-sm">${escapeHtml(q.explanation || q.explain || q.solution).replace(/\n+/g, '<br>')}</div>`;
+      li.appendChild(det);
+    }
+
+    // raw block if available per-question
+    if (q.raw) {
+      const rawDiv = document.createElement('pre');
+      rawDiv.className = 'mt-2 bg-gray-50 p-3 rounded text-sm overflow-auto';
+      rawDiv.textContent = q.raw;
+      li.appendChild(rawDiv);
+    }
+
+    ol.appendChild(li);
+  });
+
+  wrapper.appendChild(ol);
+  return wrapper;
+}
+
+// Render raw textual output in readable paragraphs
+function renderRawText(raw) {
+  const div = document.createElement('div');
+  div.className = 'p-4 text-gray-800 space-y-3';
+  // split by double newline into paragraphs
+  (String(raw || '').split(/\n\s*\n/)).forEach(par => {
+    const p = document.createElement('p');
+    p.className = 'leading-relaxed';
+    p.innerHTML = escapeHtml(par).replace(/\n/g, '<br>');
+    div.appendChild(p);
+  });
+  return div;
+}
+
 padiAiForm.addEventListener('submit', async function(e){
   e.preventDefault();
   if (!padiAiFile.files || !padiAiFile.files[0]) {
@@ -1625,8 +1777,14 @@ padiAiForm.addEventListener('submit', async function(e){
   fd.append('instructions', padiAiInstr.value || '');
 
   setAiUiBusy(true);
+  // hide previous result content
   padiAiResult.classList.add('hidden');
-  padiAiResultPre.textContent = '';
+  // keep pre cleared
+  if (padiAiResultPre) padiAiResultPre.textContent = '';
+
+  // remove any previous formatted container
+  const prevFormatted = document.getElementById('padiAiFormatted');
+  if (prevFormatted) prevFormatted.remove();
 
   try {
     // attach token from localStorage if available
@@ -1644,18 +1802,25 @@ padiAiForm.addEventListener('submit', async function(e){
       credentials: 'include',
       headers,
       body: fd
-      // Authorization header will be sent via headers object (cookies still included)
     });
+
     if (!resp.ok) {
       const txt = await resp.text();
       throw new Error(`Server error: ${resp.status} ${txt}`);
     }
+
     const out = await resp.json();
-    // Expect { success: true, questions: [...], raw: "..." } or error
-    if (out.questions) {
-      padiAiResultPre.textContent = JSON.stringify(out.questions, null, 2);
-      padiAiResult.classList.remove('hidden');
-      // prepare download
+
+    // show result panel
+    padiAiResult.classList.remove('hidden');
+
+    // prioritize rendering of structured questions
+    if (out.questions && Array.isArray(out.questions) && out.questions.length) {
+      const formatted = renderQuestions(out.questions);
+      formatted.id = 'padiAiFormatted';
+      padiAiResult.appendChild(formatted);
+
+      // set download for JSON
       padiAiDownload.onclick = () => {
         const blob = new Blob([JSON.stringify(out.questions, null, 2)], {type: 'application/json'});
         const url = URL.createObjectURL(blob);
@@ -1667,15 +1832,51 @@ padiAiForm.addEventListener('submit', async function(e){
         a.remove();
         URL.revokeObjectURL(url);
       };
+
     } else if (out.raw) {
-      padiAiResultPre.textContent = out.raw;
-      padiAiResult.classList.remove('hidden');
+      // render raw text nicely
+      const formattedRaw = renderRawText(out.raw);
+      formattedRaw.id = 'padiAiFormatted';
+      padiAiResult.appendChild(formattedRaw);
+
+      // keep legacy pre for reference (hidden) but populate
+      if (padiAiResultPre) padiAiResultPre.textContent = out.raw;
+
+      // provide a text download
+      padiAiDownload.onclick = () => {
+        const blob = new Blob([out.raw], {type: 'text/plain'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `questions_raw_${Date.now()}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      };
+
     } else {
-      padiAiResultPre.textContent = JSON.stringify(out, null, 2);
-      padiAiResult.classList.remove('hidden');
+      // fallback: attempt to stringify and display prettily
+      const fallback = document.createElement('pre');
+      fallback.className = 'p-4 bg-gray-50 rounded text-sm overflow-auto';
+      fallback.textContent = JSON.stringify(out, null, 2);
+      fallback.id = 'padiAiFormatted';
+      padiAiResult.appendChild(fallback);
+
+      padiAiDownload.onclick = () => {
+        const blob = new Blob([JSON.stringify(out, null, 2)], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `questions_fallback_${Date.now()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      };
     }
   } catch (err) {
-    console.error(err);
+    console.error('Conversion error:', err);
     alert(err.message || 'Conversion failed');
   } finally {
     setAiUiBusy(false);
@@ -1683,9 +1884,14 @@ padiAiForm.addEventListener('submit', async function(e){
 });
 
 padiAiClear.addEventListener('click', () => {
-  padiAiResultPre.textContent = '';
+  // remove formatted container
+  const f = document.getElementById('padiAiFormatted');
+  if (f) f.remove();
+  if (padiAiResultPre) padiAiResultPre.textContent = '';
   padiAiResult.classList.add('hidden');
   padiAiFile.value = '';
+  // clear download handler
+  padiAiDownload.onclick = null;
 });
 </script>
     <!-- Motivational Banner -->
