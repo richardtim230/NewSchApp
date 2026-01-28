@@ -1514,6 +1514,7 @@ document.addEventListener("DOMContentLoaded", () => {
       <!-- injected by JS -->
     </div>
 <!-- STUDYPADI: AI Document → Questions (place before or at top of studyPadi section) -->
+<!-- UPDATED PADI-AI Convert block with "Reveal Answers" toggle + Saved Sets list & modal -->
 <div id="padi-ai-convert" class="max-w-4xl mx-auto py-6 px-2 md:px-6">
   <div class="bg-white rounded-xl shadow p-4 mb-6">
     <div class="flex items-start justify-between gap-4">
@@ -1548,7 +1549,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <select id="padiAiFormat" class="border rounded p-2 w-full">
           <option value="json">JSON (default schema)</option>
           <option value="gpt-examset">ExamSet JSON (title, questions[])</option>
-          <option value="plain">Plain text (readable).</option>
+          <option value="plain">Plain text (readable)</option>
         </select>
         <div class="text-xs text-gray-400 mt-1">If unsure, choose <strong>JSON</strong>.</div>
       </div>
@@ -1569,18 +1570,55 @@ document.addEventListener("DOMContentLoaded", () => {
 
     <div id="padiAiResult" class="mt-4 hidden">
       <div class="flex items-center justify-between">
-        <h5 class="font-semibold text-indigo-700">Converted Questions</h5>
+        <div class="flex items-center gap-4">
+          <h5 class="font-semibold text-indigo-700">Converted Questions</h5>
+          <label class="inline-flex items-center text-sm text-gray-600">
+            <input id="padiRevealAnswers" type="checkbox" class="mr-2" />
+            Reveal answers
+          </label>
+        </div>
+
         <div class="flex gap-2">
           <button id="padiAiDownload" class="bg-white border px-3 py-1 rounded text-sm">Download JSON</button>
           <button id="padiAiClear" class="bg-gray-50 border px-3 py-1 rounded text-sm">Clear</button>
         </div>
       </div>
-      <pre id="padiAiResultPre" class="mt-3 p-3 bg-gray-50 rounded text-sm overflow-auto max-h-72"></pre>
+
+      <!-- Formatted result container (rich display) -->
+      <div id="padiAiResultContent" class="mt-3 p-3 bg-gray-50 rounded text-sm overflow-auto max-h-72"></div>
+    </div>
+
+    <!-- Previously generated sets -->
+    <div id="padiSavedSetsWrap" class="mt-6">
+      <div class="flex items-center justify-between mb-2">
+        <h5 class="font-semibold text-indigo-700">Previously Generated Question Sets</h5>
+        <div class="flex items-center gap-2">
+          <button id="padiRefreshSaved" class="text-sm text-indigo-600 hover:underline">Refresh</button>
+        </div>
+      </div>
+      <div id="padiSavedSets" class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+        <!-- dynamic -->
+      </div>
+      <div id="padiSavedEmpty" class="text-gray-500 text-sm mt-3 hidden">No previous sets found.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Saved set modal -->
+<div id="padiSavedModal" class="fixed inset-0 bg-black bg-opacity-60 z-50 hidden items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl p-6 relative">
+    <button id="padiSavedModalClose" class="absolute top-3 right-3 text-gray-500 hover:text-gray-800 text-xl">&times;</button>
+    <h3 id="padiSavedModalTitle" class="font-bold text-lg text-indigo-700 mb-3"></h3>
+    <div id="padiSavedModalContent" class="max-h-[60vh] overflow-auto text-sm"></div>
+    <div class="flex justify-end gap-2 mt-4">
+      <button id="padiSavedModalDownload" class="bg-white border px-3 py-1 rounded text-sm">Download JSON</button>
+      <button id="padiSavedModalCopy" class="bg-indigo-600 text-white px-3 py-1 rounded text-sm">Copy JSON</button>
     </div>
   </div>
 </div>
 
 <script>
+/* PADI-AI client: show answers toggle + saved sets */
 const padiAiForm = document.getElementById('padiAiForm');
 const padiAiFile = document.getElementById('padiAiFile');
 const padiAiQType = document.getElementById('padiAiQType');
@@ -1591,9 +1629,25 @@ const padiAiSubmit = document.getElementById('padiAiSubmit');
 const padiAiSubmitLabel = document.getElementById('padiAiSubmitLabel');
 const padiAiSpinner = document.getElementById('padiAiSpinner');
 const padiAiResult = document.getElementById('padiAiResult');
-const padiAiResultPre = document.getElementById('padiAiResultPre');
+const padiAiResultContent = document.getElementById('padiAiResultContent');
 const padiAiDownload = document.getElementById('padiAiDownload');
 const padiAiClear = document.getElementById('padiAiClear');
+const padiRevealAnswers = document.getElementById('padiRevealAnswers');
+
+const padiSavedSetsWrap = document.getElementById('padiSavedSetsWrap');
+const padiSavedSets = document.getElementById('padiSavedSets');
+const padiSavedEmpty = document.getElementById('padiSavedEmpty');
+const padiRefreshSaved = document.getElementById('padiRefreshSaved');
+
+const padiSavedModal = document.getElementById('padiSavedModal');
+const padiSavedModalTitle = document.getElementById('padiSavedModalTitle');
+const padiSavedModalContent = document.getElementById('padiSavedModalContent');
+const padiSavedModalClose = document.getElementById('padiSavedModalClose');
+const padiSavedModalDownload = document.getElementById('padiSavedModalDownload');
+const padiSavedModalCopy = document.getElementById('padiSavedModalCopy');
+
+let lastRenderedOut = null; // keep last API out for download/copy
+let lastModalSet = null; // current modal set object
 
 function setAiUiBusy(b) {
   if (b) {
@@ -1607,159 +1661,419 @@ function setAiUiBusy(b) {
   }
 }
 
-// small HTML escape to prevent naive XSS
 function escapeHtml(str) {
-  return String(str === null || str === undefined ? '' : str)
+  if (str === null || typeof str === 'undefined') return '';
+  return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+    .replace(/>/g, '&gt;');
 }
 
-// convert numeric index to letter (0->A, 1->B...)
-function indexToLetter(i) {
-  return String.fromCharCode(65 + i);
+function nl2brEscaped(text) {
+  return escapeHtml(text).replace(/\n{2,}/g, '\n\n').replace(/\n/g, '<br>');
 }
 
-// Render questions array into an ordered, readable list
-function renderQuestions(questions) {
-  const wrapper = document.createElement('div');
-  wrapper.className = 'p-4 space-y-4';
+/* CSS control for hiding answers: attach a class to container */
+const ANSWERS_HIDDEN_CLASS = 'padi-answers-hidden';
+const ANSWERS_HIDE_STYLE_ID = 'padi-answers-hide-style';
+(function ensureAnswerHideStyle(){
+  if (!document.getElementById(ANSWERS_HIDE_STYLE_ID)) {
+    const s = document.createElement('style');
+    s.id = ANSWERS_HIDE_STYLE_ID;
+    s.innerHTML = `
+      .${ANSWERS_HIDDEN_CLASS} .padi-answer, .${ANSWERS_HIDDEN_CLASS} .padi-explanation { display: none !important; }
+      .padi-question-title { display: flex; gap:8px; align-items:flex-start; }
+      .padi-correct-badge { font-size: 11px; background:#dcfce7; color:#166534; padding:2px 6px; border-radius:999px; margin-left:8px; }
+    `;
+    document.head.appendChild(s);
+  }
+})();
 
-  const ol = document.createElement('ol');
-  ol.className = 'list-decimal list-inside space-y-4';
+/**
+ * Build HTML for a single question object.
+ * Supports q.question/text/prompt; q.options or q.choices (array); q.answer/correct; q.explanation.
+ * Answers/explanations are given classes 'padi-answer' and 'padi-explanation' so they can be toggled.
+ */
+function buildQuestionHTML(q, idx) {
+  const title = q.question || q.text || q.prompt || q.title || (`Question ${idx+1}`);
+  const opts = q.options || q.choices || q.optionsList || q.choicesList || null;
+  const answer = q.answer || q.correct || q.key || q.solution || null;
+  const explanation = q.explanation || q.expl || q.reason || null;
+  const type = (q.type || q.qtype || '').toLowerCase();
 
-  questions.forEach((q, idx) => {
-    const li = document.createElement('li');
-    li.className = 'bg-white rounded-lg shadow-sm p-4';
+  let html = `<div class="mb-4 border-b border-gray-100 pb-3">`;
+  html += `<div class="padi-question-title"><div class="font-semibold text-gray-800"><span class="text-indigo-700 mr-2">${idx + 1}.</span> ${escapeHtml(title)}</div></div>`;
 
-    // header: number + optional marks/difficulty
-    const header = document.createElement('div');
-    header.className = 'flex justify-between items-start gap-3 mb-2';
-    const leftH = document.createElement('div');
-    leftH.innerHTML = `<div class="font-semibold text-indigo-700">Question ${idx + 1}</div>`;
-    header.appendChild(leftH);
-
-    const metaPieces = [];
-    if (q.marks || q.points) metaPieces.push(`<span class="text-xs text-gray-600">Marks: ${escapeHtml(q.marks ?? q.points)}</span>`);
-    if (q.difficulty) metaPieces.push(`<span class="text-xs text-gray-600">Difficulty: ${escapeHtml(q.difficulty)}</span>`);
-    if (metaPieces.length) {
-      const metaDiv = document.createElement('div');
-      metaDiv.innerHTML = metaPieces.join(' · ');
-      header.appendChild(metaDiv);
-    }
-    li.appendChild(header);
-
-    // question text (preserve simple newlines)
-    const qText = document.createElement('div');
-    qText.className = 'mb-3 text-gray-800';
-    // If question appears to contain small HTML (e.g., <strong>), we still escape to be safe.
-    qText.innerHTML = escapeHtml(q.question || q.text || q.prompt || q.title || '').replace(/\n+/g, '<br>');
-    li.appendChild(qText);
-
-    // options (if provided)
-    if (Array.isArray(q.options) && q.options.length) {
-      const ul = document.createElement('ul');
-      ul.className = 'space-y-2 mb-3';
-      q.options.forEach((opt, oidx) => {
-        const optionItem = document.createElement('li');
-        optionItem.className = 'flex items-start gap-3';
-        const label = document.createElement('div');
-        label.className = 'w-6 h-6 flex items-center justify-center rounded-full bg-indigo-50 text-indigo-700 font-semibold text-sm flex-shrink-0';
-        label.textContent = indexToLetter(oidx);
-        const optText = document.createElement('div');
-        // support object option like {text: "...", image: "..."} or plain string
-        if (typeof opt === 'object' && opt !== null) {
-          optText.innerHTML = escapeHtml(opt.text || opt.label || '').replace(/\n+/g, '<br>');
-          if (opt.image) {
-            optText.innerHTML += `<div class="mt-2"><img src="${escapeHtml(opt.image)}" alt="option image" class="max-w-full rounded"></div>`;
-          }
-        } else {
-          optText.innerHTML = escapeHtml(opt);
-        }
-        optionItem.appendChild(label);
-        optionItem.appendChild(optText);
-
-        // highlight if this option is the answer
-        const answer = (q.answer ?? q.correct ?? q.key);
-        let isCorrect = false;
-        if (answer !== undefined && answer !== null) {
-          // support "A" or 0-based index or text-match
-          if (typeof answer === 'string') {
-            const ansTrim = answer.trim();
-            if (/^[A-Za-z]$/.test(ansTrim)) {
-              isCorrect = (indexToLetter(oidx).toUpperCase() === ansTrim.toUpperCase());
-            } else {
-              // text match fallback
-              isCorrect = String(opt).trim() === ansTrim;
-            }
-          } else if (typeof answer === 'number') {
-            isCorrect = (answer === oidx || answer === oidx + 1);
+  // Options (MCQ)
+  if (Array.isArray(opts) && opts.length) {
+    html += `<ol class="mt-2 ml-6 list-decimal text-gray-700">`;
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    for (let i = 0; i < opts.length; i++) {
+      const opt = opts[i];
+      // mark correct if provided in "answer" (string or index)
+      let mark = '';
+      try {
+        if (typeof answer !== 'undefined' && answer !== null) {
+          const ansStr = String(answer).trim();
+          if (ansStr === String(i) || ansStr.toUpperCase() === letters[i] || ansStr === String(opt).trim()) {
+            mark = `<span class="padi-correct-badge">Correct</span>`;
           }
         }
-        if (isCorrect) {
-          optionItem.className += ' bg-green-50 border-l-4 border-green-300 p-2 rounded';
-        } else {
-          optionItem.className += ' bg-gray-50 p-2 rounded';
-        }
-        ul.appendChild(optionItem);
-      });
-      li.appendChild(ul);
-    } else if (q.type && q.type.toLowerCase && q.type.toLowerCase().includes('mcq')) {
-      // empty options but MCQ type => indicate none found
-      const none = document.createElement('div');
-      none.className = 'text-sm text-gray-500 mb-3';
-      none.textContent = 'No options provided.';
-      li.appendChild(none);
+      } catch (e) {}
+      html += `<li class="mb-1">${escapeHtml(opt)} ${mark}</li>`;
     }
+    html += `</ol>`;
+  }
 
-    // Answer block if present and not shown in options highlight
-    if (q.answer && !(Array.isArray(q.options) && q.options.length)) {
-      const ans = document.createElement('div');
-      ans.className = 'mb-2';
-      ans.innerHTML = `<div class="text-sm font-semibold text-gray-700">Answer</div><div class="text-gray-800 mt-1">${escapeHtml(String(q.answer)).replace(/\n+/g, '<br>')}</div>`;
-      li.appendChild(ans);
+  // Short answer
+  if (!Array.isArray(opts) && answer) {
+    html += `<div class="mt-2 text-sm padi-answer"><strong>Answer:</strong> <span class="text-gray-800">${escapeHtml(String(answer))}</span></div>`;
+  } else {
+    // also render an answer block for MCQ (so reveal toggles)
+    if (Array.isArray(opts) && answer) {
+      let renderedAnswer = escapeHtml(String(answer));
+      // if numeric index translate to letter/value
+      if (/^\d+$/.test(String(answer))) {
+        const idxAns = parseInt(answer, 10);
+        if (opts[idxAns]) renderedAnswer = `${String(answer)} (${escapeHtml(opts[idxAns])})`;
+      }
+      html += `<div class="mt-2 text-sm padi-answer"><strong>Answer:</strong> <span class="text-gray-800">${renderedAnswer}</span></div>`;
     }
+  }
 
-    // Explanation/details collapsible
-    if (q.explanation || q.explain || q.solution) {
-      const det = document.createElement('details');
-      det.className = 'mt-2';
-      det.innerHTML = `<summary class="cursor-pointer text-sm font-medium text-indigo-700">Explanation / Solution</summary>
-                       <div class="mt-2 text-gray-700 text-sm">${escapeHtml(q.explanation || q.explain || q.solution).replace(/\n+/g, '<br>')}</div>`;
-      li.appendChild(det);
-    }
+  // Explanation
+  if (explanation) {
+    html += `<div class="mt-2 text-sm text-gray-600 padi-explanation"><strong>Explanation:</strong> <div class="mt-1 text-gray-700">${nl2brEscaped(String(explanation))}</div></div>`;
+  }
 
-    // raw block if available per-question
-    if (q.raw) {
-      const rawDiv = document.createElement('pre');
-      rawDiv.className = 'mt-2 bg-gray-50 p-3 rounded text-sm overflow-auto';
-      rawDiv.textContent = q.raw;
-      li.appendChild(rawDiv);
-    }
-
-    ol.appendChild(li);
-  });
-
-  wrapper.appendChild(ol);
-  return wrapper;
+  html += `</div>`;
+  return html;
 }
 
-// Render raw textual output in readable paragraphs
-function renderRawText(raw) {
-  const div = document.createElement('div');
-  div.className = 'p-4 text-gray-800 space-y-3';
-  // split by double newline into paragraphs
-  (String(raw || '').split(/\n\s*\n/)).forEach(par => {
-    const p = document.createElement('p');
-    p.className = 'leading-relaxed';
-    p.innerHTML = escapeHtml(par).replace(/\n/g, '<br>');
-    div.appendChild(p);
-  });
-  return div;
+/** Render the API output in a rich format; stores lastRenderedOut for download/copy. */
+function renderAiOutput(out) {
+  lastRenderedOut = out;
+  padiAiResultContent.innerHTML = ''; // clear
+  // If out.questions is an array
+  if (Array.isArray(out.questions) && out.questions.length) {
+    const container = document.createElement('div');
+    container.className = 'questions-list';
+    // Title/metadata
+    if (out.title || out.examTitle || out.setTitle) {
+      const h = document.createElement('h6');
+      h.className = 'font-semibold text-indigo-700 mb-2';
+      h.textContent = out.title || out.examTitle || out.setTitle;
+      container.appendChild(h);
+    }
+    for (let i = 0; i < out.questions.length; i++) {
+      const q = out.questions[i];
+      const wrapper = document.createElement('div');
+      wrapper.className = 'question';
+      wrapper.innerHTML = buildQuestionHTML(q, i);
+      container.appendChild(wrapper);
+    }
+    padiAiResultContent.appendChild(container);
+
+    // wire up download to JSON of questions
+    padiAiDownload.onclick = () => {
+      const blob = new Blob([JSON.stringify(out.questions, null, 2)], {type: 'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `questions_${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    };
+
+  } else if (out.raw && typeof out.raw === 'string') {
+    // Render raw text in readable paragraphs
+    const html = `<div class="prose text-gray-800">${nl2brEscaped(out.raw)}</div>`;
+    padiAiResultContent.innerHTML = html;
+    padiAiDownload.onclick = () => {
+      const blob = new Blob([out.raw], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `converted_${Date.now()}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    };
+  } else if (out.questions && typeof out.questions === 'string') {
+    // questions returned as string
+    padiAiResultContent.innerHTML = `<div class="prose text-gray-800">${nl2brEscaped(out.questions)}</div>`;
+    padiAiDownload.onclick = () => {
+      const blob = new Blob([out.questions], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `questions_${Date.now()}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    };
+  } else {
+    // last resort: stringify pretty JSON but in a <pre> for readability
+    padiAiResultContent.innerHTML = `<pre class="text-xs whitespace-pre-wrap">${escapeHtml(JSON.stringify(out, null, 2))}</pre>`;
+    padiAiDownload.onclick = () => {
+      const blob = new Blob([JSON.stringify(out, null, 2)], {type: 'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `converted_${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    };
+  }
+
+  // Apply reveal/hide state
+  updateRevealAnswersUI();
+  padiAiResult.classList.remove('hidden');
+  // scroll into view
+  padiAiResult.scrollIntoView({behavior: 'smooth', block: 'start'});
 }
 
+/* Toggle reveal/hide answers */
+function updateRevealAnswersUI() {
+  const shouldHide = !padiRevealAnswers.checked;
+  if (shouldHide) {
+    padiAiResultContent.classList.add(ANSWERS_HIDDEN_CLASS);
+  } else {
+    padiAiResultContent.classList.remove(ANSWERS_HIDDEN_CLASS);
+  }
+}
+
+/* Try several candidate endpoints to fetch saved sets (be tolerant of backend naming) */
+async function fetchSavedSets() {
+  const token = localStorage.getItem('token') || '';
+  const headers = {};
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const candidates = [
+    '/api/studypadi/ai/sets',
+    '/api/studypadi/ai/history',
+    '/api/studypadi/ai/list',
+    '/api/studypadi/ai/previous'
+  ];
+  let sets = null;
+  for (const ep of candidates) {
+    try {
+      const resp = await fetch(ep, { credentials: 'include', headers });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      // accept array directly or object with 'sets'/'data'/'items'
+      if (Array.isArray(data)) { sets = data; break; }
+      if (Array.isArray(data.sets)) { sets = data.sets; break; }
+      if (Array.isArray(data.items)) { sets = data.items; break; }
+      if (Array.isArray(data.data)) { sets = data.data; break; }
+    } catch (e) {
+      // ignore and try next
+    }
+  }
+  return sets || [];
+}
+
+/* Render saved sets list */
+function renderSavedSetsList(sets) {
+  padiSavedSets.innerHTML = '';
+  if (!sets || !sets.length) {
+    padiSavedEmpty.classList.remove('hidden');
+    return;
+  }
+  padiSavedEmpty.classList.add('hidden');
+
+  sets.forEach((s) => {
+    // Normalize fields
+    const title = s.title || s.setTitle || s.name || (s._id ? `Set ${s._id}` : 'Untitled');
+    const qcount = Array.isArray(s.questions) ? s.questions.length : (s.count || s.num || (s._meta && s._meta.count) || '-');
+    const created = s.createdAt || s.created || s._created || s.date || '';
+    const id = s._id || s.id || title;
+
+    const card = document.createElement('div');
+    card.className = 'bg-white rounded-lg p-3 border shadow-sm flex flex-col';
+    card.innerHTML = `
+      <div class="flex items-center justify-between">
+        <div class="text-gray-800 font-semibold">${escapeHtml(title)}</div>
+        <div class="text-xs text-gray-500">${created ? new Date(created).toLocaleString() : ''}</div>
+      </div>
+      <div class="text-xs text-gray-600 mt-2">Questions: <span class="font-semibold text-gray-800">${qcount}</span></div>
+      <div class="mt-3 flex gap-2">
+        <button class="padi-open-set-btn bg-indigo-600 text-white px-3 py-1 rounded text-sm" data-id="${escapeHtml(String(id))}">Open</button>
+        <button class="padi-download-set-btn bg-white border px-3 py-1 rounded text-sm" data-id="${escapeHtml(String(id))}">Download</button>
+      </div>
+    `;
+    padiSavedSets.appendChild(card);
+  });
+
+  // Attach listeners
+  padiSavedSets.querySelectorAll('.padi-open-set-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const id = btn.getAttribute('data-id');
+      openSavedSet(id);
+    });
+  });
+  padiSavedSets.querySelectorAll('.padi-download-set-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const id = btn.getAttribute('data-id');
+      downloadSavedSet(id);
+    });
+  });
+}
+
+/* Open a saved set in modal - try endpoints to fetch a single set by id */
+async function openSavedSet(id) {
+  const token = localStorage.getItem('token') || '';
+  const headers = {};
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const candidates = [
+    `/api/studypadi/ai/sets/${id}`,
+    `/api/studypadi/ai/history/${id}`,
+    `/api/studypadi/ai/get/${id}`,
+    `/api/studypadi/ai/${id}`
+  ];
+  let set = null;
+  for (const ep of candidates) {
+    try {
+      const resp = await fetch(ep, { credentials: 'include', headers });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      // Accept direct set object or nested object
+      if (data && (data.questions || Array.isArray(data))) { set = data; break; }
+      if (data.set) { set = data.set; break; }
+      if (data.data) { set = data.data; break; }
+    } catch (e) {}
+  }
+
+  if (!set) {
+    alert('Could not load saved set from server. The endpoint may be different. Check server or use Refresh.');
+    return;
+  }
+
+  // Normalize to object { title, questions, raw, createdAt, _id }
+  const normalized = {
+    title: set.title || set.setTitle || set.name || ('Saved Set'),
+    questions: Array.isArray(set.questions) ? set.questions : (Array.isArray(set) ? set : (typeof set.questions === 'string' ? null : null)),
+    raw: typeof set.raw === 'string' ? set.raw : null,
+    createdAt: set.createdAt || set.created || null,
+    _id: set._id || set.id || null
+  };
+
+  lastModalSet = normalized;
+
+  padiSavedModalTitle.textContent = normalized.title || 'Saved Set';
+  if (normalized.questions && normalized.questions.length) {
+    padiSavedModalContent.innerHTML = '';
+    const container = document.createElement('div');
+    for (let i = 0; i < normalized.questions.length; i++) {
+      const q = normalized.questions[i];
+      const wrapper = document.createElement('div');
+      wrapper.className = 'question';
+      wrapper.innerHTML = buildQuestionHTML(q, i);
+      container.appendChild(wrapper);
+    }
+    padiSavedModalContent.appendChild(container);
+  } else if (normalized.raw) {
+    padiSavedModalContent.innerHTML = `<div class="prose">${nl2brEscaped(normalized.raw)}</div>`;
+  } else {
+    padiSavedModalContent.innerHTML = `<pre class="text-xs whitespace-pre-wrap">${escapeHtml(JSON.stringify(set, null, 2))}</pre>`;
+  }
+
+  // ensure modal answer visibility follows main reveal checkbox
+  if (!padiRevealAnswers.checked) {
+    padiSavedModalContent.classList.add(ANSWERS_HIDDEN_CLASS);
+  } else {
+    padiSavedModalContent.classList.remove(ANSWERS_HIDDEN_CLASS);
+  }
+
+  padiSavedModal.classList.remove('hidden');
+}
+
+/* Download saved set JSON (try to load then download) */
+async function downloadSavedSet(id) {
+  const token = localStorage.getItem('token') || '';
+  const headers = {};
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const epCandidates = [
+    `/api/studypadi/ai/sets/${id}`,
+    `/api/studypadi/ai/history/${id}`,
+    `/api/studypadi/ai/get/${id}`,
+    `/api/studypadi/ai/${id}`
+  ];
+  for (const ep of epCandidates) {
+    try {
+      const resp = await fetch(ep, { credentials: 'include', headers });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      const payload = (data && (data.questions || data)) ? (data.questions ? data.questions : data) : data;
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `savedset_${id}_${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      return;
+    } catch (e) {}
+  }
+  alert('Could not download saved set. The server endpoint may be different.');
+}
+
+/* Attach listeners for modal controls */
+padiSavedModalClose.addEventListener('click', () => padiSavedModal.classList.add('hidden'));
+padiSavedModalDownload.addEventListener('click', () => {
+  if (!lastModalSet) return;
+  const payload = lastModalSet.questions || lastModalSet.raw || lastModalSet;
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${(lastModalSet.title||'savedset').replace(/\s+/g,'_')}_${Date.now()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
+padiSavedModalCopy.addEventListener('click', async () => {
+  if (!lastModalSet) return;
+  const payload = lastModalSet.questions || lastModalSet.raw || lastModalSet;
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+    alert('JSON copied to clipboard');
+  } catch (e) {
+    alert('Could not copy to clipboard');
+  }
+});
+
+/* Open/close reveal answers toggle */
+padiRevealAnswers.addEventListener('change', () => {
+  updateRevealAnswersUI();
+  // also update modal if open
+  if (!padiSavedModal.classList.contains('hidden')) {
+    if (!padiRevealAnswers.checked) padiSavedModalContent.classList.add(ANSWERS_HIDDEN_CLASS);
+    else padiSavedModalContent.classList.remove(ANSWERS_HIDDEN_CLASS);
+  }
+});
+
+/* Attempt to load saved sets on page load */
+async function loadSavedSets() {
+  padiSavedSets.innerHTML = `<div class="text-gray-500 col-span-full">Loading…</div>`;
+  try {
+    const sets = await fetchSavedSets();
+    renderSavedSetsList(sets);
+  } catch (e) {
+    padiSavedSets.innerHTML = `<div class="text-red-500 col-span-full">Failed to load saved sets</div>`;
+  }
+}
+padiRefreshSaved.addEventListener('click', loadSavedSets);
+
+/* Main form submit */
 padiAiForm.addEventListener('submit', async function(e){
   e.preventDefault();
   if (!padiAiFile.files || !padiAiFile.files[0]) {
@@ -1777,14 +2091,8 @@ padiAiForm.addEventListener('submit', async function(e){
   fd.append('instructions', padiAiInstr.value || '');
 
   setAiUiBusy(true);
-  // hide previous result content
   padiAiResult.classList.add('hidden');
-  // keep pre cleared
-  if (padiAiResultPre) padiAiResultPre.textContent = '';
-
-  // remove any previous formatted container
-  const prevFormatted = document.getElementById('padiAiFormatted');
-  if (prevFormatted) prevFormatted.remove();
+  padiAiResultContent.textContent = '';
 
   try {
     // attach token from localStorage if available
@@ -1793,7 +2101,6 @@ padiAiForm.addEventListener('submit', async function(e){
       console.warn('No token found in localStorage — request will be sent without Authorization header (cookies may still be used).');
     }
 
-    // Build headers. Do NOT set Content-Type when sending FormData.
     const headers = {};
     if (token) headers['Authorization'] = 'Bearer ' + token;
 
@@ -1803,80 +2110,20 @@ padiAiForm.addEventListener('submit', async function(e){
       headers,
       body: fd
     });
-
     if (!resp.ok) {
       const txt = await resp.text();
       throw new Error(`Server error: ${resp.status} ${txt}`);
     }
-
     const out = await resp.json();
 
-    // show result panel
-    padiAiResult.classList.remove('hidden');
+    // Render nicely
+    renderAiOutput(out);
 
-    // prioritize rendering of structured questions
-    if (out.questions && Array.isArray(out.questions) && out.questions.length) {
-      const formatted = renderQuestions(out.questions);
-      formatted.id = 'padiAiFormatted';
-      padiAiResult.appendChild(formatted);
+    // Optionally refresh saved sets (if backend stores them automatically)
+    setTimeout(loadSavedSets, 800);
 
-      // set download for JSON
-      padiAiDownload.onclick = () => {
-        const blob = new Blob([JSON.stringify(out.questions, null, 2)], {type: 'application/json'});
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `questions_${Date.now()}.json`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-      };
-
-    } else if (out.raw) {
-      // render raw text nicely
-      const formattedRaw = renderRawText(out.raw);
-      formattedRaw.id = 'padiAiFormatted';
-      padiAiResult.appendChild(formattedRaw);
-
-      // keep legacy pre for reference (hidden) but populate
-      if (padiAiResultPre) padiAiResultPre.textContent = out.raw;
-
-      // provide a text download
-      padiAiDownload.onclick = () => {
-        const blob = new Blob([out.raw], {type: 'text/plain'});
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `questions_raw_${Date.now()}.txt`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-      };
-
-    } else {
-      // fallback: attempt to stringify and display prettily
-      const fallback = document.createElement('pre');
-      fallback.className = 'p-4 bg-gray-50 rounded text-sm overflow-auto';
-      fallback.textContent = JSON.stringify(out, null, 2);
-      fallback.id = 'padiAiFormatted';
-      padiAiResult.appendChild(fallback);
-
-      padiAiDownload.onclick = () => {
-        const blob = new Blob([JSON.stringify(out, null, 2)], {type: 'application/json'});
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `questions_fallback_${Date.now()}.json`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-      };
-    }
   } catch (err) {
-    console.error('Conversion error:', err);
+    console.error(err);
     alert(err.message || 'Conversion failed');
   } finally {
     setAiUiBusy(false);
@@ -1884,22 +2131,28 @@ padiAiForm.addEventListener('submit', async function(e){
 });
 
 padiAiClear.addEventListener('click', () => {
-  // remove formatted container
-  const f = document.getElementById('padiAiFormatted');
-  if (f) f.remove();
-  if (padiAiResultPre) padiAiResultPre.textContent = '';
+  padiAiResultContent.textContent = '';
   padiAiResult.classList.add('hidden');
   padiAiFile.value = '';
-  // clear download handler
-  padiAiDownload.onclick = null;
+  lastRenderedOut = null;
+});
+
+/* initialize */
+document.addEventListener('DOMContentLoaded', () => {
+  // hide answers by default
+  padiRevealAnswers.checked = false;
+  updateRevealAnswersUI();
+  loadSavedSets();
 });
 </script>
+    
+    
     <!-- Motivational Banner -->
     <div class="bg-gradient-to-br from-yellow-400 via-indigo-400 to-blue-600 rounded-xl px-7 py-6 text-white shadow flex flex-col md:flex-row items-center gap-5">
       <div class="flex-1">
         <h3 class="text-xl font-bold">Tip:</h3>
         <p class="text-md mb-1">Set realistic goals and review your progress at least once a week for continuous improvement.</p>
-      </div>
+     </div>
       <div>
         <button id="setWeeklyGoalBtn" class="bg-white/30 hover:bg-white/50 text-white font-semibold rounded px-6 py-2 transition">Set Weekly Goal</button>
       </div>
