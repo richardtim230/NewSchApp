@@ -1809,8 +1809,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const padiSavedSets = document.getElementById('padiSavedSets');
   const padiSavedEmpty = document.getElementById('padiSavedEmpty');
   const padiRefreshSaved = document.getElementById('padiRefreshSaved');
-const padiUserCreditsElem = document.getElementById('padiUserCredits');
-const padiBuyCreditsBtn = document.getElementById('padiBuyCreditsBtn');
 
   let lastRenderedOut = null;
   const ANSWERS_HIDDEN_CLASS = 'answers-hidden';
@@ -2100,95 +2098,115 @@ const padiBuyCreditsBtn = document.getElementById('padiBuyCreditsBtn');
       renderFallbackPretty(out);
     }
   }
-// fetch and display current user credits (best-effort)
-async function fetchAndDisplayCredits() {
-  if (!padiUserCreditsElem) return;
-  try {
-    const resp = await fetch('https://examguide.onrender.com/api/auth/me', { credentials: 'include' });
-    if (!resp.ok) {
+
+(async function(){
+  const padiUserCreditsElem = document.getElementById('padiUserCredits');
+  const padiBuyCreditsBtn = document.getElementById('padiBuyCreditsBtn');
+
+  async function fetchAndDisplayCredits() {
+    if (!padiUserCreditsElem) return;
+    try {
+      const resp = await fetch('https://examguide.onrender.com/api/auth/me', { credentials: 'include' });
+      if (!resp.ok) {
+        padiUserCreditsElem.textContent = '--';
+        if (padiBuyCreditsBtn) padiBuyCreditsBtn.classList.remove('hidden');
+        return;
+      }
+      const data = await resp.json();
+      const user = data.user || data;
+      const balance = (user && (user.creditPoints != null ? user.creditPoints : (user.credits != null ? user.credits : null)));
+      padiUserCreditsElem.textContent = (balance != null) ? balance : '--';
+      if (padiBuyCreditsBtn) padiBuyCreditsBtn.classList.remove('hidden');
+    } catch (e) {
       padiUserCreditsElem.textContent = '--';
       if (padiBuyCreditsBtn) padiBuyCreditsBtn.classList.remove('hidden');
-      return;
     }
-    const data = await resp.json();
-    const user = data.user || data;
-    const balance = (user && (user.creditPoints != null ? user.creditPoints : (user.credits != null ? user.credits : null)));
-    padiUserCreditsElem.textContent = (balance != null) ? balance : '--';
-    if (padiBuyCreditsBtn) padiBuyCreditsBtn.classList.remove('hidden');
-  } catch (e) {
-    padiUserCreditsElem.textContent = '--';
-    if (padiBuyCreditsBtn) padiBuyCreditsBtn.classList.remove('hidden');
   }
-}
 
-// Replace existing showPurchaseModal with this to match the mock access modal look exactly
-async function showPurchaseModal(availableCredits) {
-  // Try to get user info for the WhatsApp message (best-effort)
-  let studentName = '';
-  let studentEmail = '';
-  try {
-    const resp = await fetch('/api/auth/me', { credentials: 'include' });
-    if (resp.ok) {
-      const json = await resp.json();
-      const user = json.user || json;
-      studentName = user?.fullName || user?.fullname || user?.name || user?.username || user?.email || '';
-      studentEmail = user?.email || user?.matricNo || user?.matricNumber || '';
+  // Modal that matches tutor/mock.html look exactly
+  async function showPurchaseModal(availableCredits) {
+    // best-effort get user info for prefilled WhatsApp message
+    let studentName = '';
+    let studentEmail = '';
+    try {
+      const resp = await fetch('https://examguide.onrender.com/api/auth/me', { credentials: 'include' });
+      if (resp.ok) {
+        const json = await resp.json();
+        const user = json.user || json;
+        studentName = user?.fullName || user?.fullname || user?.name || user?.username || user?.email || '';
+        studentEmail = user?.email || user?.matricNo || user?.matricNumber || '';
+      }
+    } catch (e) { /* ignore */ }
+
+    const studentMsg = encodeURIComponent(
+      `Hello Admin, I need to purchase credits for AI Convert.\n\nName: ${studentName}\nEmail/Matric: ${studentEmail}\nCurrent balance: ${availableCredits}\nRequest: Purchase credits for AI convert.`
+    );
+
+    // ensure modal root
+    let root = document.getElementById('modal-root');
+    if (!root) {
+      root = document.createElement('div');
+      root.id = 'modal-root';
+      document.body.appendChild(root);
     }
-  } catch (e) {
-    // ignore - proceed with empty details
-  }
 
-  const studentMsg = encodeURIComponent(
-    `Hello Admin, I need to purchase credits for AI Convert.\n\nName: ${studentName}\nEmail/Matric: ${studentEmail}\nCurrent balance: ${availableCredits}\nRequest: Purchase credits for AI convert.`
-  );
+    // markup uses same classes as tutor/mock.html
+    root.innerHTML = `
+      <div class="modal-bg">
+        <div class="modal-panel">
+          <div class="flex flex-col items-center space-y-2 mb-2">
+            <i class="fa fa-info-circle text-yellow-500 text-4xl mb-2 animate-bounce"></i>
+            <div class="text-lg font-extrabold text-blue-800 mb-1">Insufficient Credits</div>
+            <p class="text-base text-gray-700 mb-3">
+              You need at least <strong>8 credits</strong> to convert a document. Your current balance: <strong>${availableCredits}</strong>.
+            </p>
 
-  // Use existing modal-root if present, otherwise create one
-  let root = document.getElementById('modal-root');
-  if (!root) {
-    root = document.createElement('div');
-    root.id = 'modal-root';
-    document.body.appendChild(root);
-  }
+            <div class="pay-details mb-1">
+              <div><strong>Bank Name:</strong> Opay Microfinance Bank</div>
+              <div><strong>Account Name:</strong> Ochuko Timothy Richard</div>
+              <div><strong>Account Number:</strong> <span class="font-mono text-lg text-yellow-700">9070962822</span></div>
+            </div>
+            <div class="text-xs text-gray-600 mb-3">
+              After payment, send your receipt to admin via WhatsApp below for instant credit.
+            </div>
 
-  // Markup matches tutor/mock.html's showModal credit branch
-  root.innerHTML = `
-    <div class="modal-bg">
-      <div class="modal-panel">
-        <div class="flex flex-col items-center space-y-2 mb-2">
-          <i class="fa fa-info-circle text-yellow-500 text-4xl mb-2 animate-bounce"></i>
-          <div class="text-lg font-extrabold text-blue-800 mb-1">Insufficient Credits</div>
-          <p class="text-base text-gray-700 mb-3">
-            You need at least <strong>8 credits</strong> to convert a document. Your current balance: <strong>${availableCredits}</strong>.
-          </p>
+            <a href="https://wa.me/2349056254709?text=${studentMsg}" target="_blank" rel="noopener"
+               class="mt-2 w-full flex items-center justify-center gap-2 py-3 px-5 rounded-2xl font-bold text-white bg-green-600 hover:bg-green-700 shadow transform hover:scale-105 transition"
+               style="text-decoration:none">
+              <i class="fab fa-whatsapp text-2xl"></i>
+              Contact Admin for Credit
+            </a>
 
-          <div class="pay-details mb-1">
-            <div><strong>Bank Name:</strong> Opay Microfinance Bank</div>
-            <div><strong>Account Name:</strong> Ochuko Timothy Richard</div>
-            <div><strong>Account Number:</strong> <span class="font-mono text-lg text-yellow-700">9070962822</span></div>
+            <button id="padiCreditsModalClose" class="mt-3 py-2 px-7 bg-blue-800 text-white font-semibold rounded-xl hover:bg-blue-900 shadow-sm transition">
+              Close
+            </button>
           </div>
-          <div class="text-xs text-gray-600 mb-3">
-            After payment, send your receipt to admin via WhatsApp below for instant credit.
-          </div>
-
-          <a href="https://wa.me/2349056254709?text=${studentMsg}" target="_blank" rel="noopener"
-             class="mt-2 w-full flex items-center justify-center gap-2 py-3 px-5 rounded-2xl font-bold text-white bg-green-600 hover:bg-green-700 shadow transform hover:scale-105 transition"
-             style="text-decoration:none">
-            <i class="fab fa-whatsapp text-2xl"></i>
-            Contact Admin for Credit
-          </a>
-
-          <button id="padiCreditsModalClose" class="mt-3 py-2 px-7 bg-blue-800 text-white font-semibold rounded-xl hover:bg-blue-900 shadow-sm transition">
-            Close
-          </button>
         </div>
       </div>
-    </div>
-  `;
+    `;
 
-  // Close handler
-  const closeBtn = document.getElementById('padiCreditsModalClose');
-  if (closeBtn) closeBtn.onclick = () => { root.innerHTML = ''; };
-}
+    const closeBtn = document.getElementById('padiCreditsModalClose');
+    if (closeBtn) closeBtn.onclick = () => { root.innerHTML = ''; };
+  }
+
+  // hook the buy button
+  if (padiBuyCreditsBtn) {
+    padiBuyCreditsBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const balance = padiUserCreditsElem ? padiUserCreditsElem.textContent : '--';
+      showPurchaseModal(balance);
+    });
+  }
+
+  // expose helpers (optional)
+  window.padiFetchCredits = fetchAndDisplayCredits;
+  window.padiShowPurchaseModal = showPurchaseModal;
+
+  // run on load
+  document.addEventListener('DOMContentLoaded', () => {
+    fetchAndDisplayCredits().catch(()=>{});
+  });
+})();
   // Update credits UI after a conversion or when server returns remainingCredits
 function updateCreditsDisplay(value) {
   if (!padiUserCreditsElem) return;
