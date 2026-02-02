@@ -2121,10 +2121,16 @@ async function fetchAndDisplayCredits() {
   }
 }
 
-  // show a small purchase modal (or fallback to alert) when user needs credits
-// Replace existing showPurchaseModal with this function to match mock access modal
-function showPurchaseModal(availableCredits) {
-  // Ensure modal-root exists (mock page uses #modal-root)
+// Full replacement for showPurchaseModal with improved UX, accessibility, and helpers.
+// - Matches the visual style used in tutor/mock.html (uses classes: modal-bg, modal-panel, pay-details).
+// - Adds: backdrop & ESC to close, focus trap, copy-to-clipboard for WhatsApp message,
+//   optional preset packs UI, and cleanup of event listeners when closed.
+//
+// Usage: showPurchaseModal(availableCredits, { packs: [{label:'400cr', price:'₦500', note:'Instant'}], onClose: ()=>{} })
+function showPurchaseModal(availableCredits, opts = {}) {
+  const { packs = [{ label: '400cr', price: '₦500', note: 'Instant' }], onClose } = opts;
+
+  // ensure modal-root exists and is appended to body (mock page uses #modal-root)
   let root = document.getElementById('modal-root');
   if (!root) {
     root = document.createElement('div');
@@ -2132,20 +2138,46 @@ function showPurchaseModal(availableCredits) {
     document.body.appendChild(root);
   }
 
-  // Build student details for WhatsApp message (try to reuse currentUser if present)
-  const studentName = (typeof currentUser !== 'undefined' && currentUser) ? (currentUser.fullName || currentUser.fullname || currentUser.name || currentUser.username || currentUser.email || '') : '';
-  const studentEmail = (typeof currentUser !== 'undefined' && currentUser) ? (currentUser.email || currentUser.matricNo || currentUser.matricNumber || '') : '';
-  const studentMsg = encodeURIComponent(`Hello, I want to purchase ExamGuard credits.\n\nName: ${studentName}\nEmail/Matric: ${studentEmail}\nCurrent balance: ${availableCredits}`);
+  // Try to reuse currentUser object if present (fallback to empty)
+  const studentName = (typeof currentUser !== 'undefined' && currentUser) ?
+    (currentUser.fullName || currentUser.fullname || currentUser.name || currentUser.username || currentUser.email || '') : '';
+  const studentEmail = (typeof currentUser !== 'undefined' && currentUser) ?
+    (currentUser.email || currentUser.matricNo || currentUser.matricNumber || '') : '';
 
-  // Modal markup matches the style & layout from tutor/mock.html
+  // Prepare WhatsApp message text
+  const defaultMsg = `Hello Admin,\n\nI want to purchase ExamGuard credits.\n\nName: ${studentName || '[Your name]'}\nMatric/Email: ${studentEmail || '[your email or matric]'}\nCurrent balance: ${availableCredits}\n\nPlease advise on payment instructions.`;
+  const waMessage = encodeURIComponent(defaultMsg);
+  const waHref = `https://wa.me/2349056254709?text=${waMessage}`;
+
+  // Build packs HTML if provided
+  const packsHtml = Array.isArray(packs) && packs.length ? `
+    <div class="mt-3 w-full">
+      <div class="text-sm text-gray-600 mb-2">Quick purchase options</div>
+      <div class="grid grid-cols-1 sm:grid-cols-${packs.length > 2 ? 2 : packs.length} gap-2">
+        ${packs.map((p, i) => `
+          <button data-pack-index="${i}" class="pack-btn w-full text-left p-3 rounded-lg border hover:shadow-sm transition bg-white">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="font-semibold text-gray-800">${escapeHtml(p.label)}</div>
+                <div class="text-xs text-gray-500">${escapeHtml(p.note || '')}</div>
+              </div>
+              <div class="font-bold text-indigo-700">${escapeHtml(p.price || '')}</div>
+            </div>
+          </button>
+        `).join('')}
+      </div>
+    </div>` : '';
+
+  // Modal markup (uses same classes as mock page for visual parity)
   root.innerHTML = `
-    <div class="modal-bg">
-      <div class="modal-panel">
-        <div class="flex flex-col items-center space-y-2 mb-2">
-          <i class="fa fa-info-circle text-yellow-500 text-4xl mb-2 animate-bounce"></i>
-          <div class="text-lg font-extrabold text-blue-800 mb-1">Insufficient Credits</div>
-          <p class="text-base text-gray-700 mb-3">
-            You need at least <strong>8 credits</strong> to convert a document. Your current balance: <strong>${availableCredits}</strong>.
+    <div class="modal-bg" role="dialog" aria-modal="true" aria-labelledby="padiCreditsModalTitle" tabindex="-1">
+      <div class="modal-panel" role="document">
+        <div class="flex flex-col items-center space-y-3 mb-2">
+          <i class="fa fa-info-circle text-yellow-500 text-4xl mb-1"></i>
+          <div id="padiCreditsModalTitle" class="text-lg font-extrabold text-blue-800">Insufficient Credits</div>
+          <p class="text-sm text-gray-700 text-center mb-2">
+            You need <strong>8 credits</strong> to convert a document. Your current balance:
+            <strong id="padiModalBalance">${escapeHtml(String(availableCredits))}</strong>.
           </p>
 
           <div class="pay-details mb-1">
@@ -2154,34 +2186,147 @@ function showPurchaseModal(availableCredits) {
             <div><strong>Account Number:</strong> <span class="font-mono text-lg text-yellow-700">9070962822</span></div>
           </div>
 
-          <div class="text-xs text-gray-600 mb-3">
-            After payment, send your receipt to admin via WhatsApp below for instant credit.
+          <div class="text-xs text-gray-600 mb-3 text-center">
+            After payment, send your receipt to admin via WhatsApp for instant credit. You can also copy the message below.
           </div>
 
-          <a href="https://wa.me/2349056254709?text=${studentMsg}"
-             target="_blank" rel="noopener"
-             class="mt-2 w-full flex items-center justify-center gap-2 py-3 px-5 rounded-2xl font-bold text-white bg-green-600 hover:bg-green-700 shadow transform hover:scale-105"
-             style="text-decoration:none">
-            <i class="fab fa-whatsapp text-2xl"></i>
-            Contact Admin for Credit
-          </a>
+          <div class="w-full">
+            <textarea id="padiCreditsWaMsg" class="w-full p-3 rounded border text-sm" rows="4" readonly>${escapeHtml(defaultMsg)}</textarea>
+            <div class="flex gap-2 mt-2">
+              <button id="padiCopyWaMsg" class="px-3 py-2 bg-indigo-600 text-white rounded">Copy Message</button>
+              <a id="padiOpenWhatsApp" href="${waHref}" target="_blank" rel="noopener" class="px-3 py-2 bg-green-600 text-white rounded flex items-center gap-2">
+                <i class="fab fa-whatsapp"></i> Contact Admin
+              </a>
+              <button id="padiCreditsModalClose" class="ml-auto px-3 py-2 bg-gray-100 rounded">Close</button>
+            </div>
+          </div>
 
-          <button id="padiCreditsModalClose"
-                  class="mt-3 py-2 px-7 bg-blue-800 text-white font-semibold rounded-xl hover:bg-blue-900 shadow-sm transition">
-            Close
-          </button>
+          ${packsHtml}
         </div>
       </div>
     </div>
   `;
 
-  // Close handler
-  const closeBtn = document.getElementById('padiCreditsModalClose');
-  if (closeBtn) {
-    closeBtn.addEventListener('click', () => {
-      root.innerHTML = '';
-    });
+  // Helper: escapeHtml used in markup
+  function escapeHtml(s) {
+    if (s === null || typeof s === 'undefined') return '';
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
+
+  // Focus management & accessibility: trap focus inside modal
+  const modalEl = root.querySelector('.modal-bg');
+  const focusableSelector = 'a[href], button:not([disabled]), textarea, input, [tabindex]:not([tabindex="-1"])';
+  let focusableEls = Array.from(root.querySelectorAll(focusableSelector));
+  if (!focusableEls.length) focusableEls = [root]; // fallback
+  const firstFocusable = focusableEls[0];
+  const lastFocusable = focusableEls[focusableEls.length - 1];
+  const prevActive = document.activeElement;
+  firstFocusable.focus();
+
+  function handleKeydown(e) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeModal();
+      return;
+    }
+    if (e.key === 'Tab') {
+      // simple focus trap
+      if (e.shiftKey) {
+        if (document.activeElement === firstFocusable) {
+          e.preventDefault();
+          lastFocusable.focus();
+        }
+      } else {
+        if (document.activeElement === lastFocusable) {
+          e.preventDefault();
+          firstFocusable.focus();
+        }
+      }
+    }
+  }
+
+  function backdropClickHandler(e) {
+    if (e.target === modalEl) closeModal();
+  }
+
+  // Copy to clipboard (with fallback)
+  async function copyMessage() {
+    const ta = document.getElementById('padiCreditsWaMsg');
+    if (!ta) return;
+    const txt = ta.value || '';
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(txt);
+      } else {
+        // fallback
+        ta.select();
+        document.execCommand('copy');
+        window.getSelection().removeAllRanges();
+      }
+      // small visual confirmation
+      const btn = document.getElementById('padiCopyWaMsg');
+      if (btn) {
+        const prev = btn.textContent;
+        btn.textContent = 'Copied';
+        setTimeout(() => { btn.textContent = prev; }, 1400);
+      }
+    } catch (err) {
+      alert('Could not copy to clipboard. You can still press Contact Admin to send the message.');
+    }
+  }
+
+  // Pack button handler: prefills textarea with pack info and opens WhatsApp if clicked twice
+  function packClickHandler(e) {
+    const btn = e.currentTarget;
+    const idx = Number(btn.getAttribute('data-pack-index'));
+    const pack = packs[idx];
+    if (!pack) return;
+    const ta = document.getElementById('padiCreditsWaMsg');
+    const msg = `${defaultMsg}\n\nI want to purchase: ${pack.label} for ${pack.price}${pack.note ? ` (${pack.note})` : ''}`;
+    ta.value = msg;
+    // update WhatsApp link
+    const openWa = document.getElementById('padiOpenWhatsApp');
+    if (openWa) openWa.href = `https://wa.me/2349056254709?text=${encodeURIComponent(msg)}`;
+    // focus copy button
+    const copyBtn = document.getElementById('padiCopyWaMsg');
+    if (copyBtn) copyBtn.focus();
+  }
+
+  // Cleanup and close modal
+  function closeModal() {
+    // remove listeners
+    document.removeEventListener('keydown', handleKeydown);
+    if (modalEl) modalEl.removeEventListener('click', backdropClickHandler);
+    const copyBtn = document.getElementById('padiCopyWaMsg');
+    if (copyBtn) copyBtn.removeEventListener('click', copyMessage);
+    const closeBtn = document.getElementById('padiCreditsModalClose');
+    if (closeBtn) closeBtn.removeEventListener('click', closeModal);
+    const packsBtns = root.querySelectorAll('.pack-btn');
+    packsBtns.forEach(pb => pb.removeEventListener('click', packClickHandler));
+    // clear DOM
+    root.innerHTML = '';
+    // restore focus
+    try { if (prevActive && prevActive.focus) prevActive.focus(); } catch (e) {}
+    // callback
+    if (typeof onClose === 'function') {
+      try { onClose(); } catch (e) { /* ignore */ }
+    }
+  }
+
+  // Wire listeners
+  document.addEventListener('keydown', handleKeydown);
+  modalEl.addEventListener('click', backdropClickHandler);
+  const copyBtn = document.getElementById('padiCopyWaMsg');
+  if (copyBtn) copyBtn.addEventListener('click', copyMessage);
+  const closeBtn = document.getElementById('padiCreditsModalClose');
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  const packsBtns = root.querySelectorAll('.pack-btn');
+  packsBtns.forEach(pb => pb.addEventListener('click', packClickHandler));
 }
 
   // Update credits UI after a conversion or when server returns remainingCredits
