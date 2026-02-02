@@ -2121,26 +2121,36 @@ async function fetchAndDisplayCredits() {
   }
 }
 
-// show a purchase modal matching the mock access page style
-function showPurchaseModal(availableCredits) {
-  // use the same modal-root id as the mock page for styling consistency
+// Replace existing showPurchaseModal with this to match the mock access modal look exactly
+async function showPurchaseModal(availableCredits) {
+  // Try to get user info for the WhatsApp message (best-effort)
+  let studentName = '';
+  let studentEmail = '';
+  try {
+    const resp = await fetch('/api/auth/me', { credentials: 'include' });
+    if (resp.ok) {
+      const json = await resp.json();
+      const user = json.user || json;
+      studentName = user?.fullName || user?.fullname || user?.name || user?.username || user?.email || '';
+      studentEmail = user?.email || user?.matricNo || user?.matricNumber || '';
+    }
+  } catch (e) {
+    // ignore - proceed with empty details
+  }
+
+  const studentMsg = encodeURIComponent(
+    `Hello Admin, I need to purchase credits for AI Convert.\n\nName: ${studentName}\nEmail/Matric: ${studentEmail}\nCurrent balance: ${availableCredits}\nRequest: Purchase credits for AI convert.`
+  );
+
+  // Use existing modal-root if present, otherwise create one
   let root = document.getElementById('modal-root');
   if (!root) {
     root = document.createElement('div');
     root.id = 'modal-root';
     document.body.appendChild(root);
   }
-  // If you have a global currentUser object, use those details:
-  const studentName = (typeof currentUser !== 'undefined' && currentUser) 
-    ? (currentUser.fullName || currentUser.fullname || currentUser.name || currentUser.username || currentUser.email || '') 
-    : '';
-  const studentEmail = (typeof currentUser !== 'undefined' && currentUser) 
-    ? (currentUser.email || currentUser.matricNo || currentUser.matricNumber || '') 
-    : '';
-  const studentMsg = encodeURIComponent(
-    `Hello, I want to purchase ExamGuard credits.\n\nName: ${studentName}\nEmail/Matric: ${studentEmail}\nCurrent balance: ${availableCredits}`
-  );
 
+  // Markup matches tutor/mock.html's showModal credit branch
   root.innerHTML = `
     <div class="modal-bg">
       <div class="modal-panel">
@@ -2148,9 +2158,9 @@ function showPurchaseModal(availableCredits) {
           <i class="fa fa-info-circle text-yellow-500 text-4xl mb-2 animate-bounce"></i>
           <div class="text-lg font-extrabold text-blue-800 mb-1">Insufficient Credits</div>
           <p class="text-base text-gray-700 mb-3">
-            You need at least <strong>8 credits</strong> to convert a document.<br>
-            Your current balance: <strong>${availableCredits}</strong>.
+            You need at least <strong>8 credits</strong> to convert a document. Your current balance: <strong>${availableCredits}</strong>.
           </p>
+
           <div class="pay-details mb-1">
             <div><strong>Bank Name:</strong> Opay Microfinance Bank</div>
             <div><strong>Account Name:</strong> Ochuko Timothy Richard</div>
@@ -2159,24 +2169,26 @@ function showPurchaseModal(availableCredits) {
           <div class="text-xs text-gray-600 mb-3">
             After payment, send your receipt to admin via WhatsApp below for instant credit.
           </div>
-          <a href="https://wa.me/2349056254709?text=${studentMsg}"
-             target="_blank" rel="noopener"
-             class="mt-2 w-full flex items-center justify-center gap-2 py-3 px-5 rounded-2xl font-bold text-white bg-green-600 hover:bg-green-700 shadow transform hover:scale-105"
+
+          <a href="https://wa.me/2349056254709?text=${studentMsg}" target="_blank" rel="noopener"
+             class="mt-2 w-full flex items-center justify-center gap-2 py-3 px-5 rounded-2xl font-bold text-white bg-green-600 hover:bg-green-700 shadow transform hover:scale-105 transition"
              style="text-decoration:none">
             <i class="fab fa-whatsapp text-2xl"></i>
             Contact Admin for Credit
           </a>
-          <button id="padiCreditsModalClose"
-                  class="mt-3 py-2 px-7 bg-blue-800 text-white font-semibold rounded-xl hover:bg-blue-900 shadow-sm transition">
+
+          <button id="padiCreditsModalClose" class="mt-3 py-2 px-7 bg-blue-800 text-white font-semibold rounded-xl hover:bg-blue-900 shadow-sm transition">
             Close
           </button>
         </div>
       </div>
     </div>
   `;
-  document.getElementById('padiCreditsModalClose').onclick = () => { root.innerHTML = ''; };
-}
 
+  // Close handler
+  const closeBtn = document.getElementById('padiCreditsModalClose');
+  if (closeBtn) closeBtn.onclick = () => { root.innerHTML = ''; };
+}
   // Update credits UI after a conversion or when server returns remainingCredits
 function updateCreditsDisplay(value) {
   if (!padiUserCreditsElem) return;
