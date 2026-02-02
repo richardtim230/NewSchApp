@@ -1579,7 +1579,13 @@ document.addEventListener("DOMContentLoaded", () => {
         <p class="text-sm text-gray-700">Upload a document (PDF, DOCX, TXT). Choose question type and desired number (max 40).</p>
       </div>
     </div>
-
+<!-- Add this small credits panel under your header (insert after the header div you posted) -->
+<div class="mt-3 flex items-center gap-4">
+  <div class="text-sm text-gray-700">
+    Your credits: <span id="padiUserCredits" class="font-bold text-indigo-700">--</span>
+  </div>
+  <button id="padiBuyCreditsBtn" class="text-sm text-yellow-600 underline hidden">Buy credits</button>
+</div>
     <!-- Form -->
     <form id="padiAiForm" class="mt-5 grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
       <div>
@@ -1803,6 +1809,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const padiSavedSets = document.getElementById('padiSavedSets');
   const padiSavedEmpty = document.getElementById('padiSavedEmpty');
   const padiRefreshSaved = document.getElementById('padiRefreshSaved');
+const padiUserCreditsElem = document.getElementById('padiUserCredits');
+const padiBuyCreditsBtn = document.getElementById('padiBuyCreditsBtn');
 
   let lastRenderedOut = null;
   const ANSWERS_HIDDEN_CLASS = 'answers-hidden';
@@ -2092,7 +2100,72 @@ document.addEventListener("DOMContentLoaded", () => {
       renderFallbackPretty(out);
     }
   }
+// fetch and display current user credits (best-effort)
+async function fetchAndDisplayCredits() {
+  if (!padiUserCreditsElem) return;
+  try {
+    const resp = await fetch('/api/auth/me', { credentials: 'include' });
+    if (!resp.ok) {
+      padiUserCreditsElem.textContent = '--';
+      if (padiBuyCreditsBtn) padiBuyCreditsBtn.classList.remove('hidden');
+      return;
+    }
+    const data = await resp.json();
+    const user = data.user || data;
+    const balance = (user && (user.creditPoints != null ? user.creditPoints : (user.credits != null ? user.credits : null)));
+    padiUserCreditsElem.textContent = (balance != null) ? balance : '--';
+    if (padiBuyCreditsBtn) padiBuyCreditsBtn.classList.remove('hidden');
+  } catch (e) {
+    padiUserCreditsElem.textContent = '--';
+    if (padiBuyCreditsBtn) padiBuyCreditsBtn.classList.remove('hidden');
+  }
+}
 
+  // show a small purchase modal (or fallback to alert) when user needs credits
+function showPurchaseModal(availableCredits) {
+  // build a minimal modal if not present
+  const rootId = 'padiCreditsModalRoot';
+  let root = document.getElementById(rootId);
+  if (!root) {
+    root = document.createElement('div');
+    root.id = rootId;
+    document.body.appendChild(root);
+  }
+  const studentMsg = encodeURIComponent(`Hi Admin, I need to buy credits for AI convert. Current balance: ${availableCredits}`);
+  root.innerHTML = `
+    <div class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4">
+      <div class="bg-white rounded-lg shadow-lg max-w-lg w-full p-6">
+        <h3 class="text-lg font-bold text-indigo-700 mb-2">Insufficient Credits</h3>
+        <p class="text-sm text-gray-700 mb-4">You need at least 8 credits to convert a document. Your current balance: <strong>${availableCredits}</strong></p>
+        <div class="flex gap-3 justify-end">
+          <a href="https://wa.me/2349056254709?text=${studentMsg}" target="_blank" rel="noopener"
+             class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Contact Admin (WhatsApp)</a>
+          <button id="padiCreditsModalClose" class="px-4 py-2 bg-gray-100 rounded">Close</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('padiCreditsModalClose').onclick = () => { root.innerHTML = ''; };
+}
+
+  // Update credits UI after a conversion or when server returns remainingCredits
+function updateCreditsDisplay(value) {
+  if (!padiUserCreditsElem) return;
+  padiUserCreditsElem.textContent = (value != null) ? value : '--';
+}
+
+// Hook buy credits button to show modal
+if (padiBuyCreditsBtn) {
+  padiBuyCreditsBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    showPurchaseModal(padiUserCreditsElem ? padiUserCreditsElem.textContent : '--');
+  });
+}
+
+// Call once on load (best if you run after DOM ready)
+document.addEventListener('DOMContentLoaded', () => {
+  fetchAndDisplayCredits().catch(()=>{});
+});
   // ------------------ Saved sets UI & modal (uses same normalizer) --------------
   // fetchSavedSets, renderSavedSetsList, openSavedSet, downloadSavedSet all reuse normalizeAiResponse
   async function fetchSavedSets() {
@@ -2319,57 +2392,83 @@ document.addEventListener("DOMContentLoaded", () => {
     if (padiAiSubmitLabel) padiAiSubmitLabel.textContent = b ? 'Converting…' : 'Convert';
   }
 
-  if (padiAiForm) {
-    padiAiForm.addEventListener('submit', async function(e){
-      e.preventDefault();
-      if (!padiAiFile || !padiAiFile.files || !padiAiFile.files[0]) {
-        return alert('Please choose a file to upload.');
-      }
-      let count = parseInt(padiAiCount.value) || 10;
-      if (count < 1) count = 1;
-      if (count > 40) count = 40;
+if (padiAiForm) {
+  padiAiForm.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    if (!padiAiFile.files || !padiAiFile.files[0]) return alert('Please choose a file to upload.');
 
-      const fd = new FormData();
-      fd.append('file', padiAiFile.files[0]);
-      fd.append('qtype', padiAiQType ? padiAiQType.value : 'mcq');
-      fd.append('count', String(count));
-      fd.append('format', padiAiFormat ? padiAiFormat.value : 'json');
-      fd.append('instructions', padiAiInstr ? padiAiInstr.value || '' : '');
+    // prepare FormData (same as before)
+    const fd = new FormData();
+    fd.append('file', padiAiFile.files[0]);
+    fd.append('qtype', document.getElementById('padiAiQType').value);
+    fd.append('count', String(Math.max(1, Math.min(40, parseInt(document.getElementById('padiAiCount').value || 10)))));
+    fd.append('format', document.getElementById('padiAiFormat').value);
+    fd.append('instructions', document.getElementById('padiAiInstructions').value || '');
 
-      setAiUiBusy(true);
-      if (padiAiResult) padiAiResult.classList.add('hidden');
-      if (examQuestionSet) examQuestionSet.innerHTML = '';
-      lastRenderedOut = null;
+    setAiUiBusy(true);
+    if (padiAiResult) padiAiResult.classList.add('hidden');
+    if (examQuestionSet) examQuestionSet.innerHTML = '';
 
-      try {
-        const token = localStorage.getItem('token') || '';
-        const headers = {};
-        if (token) headers['Authorization'] = 'Bearer ' + token;
+    try {
+      const token = localStorage.getItem('token') || '';
+      const headers = {};
+      if (token) headers['Authorization'] = 'Bearer ' + token;
 
-        const resp = await fetch('https://examguide.onrender.com/api/studypadi/ai/convert-file', {
-          method: 'POST', credentials: 'include', headers, body: fd
-        });
-        if (!resp.ok) {
-          const txt = await resp.text();
-          throw new Error(`Server error: ${resp.status} ${txt}`);
-        }
-        const out = await resp.json();
-        if (padiAiResult) padiAiResult.classList.remove('hidden');
+      const resp = await fetch('/api/studypadi/ai/convert-file', {
+        method: 'POST',
+        credentials: 'include',
+        headers,
+        body: fd
+      });
 
-        renderAiOutput(out);
-
-        // refresh saved sets
-        setTimeout(() => { loadSavedSets().catch(()=>{}); }, 800);
-
-      } catch (err) {
-        console.error(err);
-        if (examQuestionSet) examQuestionSet.innerHTML = `<div class="text-red-700 font-medium">Error: ${escapeHtml(err.message || 'Conversion failed')}</div>`;
-        if (padiAiResult) padiAiResult.classList.remove('hidden');
-      } finally {
+      // If the server explicitly tells insufficient credits (402)
+      if (resp.status === 402) {
+        // try parse JSON for credit info
+        let json = null;
+        try { json = await resp.json(); } catch (e) { json = null; }
+        const balance = json && (json.creditPoints ?? json.credit) != null ? (json.creditPoints ?? json.credit) : (padiUserCreditsElem ? padiUserCreditsElem.textContent : '--');
+        // Show purchase modal and stop
+        showPurchaseModal(balance);
+        // update UI to reflect current balance
+        updateCreditsDisplay(balance);
         setAiUiBusy(false);
+        return;
       }
-    });
-  }
+
+      // Other non-ok responses
+      if (!resp.ok) {
+        const txt = await resp.text();
+        throw new Error(`Server error: ${resp.status} ${txt}`);
+      }
+
+      const out = await resp.json();
+
+      // If server included remainingCredits, update display
+      if (out && (out.remainingCredits != null)) {
+        updateCreditsDisplay(out.remainingCredits);
+      } else if (out && out.creditPoints != null) {
+        updateCreditsDisplay(out.creditPoints);
+      }
+
+      // Render the normalized output (assumes you have padiRenderAiOutput or equivalent)
+      if (typeof window.padiRenderAiOutput === 'function') {
+        window.padiRenderAiOutput(out);
+      } else {
+        // fallback: show pretty JSON
+        examQuestionSet.innerHTML = `<pre class="text-xs whitespace-pre-wrap">${escapeHtml(JSON.stringify(out, null, 2))}</pre>`;
+      }
+
+      // refresh saved sets list after conversion
+      setTimeout(() => { if (typeof loadSavedSets === 'function') loadSavedSets(); }, 600);
+
+    } catch (err) {
+      console.error(err);
+      alert(err.message || 'Conversion failed');
+    } finally {
+      setAiUiBusy(false);
+    }
+  });
+}
 
   if (padiAiClear) {
     padiAiClear.addEventListener('click', () => {
