@@ -1772,281 +1772,283 @@ document.addEventListener("DOMContentLoaded", () => {
 }
 </style>
 
-<!-- ======= EXAM UI RENDER LOGIC ======= -->
 <script>
-const padiAiForm = document.getElementById('padiAiForm');
-const padiAiFile = document.getElementById('padiAiFile');
-const padiAiQType = document.getElementById('padiAiQType');
-const padiAiCount = document.getElementById('padiAiCount');
-const padiAiFormat = document.getElementById('padiAiFormat');
-const padiAiInstr = document.getElementById('padiAiInstructions');
-const padiAiSubmit = document.getElementById('padiAiSubmit');
-const padiAiSubmitLabel = document.getElementById('padiAiSubmitLabel');
-const padiAiSpinner = document.getElementById('padiAiSpinner');
-const padiAiResult = document.getElementById('padiAiResult');
-const padiRevealAnswers = document.getElementById('padiRevealAnswers');
-const padiRevealAnswersWrap = document.getElementById('padiRevealAnswersWrap');
-const padiAiDownload = document.getElementById('padiAiDownload');
-const padiAiClear = document.getElementById('padiAiClear');
-const examQuestionSet = document.getElementById('examQuestionSet');
-const examSetStats = document.getElementById('examSetStats');
 
-let lastRenderedOut = null;
-
-// Utility
-function escapeHtml(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/[&<>"]/g, function(s) {
-      switch(s){
-        case '&':return '&amp;';
-        case '<':return '&lt;';
-        case '>':return '&gt;';
-        case '"':return '&quot;';
-      }
-    });
-}
-
-function setAiUiBusy(b) {
-  padiAiSubmit.disabled = b;
-  padiAiSpinner.classList.toggle('hidden', !b);
-  padiAiSubmitLabel.textContent = b ? 'Converting…' : 'Convert';
-}
-
-
-function renderAiExamResult(out) {
-  // Helper
-  function escapeHtml(str) {
-    if (!str) return '';
-    return String(str)
-      .replace(/[&<>"]/g, function(s) {
-        switch(s){
-          case '&':return '&amp;';
-          case '<':return '&lt;';
-          case '>':return '&gt;';
-          case '"':return '&quot;';
-        }
-      });
-  }
+(function(){
+  // --- Config / elements ---
+  const padiAiForm = document.getElementById('padiAiForm');
+  const padiAiFile = document.getElementById('padiAiFile');
+  const padiAiQType = document.getElementById('padiAiQType');
+  const padiAiCount = document.getElementById('padiAiCount');
+  const padiAiFormat = document.getElementById('padiAiFormat');
+  const padiAiInstr = document.getElementById('padiAiInstructions');
+  const padiAiSubmit = document.getElementById('padiAiSubmit');
+  const padiAiSubmitLabel = document.getElementById('padiAiSubmitLabel');
+  const padiAiSpinner = document.getElementById('padiAiSpinner');
+  const padiAiResult = document.getElementById('padiAiResult');
+  const padiRevealAnswers = document.getElementById('padiRevealAnswers');
+  const padiRevealAnswersWrap = document.getElementById('padiRevealAnswersWrap');
+  const padiAiDownload = document.getElementById('padiAiDownload');
+  const padiAiClear = document.getElementById('padiAiClear');
   const examQuestionSet = document.getElementById('examQuestionSet');
   const examSetStats = document.getElementById('examSetStats');
-  const padiAiResult = document.getElementById('padiAiResult');
-  const padiAiDownload = document.getElementById('padiAiDownload');
-  const padiRevealAnswersWrap = document.getElementById('padiRevealAnswersWrap');
-  const padiRevealAnswers = document.getElementById('padiRevealAnswers');
 
-  padiAiResult.classList.remove('hidden');
-  examSetStats.textContent = '';
-  padiRevealAnswersWrap.classList.add('hidden'); // hide unless MCQ
-  
-  let questionsArray = null;
-  let examTxt = null;
+  // Saved sets elements (expected)
+  const padiSavedModal = document.getElementById('padiSavedModal');
+  const padiSavedModalContent = document.getElementById('padiSavedModalContent');
+  const padiSavedModalTitle = document.getElementById('padiSavedModalTitle');
+  const padiSavedModalClose = document.getElementById('padiSavedModalClose');
+  const padiSavedModalDownload = document.getElementById('padiSavedModalDownload');
+  const padiSavedModalCopy = document.getElementById('padiSavedModalCopy');
+  const padiSavedSets = document.getElementById('padiSavedSets');
+  const padiSavedEmpty = document.getElementById('padiSavedEmpty');
+  const padiRefreshSaved = document.getElementById('padiRefreshSaved');
 
-  // Detect structure
-  if (out.questions && Array.isArray(out.questions)) {
-    questionsArray = out.questions;
-  } else if (out.questions && typeof out.questions.raw === 'string') {
-    examTxt = out.questions.raw;
-  } else if (out.questions && Array.isArray(out.questions.raw)) {
-    questionsArray = out.questions.raw;
-  } else if (typeof out.raw === 'string') {
-    examTxt = out.raw;
-  } else if (typeof out.questions === 'string') {
-    examTxt = out.questions;
+  let lastRenderedOut = null;
+  const ANSWERS_HIDDEN_CLASS = 'answers-hidden';
+
+  // Insert small CSS to actually hide answers when the class is applied
+  (function insertAnswersHiddenCss(){
+    const css = `
+    .${ANSWERS_HIDDEN_CLASS} .exam-answer-row,
+    .${ANSWERS_HIDDEN_CLASS} .exam-expl-row,
+    .${ANSWERS_HIDDEN_CLASS} .exam-ans-badge { display: none !important; }
+    .exam-answer-row { margin-top:.5rem; color:#065f46; font-weight:600; }
+    .exam-expl-row { margin-top:.4rem; color:#374151; font-size:.95rem; }
+    .exam-question-card { padding:12px; border-radius:10px; background:#fff; border:1px solid #eef2ff; }
+    .exam-qnum { font-weight:700; color:#0f172a; margin-right:6px; }
+    .exam-qtext { color:#0f172a; }
+    .exam-mcq-opt { margin:6px 0; }
+    .exam-ans-badge { display:inline-block; background:#fde68a; color:#92400e; padding:2px 8px; border-radius:999px; font-size:0.8rem; margin-right:8px; }
+    .exam-reveal-btn { background:#f3f4f6; border:1px solid #e6e7f2; padding:6px 10px; border-radius:8px; cursor:pointer; font-size:0.92rem; }
+    .answers-hidden .exam-reveal-btn { display:none; }
+    `;
+    const style = document.createElement('style');
+    style.appendChild(document.createTextNode(css));
+    document.head.appendChild(style);
+  })();
+
+  // small utility
+  function escapeHtml(str) {
+    if (str === null || typeof str === 'undefined') return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 
-  if (questionsArray && questionsArray.length) {
-    // MCQ/Short-answer array output
-    examSetStats.textContent = `(${questionsArray.length} questions)`;
-    padiRevealAnswersWrap.classList.remove('hidden');
+  // --- Normalization helpers (client side) ---
+  function looksLikeQuestionArray(arr) {
+    if (!Array.isArray(arr) || arr.length === 0) return false;
+    const sample = arr.find(Boolean) || arr[0];
+    if (!sample || typeof sample !== 'object') return false;
+    return !!(sample.question || sample.text || sample.prompt || sample.options || sample.choices || sample.answer);
+  }
 
-    let html = '';
-    questionsArray.forEach((q, i) => {
-      let qText = q.question || q.text || q.prompt || q.title || `Question ${i+1}`;
-      let opts = q.options || q.choices || null;
-      let answer = q.answer || q.correct || q.key || q.solution || null;
-      let explanation = q.explanation || q.expl || q.reason || null;
-      html += `<div class="exam-question-card" id="exam-qcard-${i}">
-        <div><span class="exam-qnum">${i+1}.</span> <span class="exam-qtext">${escapeHtml(qText)}</span></div>`;
-      // MCQ options
-      if (Array.isArray(opts) && opts.length) {
-        html += `<div class="exam-mcq-opts pt-2">`;
-        opts.forEach((opt, j) => {
-          html += `<div class="exam-mcq-opt">
-            <label><input name="aiq_${i}" type="radio" value="${escapeHtml(opt)}" disabled />
-            <span>${String.fromCharCode(65+j)}. ${escapeHtml(opt)}</span></label>
-            </div>`;
-        });
-        html += `</div>`;
+  function extractQuestions(payload) {
+    if (!payload) return null;
+    // already an array
+    if (looksLikeQuestionArray(payload)) return payload;
+    // payload.questions
+    if (payload.questions) {
+      if (looksLikeQuestionArray(payload.questions)) return payload.questions;
+      // sometimes questions.raw is an array
+      if (payload.questions.raw && looksLikeQuestionArray(payload.questions.raw)) return payload.questions.raw;
+      // questions might be a JSON string
+      if (typeof payload.questions === 'string') {
+        try {
+          const parsed = JSON.parse(payload.questions);
+          if (looksLikeQuestionArray(parsed)) return parsed;
+        } catch (e) {}
       }
-      if (answer) {
-        html += `<button class="exam-reveal-btn mt-2" type="button" data-idx="${i}">Reveal Answer</button>`;
-        let ansHtml = '';
-        if (opts && /^\d+$/.test(String(answer))) {
-          let idx = parseInt(answer,10),
-            letter=String.fromCharCode(65+idx),
-            txt=(opts[idx]||answer);
-          ansHtml = `<span class="exam-ans-badge">Correct</span> ${letter}. ${escapeHtml(txt)}`;
-        } else if (opts && typeof answer === 'string') {
-          let idx = opts.findIndex(o => String(o).trim().toLowerCase() === String(answer).trim().toLowerCase());
-          if (idx >= 0)
-            ansHtml = `<span class="exam-ans-badge">Correct</span> ${String.fromCharCode(65+idx)}. ${escapeHtml(answer)}`;
-          else
-            ansHtml = `<span class="exam-ans-badge">Correct</span> ${escapeHtml(answer)}`;
-        } else {
-          ansHtml = `<span class="exam-ans-badge">Answer</span> ${escapeHtml(answer)}`;
+    }
+    // payload.raw
+    if (payload.raw) {
+      if (typeof payload.raw === 'string') {
+        // maybe it's a JSON string
+        try {
+          const parsed = JSON.parse(payload.raw);
+          if (looksLikeQuestionArray(parsed)) return parsed;
+        } catch (e) {
+          // not JSON - no questions array
         }
-        let explHtml = explanation ? `<div class="exam-expl-row">${escapeHtml(explanation)}</div>` : '';
-        html += `<div class="exam-answer-row" id="exam-ans-${i}">${ansHtml}</div>${explHtml}`;
+      } else if (looksLikeQuestionArray(payload.raw)) {
+        return payload.raw;
       }
-      html += `</div>`;
-    });
-    examQuestionSet.innerHTML = html;
+    }
+    // if payload is a plain array wrapper
+    if (Array.isArray(payload)) return payload;
+    return null;
+  }
 
-    // Per-question reveal
-    questionsArray.forEach((q, i) => {
-      let btn = document.querySelector(`#exam-qcard-${i} .exam-reveal-btn`);
-      let ansDiv = document.getElementById(`exam-ans-${i}`);
+  // Normalize single question to expected shape for rendering
+  function normalizeQuestionClient(q, idx = 0) {
+    if (!q) return { id: idx+1, question: '', options: null, answer: null, explanation: null };
+    const id = q.id ?? q._id ?? (idx+1);
+    const question = q.question ?? q.text ?? q.prompt ?? q.title ?? q.stem ?? '';
+    // options normalization
+    let opts = q.options ?? q.choices ?? q.answers ?? q.opts ?? null;
+    if (opts && typeof opts === 'object' && !Array.isArray(opts)) {
+      // object keyed A,B,C...
+      opts = Object.values(opts);
+    }
+    if (Array.isArray(opts)) {
+      opts = opts.map(o => (typeof o === 'string' ? o : (o.text ?? o.option ?? o.value ?? JSON.stringify(o))));
+    } else {
+      opts = null;
+    }
+    let answer = q.answer ?? q.correct ?? q.key ?? q.solution ?? null;
+    if (answer && typeof answer === 'string' && /^[A-Z]$/i.test(answer.trim())) {
+      answer = answer.trim().toUpperCase().charCodeAt(0) - 65; // A->0
+    } else if (answer && typeof answer === 'string' && /^\d+$/.test(answer.trim())) {
+      answer = parseInt(answer.trim(), 10);
+    }
+    const explanation = q.explanation ?? q.expl ?? q.reason ?? q.hint ?? null;
+    return { id, question: String(question), options: opts, answer, explanation };
+  }
+
+  // Main response normalizer used for both immediate output and modal
+  function normalizeAiResponse(out) {
+    // expected return: { title, questions (array) OR raw (string) }
+    if (!out) return { title: '', questions: null, raw: null };
+
+    // If server already returned normalized shape (we updated server to do this)
+    if (out.questions || out.raw || out.title) {
+      const qarr = extractQuestions(out);
+      if (qarr) {
+        const normalizedArr = qarr.map((q, idx) => normalizeQuestionClient(q, idx));
+        return { title: out.title || out.setTitle || '', questions: normalizedArr, raw: null };
+      }
+      if (typeof out.raw === 'string' && out.raw.trim()) {
+        return { title: out.title || '', questions: null, raw: out.raw };
+      }
+      // sometimes out.questions is a string
+      if (typeof out.questions === 'string' && out.questions.trim()) {
+        return { title: out.title || '', questions: null, raw: out.questions };
+      }
+    }
+
+    // if out is an array
+    if (Array.isArray(out) && looksLikeQuestionArray(out)) {
+      const normalized = out.map((q, idx) => normalizeQuestionClient(q, idx));
+      return { title: '', questions: normalized, raw: null };
+    }
+
+    // if out.candidates or nested, try to find first object with questions/raw
+    if (out.candidates && Array.isArray(out.candidates)) {
+      for (const c of out.candidates) {
+        if (c.content && typeof c.content === 'object') {
+          const maybe = normalizeAiResponse(c.content);
+          if (maybe.questions || maybe.raw) return maybe;
+        }
+      }
+    }
+
+    // fallback: try to stringify out as readable raw text
+    try {
+      const txt = typeof out === 'string' ? out : JSON.stringify(out, null, 2);
+      return { title: '', questions: null, raw: txt };
+    } catch (e) {
+      return { title: '', questions: null, raw: String(out) };
+    }
+  }
+
+  // --- Rendering functions ---
+  function renderQuestionsArray(arr) {
+    if (!Array.isArray(arr)) return;
+    examSetStats.textContent = `(${arr.length} questions)`;
+    padiRevealAnswersWrap.classList.remove('hidden');
+    const htmlParts = [];
+    arr.forEach((q, i) => {
+      const qn = normalizeQuestionClient(q, i);
+      let qHtml = `<div class="exam-question-card" id="exam-qcard-${i}">
+        <div><span class="exam-qnum">${i+1}.</span> <span class="exam-qtext">${escapeHtml(qn.question)}</span></div>`;
+      if (Array.isArray(qn.options) && qn.options.length) {
+        qHtml += `<div class="exam-mcq-opts pt-2">`;
+        qn.options.forEach((opt, j) => {
+          qHtml += `<div class="exam-mcq-opt">
+            <label><input name="aiq_${i}" type="radio" disabled />
+            <span>${String.fromCharCode(65+j)}. ${escapeHtml(opt)}</span></label>
+          </div>`;
+        });
+        qHtml += `</div>`;
+      }
+      if (qn.answer !== null && typeof qn.answer !== 'undefined') {
+        // reveal button; answer row hidden by answers class initially
+        let ansTxt = '';
+        if (Array.isArray(qn.options) && typeof qn.answer === 'number' && qn.options[qn.answer] !== undefined) {
+          ansTxt = `${String.fromCharCode(65 + qn.answer)}. ${escapeHtml(qn.options[qn.answer])}`;
+        } else {
+          ansTxt = escapeHtml(String(qn.answer));
+        }
+        qHtml += `<div style="margin-top:.5rem;">
+                    <button class="exam-reveal-btn" type="button" data-idx="${i}">Reveal Answer</button>
+                  </div>
+                  <div class="exam-answer-row" id="exam-ans-${i}"><span class="exam-ans-badge">Answer</span> ${ansTxt}</div>`;
+        if (qn.explanation) {
+          qHtml += `<div class="exam-expl-row">${escapeHtml(qn.explanation)}</div>`;
+        }
+      }
+      qHtml += `</div>`;
+      htmlParts.push(qHtml);
+    });
+    examQuestionSet.innerHTML = htmlParts.join('\n');
+
+    // attach per-question reveal handlers
+    arr.forEach((q, i) => {
+      const btn = document.querySelector(`#exam-qcard-${i} .exam-reveal-btn`);
+      const ansDiv = document.getElementById(`exam-ans-${i}`);
       if (btn && ansDiv) {
-        btn.addEventListener('click', function() {
-          let vis = ansDiv.classList.toggle('visible');
-          btn.textContent = vis ? "Hide Answer" : "Reveal Answer";
+        btn.addEventListener('click', () => {
+          const visible = ansDiv.classList.toggle('visible');
+          btn.textContent = visible ? 'Hide Answer' : 'Reveal Answer';
         });
       }
     });
 
-    // Global reveal all
-    function updateRevealAll(checked) {
-      questionsArray.forEach((q, i) => {
-        let ansDiv = document.getElementById(`exam-ans-${i}`);
-        let btn = document.querySelector(`#exam-qcard-${i} .exam-reveal-btn`);
+    // global reveal
+    const updateGlobalReveal = (checked) => {
+      arr.forEach((_, i) => {
+        const ansDiv = document.getElementById(`exam-ans-${i}`);
+        const btn = document.querySelector(`#exam-qcard-${i} .exam-reveal-btn`);
         if (ansDiv) {
           ansDiv.classList.toggle('visible', checked);
-          if (btn) btn.textContent = checked ? "Hide Answer" : "Reveal Answer";
+          if (btn) btn.textContent = checked ? 'Hide Answer' : 'Reveal Answer';
         }
       });
-    }
-    padiRevealAnswers.onchange = () => updateRevealAll(padiRevealAnswers.checked);
-
-    // Download as JSON
-    padiAiDownload.onclick = () => {
-      const blob = new Blob([JSON.stringify(questionsArray, null, 2)], {type: 'application/json'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `questions_${Date.now()}.json`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
     };
-
-  } else if (examTxt) {
-    // Plain text readable output
-    examQuestionSet.innerHTML = `
-      <div style="font-family:serif; padding:.5rem 1rem 0 1rem; font-size:1.08rem; color:#222; line-height:1.85;">
-        ${examTxt.split(/\n{2,}/)
-          .map(p => `<p style="margin:0 0 1.25em 0;">${escapeHtml(p).replace(/\n/g, "<br>")}</p>`)
-          .join('')}
-      </div>`;
-    examSetStats.textContent = '';
-    padiRevealAnswersWrap.classList.add('hidden');
-    // Download as text
-    padiAiDownload.onclick = () => {
-      const blob = new Blob([examTxt], {type: 'text/plain'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `converted_${Date.now()}.txt`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    };
-  } else {
-    // Fallback: pretty JSON
-    examQuestionSet.innerHTML = `<pre class="text-xs whitespace-pre-wrap">${escapeHtml(JSON.stringify(out,null,2))}</pre>`;
-    examSetStats.textContent = '';
-    padiRevealAnswersWrap.classList.add('hidden');
-  }
-}
-
-function renderExamPlainText(txt) {
-  examQuestionSet.innerHTML =
-    `<div style="font-family:serif; padding:1.3rem 0 .3rem 1rem; font-size:1.09rem; color:#1e293b; line-height:1.85;">
-      ${String(txt).split(/\n{2,}/).map(s=>`<p style="margin:0 0 1.1em 0;">${escapeHtml(s).replace(/\n/g,'<br>')}</p>`).join('')}
-     </div>`;
-  examSetStats.textContent = '';
-  padiRevealAnswersWrap.classList.add('hidden');
-
-  // Download as text
-  padiAiDownload.onclick = () => {
-    const blob = new Blob([txt], {type: 'text/plain'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `converted_${Date.now()}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  };
-}
-
-padiAiForm.addEventListener('submit', async function(e){
-  e.preventDefault();
-  if (!padiAiFile.files || !padiAiFile.files[0]) {
-    return alert('Please choose a file to upload.');
-  }
-  let count = parseInt(padiAiCount.value)||10;
-  if (count<1) count=1;
-  if (count>40) count=40;
-  const fd = new FormData();
-  fd.append('file', padiAiFile.files[0]);
-  fd.append('qtype', padiAiQType.value);
-  fd.append('count', String(count));
-  fd.append('format', padiAiFormat.value);
-  fd.append('instructions', padiAiInstr.value || '');
-  setAiUiBusy(true);
-  padiAiResult.classList.add('hidden');
-  examQuestionSet.innerHTML = '';
-  lastRenderedOut = null;
-
-  try {
-    const token = localStorage.getItem('token') || '';
-    const headers = {};
-    if (token) headers['Authorization'] = 'Bearer ' + token;
-    const resp = await fetch('https://examguide.onrender.com/api/studypadi/ai/convert-file', {
-      method: 'POST', credentials: 'include', headers, body: fd
-    });
-    if (!resp.ok) {
-      const txt = await resp.text();
-      throw new Error(`Server error: ${resp.status} ${txt}`);
-    }
-    const out = await resp.json();
-    padiAiResult.classList.remove('hidden');
-
-    let examTxt = null;
-    if (out.questions && typeof out.questions.raw === 'string') {
-      examTxt = out.questions.raw;
-    } else if (typeof out.raw === 'string') {
-      examTxt = out.raw;
-    } else if (typeof out.questions === 'string') {
-      examTxt = out.questions;
+    // hook to checkbox
+    if (padiRevealAnswers) {
+      padiRevealAnswers.onchange = () => updateGlobalReveal(padiRevealAnswers.checked);
+      // initial state
+      updateGlobalReveal(Boolean(padiRevealAnswers.checked));
     }
 
-    if (examTxt) {
-      // Plain readable output
-      examQuestionSet.innerHTML = `
-        <div style="font-family:serif; padding:.5rem 1rem 0 1rem; font-size:1.08rem; color:#222; line-height:1.85;">
-          ${examTxt.split(/\n{2,}/)
-            .map(p => `<p style="margin:0 0 1.25em 0;">${escapeHtml(p).replace(/\n/g, "<br>")}</p>`)
-            .join('')}
-        </div>`;
-      examSetStats.textContent = '';
-      padiRevealAnswersWrap.classList.add('hidden');
+    // download action
+    if (padiAiDownload) {
       padiAiDownload.onclick = () => {
-        const blob = new Blob([examTxt], {type: 'text/plain'});
+        const blob = new Blob([JSON.stringify(arr, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `questions_${Date.now()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      };
+    }
+  }
+
+  function renderPlainText(txt) {
+    examSetStats.textContent = '';
+    padiRevealAnswersWrap.classList.add('hidden');
+    const paragraphs = String(txt).split(/\n{2,}/).map(p => `<p style="margin:0 0 1.1em 0;">${escapeHtml(p).replace(/\n/g, '<br>')}</p>`).join('');
+    examQuestionSet.innerHTML = `<div style="font-family:serif; padding:.5rem 1rem 0 1rem; font-size:1.02rem; color:#111; line-height:1.75;">${paragraphs}</div>`;
+    if (padiAiDownload) {
+      padiAiDownload.onclick = () => {
+        const blob = new Blob([txt], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -2056,341 +2058,363 @@ padiAiForm.addEventListener('submit', async function(e){
         a.remove();
         URL.revokeObjectURL(url);
       };
-    } else if (out.questions && Array.isArray(out.questions)) {
-      renderExamAiOutput(out);
-    } else {
-      examQuestionSet.innerHTML = `<pre class="text-xs whitespace-pre-wrap">${escapeHtml(JSON.stringify(out,null,2))}</pre>`;
-      padiRevealAnswersWrap.classList.add('hidden');
     }
-  } catch (err) {
-    examQuestionSet.innerHTML = `<div class="text-red-700 font-medium">Error: ${escapeHtml(err.message||'Conversion failed')}</div>`;
+  }
+
+  function renderFallbackPretty(out) {
+    examSetStats.textContent = '';
     padiRevealAnswersWrap.classList.add('hidden');
-    padiAiResult.classList.remove('hidden');
-  } finally {
-    setAiUiBusy(false);
-  }
-});
-
-padiAiClear.addEventListener('click', () => {
-  examQuestionSet.innerHTML = '';
-  padiAiResult.classList.add('hidden');
-  padiAiFile.value = '';
-  lastRenderedOut = null;
-});
-
-// =================== SAVED SETS SECTION (retain original logic if needed) ===================
-/* Try several candidate endpoints to fetch saved sets (be tolerant of backend naming) */
-async function fetchSavedSets() {
-  const token = localStorage.getItem('token') || '';
-  const headers = {};
-  if (token) headers['Authorization'] = 'Bearer ' + token;
-  const candidates = [
-    'https://examguide.onrender.com/api/studypadi/ai/sets',
-    'https://examguide.onrender.com/api/studypadi/ai/history',
-    'https://examguide.onrender.com/api/studypadi/ai/list',
-    'https://examguide.onrender.com/api/studypadi/ai/previous'
-  ];
-  let sets = null;
-  for (const ep of candidates) {
-    try {
-      const resp = await fetch(ep, { credentials: 'include', headers });
-      if (!resp.ok) continue;
-      const data = await resp.json();
-      // accept array directly or object with 'sets'/'data'/'items'
-      if (Array.isArray(data)) { sets = data; break; }
-      if (Array.isArray(data.sets)) { sets = data.sets; break; }
-      if (Array.isArray(data.items)) { sets = data.items; break; }
-      if (Array.isArray(data.data)) { sets = data.data; break; }
-    } catch (e) {
-      // ignore and try next
+    examQuestionSet.innerHTML = `<pre class="text-xs whitespace-pre-wrap">${escapeHtml(JSON.stringify(out, null, 2))}</pre>`;
+    if (padiAiDownload) {
+      padiAiDownload.onclick = () => {
+        const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ai_response_${Date.now()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      };
     }
   }
-  return sets || [];
-}
-const ANSWERS_HIDDEN_CLASS = 'answers-hidden';
 
-/* Render saved sets list */
-function renderSavedSetsList(sets) {
-  padiSavedSets.innerHTML = '';
-  if (!sets || !sets.length) {
-    padiSavedEmpty.classList.remove('hidden');
-    return;
-  }
-  padiSavedEmpty.classList.add('hidden');
-
-  sets.forEach((s) => {
-    // Normalize fields
-    const title = s.title || s.setTitle || s.name || (s._id ? `Set ${s._id}` : 'Untitled');
-    const qcount = Array.isArray(s.questions) ? s.questions.length : (s.count || s.num || (s._meta && s._meta.count) || '-');
-    const created = s.createdAt || s.created || s._created || s.date || '';
-    const id = s._id || s.id || title;
-
-    const card = document.createElement('div');
-    card.className = 'bg-white rounded-lg p-3 border shadow-sm flex flex-col';
-    card.innerHTML = `
-      <div class="flex items-center justify-between">
-        <div class="text-gray-800 font-semibold">${escapeHtml(title)}</div>
-        <div class="text-xs text-gray-500">${created ? new Date(created).toLocaleString() : ''}</div>
-      </div>
-      <div class="text-xs text-gray-600 mt-2">Questions: <span class="font-semibold text-gray-800">${qcount}</span></div>
-      <div class="mt-3 flex gap-2">
-        <button class="padi-open-set-btn bg-indigo-600 text-white px-3 py-1 rounded text-sm" data-id="${escapeHtml(String(id))}">Open</button>
-        <button class="padi-download-set-btn bg-white border px-3 py-1 rounded text-sm" data-id="${escapeHtml(String(id))}">Download</button>
-      </div>
-    `;
-    padiSavedSets.appendChild(card);
-  });
-
-  // Attach listeners
-  padiSavedSets.querySelectorAll('.padi-open-set-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      const id = btn.getAttribute('data-id');
-      openSavedSet(id);
-    });
-  });
-  padiSavedSets.querySelectorAll('.padi-download-set-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      const id = btn.getAttribute('data-id');
-      downloadSavedSet(id);
-    });
-  });
-}
-function nl2brEscaped(text) {
-  if (text === null || typeof text === 'undefined') return '';
-  return String(text)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/\n{2,}/g, '\n\n')
-    .replace(/\n/g, '<br>');
-}
-/* Open a saved set in modal - try endpoints to fetch a single set by id */
-async function openSavedSet(id) {
-  const token = localStorage.getItem('token') || '';
-  const headers = {};
-  if (token) headers['Authorization'] = 'Bearer ' + token;
-  const candidates = [
-    `https://examguide.onrender.com/api/studypadi/ai/sets/${id}`,
-    `https://examguide.onrender.com/api/studypadi/ai/history/${id}`,
-    `https://examguide.onrender.com/api/studypadi/ai/get/${id}`,
-    `https://examguide.onrender.com/api/studypadi/ai/${id}`
-  ];
-  let set = null;
-  for (const ep of candidates) {
-    try {
-      const resp = await fetch(ep, { credentials: 'include', headers });
-      if (!resp.ok) continue;
-      const data = await resp.json();
-      // Accept direct set object or nested object
-      if (data && (data.questions || Array.isArray(data))) { set = data; break; }
-      if (data.set) { set = data.set; break; }
-      if (data.data) { set = data.data; break; }
-    } catch (e) {}
-  }
-
-  if (!set) {
-    alert('Could not load saved set from server. The endpoint may be different. Check server or use Refresh.');
-    return;
-  }
-
-  // Normalize to object { title, questions, raw, createdAt, _id }
-  const normalized = {
-    title: set.title || set.setTitle || set.name || ('Saved Set'),
-    questions: Array.isArray(set.questions) ? set.questions : (Array.isArray(set) ? set : (typeof set.questions === 'string' ? null : null)),
-    raw: typeof set.raw === 'string' ? set.raw : null,
-    createdAt: set.createdAt || set.created || null,
-    _id: set._id || set.id || null
-  };
-
-  lastModalSet = normalized;
-
-  padiSavedModalTitle.textContent = normalized.title || 'Saved Set';
-  if (normalized.questions && normalized.questions.length) {
-    padiSavedModalContent.innerHTML = '';
-    const container = document.createElement('div');
-    for (let i = 0; i < normalized.questions.length; i++) {
-      const q = normalized.questions[i];
-      const wrapper = document.createElement('div');
-      wrapper.className = 'question';
-      wrapper.innerHTML = buildQuestionHTML(q, i);
-      container.appendChild(wrapper);
+  // Public render entrypoint used by form submit and other places
+  function renderAiOutput(out) {
+    lastRenderedOut = out;
+    const normalized = normalizeAiResponse(out);
+    if (normalized.questions && normalized.questions.length) {
+      renderQuestionsArray(normalized.questions);
+    } else if (normalized.raw && typeof normalized.raw === 'string') {
+      renderPlainText(normalized.raw);
+    } else {
+      renderFallbackPretty(out);
     }
-    padiSavedModalContent.appendChild(container);
-  } else if (normalized.raw) {
-    padiSavedModalContent.innerHTML = `<div class="prose">${nl2brEscaped(normalized.raw)}</div>`;
-  } else {
-    padiSavedModalContent.innerHTML = `<pre class="text-xs whitespace-pre-wrap">${escapeHtml(JSON.stringify(set, null, 2))}</pre>`;
   }
 
-if (padiRevealAnswers) {
-  // when the checkbox changes, toggle the class on the saved modal content
-  padiRevealAnswers.addEventListener('change', () => {
-    const el = document.getElementById('padiSavedModalContent');
-    if (!el) return;
-    if (!padiRevealAnswers.checked) el.classList.add(ANSWERS_HIDDEN_CLASS);
-    else el.classList.remove(ANSWERS_HIDDEN_CLASS);
-  });
-}
-  // ensure modal answer visibility follows main reveal checkbox
-  if (!padiRevealAnswers.checked) {
-    padiSavedModalContent.classList.add(ANSWERS_HIDDEN_CLASS);
-  } else {
-    padiSavedModalContent.classList.remove(ANSWERS_HIDDEN_CLASS);
-  }
-
-  padiSavedModal.classList.remove('hidden');
-}
-
-/* Download saved set JSON (try to load then download) */
-async function downloadSavedSet(id) {
-  const token = localStorage.getItem('token') || '';
-  const headers = {};
-  if (token) headers['Authorization'] = 'Bearer ' + token;
-  const epCandidates = [
-    `https://examguide.onrender.com/api/studypadi/ai/sets/${id}`,
-    `https://examguide.onrender.com/api/studypadi/ai/history/${id}`,
-    `https://examguide.onrender.com/api/studypadi/ai/get/${id}`,
-    `https://examguide.onrender.com/api/studypadi/ai/${id}`
-  ];
-  for (const ep of epCandidates) {
-    try {
-      const resp = await fetch(ep, { credentials: 'include', headers });
-      if (!resp.ok) continue;
-      const data = await resp.json();
-      const payload = (data && (data.questions || data)) ? (data.questions ? data.questions : data) : data;
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `savedset_${id}_${Date.now()}.json`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      return;
-    } catch (e) {}
-  }
-  alert('Could not download saved set. The server endpoint may be different.');
-}
-
-/* Attach listeners for modal controls */
-padiSavedModalClose.addEventListener('click', () => padiSavedModal.classList.add('hidden'));
-padiSavedModalDownload.addEventListener('click', () => {
-  if (!lastModalSet) return;
-  const payload = lastModalSet.questions || lastModalSet.raw || lastModalSet;
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${(lastModalSet.title||'savedset').replace(/\s+/g,'_')}_${Date.now()}.json`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-});
-padiSavedModalCopy.addEventListener('click', async () => {
-  if (!lastModalSet) return;
-  const payload = lastModalSet.questions || lastModalSet.raw || lastModalSet;
-  try {
-    await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
-    alert('JSON copied to clipboard');
-  } catch (e) {
-    alert('Could not copy to clipboard');
-  }
-});
-
-/* Open/close reveal answers toggle */
-padiRevealAnswers.addEventListener('change', () => {
-  if (!padiSavedModal.classList.contains('hidden')) {
-    if (!padiRevealAnswers.checked) padiSavedModalContent.classList.add(ANSWERS_HIDDEN_CLASS);
-    else padiSavedModalContent.classList.remove(ANSWERS_HIDDEN_CLASS);
-  }
-});
-
-/* Attempt to load saved sets on page load */
-async function loadSavedSets() {
-  padiSavedSets.innerHTML = `<div class="text-gray-500 col-span-full">Loading…</div>`;
-  try {
-    const sets = await fetchSavedSets();
-    renderSavedSetsList(sets);
-  } catch (e) {
-    padiSavedSets.innerHTML = `<div class="text-red-500 col-span-full">Failed to load saved sets</div>`;
-  }
-}
-padiRefreshSaved.addEventListener('click', loadSavedSets);
-
-/* Main form submit */
-padiAiForm.addEventListener('submit', async function(e){
-  e.preventDefault();
-  if (!padiAiFile.files || !padiAiFile.files[0]) {
-    return alert('Please choose a file to upload.');
-  }
-  let count = parseInt(padiAiCount.value) || 10;
-  if (count < 1) count = 1;
-  if (count > 40) count = 40;
-
-  const fd = new FormData();
-  fd.append('file', padiAiFile.files[0]);
-  fd.append('qtype', padiAiQType.value);
-  fd.append('count', String(count));
-  fd.append('format', padiAiFormat.value);
-  fd.append('instructions', padiAiInstr.value || '');
-
-  setAiUiBusy(true);
-  padiAiResult.classList.add('hidden');
-  padiAiResultContent.textContent = '';
-
-  try {
-    // attach token from localStorage if available
+  // ------------------ Saved sets UI & modal (uses same normalizer) --------------
+  // fetchSavedSets, renderSavedSetsList, openSavedSet, downloadSavedSet all reuse normalizeAiResponse
+  async function fetchSavedSets() {
     const token = localStorage.getItem('token') || '';
-    if (!token) {
-      console.warn('No token found in localStorage — request will be sent without Authorization header (cookies may still be used).');
-    }
-
     const headers = {};
     if (token) headers['Authorization'] = 'Bearer ' + token;
-
-    const resp = await fetch('https://examguide.onrender.com/api/studypadi/ai/convert-file', {
-      method: 'POST',
-      credentials: 'include',
-      headers,
-      body: fd
-    });
-    if (!resp.ok) {
-      const txt = await resp.text();
-      throw new Error(`Server error: ${resp.status} ${txt}`);
+    const candidates = [
+      'https://examguide.onrender.com/api/studypadi/ai/sets',
+      'https://examguide.onrender.com/api/studypadi/ai/history',
+      'https://examguide.onrender.com/api/studypadi/ai/list',
+      'https://examguide.onrender.com/api/studypadi/ai/previous'
+    ];
+    for (const ep of candidates) {
+      try {
+        const resp = await fetch(ep, { credentials: 'include', headers });
+        if (!resp.ok) continue;
+        const data = await resp.json();
+        if (Array.isArray(data)) return data;
+        // handle wrapped
+        if (data && Array.isArray(data.sets)) return data.sets;
+        if (data && Array.isArray(data.items)) return data.items;
+        if (data && Array.isArray(data.data)) return data.data;
+      } catch (e) {
+        // try next
+      }
     }
-    const out = await resp.json();
-
-    // Render nicely
-    renderAiOutput(out);
-
-    // Optionally refresh saved sets (if backend stores them automatically)
-    setTimeout(loadSavedSets, 800);
-
-  } catch (err) {
-    console.error(err);
-    alert(err.message || 'Conversion failed');
-  } finally {
-    setAiUiBusy(false);
+    return [];
   }
-});
 
-padiAiClear.addEventListener('click', () => {
-  padiAiResultContent.textContent = '';
-  padiAiResult.classList.add('hidden');
-  padiAiFile.value = '';
-  lastRenderedOut = null;
-});
+  function renderSavedSetsList(sets) {
+    if (!padiSavedSets) return;
+    padiSavedSets.innerHTML = '';
+    if (!sets || !sets.length) {
+      if (padiSavedEmpty) padiSavedEmpty.classList.remove('hidden');
+      return;
+    }
+    if (padiSavedEmpty) padiSavedEmpty.classList.add('hidden');
 
-/* initialize */
-document.addEventListener('DOMContentLoaded', () => {
-  if (padiRevealAnswers) padiRevealAnswers.checked = false;
-  loadSavedSets();
-});
+    sets.forEach((s) => {
+      const title = s.title || s.setTitle || s.name || (s._id ? `Set ${String(s._id).slice(-6)}` : 'Untitled');
+      const qcount = Array.isArray(s.questions) ? s.questions.length : (s.count || s.num || '-');
+      const created = s.createdAt || s.created || s._created || s.date || '';
+      const id = s._id || s.id || title;
 
-</script> 
-    
+      const card = document.createElement('div');
+      card.className = 'bg-white rounded-lg p-3 border shadow-sm flex flex-col mb-3';
+      card.innerHTML = `
+        <div class="flex items-center justify-between">
+          <div class="text-gray-800 font-semibold">${escapeHtml(title)}</div>
+          <div class="text-xs text-gray-500">${created ? new Date(created).toLocaleString() : ''}</div>
+        </div>
+        <div class="text-xs text-gray-600 mt-2">Questions: <span class="font-semibold text-gray-800">${escapeHtml(String(qcount))}</span></div>
+        <div class="mt-3 flex gap-2">
+          <button class="padi-open-set-btn bg-indigo-600 text-white px-3 py-1 rounded text-sm" data-id="${escapeHtml(String(id))}">Open</button>
+          <button class="padi-download-set-btn bg-white border px-3 py-1 rounded text-sm" data-id="${escapeHtml(String(id))}">Download</button>
+        </div>
+      `;
+      padiSavedSets.appendChild(card);
+    });
+
+    // attach listeners
+    padiSavedSets.querySelectorAll('.padi-open-set-btn').forEach(btn => {
+      btn.addEventListener('click', () => openSavedSet(btn.getAttribute('data-id')));
+    });
+    padiSavedSets.querySelectorAll('.padi-download-set-btn').forEach(btn => {
+      btn.addEventListener('click', () => downloadSavedSet(btn.getAttribute('data-id')));
+    });
+  }
+
+  async function openSavedSet(id) {
+    const token = localStorage.getItem('token') || '';
+    const headers = {};
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const candidates = [
+      `https://examguide.onrender.com/api/studypadi/ai/sets/${id}`,
+      `https://examguide.onrender.com/api/studypadi/ai/history/${id}`,
+      `https://examguide.onrender.com/api/studypadi/ai/get/${id}`,
+      `https://examguide.onrender.com/api/studypadi/ai/${id}`
+    ];
+    let set = null;
+    for (const ep of candidates) {
+      try {
+        const resp = await fetch(ep, { credentials: 'include', headers });
+        if (!resp.ok) continue;
+        const data = await resp.json();
+        // Accept either direct normalized saved set (our server now returns normalized), or nested shapes
+        if (data && (data.questions || data.raw || data.title)) { set = data; break; }
+        if (data.set) { set = data.set; break; }
+        if (data.data) { set = data.data; break; }
+      } catch (e) {
+        // try next
+      }
+    }
+    if (!set) {
+      alert('Could not load saved set from server. The endpoint may be different. Use Refresh.');
+      return;
+    }
+
+    // Normalize and render
+    const normalized = normalizeAiResponse(set);
+    // set lastModalSet for download/copy
+    window.lastModalSet = normalized;
+
+    if (padiSavedModalTitle) padiSavedModalTitle.textContent = normalized.title || 'Saved Set';
+    if (normalized.questions && normalized.questions.length) {
+      // Build DOM using normalized questions
+      padiSavedModalContent.innerHTML = '';
+      const container = document.createElement('div');
+      normalized.questions.forEach((q, i) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'question';
+        // Reuse same rendering logic for exam cards (but not interactive radios)
+        const htmlParts = [];
+        htmlParts.push(`<div><strong>${i+1}.</strong> ${escapeHtml(q.question)}</div>`);
+        if (Array.isArray(q.options) && q.options.length) {
+          htmlParts.push('<div style="margin-top:6px;">');
+          q.options.forEach((opt, j) => {
+            htmlParts.push(`<div>${String.fromCharCode(65+j)}. ${escapeHtml(opt)}</div>`);
+          });
+          htmlParts.push('</div>');
+        }
+        if (typeof q.answer !== 'undefined' && q.answer !== null) {
+          let ans = '';
+          if (Array.isArray(q.options) && typeof q.answer === 'number') {
+            ans = `${String.fromCharCode(65+q.answer)}. ${escapeHtml(q.options[q.answer] ?? '')}`;
+          } else {
+            ans = escapeHtml(String(q.answer));
+          }
+          htmlParts.push(`<div class="saved-answer-row" style="margin-top:8px;"><strong>Answer:</strong> ${ans}</div>`);
+        }
+        if (q.explanation) {
+          htmlParts.push(`<div class="saved-expl-row" style="margin-top:6px;color:#374151;">${escapeHtml(q.explanation)}</div>`);
+        }
+        wrapper.innerHTML = htmlParts.join('\n');
+        container.appendChild(wrapper);
+      });
+      padiSavedModalContent.appendChild(container);
+    } else if (normalized.raw) {
+      padiSavedModalContent.innerHTML = `<div class="prose">${normalized.raw.split(/\n{2,}/).map(p=>`<p>${escapeHtml(p).replace(/\n/g,'<br>')}</p>`).join('')}</div>`;
+    } else {
+      padiSavedModalContent.innerHTML = `<pre class="text-xs whitespace-pre-wrap">${escapeHtml(JSON.stringify(set, null, 2))}</pre>`;
+    }
+
+    // ensure modal answer visibility follows main reveal checkbox (apply CSS class)
+    if (!padiRevealAnswers || !padiRevealAnswers.checked) {
+      padiSavedModalContent.classList.add(ANSWERS_HIDDEN_CLASS);
+    } else {
+      padiSavedModalContent.classList.remove(ANSWERS_HIDDEN_CLASS);
+    }
+
+    // listen for reveal-changes (idempotent)
+    if (padiRevealAnswers) {
+      padiRevealAnswers.onchange = () => {
+        if (!padiSavedModal) return;
+        if (!padiRevealAnswers.checked) padiSavedModalContent.classList.add(ANSWERS_HIDDEN_CLASS);
+        else padiSavedModalContent.classList.remove(ANSWERS_HIDDEN_CLASS);
+      };
+    }
+
+    if (padiSavedModal) padiSavedModal.classList.remove('hidden');
+  }
+
+  async function downloadSavedSet(id) {
+    const token = localStorage.getItem('token') || '';
+    const headers = {};
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const epCandidates = [
+      `https://examguide.onrender.com/api/studypadi/ai/sets/${id}`,
+      `https://examguide.onrender.com/api/studypadi/ai/history/${id}`,
+      `https://examguide.onrender.com/api/studypadi/ai/get/${id}`,
+      `https://examguide.onrender.com/api/studypadi/ai/${id}`
+    ];
+    for (const ep of epCandidates) {
+      try {
+        const resp = await fetch(ep, { credentials: 'include', headers });
+        if (!resp.ok) continue;
+        const data = await resp.json();
+        const payload = data.questions ? data.questions : (Array.isArray(data) ? data : (data.data ? data.data : data));
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `savedset_${id}_${Date.now()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        return;
+      } catch (e) {}
+    }
+    alert('Could not download saved set. The server endpoint may be different.');
+  }
+
+  // Attach modal control listeners (if elements exist)
+  if (padiSavedModalClose) padiSavedModalClose.addEventListener('click', () => padiSavedModal.classList.add('hidden'));
+  if (padiSavedModalDownload) padiSavedModalDownload.addEventListener('click', () => {
+    if (!window.lastModalSet) return;
+    const payload = window.lastModalSet.questions || window.lastModalSet.raw || window.lastModalSet;
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(window.lastModalSet.title||'savedset').replace(/\s+/g,'_')}_${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+  if (padiSavedModalCopy) padiSavedModalCopy.addEventListener('click', async () => {
+    if (!window.lastModalSet) return;
+    const payload = window.lastModalSet.questions || window.lastModalSet.raw || window.lastModalSet;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      alert('JSON copied to clipboard');
+    } catch (e) {
+      alert('Could not copy to clipboard');
+    }
+  });
+
+  // ------------------ Form handling ------------------
+  function setAiUiBusy(b) {
+    if (padiAiSubmit) padiAiSubmit.disabled = b;
+    if (padiAiSpinner) padiAiSpinner.classList.toggle('hidden', !b);
+    if (padiAiSubmitLabel) padiAiSubmitLabel.textContent = b ? 'Converting…' : 'Convert';
+  }
+
+  if (padiAiForm) {
+    padiAiForm.addEventListener('submit', async function(e){
+      e.preventDefault();
+      if (!padiAiFile || !padiAiFile.files || !padiAiFile.files[0]) {
+        return alert('Please choose a file to upload.');
+      }
+      let count = parseInt(padiAiCount.value) || 10;
+      if (count < 1) count = 1;
+      if (count > 40) count = 40;
+
+      const fd = new FormData();
+      fd.append('file', padiAiFile.files[0]);
+      fd.append('qtype', padiAiQType ? padiAiQType.value : 'mcq');
+      fd.append('count', String(count));
+      fd.append('format', padiAiFormat ? padiAiFormat.value : 'json');
+      fd.append('instructions', padiAiInstr ? padiAiInstr.value || '' : '');
+
+      setAiUiBusy(true);
+      if (padiAiResult) padiAiResult.classList.add('hidden');
+      if (examQuestionSet) examQuestionSet.innerHTML = '';
+      lastRenderedOut = null;
+
+      try {
+        const token = localStorage.getItem('token') || '';
+        const headers = {};
+        if (token) headers['Authorization'] = 'Bearer ' + token;
+
+        const resp = await fetch('/api/studypadi/ai/convert-file', {
+          method: 'POST', credentials: 'include', headers, body: fd
+        });
+        if (!resp.ok) {
+          const txt = await resp.text();
+          throw new Error(`Server error: ${resp.status} ${txt}`);
+        }
+        const out = await resp.json();
+        if (padiAiResult) padiAiResult.classList.remove('hidden');
+
+        renderAiOutput(out);
+
+        // refresh saved sets
+        setTimeout(() => { loadSavedSets().catch(()=>{}); }, 800);
+
+      } catch (err) {
+        console.error(err);
+        if (examQuestionSet) examQuestionSet.innerHTML = `<div class="text-red-700 font-medium">Error: ${escapeHtml(err.message || 'Conversion failed')}</div>`;
+        if (padiAiResult) padiAiResult.classList.remove('hidden');
+      } finally {
+        setAiUiBusy(false);
+      }
+    });
+  }
+
+  if (padiAiClear) {
+    padiAiClear.addEventListener('click', () => {
+      if (examQuestionSet) examQuestionSet.innerHTML = '';
+      if (padiAiResult) padiAiResult.classList.add('hidden');
+      if (padiAiFile) padiAiFile.value = '';
+      lastRenderedOut = null;
+    });
+  }
+
+  // ------------------ Saved sets initialization ------------------
+  async function loadSavedSets() {
+    if (padiSavedSets) padiSavedSets.innerHTML = `<div class="text-gray-500 col-span-full">Loading…</div>`;
+    try {
+      const sets = await fetchSavedSets();
+      renderSavedSetsList(sets);
+    } catch (e) {
+      if (padiSavedSets) padiSavedSets.innerHTML = `<div class="text-red-500 col-span-full">Failed to load saved sets</div>`;
+    }
+  }
+
+  if (padiRefreshSaved) padiRefreshSaved.addEventListener('click', loadSavedSets);
+
+  // Global reveal toggle affects saved modal as well
+  if (padiRevealAnswers) {
+    padiRevealAnswers.checked = false;
+    padiRevealAnswers.addEventListener('change', () => {
+      if (padiSavedModalContent) {
+        if (!padiRevealAnswers.checked) padiSavedModalContent.classList.add(ANSWERS_HIDDEN_CLASS);
+        else padiSavedModalContent.classList.remove(ANSWERS_HIDDEN_CLASS);
+      }
+    });
+  }
+
+  // initialize on DOM ready
+  document.addEventListener('DOMContentLoaded', () => {
+    loadSavedSets().catch(()=>{});
+  });
+
+  // expose render entry for other scripts if needed
+  window.padiRenderAiOutput = renderAiOutput;
+  window.padiOpenSavedSet = openSavedSet;
+
+})();
+      </script>
     <!-- Motivational Banner -->
     <div class="bg-gradient-to-br from-yellow-400 via-indigo-400 to-blue-600 rounded-xl px-7 py-6 text-white shadow flex flex-col md:flex-row items-center gap-5">
       <div class="flex-1">
