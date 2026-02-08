@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Sign in — École des Roches</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="Secure login for applicants, admissions and staff with role-protected redirection, accessible modals and toast notifications." />
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Playfair+Display:wght@600&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --navy: #061728;
+      --gold: #f6b83f;
+      --bg: #f6f8fb;
+      --card: #ffffff;
+      --muted: #6b7280;
+      --danger: #dc2626;
+      --success: #16a34a;
+      --toast-info: #0ea5e9;
+      --radius: 12px;
+      --max-width: 980px;
+      --shadow: 0 12px 40px rgba(2,11,24,0.12);
+    }
+
+    /* Basic reset */
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:'Inter',system-ui,-apple-system,"Segoe UI",Roboto,Arial;background:var(--bg);color:#041226}
+    a{color:var(--navy);text-decoration:none}
+
+    /* Page layout */
+    .wrap{max-width:var(--max-width);margin:36px auto;padding:20px;display:grid;grid-template-columns:1fr 420px;gap:28px;align-items:start}
+    @media (max-width:980px){ .wrap{grid-template-columns:1fr; padding:16px} }
+
+    /* Left: info / branding */
+    .brand {
+      background: linear-gradient(180deg,var(--navy),#08324a);
+      color:#fff;
+      padding:28px;border-radius:var(--radius);box-shadow:var(--shadow);
+      display:flex;flex-direction:column;gap:12px;align-items:flex-start;
+    }
+    .brand h1{font-family:'Playfair Display',serif;margin:0;font-weight:700;color:var(--gold);font-size:26px}
+    .brand p{margin:0;color:rgba(255,255,255,0.92);max-width:56ch}
+
+    /* Right: login card */
+    .card {
+      background:var(--card);
+      padding:22px;border-radius:12px;box-shadow:var(--shadow);
+    }
+    .card h2{margin:0 0 6px 0;font-family:'Playfair Display',serif}
+    .card .sub{color:var(--muted);font-size:14px;margin-bottom:12px}
+
+    label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
+    input[type="email"],input[type="password"]{width:100%;padding:12px;border-radius:8px;border:1px solid #e6e9ef;font-size:14px}
+    .field{margin-bottom:14px}
+
+    .actions{display:flex;gap:12px;align-items:center}
+    .btn{padding:10px 14px;border-radius:8px;border:0;cursor:pointer;font-weight:700}
+    .btn-primary{background:var(--navy);color:#fff}
+    .btn-ghost{background:transparent;border:1px solid rgba(2,11,24,0.06)}
+
+    .options{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+    .muted{color:var(--muted);font-size:13px}
+
+    /* small helper text / links */
+    .links{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+    .links a{font-size:13px;color:var(--navy);text-decoration:underline}
+
+    /* Modal (accessible) */
+    .modal-backdrop{position:fixed;inset:0;background:rgba(2,11,24,0.46);display:none;align-items:center;justify-content:center;z-index:1200}
+    .modal-backdrop.open{display:flex}
+    .modal {
+      width:min(680px,96%);
+      background:#fff;padding:20px;border-radius:12px;box-shadow:0 18px 40px rgba(2,11,24,0.2);
+      max-height:86vh;overflow:auto;
+    }
+    .modal header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+    .modal h3{margin:0;font-size:18px}
+    .close-btn{background:transparent;border:0;font-size:18px;cursor:pointer}
+
+    /* Toasts */
+    .toasts {
+      position:fixed;
+      right:18px;
+      bottom:18px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      z-index:1300;
+      max-width:calc(100% - 36px);
+    }
+    .toast {
+      display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:10px;color:#fff;min-width:260px;
+      box-shadow:0 10px 30px rgba(2,11,24,0.18);
+    }
+    .toast.info{background:var(--toast-info)}
+    .toast.success{background:var(--success)}
+    .toast.error{background:var(--danger)}
+    .toast .msg{flex:1;font-size:14px}
+    .toast .close { background: transparent;border:0;color: rgba(255,255,255,0.95);cursor:pointer;font-weight:700 }
+
+    /* small accessible live region hidden (for screen readers) */
+    .sr-only { position:absolute!important; width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0 }
+
+    /* form feedback */
+    .input-error{border-color:var(--danger);box-shadow:0 3px 10px rgba(220,38,38,0.08)}
+    .error-text{color:var(--danger);font-size:13px;margin-top:6px}
+
+    /* spinner */
+    .spinner{width:16px;height:16px;border-radius:50%;border:3px solid rgba(255,255,255,0.2);border-top-color:#fff;animation:spin .8s linear infinite;display:inline-block}
+    @keyframes spin{to{transform:rotate(360deg)}}
+  </style>
+</head>
+<body>
+  <main class="wrap" id="root">
+    <!-- Left: branding and short info -->
+    <section class="brand" aria-hidden="false">
+      <h1>École des Roches</h1>
+      <p>Secure access for applicants, admissions officers and staff. Sign in to continue your application or to access admissions tools.</p>
+
+      <div style="margin-top:auto">
+        <p class="muted" style="margin:0 0 8px 0">Supported roles</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <span style="background:#fff;padding:8px 10px;border-radius:8px;font-weight:700;color:var(--navy)">applicant</span>
+          <span style="background:#fff;padding:8px 10px;border-radius:8px;font-weight:700;color:var(--navy)">admissions</span>
+          <span style="background:#fff;padding:8px 10px;border-radius:8px;font-weight:700;color:var(--navy)">admin</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right: login form -->
+    <section class="card" aria-labelledby="login-title">
+      <h2 id="login-title">Sign in</h2>
+      <div class="sub">Use your admissions account or staff credentials.</div>
+
+      <form id="login-form" autocomplete="on" novalidate>
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" inputmode="email" required autocomplete="username" />
+          <div id="email-error" class="error-text" style="display:none"></div>
+        </div>
+
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" required autocomplete="current-password" />
+          <div id="password-error" class="error-text" style="display:none"></div>
+        </div>
+
+        <div class="options">
+          <label style="font-weight:600"><input id="remember" name="remember" type="checkbox" /> Remember me</label>
+          <button type="button" class="links" id="forgot-btn" aria-haspopup="dialog">Forgot password?</button>
+        </div>
+
+        <div style="margin-top:10px" class="actions">
+          <button type="button" class="btn btn-ghost" id="demo-btn" title="Quick demo login">Demo</button>
+          <button type="submit" class="btn btn-primary" id="signin-btn"><span id="signin-text">Sign in</span></button>
+        </div>
+
+        <div class="links" aria-hidden="false">
+          <a href="#" id="create-account">Create an account</a>
+          <a href="#" id="help-link">Contact support</a>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <!-- Modal: Forgot password -->
+  <div id="modal-backdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="modal-title">
+    <div class="modal" role="document" aria-describedby="modal-desc">
+      <header>
+        <h3 id="modal-title">Reset your password</h3>
+        <button class="close-btn" id="modal-close" aria-label="Close dialog">&times;</button>
+      </header>
+
+      <div id="modal-desc">
+        <p class="muted">Enter your account email and we'll send a secure password reset link.</p>
+        <div class="field">
+          <label for="reset-email">Email</label>
+          <input id="reset-email" type="email" />
+          <div id="reset-error" class="error-text" style="display:none"></div>
+        </div>
+
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:10px">
+          <button id="modal-cancel" class="btn btn-ghost">Cancel</button>
+          <button id="modal-submit" class="btn btn-primary">Send reset link</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div class="toasts" id="toasts" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Hidden live region for SR confirmation (extra a11y) -->
+  <div id="sr-live" class="sr-only" aria-live="polite"></div>
+
+  <script>
+    /* ----------------------------
+       Simple Toast + Modal Utilities
+       ---------------------------- */
+
+    const toastsEl = document.getElementById('toasts');
+    function showToast(type='info', message='', opts={timeout:4500}) {
+      const t = document.createElement('div');
+      t.className = 'toast ' + (type || 'info');
+      t.setAttribute('role','status');
+      t.setAttribute('aria-live','polite');
+      t.innerHTML = `<div class="msg">${message}</div><button class="close" aria-label="Close notification">&times;</button>`;
+      const closeBtn = t.querySelector('.close');
+      closeBtn.addEventListener('click', () => { toastsEl.removeChild(t); });
+      toastsEl.appendChild(t);
+      // announce to SR live region for extra reliability
+      const sr = document.getElementById('sr-live');
+      sr.textContent = message;
+      if(opts.timeout && opts.timeout > 0) {
+        setTimeout(()=>{ if(t.parentNode) toastsEl.removeChild(t); }, opts.timeout);
+      }
+      return t;
+    }
+
+    // Modal with accessible focus trap
+    const modalBackdrop = document.getElementById('modal-backdrop');
+    const modal = modalBackdrop.querySelector('.modal');
+    let previouslyFocused = null;
+
+    function openModal() {
+      previouslyFocused = document.activeElement;
+      modalBackdrop.classList.add('open');
+      modalBackdrop.setAttribute('aria-hidden','false');
+      trapFocus(modal);
+      // focus first focusable element
+      const first = modal.querySelector('input,button,textarea,a[href]');
+      if(first) first.focus();
+    }
+
+    function closeModal() {
+      modalBackdrop.classList.remove('open');
+      modalBackdrop.setAttribute('aria-hidden','true');
+      releaseFocusTrap();
+      if(previouslyFocused) previouslyFocused.focus();
+    }
+
+    // Basic focus trap
+    let focusable = [];
+    let handleKeydownTrap = null;
+    function trapFocus(container) {
+      focusable = Array.from(container.querySelectorAll('a[href],button:not([disabled]),input,textarea,select,[tabindex]:not([tabindex="-1"])'))
+                        .filter(el => el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      handleKeydownTrap = function(e) {
+        if(e.key === 'Tab') {
+          if(e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          } else if(!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        } else if(e.key === 'Escape') {
+          closeModal();
+        }
+      };
+      document.addEventListener('keydown', handleKeydownTrap);
+    }
+
+    function releaseFocusTrap() {
+      if(handleKeydownTrap) document.removeEventListener('keydown', handleKeydownTrap);
+      handleKeydownTrap = null;
+      focusable = [];
+    }
+
+    // Wire modal controls
+    document.getElementById('forgot-btn').addEventListener('click', openModal);
+    document.getElementById('modal-close').addEventListener('click', closeModal);
+    document.getElementById('modal-cancel').addEventListener('click', closeModal);
+    modalBackdrop.addEventListener('click', (e)=> {
+      if(e.target === modalBackdrop) closeModal();
+    });
+
+    // Modal submission (simulate request)
+    document.getElementById('modal-submit').addEventListener('click', async () => {
+      const email = document.getElementById('reset-email').value.trim();
+      const err = document.getElementById('reset-error');
+      err.style.display = 'none';
+      if(!email || !/^\S+@\S+\.\S+$/.test(email)) {
+        err.textContent = 'Please enter a valid email address';
+        err.style.display = '';
+        document.getElementById('reset-email').focus();
+        return;
+      }
+      // Simulate API call
+      showToast('info', 'Sending password reset link…');
+      try {
+        // Replace with your backend endpoint
+        await fakeNetworkDelay(900);
+        showToast('success', 'Password reset link sent. Check your inbox.');
+        closeModal();
+      } catch(e) {
+        showToast('error', 'Failed to send reset link. Try again later.');
+      }
+    });
+
+    /* ----------------------------
+       Authentication logic (client-side demo)
+       - IMPORTANT: This is a demo. Use secure, server-side auth with httpOnly cookies in production.
+       ---------------------------- */
+
+    // Utility: simulate network latency (for demo)
+    function fakeNetworkDelay(ms=600){ return new Promise(r=>setTimeout(r, ms)); }
+
+    // Demo users database (for offline demo only)
+    const demoUsers = [
+      { email:'applicant@example.com', password:'password', role:'applicant' },
+      { email:'admissions@example.com', password:'password', role:'admissions' },
+      { email:'admin@example.com', password:'password', role:'admin' }
+    ];
+
+    // Auth storage helpers: in real system prefer httpOnly secure cookies. We store a token + role in sessionStorage for demo.
+    function saveAuth(token, role, remember=false) {
+      try {
+        if(remember) localStorage.setItem('edr_auth', JSON.stringify({ token, role }));
+        sessionStorage.setItem('edr_auth', JSON.stringify({ token, role }));
+      } catch(e) { console.warn('Storage failed', e); }
+    }
+    function clearAuth() { localStorage.removeItem('edr_auth'); sessionStorage.removeItem('edr_auth'); }
+    function getAuth() {
+      const s = sessionStorage.getItem('edr_auth');
+      if(s) return JSON.parse(s);
+      const l = localStorage.getItem('edr_auth');
+      if(l) return JSON.parse(l);
+      return null;
+    }
+
+    // Role-protected redirect targets - adjust to your routes
+    const ROLE_REDIRECT = {
+      'admin': '/admin/dashboard.html',
+      'admissions': '/admissions/dashboard.html',
+      'applicant': '/application/dashboard.html'
+    };
+
+    // Login handler
+    const form = document.getElementById('login-form');
+    const signinBtn = document.getElementById('signin-btn');
+    const signinText = document.getElementById('signin-text');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      // Clear previous errors
+      document.getElementById('email-error').style.display = 'none';
+      document.getElementById('password-error').style.display = 'none';
+
+      const email = (document.getElementById('email').value || '').trim();
+      const password = (document.getElementById('password').value || '').trim();
+      const remember = document.getElementById('remember').checked;
+
+      if(!email || !password) {
+        if(!email){ const el = document.getElementById('email-error'); el.textContent='Email is required'; el.style.display=''; document.getElementById('email').classList.add('input-error'); }
+        if(!password){ const el = document.getElementById('password-error'); el.textContent='Password is required'; el.style.display=''; document.getElementById('password').classList.add('input-error'); }
+        showToast('error','Please complete required fields.');
+        return;
+      }
+
+      // Visual busy state
+      signinBtn.disabled = true;
+      signinText.textContent = 'Signing in…';
+      const spinner = document.createElement('span'); spinner.className = 'spinner'; spinner.style.marginLeft = '8px';
+      signinBtn.appendChild(spinner);
+
+      try {
+        // In production: POST to /api/auth/login with credentials, receive httpOnly cookie and role in response (or role in token)
+        await fakeNetworkDelay(800);
+
+        // Demo authentication (replace with real request)
+        const user = demoUsers.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
+        if(!user) {
+          throw new Error('Invalid credentials');
+        }
+
+        // Simulate server token (JWT) -- DO NOT create JWTs client-side in real apps
+        const token = btoa(JSON.stringify({ email:user.email, role:user.role, iat:Date.now() }));
+        saveAuth(token, user.role, remember);
+
+        showToast('success', 'Signed in successfully');
+
+        // Redirect to role-based dashboard
+        const target = ROLE_REDIRECT[user.role] || '/';
+        // Small delay to allow toast to be read
+        setTimeout(()=> { window.location.href = target; }, 700);
+
+      } catch(err) {
+        showToast('error', 'Sign in failed — check your credentials and try again.');
+        console.warn(err);
+      } finally {
+        signinBtn.disabled = false;
+        signinText.textContent = 'Sign in';
+        if(signinBtn.contains(spinner)) signinBtn.removeChild(spinner);
+      }
+    });
+
+    // Demo quick-login helper to speed testing
+    document.getElementById('demo-btn').addEventListener('click', ()=>{
+      // Cycle through demo users
+      const list = demoUsers;
+      const idx = Math.floor(Math.random() * list.length);
+      const u = list[idx];
+      document.getElementById('email').value = u.email;
+      document.getElementById('password').value = u.password;
+      showToast('info', `Demo credentials loaded (${u.role})`);
+    });
+
+    /* ----------------------------
+       Protecting other pages (copy this snippet into protected pages)
+       ----------------------------
+       Example usage in a protected page:
+         <script>
+           // require 'admissions' or 'admin'
+           protectRoute(['admissions','admin']).then(user => { /* continue *\/ }).catch(()=>{ window.location.href = '/marketting/login.html'; });
+         </script>
+    */
+    window.protectRoute = async function(requiredRoles=[]) {
+      // returns a promise that resolves with auth object { token, role } or rejects
+      return new Promise((resolve, reject) => {
+        try {
+          let auth = null;
+          // prefer sessionStorage; fallback to local
+          const s = sessionStorage.getItem('edr_auth');
+          const l = localStorage.getItem('edr_auth');
+          if(s) auth = JSON.parse(s);
+          else if(l) auth = JSON.parse(l);
+
+          if(!auth || !auth.token) return reject(new Error('Not authenticated'));
+
+          // Optionally, validate token with server: call /api/auth/me with token (preferred)
+          // For demo we decode token (since created here)
+          try {
+            const payload = JSON.parse(atob(auth.token));
+            const role = payload.role;
+            auth.role = role;
+          } catch(e) {
+            // token invalid
+            return reject(new Error('Invalid token'));
+          }
+
+          if(Array.isArray(requiredRoles) && requiredRoles.length > 0) {
+            if(!requiredRoles.includes(auth.role)) return reject(new Error('Forbidden'));
+          }
+          return resolve(auth);
+        } catch(e) {
+          return reject(e);
+        }
+      });
+    };
+
+    /* Optional: expose signOut for other pages */
+    window.signOut = function(redirect=true) {
+      clearAuth();
+      showToast('info', 'Signed out');
+      if(redirect) setTimeout(()=>window.location.href='/',350);
+    };
+  </script>
+</body>
+</html>
