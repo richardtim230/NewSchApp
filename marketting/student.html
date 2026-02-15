@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Student Dashboard | ExamGuard</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link href="https://fonts.googleapis.com/css?family=Inter:400,600,700&display=swap" rel="stylesheet">
+  <link rel="icon" href="logo.png">
+
+  <style>
+    :root{
+      --bg-0: #f6f8ff;
+      --bg-1: #eef2ff;
+      --accent:#3b82f6;
+      --accent-2:#6366f1;
+      --muted:#6b7280;
+      --card-bg:#ffffff;
+      --radius:14px;
+      --sidebar-w: 300px;
+    }
+
+    *,*::before,*::after{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;smooth:antialiased;color:#0f172a;background:linear-gradient(180deg,var(--bg-0),var(--bg-1));-webkit-font-smoothing:antialiased}
+
+    /* App layout */
+    .app { display:flex; min-height:100vh; align-items:stretch; }
+
+    /* SIDEBAR */
+    .sidebar {
+      width: var(--sidebar-w);
+      min-width: var(--sidebar-w);
+      background: linear-gradient(180deg,#0f172a 0%, #1e3a8a 100%);
+      color: #fff;
+      padding: 24px 18px;
+      position: fixed;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      z-index: 60;
+      box-shadow: 4px 0 28px rgba(15,23,42,0.12);
+      transform: translateX(0);
+      transition: transform .28s ease;
+      display:flex;
+      flex-direction:column;
+      gap:16px;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .sidebar.hidden { transform: translateX(-110%); }
+
+    /* Increase sidebar text size for better readability */
+    .sidebar .brand { display:flex; gap:12px; align-items:center; }
+    .sidebar .brand img { width:52px; height:52px; border-radius:10px; object-fit:cover; border: 3px solid rgba(255,224,102,0.12); background:#fff; }
+    .sidebar .brand .title { font-weight:700; font-size:1.18rem; color:#ffe066; letter-spacing:0.02em; }
+    .sidebar .brand .subtitle { font-size:0.98rem; color:rgba(255,255,255,0.9); margin-top:2px; }
+
+    .nav { display:flex; flex-direction:column; gap:8px; margin-top:8px; }
+    /* larger text for sidebar items */
+    .nav a {
+      display:flex; align-items:center; gap:12px;
+      padding:12px 12px; text-decoration:none; color: #e6eefc;
+      border-radius:10px; font-weight:700; font-size:1.03rem;
+      transition: background .14s, transform .12s;
+    }
+    .nav a:hover, .nav a.active {
+      background: rgba(255,255,255,0.04);
+      color: #ffe066;
+      transform: translateX(4px);
+    }
+
+    .sidebar .spacer { flex:1; }
+
+    .sidebar .profile {
+      display:flex; gap:12px; align-items:center; padding-top:8px; border-top:1px solid rgba(255,255,255,0.04);
+      margin-top:12px;
+    }
+    .sidebar .profile img { width:48px;height:48px;border-radius:8px;border:2px solid #ffe066; object-fit:cover; }
+    .sidebar .profile .meta { font-size:0.98rem; }
+    .sidebar .profile .meta .name { font-weight:700; }
+    .sidebar .profile .meta .muted { color:rgba(255,255,255,0.85); font-size:0.92rem; }
+
+    /* OVERLAY used on small screens to capture outside clicks */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(2,6,23,0.4);
+      z-index: 55;
+      display:none;
+      touch-action: none;
+    }
+    .overlay.visible { display:block; }
+
+    /* MAIN CONTENT */
+    .main {
+      margin-left: var(--sidebar-w);
+      flex:1;
+      padding: 20px 28px;
+      transition: margin-left .28s;
+      min-height:100vh;
+      overflow-y: auto;
+    }
+    .main.full { margin-left: 0; }
+
+    .topbar {
+      display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:18px;
+    }
+    .hamburger {
+      display:none;
+      background:var(--accent); color:#fff; border:none; padding:10px 12px; border-radius:10px; cursor:pointer; font-weight:700;
+    }
+
+    .page-title { font-weight:800; font-size:1.25rem; color:var(--accent-2); }
+
+    /* Dashboard grid */
+    .grid { display:grid; grid-template-columns: repeat(12, 1fr); gap:16px; align-items:start; }
+
+    .card { background:var(--card-bg); border-radius:12px; padding:16px; box-shadow: 0 10px 28px rgba(11,42,60,0.04); border:1px solid rgba(11,42,60,0.03); }
+
+    .col-4 { grid-column: span 4; }
+    .col-8 { grid-column: span 8; }
+    .col-6 { grid-column: span 6; }
+    .col-3 { grid-column: span 3; }
+    .col-12 { grid-column: 1 / -1; }
+
+    /* student-specific widgets (more profound) */
+    .progress {
+      display:flex; gap:18px; align-items:center;
+    }
+    .progress .circle {
+      width:110px; height:110px; border-radius:50%; background: conic-gradient(var(--accent) 70%, #eef2ff 0%); display:grid;place-items:center; font-weight:800; font-size:1.1rem; color:var(--accent-2);
+    }
+    .progress .meta { display:flex; flex-direction:column; gap:6px; }
+    .progress .meta .lbl { color:var(--muted); font-weight:700; }
+    .progress .meta .val { font-weight:900; font-size:1.25rem; color:#0b2a44; }
+
+    .kpis { display:flex; gap:12px; }
+    .kpi { flex:1; padding:12px; border-radius:10px; background:linear-gradient(90deg,#fff,#fbfdff); border:1px solid #eef3ff; display:flex; flex-direction:column; gap:6px; }
+    .kpi .num { font-weight:900; color:var(--accent-2); font-size:1.2rem; }
+
+    .assignments .item { display:flex; justify-content:space-between; gap:12px; padding:10px; border-radius:8px; background:#fff; border:1px solid #eef3ff; margin-bottom:8px; align-items:center; }
+    .timetable table { width:100%; border-collapse:collapse; }
+    .timetable th, .timetable td { padding:10px; text-align:left; border-bottom:1px solid #f1f5f9; }
+    .notice { padding:12px; border-left:4px solid var(--accent); background:linear-gradient(90deg,#fff,#fbfdff); border-radius:8px; }
+
+    /* Messages */
+    .messages { display:flex; gap:12px; }
+    .conversations { width:280px; max-width:35%; min-width:220px; }
+    .messages .chat { flex:1; min-height:200px; border-radius:10px; overflow:auto; border:1px solid #eef3ff; background:#fff; padding:10px; }
+
+    /* responsive */
+    @media (max-width: 980px) {
+      .grid { grid-template-columns: repeat(6, 1fr); }
+      .col-4 { grid-column: span 3; }
+      .col-8 { grid-column: span 6; }
+      .col-6 { grid-column: span 3; }
+      .col-3 { grid-column: span 2; }
+      .hamburger { display:inline-flex; }
+    }
+    @media (max-width: 720px) {
+      .sidebar { position: fixed; left: 0; top:0; bottom:0; transform: translateX(-110%); width: calc(100vw * 0.86); min-width: calc(100vw * 0.86); }
+      .sidebar.open { transform: translateX(0); }
+      .main { margin-left: 0; padding: 14px; }
+      .overlay { display:none; }
+      .overlay.visible { display:block; }
+      /* when sidebar open, prevent page from scrolling - handled in JS by adding .no-scroll */
+      body.no-scroll { overflow: hidden; height: 100vh; touch-action: none; }
+    }
+
+    /* small helpers */
+    .muted { color:var(--muted); }
+    .small { font-size:0.92rem; color:var(--muted); }
+    .btn { padding:10px 12px; border-radius:10px; background: linear-gradient(90deg,var(--accent),var(--accent-2)); color:#fff; border:none; cursor:pointer; font-weight:700; }
+    .btn.ghost { background:transparent; color:var(--accent-2); border:1px solid rgba(59,130,246,0.08) }
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <!-- Overlay for mobile (clicking it closes sidebar) -->
+    <div class="overlay" id="overlay" aria-hidden="true"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+      <div class="brand" aria-hidden="false">
+        <img src="logo.png" alt="Logo">
+        <div>
+          <div class="title">Student Portal</div>
+          <div class="subtitle">Sunrise High • Student</div>
+        </div>
+      </div>
+
+      <nav class="nav" role="navigation" aria-label="Primary">
+        <a href="#" data-section="home" class="active" onclick="nav(event)">🏠 Home</a>
+        <a href="#" data-section="courses" onclick="nav(event)">📘 My Courses</a>
+        <a href="#" data-section="assignments" onclick="nav(event)">📝 Assignments</a>
+        <a href="#" data-section="grades" onclick="nav(event)">📊 Grades & Progress</a>
+        <a href="#" data-section="timetable" onclick="nav(event)">⏰ Timetable</a>
+        <a href="#" data-section="messages" onclick="nav(event)">✉️ Messages</a>
+        <a href="#" data-section="resources" onclick="nav(event)">📂 Resources</a>
+        <a href="#" data-section="settings" onclick="nav(event)">⚙️ Settings</a>
+      </nav>
+
+      <div class="spacer" aria-hidden="true"></div>
+
+      <div class="profile" role="region" aria-label="Student profile">
+        <img src="student.png" alt="Student avatar" id="studentAvatar">
+        <div class="meta">
+          <div class="name" id="studentName">Adaobi Chukwu</div>
+          <div class="muted">SS2 — Biology</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="main" id="main">
+      <div class="topbar">
+        <div style="display:flex; gap:12px; align-items:center;">
+          <button class="hamburger" id="hamburger" aria-label="Open menu">☰</button>
+          <div>
+            <div class="page-title" id="pageTitle">Welcome back, Adaobi</div>
+            <div class="small muted">Here’s your learning snapshot</div>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:12px; align-items:center;">
+          <div class="small muted">Notifications</div>
+          <img src="student.png" alt="You" style="width:44px;height:44px;border-radius:10px;object-fit:cover;border:2px solid #fff;">
+        </div>
+      </div>
+
+      <!-- Home / Dashboard -->
+      <section id="home" class="section">
+        <div class="grid" style="margin-bottom:14px;">
+          <div class="card col-4">
+            <div class="small muted">Overall Progress</div>
+            <div style="margin-top:12px" class="progress">
+              <div class="circle" id="progCircle">71%</div>
+              <div class="meta">
+                <div class="lbl">Cumulative Average</div>
+                <div class="val" id="cumAvg">71.2%</div>
+                <div class="small muted">You are in top 23% of your cohort</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card col-4">
+            <div class="small muted">This Term</div>
+            <div style="margin-top:10px" class="kpis">
+              <div class="kpi">
+                <div class="small muted">Assignments Due</div>
+                <div class="num" id="dueCount">4</div>
+                <div class="small muted">Due this week</div>
+              </div>
+              <div class="kpi">
+                <div class="small muted">Attendance</div>
+                <div class="num" id="attPct">92%</div>
+                <div class="small muted">This term</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card col-4">
+            <div class="small muted">Upcoming</div>
+            <div style="margin-top:10px;">
+              <div style="font-weight:800">Biology Practical</div>
+              <div class="small muted">Tuesday • 10:30 AM • Lab B</div>
+              <div style="margin-top:10px" class="notice">Remember to bring lab coat and apron. Materials posted in Resources.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid">
+          <div class="card col-8">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div style="font-weight:800">Assignments</div>
+              <div class="small muted">Track and submit</div>
+            </div>
+            <div class="assignments" style="margin-top:12px" id="assignmentsList">
+              <!-- JS populated -->
+            </div>
+            <div style="margin-top:12px;display:flex;justify-content:flex-end">
+              <button class="btn" onclick="navTo('assignments')">View all</button>
+            </div>
+          </div>
+
+          <div class="card col-4">
+            <div style="font-weight:800">Quick Actions</div>
+            <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">
+              <button class="btn ghost" onclick="navTo('resources')">Open Resources</button>
+              <button class="btn ghost" onclick="navTo('timetable')">View Timetable</button>
+              <button class="btn" onclick="openSubmit()">Submit Assignment</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid" style="margin-top:14px;">
+          <div class="card col-6">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div style="font-weight:800">Grades Snapshot</div>
+              <div class="small muted">Latest results</div>
+            </div>
+            <div style="margin-top:12px;">
+              <table class="timetable">
+                <thead><tr><th>Subject</th><th>Latest</th><th>Term Avg</th></tr></thead>
+                <tbody id="gradesTable">
+                  <!-- populated by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card col-6">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div style="font-weight:800">Messages</div>
+              <div class="small muted">Parent / Teacher</div>
+            </div>
+            <div style="margin-top:10px;" class="messages">
+              <div class="conversations card" id="convos">
+                <!-- conversations -->
+              </div>
+              <div class="chat card" id="chatPane">
+                Select a conversation to start
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Other sections -->
+      <section id="courses" class="section" style="display:none">
+        <div style="font-weight:800;margin-bottom:10px;">My Courses</div>
+        <div class="grid">
+          <div class="card col-12" id="coursesGrid"></div>
+        </div>
+      </section>
+
+      <section id="assignments" class="section" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div style="font-weight:800">Assignments</div>
+          <div class="small muted">Due dates & submit</div>
+        </div>
+        <div style="margin-top:12px" id="assignmentsFull"></div>
+      </section>
+
+      <section id="grades" class="section" style="display:none">
+        <div style="font-weight:800">Grades & Progress</div>
+        <div style="margin-top:12px" id="gradesFull"></div>
+      </section>
+
+      <section id="timetable" class="section" style="display:none">
+        <div style="font-weight:800">Timetable</div>
+        <div style="margin-top:12px" id="timetableFull"></div>
+      </section>
+
+      <section id="messages" class="section" style="display:none">
+        <div style="font-weight:800">Messages</div>
+        <div style="margin-top:12px" id="messagesFull"></div>
+      </section>
+
+      <section id="resources" class="section" style="display:none">
+        <div style="font-weight:800">Resources</div>
+        <div style="margin-top:12px" id="resourcesFull"></div>
+      </section>
+
+      <section id="settings" class="section" style="display:none">
+        <div style="font-weight:800">Settings</div>
+        <div style="margin-top:12px">Profile & preferences</div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    // ---------- Sidebar behavior ----------
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('overlay');
+    const hamburger = document.getElementById('hamburger');
+    const body = document.body;
+    const main = document.getElementById('main');
+
+    // Utility to open the sidebar (mobile)
+    function openSidebar() {
+      sidebar.classList.add('open');
+      sidebar.classList.remove('hidden');
+      overlay.classList.add('visible');
+      // prevent page from scrolling while sidebar is open
+      body.classList.add('no-scroll');
+      // allow only sidebar to scroll
+      sidebar.style.overflowY = 'auto';
+    }
+
+    // Utility to close the sidebar
+    function closeSidebar() {
+      sidebar.classList.remove('open');
+      // On larger screens we keep sidebar visible; on small we'll hide it completely.
+      if (window.innerWidth <= 720) {
+        sidebar.classList.add('hidden');
+      }
+      overlay.classList.remove('visible');
+      body.classList.remove('no-scroll');
+    }
+
+    // Toggle for hamburger
+    hamburger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (sidebar.classList.contains('open') || !sidebar.classList.contains('hidden') && window.innerWidth > 720) {
+        // If desktop, toggles are not used; on mobile toggle open/close
+        if (window.innerWidth <= 720) {
+          if (sidebar.classList.contains('open')) closeSidebar(); else openSidebar();
+        } else {
+          // no-op on big screens (sidebar is visible)
+        }
+      } else {
+        openSidebar();
+      }
+    });
+
+    // Close when clicking overlay (outside sidebar)
+    overlay.addEventListener('click', () => {
+      closeSidebar();
+    });
+
+    // Also close sidebar when clicking any nav link on SMALL screens
+    document.querySelectorAll('.nav a').forEach(a => {
+      a.addEventListener('click', (e) => {
+        // navigate handled separately; here ensure sidebar closes on mobile
+        if (window.innerWidth <= 720) {
+          // slight delay to allow any nav handlers to run
+          setTimeout(closeSidebar, 80);
+        }
+      });
+    });
+
+    // Close sidebar if user taps/clicks outside on small screens (captures document clicks)
+    document.addEventListener('click', (e) => {
+      if (window.innerWidth <= 720) {
+        const inside = sidebar.contains(e.target) || hamburger.contains(e.target);
+        if (!inside && (sidebar.classList.contains('open') || !sidebar.classList.contains('hidden'))) {
+          closeSidebar();
+        }
+      }
+    }, { passive: true });
+
+    // Keep behavior consistent on resize
+    window.addEventListener('resize', () => {
+      if (window.innerWidth > 720) {
+        sidebar.classList.remove('hidden');
+        overlay.classList.remove('visible');
+        body.classList.remove('no-scroll');
+      } else {
+        // hide sidebar by default on small screens
+        if (!sidebar.classList.contains('open')) sidebar.classList.add('hidden');
+      }
+    });
+
+    // Initially hide sidebar on small screens
+    if (window.innerWidth <= 720) sidebar.classList.add('hidden');
+
+    // ---------- Navigation ----------
+    function nav(e) {
+      e.preventDefault();
+      const link = e.currentTarget;
+      document.querySelectorAll('.nav a').forEach(n => n.classList.remove('active'));
+      link.classList.add('active');
+      const id = link.getAttribute('data-section');
+      showSection(id);
+    }
+    function navTo(section) {
+      const link = document.querySelector('.nav a[data-section="' + section + '"]');
+      if (link) {
+        link.classList.add('active');
+        showSection(section);
+      }
+    }
+
+    function showSection(id) {
+      document.querySelectorAll('main .section').forEach(s => s.style.display = 'none');
+      const s = document.getElementById(id);
+      if (s) s.style.display = '';
+      // close sidebar on mobile to reveal content area
+      if (window.innerWidth <= 720) closeSidebar();
+      // scroll top for new section
+      main.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // ---------- Demo data & UI population ----------
+    const demoAssignments = [
+      { id:'a1', title:'Biology Lab Report', due:'2026-03-12', class:'SS2', status:'Pending' },
+      { id:'a2', title:'Physics Homework', due:'2026-03-13', class:'SS2', status:'Pending' },
+      { id:'a3', title:'Chemistry Quiz', due:'2026-03-15', class:'SS2', status:'Submitted' },
+      { id:'a4', title:'English Essay', due:'2026-03-20', class:'SS2', status:'Pending' }
+    ];
+
+    const demoGrades = [
+      { subject:'Biology', latest: 'A', avg:'B+' },
+      { subject:'Mathematics', latest: 'B', avg:'B' },
+      { subject:'Chemistry', latest: 'B+', avg:'B' },
+      { subject:'English', latest: 'A-', avg:'B+' }
+    ];
+
+    function populateDashboard() {
+      const assignmentsList = document.getElementById('assignmentsList');
+      assignmentsList.innerHTML = '';
+      demoAssignments.forEach(a => {
+        const el = document.createElement('div');
+        el.className = 'item';
+        el.innerHTML = `<div style="flex:1">
+            <div style="font-weight:800">${a.title}</div>
+            <div class="small muted">${a.class} • Due ${a.due}</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+            <div class="small muted">${a.status}</div>
+            <button class="btn" onclick="openSubmit('${a.id}')">Submit</button>
+          </div>`;
+        assignmentsList.appendChild(el);
+      });
+
+      const gradesTable = document.getElementById('gradesTable');
+      gradesTable.innerHTML = '';
+      demoGrades.forEach(g => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${g.subject}</td><td style="font-weight:800">${g.latest}</td><td class="muted">${g.avg}</td>`;
+        gradesTable.appendChild(tr);
+      });
+
+      const convos = document.getElementById('convos');
+      convos.innerHTML = '';
+      ['Class Group', 'Mrs Johnson (Biology)', 'Parent - Emeka'].forEach((c, idx) => {
+        const node = document.createElement('div');
+        node.style.padding = '8px';
+        node.style.borderRadius = '8px';
+        node.style.marginBottom = '8px';
+        node.style.cursor = 'pointer';
+        node.style.background = idx === 0 ? '#fbfdff' : '#fff';
+        node.innerHTML = `<div style="font-weight:700">${c}</div><div class="small muted"> ${idx === 0 ? '2 unread' : 'last message 2h'}</div>`;
+        node.addEventListener('click', () => openConversation(c));
+        convos.appendChild(node);
+      });
+
+      // courses grid
+      const cg = document.getElementById('coursesGrid');
+      cg.innerHTML = '';
+      ['Biology','Mathematics','English','Chemistry'].forEach(name=>{
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.style.marginBottom = '10px';
+        card.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-weight:800">${name}</div>
+            <div class="small muted">Teacher: Mrs Johnson</div>
+          </div>
+          <div style="text-align:right">
+            <div class="small muted">Avg: B+</div>
+            <button class="btn ghost" style="margin-top:6px" onclick="navTo('grades')">View</button>
+          </div>
+        </div>`;
+        cg.appendChild(card);
+      });
+
+      // resources placeholder
+      const rFull = document.getElementById('resourcesFull');
+      rFull.innerHTML = '<div class="small muted">No resources yet. Use "Resources" to access handouts and slides.</div>';
+
+      // assignments full page
+      const aFull = document.getElementById('assignmentsFull');
+      aFull.innerHTML = '';
+      demoAssignments.forEach(a=>{
+        const node = document.createElement('div');
+        node.className = 'card';
+        node.style.marginBottom = '10px';
+        node.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center">
+          <div><div style="font-weight:800">${a.title}</div><div class="small muted">${a.class} • Due ${a.due}</div></div>
+          <div><button class="btn" onclick="openSubmit('${a.id}')">Submit</button></div>
+        </div>`;
+        aFull.appendChild(node);
+      });
+
+      // grades full
+      const gFull = document.getElementById('gradesFull');
+      gFull.innerHTML = '<div class="small muted">Detailed grade view coming soon (chart placeholder).</div>';
+
+      // timetable full
+      const ttFull = document.getElementById('timetableFull');
+      ttFull.innerHTML = `<div class="card"><table class="timetable"><thead><tr><th>Day</th><th>08:00</th><th>09:00</th><th>10:00</th></tr></thead>
+        <tbody>
+          <tr><td>Mon</td><td>Biology</td><td>Math</td><td>English</td></tr>
+          <tr><td>Tue</td><td>Math</td><td>Chemistry</td><td>Break</td></tr>
+        </tbody></table></div>`;
+    }
+
+    function openConversation(name) {
+      const chat = document.getElementById('chatPane');
+      chat.innerHTML = `<div style="font-weight:700;margin-bottom:8px">${name}</div><div class="small muted">Conversation started</div><div style="height:24px"></div>`;
+    }
+
+    function openSubmit(id) {
+      const a = demoAssignments.find(x => x.id === id);
+      const modal = document.createElement('div');
+      modal.style.position = 'fixed';
+      modal.style.inset = 0;
+      modal.style.background = 'rgba(2,6,23,0.45)';
+      modal.style.display = 'flex';
+      modal.style.alignItems = 'center';
+      modal.style.justifyContent = 'center';
+      modal.style.zIndex = 9999;
+      modal.onclick = () => document.body.removeChild(modal);
+      modal.innerHTML = `<div class="card" style="width:520px;max-width:92vw" onclick="event.stopPropagation()">
+        <div style="font-weight:800">${a ? a.title : 'Submit Assignment'}</div>
+        <div class="small muted" style="margin-top:6px">${a ? (a.class + ' • Due ' + a.due) : ''}</div>
+        <div style="margin-top:12px"><input type="file" id="fileUp"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+          <button class="btn ghost" onclick="document.body.removeChild(this.closest('.card').parentNode)">Cancel</button>
+          <button class="btn" onclick="(function(){ alert('Submitted'); document.body.removeChild(modal); })()">Upload & Submit</button>
+        </div>
+      </div>`;
+      document.body.appendChild(modal);
+    }
+
+    // ---------- Initialization ----------
+    window.addEventListener('load', () => {
+      // populate data
+      populateDashboard();
+
+      // ensure sidebar visibility state correct
+      if (window.innerWidth <= 720) {
+        sidebar.classList.add('hidden');
+      }
+    });
+
+    // Accessibility: close overlay with Escape
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeSidebar();
+    });
+  </script>
+</body>
+</html>
