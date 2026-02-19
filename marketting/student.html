@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="en">
 <head>
@@ -15,7 +14,7 @@
       --sidebar-w:300px;
     }
     * { box-sizing: border-box; }
-    html,body { height:100%; margin:0; font-family:Inter,system-ui,Arial; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; background:linear-gradient(180deg,var(--bg-0),var(--bg-1)); color:#0f172a; }
+    html,body { height:100%; margin:0; font-family:Inter,system-ui,Arial; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; background:linear-gradient(180deg,var(--bg-0),var(--bg-1)); }
     a { color:inherit; text-decoration:none; }
 
     /* App layout */
@@ -432,7 +431,7 @@
         <img src="../logo.png" alt="Logo">
         <div>
           <div class="title">Student Portal</div>
-          <div class="subtitle">Sunrise High • Student</div>
+          <div class="subtitle" id="schoolSubtitle">Sunrise High • Student</div>
         </div>
       </div>
 
@@ -453,7 +452,7 @@
         <img src="../avatar.jpg" alt="Student avatar" id="studentAvatar">
         <div>
           <div class="name" id="studentName">Adaobi Chukwu</div>
-          <div class="muted">SS2 — Biology</div>
+          <div class="muted" id="studentClass">SS2 — Biology</div>
         </div>
       </div>
     </aside>
@@ -471,7 +470,7 @@
 
     <div style="display:flex; gap:12px; align-items:center;">
       
-      <img src="../avatar.jpg" alt="You" style="width:44px;height:44px;border-radius:8px;object-fit:cover;border:2px solid #fff;">
+      <img src="../avatar.jpg" alt="You" style="width:44px;height:44px;border-radius:8px;object-fit:cover;border:2px solid #fff;" id="topbarAvatar">
     </div>
   </div>
   <main class="main" id="main" role="main" tabindex="-1">
@@ -484,11 +483,11 @@
           <div class="card col-4">
             <div class="small muted">Overall Progress</div>
             <div style="margin-top:10px" class="progress">
-              <div class="circle" id="progCircle">71%</div>
+              <div class="circle" id="progCircle">--%</div>
               <div>
                 <div class="small muted">Cumulative Average</div>
-                <div style="font-weight:900; font-size:1.18rem;" id="cumAvg">71.2%</div>
-                <div class="small muted">Top 23% of cohort</div>
+                <div style="font-weight:900; font-size:1.18rem;" id="cumAvg">--%</div>
+                <div class="small muted">-- of cohort</div>
               </div>
             </div>
           </div>
@@ -498,12 +497,12 @@
             <div style="margin-top:10px" class="kpis">
               <div style="flex:1">
                 <div class="small muted">Assignments Due</div>
-                <div class="small" id="dueCount" style="font-weight:900;font-size:1.18rem">4</div>
+                <div class="small" id="dueCount" style="font-weight:900;font-size:1.18rem">--</div>
                 <div class="small muted">Due this week</div>
               </div>
               <div style="flex:1">
                 <div class="small muted">Attendance</div>
-                <div class="small" id="attPct" style="font-weight:900;font-size:1.18rem">92%</div>
+                <div class="small" id="attPct" style="font-weight:900;font-size:1.18rem">--%</div>
                 <div class="small muted">This term</div>
               </div>
             </div>
@@ -512,9 +511,9 @@
           <div class="card col-4">
             <div class="small muted">Upcoming</div>
             <div style="margin-top:10px">
-              <div style="font-weight:800">Biology Practical</div>
-              <div class="small muted">Tue • 10:30 AM • Lab B</div>
-              <div style="margin-top:10px; padding:10px; border-left:4px solid var(--accent); background:linear-gradient(90deg,#fff,#fbfdff); border-radius:8px;">Bring lab coat. Materials in Resources.</div>
+              <div id="upcomingTitle" style="font-weight:800">--</div>
+              <div class="small muted" id="upcomingMeta">--</div>
+              <div style="margin-top:10px; padding:10px; border-left:4px solid var(--accent); background:linear-gradient(90deg,#fff,#fbfdff); border-radius:8px;" id="upcomingNote">--</div>
             </div>
           </div>
         </div>
@@ -617,7 +616,7 @@
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;">
       <div style="font-weight:800;font-size:1.1rem;">Weekly Timetable</div>
-      <div class="small muted">SS2 • Sunrise High</div>
+      <div class="small muted" id="timetableMeta">SS2 • Sunrise High</div>
     </div>
 
     <div class="timetable-wrapper">
@@ -657,6 +656,11 @@
   </div>
 </div>
   <script>
+    // Configuration - update API_BASE if required
+    const API_BASE = 'https://examguide.onrender.com/api';
+    // Token saved on login (optional). If present, will be used for authenticated API calls.
+    const TOKEN = localStorage.getItem('eg_token') || null;
+
     // Elements
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('overlay');
@@ -664,18 +668,38 @@
     const body = document.body;
     const main = document.getElementById('main');
 
+    // Utility to fetch from API with optional auth
+    async function apiFetch(path, options = {}) {
+      const headers = options.headers || {};
+      if (!headers['Content-Type'] && !(options.body instanceof FormData)) {
+        headers['Content-Type'] = 'application/json';
+      }
+      if (TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
+      try {
+        const res = await fetch(path.startsWith('http') ? path : (API_BASE + path), {
+          ...options,
+          headers
+        });
+        const contentType = res.headers.get('content-type') || '';
+        let data = null;
+        if (contentType.includes('application/json')) data = await res.json();
+        else data = await res.text();
+        return { ok: res.ok, status: res.status, data };
+      } catch (e) {
+        console.error('API fetch error', e, path);
+        return { ok: false, status: 0, data: null, error: e };
+      }
+    }
+
     // Mobile: open sidebar as overlay, prevent document scroll and make only sidebar scrollable
     function openSidebar() {
       sidebar.classList.remove('hidden');
       sidebar.classList.add('open');
       overlay.classList.add('visible');
-      // prevent page scroll (only on small screens)
       if (window.innerWidth <= 720) {
         body.classList.add('no-scroll');
-        // ensure sidebar scrolls
         sidebar.style.overflowY = 'auto';
       }
-      // set focus inside sidebar for accessibility
       const firstLink = sidebar.querySelector('.nav a');
       if (firstLink) firstLink.focus();
     }
@@ -683,7 +707,6 @@
     function closeSidebar() {
       sidebar.classList.remove('open');
       overlay.classList.remove('visible');
-      // small screens -> hide sidebar off-canvas
       if (window.innerWidth <= 720) {
         sidebar.classList.add('hidden');
       }
@@ -702,7 +725,6 @@
     // Close sidebar when any nav link is clicked (on small screens)
     document.querySelectorAll('.nav a').forEach(a => {
       a.addEventListener('click', (e) => {
-        // allow nav handler to run, then close
         if (window.innerWidth <= 720) {
           setTimeout(closeSidebar, 80);
         }
@@ -727,14 +749,12 @@
     // Ensure correct initial visibility on resize
     function handleResize() {
       if (window.innerWidth > 720) {
-        // Desktop: sidebar visible and main has left margin
         sidebar.classList.remove('hidden');
         sidebar.classList.remove('open');
         overlay.classList.remove('visible');
         body.classList.remove('no-scroll');
         main.classList.remove('full');
       } else {
-        // Mobile: hide sidebar by default
         if (!sidebar.classList.contains('open')) sidebar.classList.add('hidden');
         main.classList.add('full');
       }
@@ -760,31 +780,115 @@
       document.querySelectorAll('main .section').forEach(s => s.style.display = 'none');
       const s = document.getElementById(id);
       if (s) s.style.display = '';
-      // close sidebar on mobile to reveal content area
       if (window.innerWidth <= 720) closeSidebar();
       main.scrollTo({ top: 0, behavior: 'smooth' });
-      // move focus to main for screen readers
       main.focus();
     }
 
-    // Demo data population (same as earlier but mobile-friendly)
-    const demoAssignments = [
-      { id:'a1', title:'Biology Lab Report', due:'2026-03-12', class:'SS2', status:'Pending' },
-      { id:'a2', title:'Physics Homework', due:'2026-03-13', class:'SS2', status:'Pending' },
-      { id:'a3', title:'Chemistry Quiz', due:'2026-03-15', class:'SS2', status:'Submitted' },
-      { id:'a4', title:'English Essay', due:'2026-03-20', class:'SS2', status:'Pending' }
-    ];
-    const demoGrades = [
-      { subject:'Biology', latest: 'A', avg:'B+' },
-      { subject:'Mathematics', latest: 'B', avg:'B' },
-      { subject:'Chemistry', latest: 'B+', avg:'B' },
-      { subject:'English', latest: 'A-', avg:'B+' }
-    ];
+    // Load current user from localStorage (populated at login)
+    function loadCurrentUser() {
+      let user = null;
+      try {
+        user = JSON.parse(localStorage.getItem('eg_application') || 'null');
+      } catch (e) {
+        console.warn('Invalid eg_application in localStorage', e);
+        user = null;
+      }
+      if (!user || !user.username) {
+        // Not logged in, go to login
+        window.location.href = 'login.html';
+        return null;
+      }
 
-    function populateDashboard() {
+      // Populate UI with whatever we have
+      const name = (user.firstName && user.lastName) ? `${user.firstName} ${user.lastName}` : (user.firstName || user.username);
+      const klass = user.program || user.level || user.department || 'Student';
+      let avatar = user.profilePic || '../avatar.jpg';
+      if (!/^https?:\/\//.test(avatar) && avatar.startsWith('/')) {
+        // make relative paths usable
+        avatar = avatar;
+      }
+
+      document.getElementById('studentName').textContent = name;
+      document.getElementById('studentClass').textContent = klass;
+      document.getElementById('studentAvatar').src = avatar;
+      document.getElementById('topbarAvatar').src = avatar;
+      document.getElementById('pageTitle').textContent = 'Welcome back, ' + (name.split(' ')[0] || name);
+
+      // Optionally refresh user details from server if token is present
+      async function refresh() {
+        if (!TOKEN) return;
+        const r = await apiFetch('/auth/me');
+        if (r.ok && r.data && r.data.user) {
+          const fresh = r.data.user;
+          // update localStorage and UI safely
+          localStorage.setItem('eg_application', JSON.stringify(fresh));
+          const freshName = (fresh.firstName && fresh.lastName) ? `${fresh.firstName} ${fresh.lastName}` : (fresh.firstName || fresh.username);
+          document.getElementById('studentName').textContent = freshName;
+          document.getElementById('studentClass').textContent = fresh.program || fresh.level || fresh.department || 'Student';
+          if (fresh.profilePic) document.getElementById('studentAvatar').src = fresh.profilePic;
+          if (fresh.profilePic) document.getElementById('topbarAvatar').src = fresh.profilePic;
+        }
+      }
+      refresh().catch(()=>{/* ignore refresh errors */});
+
+      return user;
+    }
+
+    // Data fetching endpoints (assumed - modify later if your API differs)
+    // Each function returns array/object or empty default on error
+    async function fetchAssignments(studentId) {
+      // GET /student/assignments?studentId=...
+      const r = await apiFetch(`/student/assignments?studentId=${encodeURIComponent(studentId)}`);
+      if (r.ok && r.data) return r.data.assignments || r.data || [];
+      return [];
+    }
+    async function fetchGrades(studentId) {
+      const r = await apiFetch(`/student/grades?studentId=${encodeURIComponent(studentId)}`);
+      if (r.ok && r.data) return r.data.grades || r.data || [];
+      return [];
+    }
+    async function fetchConversations(studentId) {
+      const r = await apiFetch(`/messages/conversations?user=${encodeURIComponent(studentId)}`);
+      if (r.ok && r.data) return r.data.conversations || r.data || [];
+      return [];
+    }
+    async function fetchCourses(studentId) {
+      const r = await apiFetch(`/student/courses?studentId=${encodeURIComponent(studentId)}`);
+      if (r.ok && r.data) return r.data.courses || r.data || [];
+      return [];
+    }
+    async function fetchResources(studentId) {
+      const r = await apiFetch(`/resources?studentId=${encodeURIComponent(studentId)}`);
+      if (r.ok && r.data) return r.data.resources || r.data || [];
+      return [];
+    }
+    async function fetchTimetable(studentId) {
+      const r = await apiFetch(`/student/timetable?studentId=${encodeURIComponent(studentId)}`);
+      if (r.ok && r.data) return r.data.timetable || r.data || null;
+      return null;
+    }
+    async function fetchOverview(studentId) {
+      const r = await apiFetch(`/student/overview?studentId=${encodeURIComponent(studentId)}`);
+      if (r.ok && r.data) return r.data || {};
+      return {};
+    }
+
+    // Render helpers
+    function renderAssignments(assignments) {
       const assignmentsList = document.getElementById('assignmentsList');
+      const assignmentsFull = document.getElementById('assignmentsFull');
       assignmentsList.innerHTML = '';
-      demoAssignments.forEach(a => {
+      if (assignmentsFull) assignmentsFull.innerHTML = '';
+
+      if (!assignments || assignments.length === 0) {
+        assignmentsList.innerHTML = '<div class="small muted">No assignments found.</div>';
+        if (assignmentsFull) assignmentsFull.innerHTML = '<div class="small muted">No assignments found.</div>';
+        return;
+      }
+
+      assignments.slice(0, 6).forEach(a => {
+        const due = a.due ? (new Date(a.due)).toLocaleDateString() : '--';
         const el = document.createElement('div');
         el.className = 'item';
         el.style.display = 'flex';
@@ -792,66 +896,244 @@
         el.style.alignItems = 'center';
         el.style.gap = '12px';
         el.innerHTML = `<div style="flex:1">
-            <div style="font-weight:800">${a.title}</div>
-            <div class="small muted">${a.class} • Due ${a.due}</div>
+            <div style="font-weight:800">${escapeHtml(a.title || a.name || 'Untitled')}</div>
+            <div class="small muted">${escapeHtml(a.class || a.course || '')} • Due ${due}</div>
           </div>
           <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
-            <div class="small muted">${a.status}</div>
-            <button class="btn" onclick="openSubmit('${a.id}')">Submit</button>
+            <div class="small muted">${escapeHtml(a.status || 'Pending')}</div>
+            <button class="btn" onclick="openSubmit('${a._id || a.id || ''}')">Submit</button>
           </div>`;
         assignmentsList.appendChild(el);
       });
 
+      if (assignmentsFull) {
+        assignments.forEach(a => {
+          const node = document.createElement('div');
+          node.className = 'card';
+          node.style.marginBottom = '10px';
+          node.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center">
+            <div><div style="font-weight:800">${escapeHtml(a.title || a.name || 'Untitled')}</div><div class="small muted">${escapeHtml(a.class || a.course || '')} • Due ${a.due ? (new Date(a.due)).toLocaleDateString() : '--'}</div></div>
+            <div><button class="btn" onclick="openSubmit('${a._id || a.id || ''}')">Submit</button></div>
+          </div>`;
+          assignmentsFull.appendChild(node);
+        });
+      }
+    }
+
+    function renderGrades(grades) {
       const gradesTable = document.getElementById('gradesTable');
+      const gradesFull = document.getElementById('gradesFull');
       gradesTable.innerHTML = '';
-      demoGrades.forEach(g => {
+      if (gradesFull) gradesFull.innerHTML = '';
+
+      if (!grades || grades.length === 0) {
+        gradesTable.innerHTML = '<tr><td colspan="3" class="small muted" style="padding:8px">No grades available.</td></tr>';
+        if (gradesFull) gradesFull.innerHTML = '<div class="small muted">No grades available.</div>';
+        return;
+      }
+
+      grades.forEach(g => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td style="padding:8px">${g.subject}</td><td style="padding:8px;font-weight:800">${g.latest}</td><td style="padding:8px" class="muted">${g.avg}</td>`;
+        tr.innerHTML = `<td style="padding:8px">${escapeHtml(g.subject || g.course || '')}</td><td style="padding:8px;font-weight:800">${escapeHtml(g.latest || g.grade || '')}</td><td style="padding:8px" class="muted">${escapeHtml(g.avg || g.termAvg || '')}</td>`;
         gradesTable.appendChild(tr);
       });
 
-      const convos = document.getElementById('convos');
-      convos.innerHTML = '';
-      ['Class Group', 'Mrs Johnson (Biology)', 'Parent - Emeka'].forEach((c, idx) => {
+      if (gradesFull) {
+        gradesFull.innerHTML = '';
+        grades.forEach(g => {
+          const el = document.createElement('div');
+          el.className = 'card';
+          el.style.marginBottom = '10px';
+          el.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center">
+            <div><div style="font-weight:800">${escapeHtml(g.subject || g.course || '')}</div><div class="small muted">Latest: ${escapeHtml(g.latest || g.grade || '')}</div></div>
+            <div class="small muted">Term Avg: ${escapeHtml(g.avg || g.termAvg || '')}</div>
+          </div>`;
+          gradesFull.appendChild(el);
+        });
+      }
+    }
+
+    function renderConversations(convos) {
+      const convosEl = document.getElementById('convos');
+      convosEl.innerHTML = '';
+      if (!convos || convos.length === 0) {
+        convosEl.innerHTML = '<div class="small muted">No conversations yet.</div>';
+        return;
+      }
+      convos.forEach((c, idx) => {
         const node = document.createElement('div');
         node.style.padding = '8px'; node.style.borderRadius='8px'; node.style.marginBottom='8px'; node.style.cursor='pointer';
         node.style.background = idx === 0 ? '#fbfdff' : '#fff';
-        node.innerHTML = `<div style="font-weight:700">${c}</div><div class="small muted">${idx === 0 ? '2 unread' : 'last message 2h'}</div>`;
+        node.innerHTML = `<div style="font-weight:700">${escapeHtml(c.title || c.name || c.with || 'Conversation')}</div><div class="small muted">${escapeHtml(c.preview || c.lastMessage || '')}</div>`;
         node.addEventListener('click', () => openConversation(c));
-        convos.appendChild(node);
+        convosEl.appendChild(node);
       });
+    }
 
-      // courses / resources placeholders
-      const cg = document.getElementById('coursesGrid'); cg.innerHTML = '';
-      ['Biology','Mathematics','English','Chemistry'].forEach(name=>{
+    function renderCourses(courses) {
+      const cg = document.getElementById('coursesGrid');
+      if (!cg) return;
+      cg.innerHTML = '';
+      if (!courses || courses.length === 0) {
+        cg.innerHTML = '<div class="small muted">No courses enrolled.</div>';
+        return;
+      }
+      courses.forEach(course => {
         const card = document.createElement('div'); card.className = 'card'; card.style.marginBottom='10px';
         card.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center">
-          <div><div style="font-weight:800">${name}</div><div class="small muted">Teacher: Mrs Johnson</div></div>
-          <div><div class="small muted">Avg: B+</div><button class="btn ghost" style="margin-top:6px" onclick="navTo('grades')">View</button></div>
+          <div><div style="font-weight:800">${escapeHtml(course.title || course.name || '')}</div><div class="small muted">Teacher: ${escapeHtml(course.teacher || course.instructor || '')}</div></div>
+          <div><div class="small muted">Avg: ${escapeHtml(course.avg || course.grade || '--')}</div><button class="btn ghost" style="margin-top:6px" onclick="navTo('grades')">View</button></div>
         </div>`;
         cg.appendChild(card);
       });
-
-      const rFull = document.getElementById('resourcesFull'); if (rFull) rFull.innerHTML = '<div class="small muted">No resources yet.</div>';
-      const aFull = document.getElementById('assignmentsFull'); if (aFull) { aFull.innerHTML = ''; demoAssignments.forEach(a=>{ const n=document.createElement('div'); n.className='card'; n.style.marginBottom='10px'; n.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:800">${a.title}</div><div class="small muted">${a.class} • Due ${a.due}</div></div><div><button class="btn" onclick="openSubmit('${a.id}')">Submit</button></div></div>`; aFull.appendChild(n); }); }
     }
 
-    function openConversation(name) {
-      const chat = document.getElementById('chatPane');
-      chat.innerHTML = `<div style="font-weight:700;margin-bottom:8px">${name}</div><div class="small muted">Conversation started</div>`;
-      // on small screens, hide sidebar after opening conversation
-      if (window.innerWidth <= 720) closeSidebar();
+    function renderResources(resources) {
+      const grid = document.getElementById('resourcesGrid');
+      if (!grid) return;
+      grid.innerHTML = '';
+      if (!resources || resources.length === 0) {
+        grid.innerHTML = '<div class="small muted">No resources available.</div>';
+        return;
+      }
+      resources.forEach(res => {
+        const card = document.createElement('div');
+        card.className = 'resource-card';
+
+        const iconClass =
+          res.type === "pdf" ? "icon-pdf" :
+          res.type === "doc" ? "icon-doc" :
+          res.type === "video" ? "icon-video" :
+          "icon-link";
+
+        card.innerHTML = `
+          <div class="resource-header">
+            <div class="resource-icon ${iconClass}">
+              ${escapeHtml((res.type || 'file').toUpperCase())}
+            </div>
+            <div>
+              <div class="resource-title">${escapeHtml(res.title || res.name || 'Resource')}</div>
+              <div class="resource-sub">${escapeHtml(res.subject || res.course || '')}</div>
+            </div>
+          </div>
+          <div class="resource-actions">
+            <button class="btn ghost preview-btn">Preview</button>
+            <button class="btn download-btn">Download</button>
+          </div>
+        `;
+
+        const previewBtn = card.querySelector(".preview-btn");
+        const downloadBtn = card.querySelector(".download-btn");
+
+        previewBtn.addEventListener("click", () => openResourceModal(res));
+        downloadBtn.addEventListener("click", () => {
+          const link = document.createElement("a");
+          link.href = res.file;
+          link.download = res.title || 'resource';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        });
+
+        grid.appendChild(card);
+      });
     }
 
+    function renderTimetable(timetable) {
+      const timetableEl = document.getElementById('timetableGrid');
+      if (!timetableEl) return;
+      timetableEl.innerHTML = '';
+      if (!timetable || !Array.isArray(timetable.rows)) {
+        timetableEl.innerHTML = '<div class="small muted" style="padding:12px">No timetable available.</div>';
+        return;
+      }
+
+      // Expected timetable format: { days: [...], times: [...], rows: { time: [subjects] } } or { rows: [ { time: '8:00 - 9:00', slots: [..] }, ... ] }
+      if (timetable.days && timetable.times && timetable.rows) {
+        // header
+        timetable.days.forEach(day => {
+          const cell = document.createElement("div");
+          cell.textContent = day;
+          timetableEl.appendChild(cell);
+        });
+        timetable.times.forEach(time => {
+          const timeCell = document.createElement("div");
+          timeCell.textContent = time;
+          timeCell.className = "time-slot";
+          timetableEl.appendChild(timeCell);
+          const slots = timetable.rows[time] || [];
+          for (let i = 0; i < (timetable.days.length - 1); i++) {
+            const subCell = document.createElement("div");
+            subCell.textContent = slots[i] || '';
+            subCell.className = "subject";
+            timetableEl.appendChild(subCell);
+          }
+        });
+      } else if (Array.isArray(timetable.rows)) {
+        // rows array format
+        const days = timetable.days || ["Time", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+        days.forEach(day => {
+          const cell = document.createElement("div");
+          cell.textContent = day;
+          timetableEl.appendChild(cell);
+        });
+        timetable.rows.forEach(r => {
+          const timeCell = document.createElement("div");
+          timeCell.textContent = r.time || '';
+          timeCell.className = "time-slot";
+          timetableEl.appendChild(timeCell);
+          (r.slots || []).forEach(slot => {
+            const subCell = document.createElement("div");
+            subCell.textContent = slot || '';
+            subCell.className = "subject";
+            timetableEl.appendChild(subCell);
+          });
+        });
+      } else {
+        // fallback placeholder
+        timetableEl.innerHTML = '<div class="small muted" style="padding:12px">Timetable format not recognised.</div>';
+      }
+    }
+
+    // Open/close resource modal
+    function openResourceModal(res) {
+      const modal = document.getElementById("resourceModal");
+      const modalTitle = document.getElementById("modalTitle");
+      const modalBody = document.getElementById("modalBody");
+
+      modalTitle.textContent = res.title || res.name || 'Resource';
+      modalBody.innerHTML = "";
+
+      if (res.type === "pdf" || res.type === "doc") {
+        modalBody.innerHTML = `<iframe src="${res.file}" style="width:100%;height:100%"></iframe>`;
+      } else if (res.type === "video") {
+        modalBody.innerHTML = `<iframe src="${res.file.replace("watch?v=", "embed/")}" allowfullscreen style="width:100%;height:100%"></iframe>`;
+      } else {
+        modalBody.innerHTML = `<div style="padding:20px;"><p>This is an external resource.</p><a href="${res.file}" target="_blank" class="btn">Open Link</a></div>`;
+      }
+
+      modal.classList.add("active");
+    }
+
+    function closeResourceModal() {
+      const modal = document.getElementById("resourceModal");
+      const modalBody = document.getElementById("modalBody");
+      modal.classList.remove("active");
+      modalBody.innerHTML = "";
+    }
+
+    document.getElementById("closeResourceModal").addEventListener("click", closeResourceModal);
+    document.getElementById("resourceModal").addEventListener("click", function(e) { if (e.target === this) closeResourceModal(); });
+
+    // Open assignment submit modal
     function openSubmit(id) {
-      const a = demoAssignments.find(x => x.id === id);
       const modal = document.createElement('div');
       modal.style.position = 'fixed'; modal.style.inset = 0; modal.style.background = 'rgba(2,6,23,0.45)';
       modal.style.display = 'flex'; modal.style.alignItems = 'center'; modal.style.justifyContent = 'center'; modal.style.zIndex = 9999;
       modal.onclick = () => document.body.removeChild(modal);
       modal.innerHTML = `<div class="card" style="width:520px;max-width:92vw" onclick="event.stopPropagation()">
-        <div style="font-weight:800">${a ? a.title : 'Submit Assignment'}</div>
-        <div class="small muted" style="margin-top:6px">${a ? (a.class + ' • Due ' + a.due) : ''}</div>
+        <div style="font-weight:800">${id ? 'Submit Assignment' : 'Submit Assignment'}</div>
+        <div class="small muted" style="margin-top:6px">${id ? ('Assignment ID: ' + id) : ''}</div>
         <div style="margin-top:12px"><input type="file" id="fileUp"></div>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
           <button class="btn ghost" onclick="document.body.removeChild(modal)">Cancel</button>
@@ -860,187 +1142,91 @@
       </div>`;
       document.body.appendChild(modal);
     }
-function populateTimetable() {
-  const timetable = document.getElementById('timetableGrid');
-  if (!timetable) return;
 
-  const days = ["Time", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-  const times = [
-  "8:00 - 9:00",
-  "9:00 - 10:00",
-  "10:00 - 11:00",
-  "11:00 - 12:00",
-  "12:00 - 1:00",
-  "1:00 - 2:00",
-  "2:00 - 3:00",
-  "3:00 - 4:00"
-];
+    function openConversation(convo) {
+      const chat = document.getElementById('chatPane');
+      chat.innerHTML = `<div style="font-weight:700;margin-bottom:8px">${escapeHtml(convo.title || convo.name || 'Conversation')}</div><div class="small muted">${escapeHtml(convo.preview || convo.lastMessage || '')}</div>`;
+      if (window.innerWidth <= 720) closeSidebar();
+    }
 
-const schedule = {
-  "8:00 - 9:00": ["Math", "Biology", "English", "Chemistry", "Physics"],
-  "9:00 - 10:00": ["Physics", "Math", "Biology", "English", "Chemistry"],
-  "10:00 - 11:00": ["English", "Chemistry", "Math", "Biology", "ICT"],
-  "11:00 - 12:00": ["Biology", "ICT", "Physics", "Math", "English"],
-  "12:00 - 1:00": ["ICT", "English", "Chemistry", "Physics", "Math"],
-  "1:00 - 2:00": ["Lunch", "Lunch", "Lunch", "Lunch", "Lunch"],
-  "2:00 - 3:00": ["Geography", "Economics", "Civic Edu", "Literature", "Further Math"],
-  "3:00 - 4:00": ["Sports", "ICT Lab", "Library", "Club Activity", "Revision"]
-};
-  timetable.innerHTML = "";
+    // Escape HTML utility to avoid XSS when inserting strings
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str).replace(/[&<>"']/g, function (m) {
+        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m];
+      });
+    }
 
-  // Header row
-  days.forEach(day => {
-    const cell = document.createElement("div");
-    cell.textContent = day;
-    timetable.appendChild(cell);
-  });
+    // Load data for dashboard by calling API endpoints
+    async function loadDashboardData(user) {
+      if (!user) return;
+      const studentId = user.studentId || user._id || user.id || user.username;
+      // Kick off parallel fetches
+      const [
+        assignmentsRes,
+        gradesRes,
+        convosRes,
+        coursesRes,
+        resourcesRes,
+        timetableRes,
+        overviewRes
+      ] = await Promise.allSettled([
+        fetchAssignments(studentId),
+        fetchGrades(studentId),
+        fetchConversations(studentId),
+        fetchCourses(studentId),
+        fetchResources(studentId),
+        fetchTimetable(studentId),
+        fetchOverview(studentId)
+      ]);
 
-  // Time rows
-  times.forEach(time => {
-    const timeCell = document.createElement("div");
-    timeCell.textContent = time;
-    timeCell.className = "time-slot";
-    timetable.appendChild(timeCell);
+      // Process results, use empty fallbacks if rejected
+      const assignments = assignmentsRes.status === 'fulfilled' ? assignmentsRes.value : [];
+      const grades = gradesRes.status === 'fulfilled' ? gradesRes.value : [];
+      const convos = convosRes.status === 'fulfilled' ? convosRes.value : [];
+      const courses = coursesRes.status === 'fulfilled' ? coursesRes.value : [];
+      const resources = resourcesRes.status === 'fulfilled' ? resourcesRes.value : [];
+      const timetable = timetableRes.status === 'fulfilled' ? timetableRes.value : null;
+      const overview = overviewRes.status === 'fulfilled' ? overviewRes.value : {};
 
-    schedule[time].forEach(subject => {
-      const subCell = document.createElement("div");
-      subCell.textContent = subject;
-      subCell.className = "subject";
-      timetable.appendChild(subCell);
+      // Render UI
+      renderAssignments(assignments);
+      renderGrades(grades);
+      renderConversations(convos);
+      renderCourses(courses);
+      renderResources(resources);
+      renderTimetable(timetable);
+
+      // Populate overview KPIs
+      const cumAvg = overview.cumulativeAverage || overview.cumAvg || '--';
+      const dueCount = overview.assignmentsDue || (assignments.filter(a => a.status !== 'Submitted').length) || 0;
+      const attPct = overview.attendancePercentage || '--';
+      const upcoming = overview.upcoming || {};
+
+      document.getElementById('progCircle').textContent = cumAvg === '--' ? '--%' : `${cumAvg}%`;
+      document.getElementById('cumAvg').textContent = cumAvg === '--' ? '--%' : `${cumAvg}%`;
+      document.getElementById('dueCount').textContent = String(dueCount);
+      document.getElementById('attPct').textContent = attPct ? `${attPct}%` : '--%';
+      document.getElementById('upcomingTitle').textContent = upcoming.title || (assignments[0] && assignments[0].title) || '--';
+      document.getElementById('upcomingMeta').textContent = upcoming.meta || (assignments[0] && assignments[0].due ? `Due ${new Date(assignments[0].due).toLocaleDateString()}` : '--');
+      document.getElementById('upcomingNote').textContent = upcoming.note || (assignments[0] && assignments[0].note) || 'Check resources for materials.';
+    }
+
+    // Entry point on load
+    window.addEventListener('load', async () => {
+      const currentUser = loadCurrentUser();
+      if (!currentUser) return; // loadCurrentUser will redirect if needed
+
+      // Load dashboard data
+      try {
+        await loadDashboardData(currentUser);
+      } catch (e) {
+        console.error('Failed to load dashboard data', e);
+      }
+
+      // Ensure sidebar initial state for small screens
+      if (window.innerWidth <= 720) sidebar.classList.add('hidden');
     });
-  });
-}
-    const resources = [
-  { 
-    title: "Biology Practical Guide", 
-    subject: "Biology", 
-    type: "pdf",
-    file: "files/biology-guide.pdf"
-  },
-  { 
-    title: "Math Formula Sheet", 
-    subject: "Mathematics", 
-    type: "pdf",
-    file: "files/math-formulas.pdf"
-  },
-  { 
-    title: "Chemistry Lab Video", 
-    subject: "Chemistry", 
-    type: "video",
-    file: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-  },
-  { 
-    title: "English Essay Samples", 
-    subject: "English", 
-    type: "doc",
-    file: "files/essay-samples.docx"
-  },
-  { 
-    title: "WAEC Past Questions", 
-    subject: "General", 
-    type: "link",
-    file: "https://waecdirect.org"
-  }
-];
-function populateResources() {
-  const grid = document.getElementById("resourcesGrid");
-  if (!grid) return;
-
-  grid.innerHTML = "";
-
-  resources.forEach(res => {
-    const card = document.createElement("div");
-    card.className = "resource-card";
-
-    const iconClass =
-      res.type === "pdf" ? "icon-pdf" :
-      res.type === "doc" ? "icon-doc" :
-      res.type === "video" ? "icon-video" :
-      "icon-link";
-
-    card.innerHTML = `
-      <div class="resource-header">
-        <div class="resource-icon ${iconClass}">
-          ${res.type.toUpperCase()}
-        </div>
-        <div>
-          <div class="resource-title">${res.title}</div>
-          <div class="resource-sub">${res.subject}</div>
-        </div>
-      </div>
-      <div class="resource-actions">
-        <button class="btn ghost preview-btn">Preview</button>
-        <button class="btn download-btn">Download</button>
-      </div>
-    `;
-
-    // Attach button actions
-    const previewBtn = card.querySelector(".preview-btn");
-    const downloadBtn = card.querySelector(".download-btn");
-previewBtn.addEventListener("click", () => {
-  openResourceModal(res);
-});
-function openResourceModal(res) {
-  const modal = document.getElementById("resourceModal");
-  const modalTitle = document.getElementById("modalTitle");
-  const modalBody = document.getElementById("modalBody");
-
-  modalTitle.textContent = res.title;
-  modalBody.innerHTML = "";
-
-  if (res.type === "pdf" || res.type === "doc") {
-    modalBody.innerHTML = `<iframe src="${res.file}"></iframe>`;
-  } 
-  else if (res.type === "video") {
-    modalBody.innerHTML = `
-      <iframe 
-        src="${res.file.replace("watch?v=", "embed/")}" 
-        allowfullscreen>
-      </iframe>`;
-  } 
-  else {
-    modalBody.innerHTML = `
-      <div style="padding:20px;">
-        <p>This is an external resource.</p>
-        <a href="${res.file}" target="_blank" class="btn">Open Link</a>
-      </div>`;
-  }
-
-  modal.classList.add("active");
-}
-    document.getElementById("closeResourceModal")
-  .addEventListener("click", closeResourceModal);
-
-document.getElementById("resourceModal")
-  .addEventListener("click", function(e) {
-    if (e.target === this) closeResourceModal();
-  });
-
-function closeResourceModal() {
-  const modal = document.getElementById("resourceModal");
-  const modalBody = document.getElementById("modalBody");
-
-  modal.classList.remove("active");
-  modalBody.innerHTML = "";
-}
-    downloadBtn.addEventListener("click", () => {
-      const link = document.createElement("a");
-      link.href = res.file;
-      link.download = res.title;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    });
-
-    grid.appendChild(card);
-  });
-}
-window.addEventListener('load', () => {
-  populateDashboard();
-  populateTimetable();
-  populateResources(); // ADD THIS
-  if (window.innerWidth <= 720) sidebar.classList.add('hidden');
-});
 
     // Accessibility: close overlay with Escape
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSidebar(); });
