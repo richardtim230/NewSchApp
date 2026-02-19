@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Check Result — Student Portal</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link href="https://fonts.googleapis.com/css?family=Inter:400,600,700&display=swap" rel="stylesheet">
+  <link rel="icon" href="../logo.png">
+  <style>
+    :root{
+      --bg-0:#f6f8ff; --bg-1:#eef2ff;
+      --accent:#3b82f6; --accent-2:#6366f1; --muted:#6b7280;
+      --card-bg:#ffffff; --radius:12px;
+      --sidebar-w:300px;
+      --spinner-size:18px;
+    }
+    * { box-sizing: border-box; }
+    html,body { height:100%; margin:0; font-family:Inter,system-ui,Arial; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; background:linear-gradient(180deg,var(--bg-0),var(--bg-1)); color:#0b2033; }
+    a { color:inherit; text-decoration:none; }
+
+    .app { display:flex; min-height:100vh; align-items:stretch; }
+
+    /* Sidebar */
+    .sidebar {
+      width: var(--sidebar-w);
+      min-width: var(--sidebar-w);
+      background: linear-gradient(180deg,#0f172a 0%, #1e3a8a 100%);
+      color:#fff; padding:20px 16px; position:fixed; left:0; top:0; bottom:0; z-index:100;
+      box-shadow: 4px 0 28px rgba(15,23,42,0.12);
+      transform: translateX(0); transition: transform .28s ease;
+      display:flex; flex-direction:column; gap:14px; overflow-y:auto;
+    }
+    .sidebar.hidden { transform: translateX(-110%); }
+    .brand { display:flex; gap:12px; align-items:center; }
+    .brand img { width:48px; height:48px; border-radius:10px; object-fit:cover; border:3px solid rgba(255,224,102,0.12); background:#fff; }
+    .brand .title { font-weight:700; font-size:1.18rem; color:#ffe066; }
+    .nav { display:flex; flex-direction:column; gap:8px; margin-top:6px; }
+    .nav a { display:flex; align-items:center; gap:10px; padding:12px 12px; border-radius:10px; font-weight:700; font-size:1.05rem; color:#e6eefc; background:transparent; }
+    .nav a.active, .nav a:hover { background: rgba(255,255,255,0.04); color:#ffe066; transform: translateX(3px); }
+
+    .spacer { flex:1; }
+    .profile { display:flex; gap:12px; align-items:center; padding-top:10px; border-top:1px solid rgba(255,255,255,0.04); }
+    .profile img { width:48px; height:48px; border-radius:10px; object-fit:cover; border:2px solid #ffe066; }
+
+    /* Main */
+    .main { margin-left: var(--sidebar-w); padding:26px; flex:1; transition: margin-left .28s; min-height:100vh; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-top:100px; }
+    .main.full { margin-left:0; }
+
+    /* Topbar */
+    .topbar {
+      position: fixed;
+      left: var(--sidebar-w);
+      top: 0;
+      width: calc(100vw - var(--sidebar-w));
+      z-index: 90;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 18px;
+      backdrop-filter: blur(6px);
+      background: rgba(255, 255, 255, 0.92);
+      border-bottom: 1px solid rgba(11, 42, 60, 0.06);
+      box-shadow: 0 6px 18px rgba(11, 42, 60, 0.04);
+      min-height: 64px;
+    }
+    .hamburger { display:none; background:var(--accent); color:#fff; border:none; padding:9px 12px; border-radius:10px; cursor:pointer; font-weight:800; font-size:1.05rem; }
+    .page-title { font-weight:800; font-size:1.18rem; color:var(--accent-2); }
+
+    /* Card */
+    .card { background:var(--card-bg); border-radius:12px; padding:20px; box-shadow: 0 8px 20px rgba(11,42,60,0.04); border:1px solid rgba(11,42,60,0.03); max-width:920px; margin:0 auto; }
+    h1 { margin:0 0 6px 0; font-size:1.25rem; color:var(--accent-2); }
+
+    /* Form grid */
+    .form-grid { display:grid; grid-template-columns: repeat(12, 1fr); gap:12px; align-items:start; }
+    .col-6 { grid-column: span 6; }
+    .col-4 { grid-column: span 4; }
+    .col-12 { grid-column: 1 / -1; }
+
+    label { display:block; font-weight:700; margin-bottom:6px; font-size:0.95rem; color:#0b2033; }
+    input[type="text"], input[type="password"], select {
+      width:100%; padding:10px 12px; border-radius:10px; border:1px solid #e6e9ef; background:#fff; font-size:0.95rem;
+    }
+    .inline-help { font-size:0.9rem; color:var(--muted); margin-top:6px; }
+
+    .actions { display:flex; gap:10px; justify-content:flex-end; margin-top:12px; }
+    .btn { padding:10px 14px; border-radius:10px; border:none; cursor:pointer; background:linear-gradient(90deg,var(--accent),var(--accent-2)); color:#fff; font-weight:800; display:inline-flex; align-items:center; gap:8px; }
+    .btn.ghost { background:transparent; color:var(--accent-2); border:1px solid rgba(11,42,60,0.06); font-weight:700; }
+
+    .status { margin-top:12px; font-weight:700; min-height:22px; }
+
+    /* Previous results list */
+    .history-card { margin-top:18px; }
+    .history-header { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px; }
+    .history-list { display:grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap:10px; }
+    .history-item {
+      display:flex; flex-direction:column; gap:6px; padding:10px; border-radius:10px; background:#fff; border:1px solid #eef3ff; cursor:pointer;
+      transition:transform .12s ease, box-shadow .12s ease;
+    }
+    .history-item:hover { transform:translateY(-6px); box-shadow: 0 12px 28px rgba(59,130,246,0.06); }
+    .h-title { font-weight:800; color:#063049; font-size:0.95rem; }
+    .h-meta { color:var(--muted); font-size:0.88rem; }
+    .h-footer { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:6px; }
+    .history-empty { color:var(--muted); font-size:0.95rem; padding:12px 10px; border-radius:8px; background:#fbfbff; border:1px dashed #e6eef6; text-align:center; }
+
+    /* Spinner - hidden by default, shown by .loading class on the button */
+    .spinner {
+      width: var(--spinner-size);
+      height: var(--spinner-size);
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.18);
+      border-top-color: rgba(255,255,255,0.95);
+      animation: spin .78s linear infinite;
+      display: none;
+      box-sizing: border-box;
+    }
+    .btn.ghost .spinner { border-color: rgba(99,102,241,0.12); border-top-color: var(--accent); }
+    .btn.loading .spinner { display: inline-block; margin-right:6px; }
+    .btn.loading { pointer-events: none; opacity:0.95; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* small responsive */
+    @media (max-width:980px) {
+      .form-grid { grid-template-columns: repeat(6, 1fr); }
+      .col-6 { grid-column: span 6; } .col-4 { grid-column: span 3; }
+      .hamburger { display:inline-flex; }
+    }
+    @media (max-width:720px) {
+      :root { --sidebar-w: 86vw; }
+      .sidebar { transform: translateX(-110%); position:fixed; width:var(--sidebar-w); min-width:var(--sidebar-w); }
+      .sidebar.open { transform: translateX(0); box-shadow: 0 24px 48px rgba(2,6,23,0.5); }
+      .overlay { display:none; }
+      .overlay.visible { display:block; }
+      .topbar { left:0; width:100vw; padding:10px 12px; min-height:56px; }
+      .main { margin-left:0; padding:16px; padding-top:90px; }
+      .form-grid { grid-template-columns: 1fr; gap:10px; }
+      .col-6, .col-4 { grid-column: auto; }
+      .history-list { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+    }
+
+    /* toast */
+    .toast {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      min-width: 220px;
+      max-width: 420px;
+      background: #111827;
+      color: #fff;
+      padding: 12px 14px;
+      border-radius: 10px;
+      box-shadow: 0 12px 32px rgba(2,6,23,0.25);
+      display: none;
+      z-index: 9999;
+      font-weight:700;
+    }
+    .toast.success { background: linear-gradient(90deg,#10b981,#059669); }
+    .toast.error { background: linear-gradient(90deg,#ef4444,#dc2626); }
+
+    .muted { color:var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <div class="overlay" id="overlay" aria-hidden="true" style="position:fixed;inset:0;background:rgba(2,6,23,0.45);z-index:50;display:none;"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar hidden" id="sidebar" aria-label="Main navigation" role="navigation">
+      <div class="brand" aria-hidden="false">
+        <img src="../logo.png" alt="Logo">
+        <div>
+          <div class="title">Student Portal</div>
+          <div class="subtitle" id="schoolSubtitle">Sunrise High • Student</div>
+        </div>
+      </div>
+
+      <nav class="nav" id="nav" aria-label="Primary">
+        <a href="student.html" data-section="home">🏠 Home</a>
+        <a href="courses.html" data-section="courses">📘 My Courses</a>
+        <a href="assignments.html" data-section="assignments">📝 Assignments</a>
+        <a href="result.html" data-section="results" class="active">📄 Check Result</a>
+        <a href="timetable.html" data-section="timetable">⏰ Timetable</a>
+        <a href="messages.html" data-section="messages">✉️ Messages</a>
+        <a href="resources.html" data-section="resources">📂 Resources</a>
+        <a href="settings.html" data-section="settings">⚙️ Settings</a>
+      </nav>
+
+      <div class="spacer" aria-hidden="true"></div>
+
+      <div class="profile" role="region" aria-label="Student profile">
+        <img src="../avatar.jpg" alt="Student avatar" id="studentAvatar">
+        <div>
+          <div class="name" id="studentName">Adaobi Chukwu</div>
+          <div class="muted" id="studentClass">SS2 — Biology</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Topbar -->
+    <div class="topbar" id="fixedTopbar">
+      <div style="display:flex; gap:12px; align-items:center;">
+        <button class="hamburger" id="hamburger" aria-label="Open menu">☰</button>
+        <div>
+          <div class="page-title" id="pageTitle">Check Student Result</div>
+          <div class="small muted">Enter details to view printable report</div>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:12px; align-items:center;">
+        <img src="../avatar.jpg" alt="You" style="width:44px;height:44px;border-radius:8px;object-fit:cover;border:2px solid #fff;" id="topbarAvatar">
+      </div>
+    </div>
+
+    <!-- Main content -->
+    <main class="main" id="main" role="main" tabindex="-1">
+      <div class="card" role="region" aria-label="Result lookup form">
+        <h1>Check Student Result</h1>
+
+        <form id="resultForm" autocomplete="off" novalidate>
+          <div class="form-grid" style="margin-top:12px;">
+            <div class="col-6">
+              <label for="regNo">Registration number</label>
+              <input id="regNo" name="regNo" type="text" inputmode="text" placeholder="e.g. 04/1643" required>
+            </div>
+
+            <div class="col-6">
+              <label for="studentClass">Class / Form</label>
+              <select id="studentClass" name="class" required>
+                <option value="">Select class</option>
+                <option>JSS 1A</option>
+                <option>JSS 2A</option>
+                <option>JSS 3A</option>
+                <option>SS1</option>
+                <option>SS2</option>
+                <option>SS3</option>
+              </select>
+            </div>
+
+            <div class="col-4">
+              <label for="academicSession">Academic session</label>
+              <select id="academicSession" name="session" required>
+                <option value="">Select session</option>
+                <option>2025 / 2026</option>
+                <option>2024 / 2025</option>
+                <option>2023 / 2024</option>
+                <option>2022 / 2023</option>
+              </select>
+            </div>
+
+            <div class="col-4">
+              <label for="term">Term</label>
+              <select id="term" name="term" required>
+                <option value="">Select term</option>
+                <option value="1">First Term</option>
+                <option value="2">Second Term</option>
+                <option value="3">Third Term</option>
+              </select>
+            </div>
+
+            <div class="col-4">
+              <label for="accessCode">Access / voucher (optional)</label>
+              <input id="accessCode" name="accessCode" type="text" placeholder="Optional voucher or access code">
+            </div>
+
+            <div class="col-8">
+              <label for="scratch">Scratch card / PIN</label>
+              <input id="scratch" name="scratch" type="password" placeholder="Enter scratch card / pin" autocomplete="off" required>
+              <div class="inline-help">Scratch card will be validated before result is fetched. Keep it confidential.</div>
+            </div>
+
+            <div class="col-4">
+              <label>&nbsp;</label>
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                <button type="submit" id="submitBtn" class="btn" aria-live="polite" aria-busy="false">
+                  <span class="spinner" aria-hidden="true"></span>
+                  <span class="label">Validate & View Report</span>
+                </button>
+                <button type="button" id="clearBtn" class="btn ghost" aria-live="polite">
+                  <span class="spinner" aria-hidden="true"></span>
+                  <span class="label">Clear form</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="col-12">
+              <div id="status" class="status" role="status" aria-live="polite" style="display:none"></div>
+            </div>
+          </div>
+        </form>
+
+        <!-- Previously viewed results -->
+        <div class="history-card card" style="margin-top:18px; padding:14px;">
+          <div class="history-header">
+            <div style="font-weight:800; font-size:1rem; color:#0b2a44;">Previously viewed results</div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button id="clearHistory" class="btn ghost" title="Clear history">Clear history</button>
+            </div>
+          </div>
+
+          <div id="historyList" class="history-list" aria-live="polite" aria-atomic="true">
+            <!-- Filled by JS -->
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    (function () {
+      // UI helpers for sidebar
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('overlay');
+      const hamburger = document.getElementById('hamburger');
+
+      function openSidebar() {
+        sidebar.classList.add('open');
+        sidebar.classList.remove('hidden');
+        overlay.style.display = 'block';
+        overlay.classList.add('visible');
+        document.body.classList.add('no-scroll');
+      }
+      function closeSidebar() {
+        sidebar.classList.remove('open');
+        sidebar.classList.add('hidden');
+        overlay.style.display = 'none';
+        overlay.classList.remove('visible');
+        document.body.classList.remove('no-scroll');
+      }
+      hamburger && hamburger.addEventListener('click', openSidebar);
+      overlay && overlay.addEventListener('click', closeSidebar);
+
+      // API base
+      const API_BASE = 'https://examguide.onrender.com/api'; // adjust to your backend
+
+      // Elements
+      const form = document.getElementById('resultForm');
+      const submitBtn = document.getElementById('submitBtn');
+      const clearBtn = document.getElementById('clearBtn');
+      const statusEl = document.getElementById('status');
+      const toast = document.getElementById('toast');
+      const historyListEl = document.getElementById('historyList');
+      const clearHistoryBtn = document.getElementById('clearHistory');
+
+      // Save original label text
+      function saveOrigLabel(btn) {
+        const label = btn.querySelector('.label');
+        if (label && !btn._origLabel) btn._origLabel = label.textContent;
+      }
+      saveOrigLabel(submitBtn);
+      saveOrigLabel(clearBtn);
+
+      // Button loading toggles using class (robust)
+      function setButtonLoading(btn, loading, labelText) {
+        const label = btn.querySelector('.label');
+        if (loading) {
+          btn.classList.add('loading');
+          btn.disabled = true;
+          btn.setAttribute('aria-busy', 'true');
+          if (label && labelText) label.textContent = labelText;
+        } else {
+          btn.classList.remove('loading');
+          btn.disabled = false;
+          btn.removeAttribute('aria-busy');
+          if (label && btn._origLabel) label.textContent = btn._origLabel;
+        }
+      }
+
+      // Status / toast helpers
+      function showToast(text, type = '') {
+        toast.textContent = text;
+        toast.className = 'toast' + (type ? (' ' + type) : '');
+        toast.style.display = 'block';
+        clearTimeout(toast._t);
+        toast._t = setTimeout(() => toast.style.display = 'none', 3500);
+      }
+      function setStatus(text, type = 'info') {
+        statusEl.style.display = 'block';
+        statusEl.textContent = text;
+        statusEl.style.color = type === 'error' ? '#b91c1c' : (type === 'success' ? '#065f46' : '#0b3a5a');
+      }
+      function clearStatus() {
+        statusEl.style.display = 'none';
+        statusEl.textContent = '';
+      }
+
+      // History storage helpers
+      const HISTORY_KEY = 'eg_viewed_reports'; // stores array of entries
+
+      function loadHistory() {
+        try {
+          return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+        } catch (e) {
+          return [];
+        }
+      }
+
+      function saveHistory(arr) {
+        try {
+          localStorage.setItem(HISTORY_KEY, JSON.stringify(arr));
+        } catch (e) {
+          // ignore quota errors
+        }
+      }
+
+      function addHistoryEntry(report, meta) {
+        const list = loadHistory();
+        const entry = {
+          id: (report && (report.id || report._id)) || (meta && meta.regNo) || ('r_' + Date.now()),
+          name: (report && (report.name || report.fullName || report.studentName)) || meta.regNo || 'Student',
+          regNo: meta.regNo || (report && (report.regNo || report.registrationNo)) || '',
+          session: meta.session || '',
+          term: meta.term || '',
+          class: meta.class || '',
+          timestamp: Date.now(),
+          snapshot: report // store the report payload so we can reopen offline
+        };
+        // Remove duplicate (same regNo + session + term)
+        const dedupIdx = list.findIndex(it => it.regNo === entry.regNo && it.session === entry.session && it.term === entry.term);
+        if (dedupIdx !== -1) list.splice(dedupIdx, 1);
+        list.unshift(entry);
+        // Limit to last 12 entries
+        if (list.length > 12) list.splice(12);
+        saveHistory(list);
+        renderHistory();
+      }
+
+      function clearHistory() {
+        localStorage.removeItem(HISTORY_KEY);
+        renderHistory();
+      }
+
+      function removeHistoryItem(id) {
+        const list = loadHistory().filter(it => it.id !== id);
+        saveHistory(list);
+        renderHistory();
+      }
+
+      function renderHistory() {
+        const list = loadHistory();
+        historyListEl.innerHTML = '';
+        if (!list || list.length === 0) {
+          historyListEl.innerHTML = '<div class="history-empty">No previously viewed results. Results you open will appear here for quick access.</div>';
+          return;
+        }
+        list.forEach(item => {
+          const el = document.createElement('div');
+          el.className = 'history-item';
+          el.tabIndex = 0;
+          el.setAttribute('role','button');
+          el.setAttribute('aria-pressed','false');
+
+          const title = document.createElement('div');
+          title.className = 'h-title';
+          title.textContent = item.name || item.regNo || 'Student';
+
+          const meta = document.createElement('div');
+          meta.className = 'h-meta';
+          meta.textContent = (item.regNo ? (item.regNo + ' · ') : '') + (item.session ? (item.session + ' · ') : '') + (item.term ? ('Term ' + item.term) : '');
+
+          const footer = document.createElement('div');
+          footer.className = 'h-footer';
+
+          const time = document.createElement('div');
+          time.className = 'h-meta';
+          const dt = new Date(item.timestamp || Date.now());
+          time.textContent = dt.toLocaleString();
+
+          const actions = document.createElement('div');
+          actions.style.display = 'flex';
+          actions.style.gap = '8px';
+
+          const viewBtn = document.createElement('button');
+          viewBtn.className = 'btn';
+          viewBtn.style.padding = '6px 8px';
+          viewBtn.style.fontSize = '0.88rem';
+          viewBtn.textContent = 'Open';
+          viewBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            try {
+              localStorage.setItem('eg_report', JSON.stringify(item.snapshot || {}));
+              localStorage.setItem('eg_report_meta', JSON.stringify({ regNo: item.regNo, session: item.session, term: item.term, class: item.class }));
+              window.location.href = 'report.html';
+            } catch (e) {
+              showToast('Could not open report from history', 'error');
+            }
+          });
+
+          const delBtn = document.createElement('button');
+          delBtn.className = 'btn ghost';
+          delBtn.style.padding = '6px 8px';
+          delBtn.style.fontSize = '0.88rem';
+          delBtn.textContent = 'Remove';
+          delBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            removeHistoryItem(item.id);
+            showToast('Removed from history', 'success');
+          });
+
+          actions.appendChild(viewBtn);
+          actions.appendChild(delBtn);
+
+          footer.appendChild(time);
+          footer.appendChild(actions);
+
+          el.appendChild(title);
+          el.appendChild(meta);
+          el.appendChild(footer);
+
+          el.addEventListener('click', () => {
+            try {
+              localStorage.setItem('eg_report', JSON.stringify(item.snapshot || {}));
+              localStorage.setItem('eg_report_meta', JSON.stringify({ regNo: item.regNo, session: item.session, term: item.term, class: item.class }));
+              window.location.href = 'report.html';
+            } catch (e) {
+              showToast('Could not open report', 'error');
+            }
+          });
+
+          el.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter' || ev.key === ' ') {
+              ev.preventDefault();
+              el.click();
+            }
+          });
+
+          historyListEl.appendChild(el);
+        });
+      }
+
+      // Initial render
+      renderHistory();
+
+      // Clear history button
+      clearHistoryBtn.addEventListener('click', () => {
+        if (!confirm('Clear previously viewed results? This cannot be undone.')) return;
+        clearHistory();
+        showToast('History cleared', 'success');
+      });
+
+      // Prefill from application session if available
+      (function prefillFromSession(){
+        try {
+          const app = JSON.parse(localStorage.getItem('eg_application') || 'null') || {};
+          if (app) {
+            if (app.registrationNo && !document.getElementById('regNo').value) document.getElementById('regNo').value = app.registrationNo;
+            if (app.level && !document.getElementById('studentClass').value) document.getElementById('studentClass').value = app.level;
+            if (app.profilePic) {
+              const av = document.getElementById('studentAvatar');
+              if (av) av.src = app.profilePic;
+            }
+            const nameEl = document.getElementById('studentName');
+            if (nameEl) nameEl.textContent = (app.firstName || app.username || 'Student') + (app.lastName ? (' ' + app.lastName) : '');
+            const classEl = document.getElementById('studentClass');
+            if (classEl && app.className && !classEl.value) classEl.value = app.className;
+          }
+        } catch(e){/* ignore */ }
+      })();
+
+      // Form handlers
+      function setFormLoading(loading, label) {
+        setButtonLoading(submitBtn, loading, label || 'Validating...');
+      }
+      function setClearLoading(loading) {
+        setButtonLoading(clearBtn, loading, 'Clearing...');
+      }
+
+      clearBtn.addEventListener('click', function () {
+        setClearLoading(true);
+        setTimeout(() => {
+          form.reset();
+          clearStatus();
+          setClearLoading(false);
+          showToast('Form cleared', 'success');
+          document.getElementById('regNo').focus();
+        }, 220);
+      });
+
+      form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        clearStatus();
+
+        const regNo = document.getElementById('regNo').value.trim();
+        const session = document.getElementById('academicSession').value.trim();
+        const term = document.getElementById('term').value;
+        const studentClass = document.getElementById('studentClass').value.trim();
+        const scratch = document.getElementById('scratch').value.trim();
+        const accessCode = document.getElementById('accessCode').value.trim();
+
+        if (!regNo || !session || !term || !studentClass || !scratch) {
+          setStatus('Please complete all required fields and provide a scratch card.', 'error');
+          showToast('Missing required fields', 'error');
+          return;
+        }
+
+        const payload = { regNo, session, term, class: studentClass, scratch };
+        if (accessCode) payload.accessCode = accessCode;
+
+        setFormLoading(true, 'Validating...');
+        setStatus('Verifying scratch card and fetching result...', 'info');
+
+        try {
+          // Replace endpoint path as needed
+          const url = API_BASE + '/results/verify';
+
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          if (!res.ok) {
+            const errbody = await res.json().catch(()=>({}));
+            throw new Error(errbody.message || ('Server returned ' + res.status));
+          }
+
+          const data = await res.json();
+          const report = data.report || data.result || data.student || null;
+          if (!report) {
+            throw new Error('Server did not return report data.');
+          }
+
+          // persist report for report.html
+          localStorage.setItem('eg_report', JSON.stringify(report));
+          localStorage.setItem('eg_report_meta', JSON.stringify({ regNo, session, term, class: studentClass }));
+
+          // Add to history for quick access
+          addHistoryEntry(report, { regNo, session, term, class: studentClass });
+
+          setStatus('Scratch validated — redirecting to report...', 'success');
+          showToast('Validated — opening report', 'success');
+
+          setTimeout(() => {
+            window.location.href = 'report.html';
+          }, 650);
+
+        } catch (err) {
+          console.error(err);
+          const msg = (err && err.message) ? err.message : 'Network/server error. Try again.';
+          setStatus(msg, 'error');
+          showToast(msg, 'error');
+        } finally {
+          setFormLoading(false);
+        }
+      });
+
+      // autofocus
+      document.getElementById('regNo').focus();
+    })();
+  </script>
+</body>
+</html>
