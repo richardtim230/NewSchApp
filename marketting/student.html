@@ -642,7 +642,142 @@
     <div class="resources-grid" id="resourcesGrid"></div>
   </div>
 </section>
-      <section id="settings" class="section" style="display:none"><div style="font-weight:800">Settings</div><div id="settingsFull"></div></section>
+ <section id="settings" class="section" style="display:none">
+  <div class="card" style="max-width:580px;margin:0 auto;">
+    <div style="font-weight:800;font-size:1.15rem;">Settings & Profile</div>
+    <form id="profileForm" style="margin-top:18px;display:grid;gap:14px;">
+      <div>
+        <label for="profile_firstName">First Name</label>
+        <input type="text" id="profile_firstName" name="firstName" autocomplete="given-name" />
+      </div>
+      <div>
+        <label for="profile_lastName">Last Name</label>
+        <input type="text" id="profile_lastName" name="lastName" autocomplete="family-name" />
+      </div>
+      <div>
+        <label for="profile_email">Email</label>
+        <input type="email" id="profile_email" name="email" autocomplete="email" />
+      </div>
+      <div>
+        <label for="profile_phone">Phone</label>
+        <input type="tel" id="profile_phone" name="phone" autocomplete="tel" />
+      </div>
+      <div>
+        <label for="profile_program">Program/Class</label>
+        <input type="text" id="profile_program" name="program" />
+      </div>
+      <div>
+        <label for="profile_address">Address</label>
+        <input type="text" id="profile_address" name="address" />
+      </div>
+      <div>
+        <label for="profile_profilePic">Profile Picture</label>
+        <input type="file" id="profile_profilePic" name="profilePic" accept="image/*" />
+      </div>
+      <button type="submit" class="btn">Save Profile</button>
+    </form>
+    <div style="margin-top:34px;">
+      <div style="font-weight:800;font-size:1.08rem;">Change Password</div>
+      <form id="passwordForm" style="margin-top:10px;display:grid;gap:10px;">
+        <div>
+          <label for="pass_current">Current Password</label>
+          <input type="password" id="pass_current" name="currentPassword" autocomplete="current-password" required />
+        </div>
+        <div>
+          <label for="pass_new">New Password</label>
+          <input type="password" id="pass_new" name="newPassword" autocomplete="new-password" required />
+        </div>
+        <button type="submit" class="btn">Update Password</button>
+        <div id="passResult" style="font-size:13px;margin-top:4px;"></div>
+      </form>
+    </div>
+  </div>
+  <script>
+    // --- Profile Data Load/Save ---
+    window.addEventListener('DOMContentLoaded', () => {
+      const pform = document.getElementById('profileForm');
+      const user = JSON.parse(localStorage.getItem('eg_application')||'{}');
+      if (user) {
+        ['firstName','lastName','email','phone','program','address'].forEach(f=>{
+          if(pform[f]) pform[f].value = user[f]||"";
+        });
+      }
+
+      pform.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = new FormData(pform);
+        // append only changed fields, or all for now
+        const updates = {};
+        for (let [k,v] of fd.entries()) updates[k] = v;
+        // Handle profilePic as file upload if needed
+        let profilePicFile = pform.profilePic.files[0];
+        let result;
+        if (profilePicFile) {
+          const imgFd = new FormData();
+          imgFd.append("profilePic", profilePicFile);
+          // Update the endpoint as appropriate
+          result = await fetch('https://examguide.onrender.com/api/users/update-profile-pic', {
+            method: "POST",
+            body: imgFd,
+            headers: { Authorization: "Bearer "+(localStorage.getItem('eg_token')||"") }
+          }).then(r=>r.json());
+          if(result.profilePic)
+            updates.profilePic = result.profilePic;
+        }
+        // PATCH student applications via API (update as needed)
+        fetch(`https://examguide.onrender.com/api/application/${user._id||user.id||user.username}`, {
+          method:'PUT',
+          body: JSON.stringify(updates),
+          headers:{
+            "Content-Type":"application/json"
+          }
+        }).then(r=>r.json()).then(data=>{
+          if(data.application){
+            localStorage.setItem("eg_application", JSON.stringify(data.application));
+            alert("Profile updated successfully!");
+          } else {
+            alert("Profile update failed. Please try again.");
+          }
+        }).catch(()=>alert("Profile update failed."));
+      });
+
+      // --- Password change handler ---
+      const passForm = document.getElementById('passwordForm');
+      const passResult = document.getElementById('passResult');
+      passForm.addEventListener('submit', async (e)=>{
+        e.preventDefault();
+        passResult.textContent = "";
+        const currentPassword = passForm.pass_current.value.trim();
+        const newPassword = passForm.pass_new.value.trim();
+        if(!currentPassword || !newPassword){
+          passResult.textContent = "All fields are required.";
+          passResult.style.color = "#d00";
+          return;
+        }
+        try{
+          // API endpoint: adjust if necessary server-side
+          const resp = await fetch("https://examguide.onrender.com/api/auth/change-password",{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({currentPassword,newPassword})
+          });
+          const data = await resp.json();
+          if(resp.ok && data.message){
+            passResult.style.color = "#087b40";
+            passResult.textContent = data.message;
+            passForm.reset();
+          } else {
+            passResult.style.color = "#d00";
+            passResult.textContent = data.message || "Error updating password";
+          }
+        }catch(err){
+          passResult.style.color = "#d00";
+          passResult.textContent = "Server/network error!";
+        }
+      });
+    });
+  </script>
+</section>
     </main>
   </div>
 <!-- RESOURCE PREVIEW MODAL -->
