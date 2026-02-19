@@ -642,141 +642,398 @@
     <div class="resources-grid" id="resourcesGrid"></div>
   </div>
 </section>
- <section id="settings" class="section" style="display:none">
-  <div class="card" style="max-width:580px;margin:0 auto;">
-    <div style="font-weight:800;font-size:1.15rem;">Settings & Profile</div>
-    <form id="profileForm" style="margin-top:18px;display:grid;gap:14px;">
-      <div>
-        <label for="profile_firstName">First Name</label>
-        <input type="text" id="profile_firstName" name="firstName" autocomplete="given-name" />
-      </div>
-      <div>
-        <label for="profile_lastName">Last Name</label>
-        <input type="text" id="profile_lastName" name="lastName" autocomplete="family-name" />
-      </div>
-      <div>
-        <label for="profile_email">Email</label>
-        <input type="email" id="profile_email" name="email" autocomplete="email" />
-      </div>
-      <div>
-        <label for="profile_phone">Phone</label>
-        <input type="tel" id="profile_phone" name="phone" autocomplete="tel" />
-      </div>
-      <div>
-        <label for="profile_program">Program/Class</label>
-        <input type="text" id="profile_program" name="program" />
-      </div>
-      <div>
-        <label for="profile_address">Address</label>
-        <input type="text" id="profile_address" name="address" />
-      </div>
-      <div>
-        <label for="profile_profilePic">Profile Picture</label>
-        <input type="file" id="profile_profilePic" name="profilePic" accept="image/*" />
-      </div>
-      <button type="submit" class="btn">Save Profile</button>
-    </form>
-    <div style="margin-top:34px;">
-      <div style="font-weight:800;font-size:1.08rem;">Change Password</div>
-      <form id="passwordForm" style="margin-top:10px;display:grid;gap:10px;">
-        <div>
-          <label for="pass_current">Current Password</label>
-          <input type="password" id="pass_current" name="currentPassword" autocomplete="current-password" required />
+<section id="settings" class="section" style="display:none">
+  <style>
+    /* Scoped settings styles (keeps look consistent with dashboard) */
+    #settings .settings-card {
+      max-width: 900px;
+      margin: 12px auto;
+      padding: 20px;
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      gap: 20px;
+      align-items: start;
+    }
+
+    #settings .settings-card .panel {
+      background: var(--card-bg, #fff);
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: 0 8px 20px rgba(11,42,60,0.04);
+      border: 1px solid rgba(11,42,60,0.03);
+    }
+
+    #settings h2 { margin: 0 0 10px 0; font-size:1.1rem; font-weight:800; color:var(--accent-2,#6366f1); }
+    #settings p.lead { margin:0 0 14px 0; color:var(--muted,#6b7280); font-size:0.95rem; }
+
+    /* Form layout */
+    .settings-form { display: grid; grid-template-columns: repeat(2, 1fr); gap:12px; }
+    .settings-form .full { grid-column: 1 / -1; }
+    .settings-field label { display:block; font-weight:700; margin-bottom:6px; font-size:0.92rem; color:#0b2033; }
+    .settings-field input[type="text"],
+    .settings-field input[type="email"],
+    .settings-field input[type="tel"],
+    .settings-field select,
+    .settings-field textarea,
+    .settings-field input[type="password"] {
+      width:100%;
+      padding:10px 12px;
+      border:1px solid #e6e9ef;
+      border-radius:8px;
+      background:#fff;
+      font-size:0.95rem;
+    }
+
+    /* Avatar preview column */
+    .profile-col { display:flex; flex-direction:column; gap:12px; align-items:center; text-align:center; }
+    .avatar-preview {
+      width:128px;
+      height:128px;
+      border-radius:16px;
+      overflow:hidden;
+      background:#f3f6fb;
+      display:grid;
+      place-items:center;
+      box-shadow: 0 6px 20px rgba(6,23,40,0.06);
+    }
+    .avatar-preview img { width:100%; height:100%; object-fit:cover; display:block; }
+
+    .muted-small { font-size:0.9rem; color:var(--muted,#6b7280); }
+
+    .actions-row { display:flex; gap:12px; justify-content:flex-end; align-items:center; margin-top:6px; }
+    .btn { padding:10px 14px; border-radius:10px; border:0; cursor:pointer; font-weight:800; background:linear-gradient(90deg,var(--accent,#3b82f6),var(--accent-2,#6366f1)); color:#fff; }
+    .btn.ghost { background:transparent; border:1px solid rgba(11,42,60,0.06); color:var(--accent-2,#6366f1); font-weight:700; }
+    .btn.danger { background:#ef4444; box-shadow:none; }
+
+    /* Password box */
+    .password-panel { display:grid; gap:10px; }
+    .small-note { font-size:0.9rem; color:var(--muted,#6b7280); }
+
+    /* toast */
+    #settingsToast {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      min-width: 220px;
+      max-width: 360px;
+      background: #111827;
+      color: #fff;
+      padding: 12px 14px;
+      border-radius: 10px;
+      box-shadow: 0 12px 32px rgba(2,6,23,0.25);
+      display: none;
+      z-index: 9999;
+      font-weight:700;
+    }
+    #settingsToast.success { background: linear-gradient(90deg,#10b981,#059669); }
+    #settingsToast.error { background: linear-gradient(90deg,#ef4444,#dc2626); }
+
+    @media (max-width: 980px) {
+      #settings .settings-card { grid-template-columns: 1fr; }
+      .settings-form { grid-template-columns: 1fr; }
+      .profile-col { flex-direction:row; gap:12px; align-items:center; justify-content:space-between; padding:0 8px; }
+    }
+  </style>
+
+  <div class="settings-card">
+    <!-- left: profile form -->
+    <div class="panel" aria-labelledby="settingsProfileTitle">
+      <h2 id="settingsProfileTitle">Profile & Account</h2>
+      <p class="lead">Update your personal information and contact details. Changes will be saved to your account and reflected across the dashboard.</p>
+
+      <form id="profileForm" class="settings-form" autocomplete="off" novalidate>
+        <div class="settings-field">
+          <label for="profile_firstName">First name</label>
+          <input id="profile_firstName" name="firstName" type="text" />
         </div>
-        <div>
-          <label for="pass_new">New Password</label>
-          <input type="password" id="pass_new" name="newPassword" autocomplete="new-password" required />
+
+        <div class="settings-field">
+          <label for="profile_lastName">Last name</label>
+          <input id="profile_lastName" name="lastName" type="text" />
         </div>
-        <button type="submit" class="btn">Update Password</button>
-        <div id="passResult" style="font-size:13px;margin-top:4px;"></div>
+
+        <div class="settings-field">
+          <label for="profile_email">Email</label>
+          <input id="profile_email" name="email" type="email" />
+        </div>
+
+        <div class="settings-field">
+          <label for="profile_phone">Phone</label>
+          <input id="profile_phone" name="phone" type="tel" />
+        </div>
+
+        <div class="settings-field">
+          <label for="profile_program">Program / Class</label>
+          <input id="profile_program" name="program" type="text" />
+        </div>
+
+        <div class="settings-field">
+          <label for="profile_address">Address</label>
+          <input id="profile_address" name="address" type="text" />
+        </div>
+
+        <div class="settings-field full">
+          <label for="profile_bio">Short bio (optional)</label>
+          <textarea id="profile_bio" name="bio" rows="3" style="resize:vertical;padding:10px 12px;border-radius:8px;border:1px solid #e6e9ef"></textarea>
+        </div>
+
+        <div class="settings-field full" style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+          <div style="display:flex;gap:10px;align-items:center;">
+            <label for="profile_profilePic" style="margin:0;font-weight:700">Profile picture</label>
+            <span class="muted-small">PNG, JPG • max 2MB</span>
+          </div>
+          <input id="profile_profilePic" name="profilePic" type="file" accept="image/*" style="width:220px" />
+        </div>
+
+        <div class="settings-field full actions-row">
+          <button type="button" id="profileCancel" class="btn ghost">Reset</button>
+          <button type="submit" id="profileSaveBtn" class="btn">Save changes</button>
+        </div>
       </form>
     </div>
+
+    <!-- right: avatar + password -->
+    <aside class="panel profile-col" aria-labelledby="profilePreviewTitle">
+      <div>
+        <h2 id="profilePreviewTitle" style="text-align:center">Preview</h2>
+        <div class="avatar-preview" aria-hidden="false" id="avatarPreview">
+          <img src="../avatar.jpg" alt="Profile preview" id="avatarImg" />
+        </div>
+        <div class="muted-small" id="previewName">Student Name</div>
+        <div class="muted-small" id="previewProgram">Program • Class</div>
+      </div>
+
+      <div style="width:100%;" aria-labelledby="changePasswordTitle">
+        <h2 id="changePasswordTitle" style="margin-top:6px;font-size:1rem">Change password</h2>
+        <p class="small-note">Choose a strong password. Passwords must be at least 6 characters.</p>
+
+        <form id="passwordForm" class="password-panel" autocomplete="off" novalidate>
+          <div>
+            <label for="pass_current">Current password</label>
+            <input id="pass_current" name="currentPassword" type="password" />
+          </div>
+
+          <div>
+            <label for="pass_new">New password</label>
+            <input id="pass_new" name="newPassword" type="password" />
+          </div>
+
+          <div style="display:flex;gap:8px;margin-top:8px;justify-content:flex-end;">
+            <button type="button" id="passCancel" class="btn ghost">Clear</button>
+            <button type="submit" id="passSaveBtn" class="btn">Update password</button>
+          </div>
+
+          <div id="passResult" class="muted-small" style="margin-top:8px;"></div>
+        </form>
+      </div>
+    </aside>
   </div>
+
+  <div id="settingsToast" role="status" aria-live="polite"></div>
+
   <script>
-    // --- Profile Data Load/Save ---
-    window.addEventListener('DOMContentLoaded', () => {
-      const pform = document.getElementById('profileForm');
-      const user = JSON.parse(localStorage.getItem('eg_application')||'{}');
-      if (user) {
-        ['firstName','lastName','email','phone','program','address'].forEach(f=>{
-          if(pform[f]) pform[f].value = user[f]||"";
-        });
+    (function () {
+      const API_BASE = 'https://examguide.onrender.com/api';
+      const TOKEN = localStorage.getItem('eg_token') || null;
+
+      const profileForm = document.getElementById('profileForm');
+      const profileSaveBtn = document.getElementById('profileSaveBtn');
+      const profileCancel = document.getElementById('profileCancel');
+      const avatarInput = document.getElementById('profile_profilePic');
+      const avatarImg = document.getElementById('avatarImg');
+      const previewName = document.getElementById('previewName');
+      const previewProgram = document.getElementById('previewProgram');
+      const toastEl = document.getElementById('settingsToast');
+
+      const passwordForm = document.getElementById('passwordForm');
+      const passSaveBtn = document.getElementById('passSaveBtn');
+      const passCancel = document.getElementById('passCancel');
+      const passResult = document.getElementById('passResult');
+
+      // small helpers
+      function showToast(text, type = 'default', timeout = 3500) {
+        toastEl.textContent = text;
+        toastEl.className = type === 'success' ? 'success' : (type === 'error' ? 'error' : '');
+        toastEl.style.display = 'block';
+        clearTimeout(toastEl._t);
+        toastEl._t = setTimeout(() => {
+          toastEl.style.display = 'none';
+        }, timeout);
       }
 
-      pform.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const fd = new FormData(pform);
-        // append only changed fields, or all for now
-        const updates = {};
-        for (let [k,v] of fd.entries()) updates[k] = v;
-        // Handle profilePic as file upload if needed
-        let profilePicFile = pform.profilePic.files[0];
-        let result;
-        if (profilePicFile) {
-          const imgFd = new FormData();
-          imgFd.append("profilePic", profilePicFile);
-          // Update the endpoint as appropriate
-          result = await fetch('https://examguide.onrender.com/api/users/update-profile-pic', {
-            method: "POST",
-            body: imgFd,
-            headers: { Authorization: "Bearer "+(localStorage.getItem('eg_token')||"") }
-          }).then(r=>r.json());
-          if(result.profilePic)
-            updates.profilePic = result.profilePic;
-        }
-        // PATCH student applications via API (update as needed)
-        fetch(`https://examguide.onrender.com/api/application/${user._id||user.id||user.username}`, {
-          method:'PUT',
-          body: JSON.stringify(updates),
-          headers:{
-            "Content-Type":"application/json"
-          }
-        }).then(r=>r.json()).then(data=>{
-          if(data.application){
-            localStorage.setItem("eg_application", JSON.stringify(data.application));
-            alert("Profile updated successfully!");
-          } else {
-            alert("Profile update failed. Please try again.");
-          }
-        }).catch(()=>alert("Profile update failed."));
-      });
+      function setLoading(btn, loading = true, label = null) {
+        if (!btn) return;
+        btn.disabled = loading;
+        btn._orig = btn._orig || btn.textContent;
+        btn.textContent = loading ? (label || 'Saving...') : (btn._orig || 'Save');
+      }
 
-      // --- Password change handler ---
-      const passForm = document.getElementById('passwordForm');
-      const passResult = document.getElementById('passResult');
-      passForm.addEventListener('submit', async (e)=>{
-        e.preventDefault();
-        passResult.textContent = "";
-        const currentPassword = passForm.pass_current.value.trim();
-        const newPassword = passForm.pass_new.value.trim();
-        if(!currentPassword || !newPassword){
-          passResult.textContent = "All fields are required.";
-          passResult.style.color = "#d00";
+      // Load user into form
+      function loadProfile() {
+        let user = {};
+        try {
+          user = JSON.parse(localStorage.getItem('eg_application') || 'null') || {};
+        } catch (e) {
+          user = {};
+        }
+        // Map fields
+        document.getElementById('profile_firstName').value = user.firstName || '';
+        document.getElementById('profile_lastName').value = user.lastName || '';
+        document.getElementById('profile_email').value = user.email || '';
+        document.getElementById('profile_phone').value = user.phone || '';
+        document.getElementById('profile_program').value = user.program || user.level || user.department || '';
+        document.getElementById('profile_address').value = user.address || '';
+        document.getElementById('profile_bio').value = user.bio || '';
+
+        // Avatar preview
+        if (user.profilePic) {
+          avatarImg.src = user.profilePic;
+        } else {
+          avatarImg.src = '../avatar.jpg';
+        }
+        previewName.textContent = (user.firstName || user.username || 'Student') + (user.lastName ? (' ' + user.lastName) : '');
+        previewProgram.textContent = user.program || user.level || user.department || '';
+        return user;
+      }
+
+      // Reset form to stored profile
+      function resetProfileForm() {
+        loadProfile();
+        profileForm.reset();
+        passResult.textContent = '';
+      }
+
+      // Image preview
+      avatarInput.addEventListener('change', (e) => {
+        const f = e.target.files && e.target.files[0];
+        if (!f) return;
+        if (!f.type.startsWith('image/')) {
+          showToast('Please select an image file (jpg, png).', 'error');
+          avatarInput.value = '';
           return;
         }
-        try{
-          // API endpoint: adjust if necessary server-side
-          const resp = await fetch("https://examguide.onrender.com/api/auth/change-password",{
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({currentPassword,newPassword})
+        if (f.size > 2 * 1024 * 1024) {
+          showToast('Image is too large (max 2MB).', 'error');
+          avatarInput.value = '';
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+          avatarImg.src = reader.result;
+        };
+        reader.readAsDataURL(f);
+      });
+
+      // Profile submit (multipart for file support)
+      profileForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const user = loadProfile();
+        const userId = user._id || user.id || user.username;
+        if (!userId) {
+          showToast('No user session found. Please login.', 'error');
+          return;
+        }
+
+        // Collect changed fields
+        const formData = new FormData();
+        const fields = ['firstName','lastName','email','phone','program','address','bio'];
+        fields.forEach(f => {
+          const el = document.getElementById('profile_' + f);
+          if (el && el.value.trim() !== '') formData.append(f, el.value.trim());
+        });
+
+        // Profile pic
+        const pic = avatarInput.files && avatarInput.files[0];
+        if (pic) formData.append('profilePic', pic, pic.name);
+
+        try {
+          setLoading(profileSaveBtn, true, 'Saving...');
+          const url = `${API_BASE}/application/${encodeURIComponent(userId)}`;
+          const headers = {};
+          if (TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
+          const res = await fetch(url, {
+            method: 'PUT',
+            headers,
+            body: formData
           });
-          const data = await resp.json();
-          if(resp.ok && data.message){
-            passResult.style.color = "#087b40";
-            passResult.textContent = data.message;
-            passForm.reset();
+          const data = await res.json();
+          if (res.ok && data.application) {
+            // store new profile
+            localStorage.setItem('eg_application', JSON.stringify(data.application));
+            loadProfile();
+            showToast('Profile updated successfully', 'success');
           } else {
-            passResult.style.color = "#d00";
-            passResult.textContent = data.message || "Error updating password";
+            const msg = data?.message || 'Could not update profile';
+            showToast(msg, 'error');
           }
-        }catch(err){
-          passResult.style.color = "#d00";
-          passResult.textContent = "Server/network error!";
+        } catch (err) {
+          console.error(err);
+          showToast('Network/server error. Try again.', 'error');
+        } finally {
+          setLoading(profileSaveBtn, false);
         }
       });
-    });
+
+      profileCancel.addEventListener('click', (e) => {
+        e.preventDefault();
+        resetProfileForm();
+      });
+
+      // Password change
+      passwordForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        passResult.textContent = '';
+        const currentPassword = document.getElementById('pass_current').value.trim();
+        const newPassword = document.getElementById('pass_new').value.trim();
+        if (!currentPassword || !newPassword) {
+          passResult.style.color = '#d00';
+          passResult.textContent = 'Both current and new passwords are required.';
+          return;
+        }
+        if (newPassword.length < 6) {
+          passResult.style.color = '#d00';
+          passResult.textContent = 'New password must be at least 6 characters.';
+          return;
+        }
+
+        try {
+          setLoading(passSaveBtn, true, 'Updating...');
+          const headers = { 'Content-Type': 'application/json' };
+          if (TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
+          const resp = await fetch(`${API_BASE}/auth/change-password`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ currentPassword, newPassword })
+          });
+          const body = await resp.json();
+          if (resp.ok) {
+            passResult.style.color = '#087b40';
+            passResult.textContent = body.message || 'Password updated';
+            passwordForm.reset();
+          } else {
+            passResult.style.color = '#d00';
+            passResult.textContent = body.message || 'Error updating password';
+          }
+        } catch (err) {
+          console.error(err);
+          passResult.style.color = '#d00';
+          passResult.textContent = 'Network error. Try again.';
+        } finally {
+          setLoading(passSaveBtn, false);
+        }
+      });
+
+      passCancel.addEventListener('click', (e) => {
+        e.preventDefault();
+        passwordForm.reset();
+        passResult.textContent = '';
+      });
+
+      // initialize
+      loadProfile();
+    })();
   </script>
+</section>
 </section>
     </main>
   </div>
