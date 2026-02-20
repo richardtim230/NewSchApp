@@ -22,7 +22,7 @@ async function fetchFaculties() {
     showSelectSpinner(facultySelect, "Loading faculties");
     facultyList = [];
     try {
-        const res = await fetch('https://examguard-jmvj.onrender.com/api/faculties');
+        const res = await fetch('https://examguide.onrender.com/api/faculties');
         facultyList = await res.json();
         facultySelect.innerHTML = `<option value="">Select Faculty</option>`;
         facultyList.forEach(fac => {
@@ -47,7 +47,7 @@ async function fetchDepartments(facultyId) {
         return;
     }
     try {
-        const res = await fetch(`https://examguard-jmvj.onrender.com/api/departments?faculty=${facultyId}`);
+        const res = await fetch(`https://examguide.onrender.com/api/departments?faculty=${facultyId}`);
         departmentList = await res.json();
         deptSelect.innerHTML = `<option value="">Select Department</option>`;
         departmentList.forEach(dept => {
