@@ -99,6 +99,46 @@
     /* Note */
     .note{padding:12px;border-radius:10px;background:linear-gradient(90deg,#fff,#fbfdff);border-left:4px solid var(--accent)}
 
+    /* Breakdown specific layout (new) */
+    .breakdown-grid {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 16px;
+      align-items: start;
+      margin-top: 12px;
+    }
+
+    .summary-panel {
+      background: #fff;
+      border: 1px solid #eef3ff;
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 180px;
+    }
+    .summary-panel .big-grade { font-size: 2.4rem; font-weight: 900; color: var(--accent-2); }
+    .summary-panel .small { color: var(--muted); font-weight:700; }
+
+    .breakdown-toolbar {
+      display:flex;
+      gap:8px;
+      align-items:center;
+      margin-bottom:8px;
+      flex-wrap:wrap;
+    }
+    .breakdown-toolbar .search {
+      flex:1;
+      display:flex;
+      gap:8px;
+      align-items:center;
+    }
+    .breakdown-toolbar input[type="search"]{
+      padding:8px 10px;border-radius:8px;border:1px solid #e6e9ef;width:100%;
+    }
+    .breakdown-toolbar .controls{display:flex;gap:8px;align-items:center}
+
     /* Modal */
     .modal {
       position: fixed;
@@ -151,6 +191,7 @@
       .overlay{display:none}
       .overlay.visible{display:block}
       .main{margin-left:0;padding-top:calc(var(--topbar-h) + 18px)}
+      .breakdown-grid { grid-template-columns: 1fr; }
     }
 
     @media (max-width:720px){
@@ -190,7 +231,6 @@
       .grade-pill{font-size:0.85rem;padding:6px 8px}
       .card { overflow:visible; }
       .card, .subject, .kpi, .field input, .field select {word-break:break-word;overflow-wrap:break-word}
-      /* Modal full width on very small devices */
       .modal-dialog { max-width: 96vw; max-height: 92vh; border-radius: 12px; }
     }
 
@@ -356,41 +396,78 @@
 
         <!-- Score breakdown and quick snapshot -->
         <div class="grid">
-          <div class="card col-9" id="subjectBreakdownCard">
+          <div class="card col-12" id="subjectBreakdownCard">
             <div style="display:flex;justify-content:space-between;align-items:center;">
               <div style="font-weight:800">Subject Breakdown</div>
               <div class="muted">Detailed scores & remarks</div>
             </div>
 
-            <!-- Improved table: include Actions column (Open modal) -->
-            <table class="results-table" id="resultsTable" aria-live="polite">
-              <thead>
-                <tr>
-                  <th style="width:28%">Subject</th>
-                  <th style="width:8%">CA</th>
-                  <th style="width:8%">Exam</th>
-                  <th style="width:8%">Total</th>
-                  <th style="width:12%">Grade</th>
-                  <th>Remark</th>
-                  <th class="actions">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                <!-- rows populated by JS -->
-              </tbody>
-            </table>
+            <!-- NEW: toolbar + two-column breakdown (table left, summary right) -->
+            <div class="breakdown-grid">
+              <div>
+                <div class="breakdown-toolbar" aria-hidden="false">
+                  <div class="search">
+                    <input id="subjectSearch" type="search" placeholder="Search subject..." aria-label="Search subject">
+                  </div>
+                  <div class="controls">
+                    <select id="sortSelect" aria-label="Sort subjects">
+                      <option value="alpha">Sort: A → Z</option>
+                      <option value="score-desc">Top score</option>
+                      <option value="score-asc">Lowest score</option>
+                    </select>
+                    <button class="btn ghost" id="exportSubjectsBtn">Export subjects</button>
+                  </div>
+                </div>
 
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;gap:12px;flex-wrap:wrap">
-              <div class="note" style="flex:1;min-width:200px">
-                <div style="font-weight:800">Teacher comment</div>
-                <div id="teacherComment" class="muted" style="margin-top:6px">—</div>
+                <div style="overflow:auto">
+                  <table class="results-table" id="resultsTable" aria-live="polite">
+                    <thead>
+                      <tr>
+                        <th style="width:28%">Subject</th>
+                        <th style="width:8%">CA</th>
+                        <th style="width:8%">Exam</th>
+                        <th style="width:8%">Total</th>
+                        <th style="width:12%">Grade</th>
+                        <th>Remark</th>
+                        <th class="actions">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <!-- rows populated by JS -->
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
-              <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;min-width:180px">
-                <div class="muted">Overall Grade</div>
-                <div style="font-weight:900;font-size:1.6rem;color:var(--accent-2)" id="overallGrade">—</div>
-                <div class="muted">CGPA: <strong id="overallGPA">--</strong></div>
-              </div>
+              <aside class="summary-panel" aria-labelledby="summaryTitle">
+                <div id="summaryTitle" style="font-weight:800">Summary</div>
+
+                <div>
+                  <div class="small">Overall grade</div>
+                  <div class="big-grade" id="overallGrade">—</div>
+                  <div class="muted">CGPA: <strong id="overallGPA">--</strong></div>
+                </div>
+
+                <div>
+                  <div class="small">Teacher comment</div>
+                  <div id="teacherComment" class="muted" style="margin-top:6px">—</div>
+                </div>
+
+                <div>
+                  <div class="small">Quick stats</div>
+                  <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+                    <div style="display:flex;justify-content:space-between"><span class="muted">Highest</span><strong id="snapHigh">--</strong></div>
+                    <div style="display:flex;justify-content:space-between"><span class="muted">Lowest</span><strong id="snapLow">--</strong></div>
+                    <div style="display:flex;justify-content:space-between"><span class="muted">A's</span><strong id="snapA">--</strong></div>
+                    <div style="display:flex;justify-content:space-between"><span class="muted">F's</span><strong id="snapF">--</strong></div>
+                  </div>
+                </div>
+
+                <div style="margin-top:auto;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+                  <button class="btn small" id="downloadSubjectCsv">Export visible</button>
+                  <button class="btn ghost small" id="printSubjectList">Print list</button>
+                </div>
+              </aside>
             </div>
           </div>
 
@@ -399,10 +476,10 @@
             <div style="font-weight:800">Quick Snapshot</div>
 
             <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
-              <div style="display:flex;justify-content:space-between"><div class="muted">Highest score</div><div id="snapHigh">--</div></div>
-              <div style="display:flex;justify-content:space-between"><div class="muted">Lowest score</div><div id="snapLow">--</div></div>
-              <div style="display:flex;justify-content:space-between"><div class="muted">No. of A's</div><div id="snapA">--</div></div>
-              <div style="display:flex;justify-content:space-between"><div class="muted">No. of F's</div><div id="snapF">--</div></div>
+              <div style="display:flex;justify-content:space-between"><div class="muted">Highest score</div><div id="snapHighReplica">--</div></div>
+              <div style="display:flex;justify-content:space-between"><div class="muted">Lowest score</div><div id="snapLowReplica">--</div></div>
+              <div style="display:flex;justify-content:space-between"><div class="muted">No. of A's</div><div id="snapAReplica">--</div></div>
+              <div style="display:flex;justify-content:space-between"><div class="muted">No. of F's</div><div id="snapFReplica">--</div></div>
               <div style="margin-top:8px"><button class="btn small" onclick="scrollToTable()">View full</button></div>
             </div>
 
@@ -527,7 +604,20 @@
     const snapLow = document.getElementById('snapLow');
     const snapA = document.getElementById('snapA');
     const snapF = document.getElementById('snapF');
+
+    const snapHighReplica = document.getElementById('snapHighReplica');
+    const snapLowReplica = document.getElementById('snapLowReplica');
+    const snapAReplica = document.getElementById('snapAReplica');
+    const snapFReplica = document.getElementById('snapFReplica');
+
     const subjectGrid = document.getElementById('subjectGrid');
+
+    // Breakdown toolbar
+    const subjectSearch = document.getElementById('subjectSearch');
+    const sortSelect = document.getElementById('sortSelect');
+    const exportSubjectsBtn = document.getElementById('exportSubjectsBtn');
+    const downloadSubjectCsv = document.getElementById('downloadSubjectCsv');
+    const printSubjectList = document.getElementById('printSubjectList');
 
     // Modal elements
     const detailModal = document.getElementById('detailModal');
@@ -580,7 +670,6 @@
     let lastFocusedElement = null;
     function openModalFor(subject){
       lastFocusedElement = document.activeElement;
-      // populate modal content
       modalTitle.textContent = `${subject.name} — Breakdown`;
       modalStudent.textContent = sampleResult.name;
       modalMeta.textContent = `${sampleResult.regNo} • ${sampleResult.class} • ${sampleResult.session} — ${sampleResult.term} term`;
@@ -604,11 +693,9 @@
         modalDetailsGrid.appendChild(el);
       });
 
-      // show modal
       detailModal.classList.add('active');
       detailModal.setAttribute('aria-hidden','false');
       document.body.classList.add('no-scroll');
-      // focus on close button for accessibility
       modalCloseBtn.focus();
     }
 
@@ -616,14 +703,12 @@
       detailModal.classList.remove('active');
       detailModal.setAttribute('aria-hidden','true');
       document.body.classList.remove('no-scroll');
-      // return focus
       if(lastFocusedElement) lastFocusedElement.focus();
     }
 
     modalCloseBtn.addEventListener('click', closeModal);
     modalClose.addEventListener('click', closeModal);
     modalPrint.addEventListener('click', ()=> {
-      // print only the modal content: create a temporary window with modal body
       const content = document.querySelector('.modal-body').innerHTML;
       const w = window.open('', '_blank', 'width=800,height=900');
       w.document.write('<title>Print subject</title>');
@@ -641,13 +726,12 @@
       }
     });
 
+    // Populate UI
     function populate(result){
-      // Header
       resultStudentName.textContent = result.name;
       resultStudentMeta.textContent = `${result.regNo} • ${result.class} • ${result.session} — ${result.term} term`;
       resultStatus.textContent = result.status;
 
-      // KPIs
       kpiAvg.textContent = result.avgPercent + '%';
       kpiRank.textContent = result.rank;
       kpiSubjects.textContent = result.subjects.length;
@@ -655,7 +739,6 @@
       kpiAtt.textContent = result.attendance + '%';
       kpiDays.textContent = result.days;
 
-      // Table & mobile-friendly labels
       resultsTableBody.innerHTML = '';
       let high = -Infinity, low = Infinity, countA=0, countF=0;
       result.subjects.forEach((s, idx) => {
@@ -668,7 +751,6 @@
         const tdGrade = document.createElement('td'); tdGrade.setAttribute('data-label','Grade'); tdGrade.innerHTML = `<span class="grade-pill ${gradeClass(s.grade)}">${s.grade}</span>`;
         const tdRemark = document.createElement('td'); tdRemark.setAttribute('data-label','Remark'); tdRemark.innerHTML = `<span class="muted">${s.remark}</span>`;
 
-        // action button (open modal)
         const tdAction = document.createElement('td');
         tdAction.className = 'actions';
         tdAction.setAttribute('data-label','Action');
@@ -690,9 +772,7 @@
         tr.appendChild(tdRemark);
         tr.appendChild(tdAction);
 
-        // also open modal when row clicked (desktop friendly)
         tr.addEventListener('click', (ev) => {
-          // avoid double-opening when clicking action button (handled above)
           if(ev.target !== btn) openModalFor(s);
         });
 
@@ -712,7 +792,12 @@
       snapA.textContent = countA;
       snapF.textContent = countF;
 
-      // subjects cards (also open modal)
+      // replicate quick snapshot on right card
+      snapHighReplica.textContent = snapHigh.textContent;
+      snapLowReplica.textContent = snapLow.textContent;
+      snapAReplica.textContent = snapA.textContent;
+      snapFReplica.textContent = snapF.textContent;
+
       subjectGrid.innerHTML = '';
       result.subjects.forEach(s => {
         const div = document.createElement('div');
@@ -732,12 +817,9 @@
             <button class="btn ghost small" aria-label="View ${s.name} breakdown">View breakdown</button>
           </div>
         `;
-        // row click opens modal
         div.addEventListener('click', (ev)=> {
-          // if click on inner button or anywhere, open modal
           openModalFor(s);
         });
-        // ensure keyboard access on subject card's button
         const innerBtn = div.querySelector('button');
         innerBtn.addEventListener('click', (ev) => {
           ev.stopPropagation();
@@ -747,6 +829,69 @@
         subjectGrid.appendChild(div);
       });
     }
+
+    // Subject search and sort
+    function applySubjectSearchAndSort(){
+      const q = subjectSearch.value.trim().toLowerCase();
+      const rows = Array.from(resultsTableBody.querySelectorAll('tr'));
+      let filtered = rows.filter(r => {
+        const subj = r.querySelector('td[data-label="Subject"]').textContent.toLowerCase();
+        return subj.includes(q);
+      });
+
+      // sort
+      const sortMode = sortSelect.value;
+      if(sortMode !== 'alpha'){
+        filtered.sort((a,b) => {
+          const aTotal = parseFloat(a.querySelector('td[data-label="Total"]').textContent) || 0;
+          const bTotal = parseFloat(b.querySelector('td[data-label="Total"]').textContent) || 0;
+          return sortMode === 'score-desc' ? (bTotal - aTotal) : (aTotal - bTotal);
+        });
+      } else {
+        filtered.sort((a,b) => {
+          const as = a.querySelector('td[data-label="Subject"]').textContent.toLowerCase();
+          const bs = b.querySelector('td[data-label="Subject"]').textContent.toLowerCase();
+          return as.localeCompare(bs);
+        });
+      }
+
+      // hide all, then re-append filtered in order
+      rows.forEach(r => r.style.display = 'none');
+      filtered.forEach(r => {
+        r.style.display = '';
+        resultsTableBody.appendChild(r);
+      });
+    }
+
+    subjectSearch.addEventListener('input', applySubjectSearchAndSort);
+    sortSelect.addEventListener('change', applySubjectSearchAndSort);
+
+    // export visible subjects (CSV)
+    function exportVisibleSubjects(){
+      const rows = [['RegNo','Name','Class','Session','Term','Subject','CA','Exam','Total','Grade','Remark']];
+      const visibleRows = Array.from(resultsTableBody.querySelectorAll('tr')).filter(r => r.style.display !== 'none');
+      visibleRows.forEach(r => {
+        const cells = r.querySelectorAll('td');
+        const subj = cells[0].textContent.trim();
+        const ca = cells[1].textContent.trim();
+        const exam = cells[2].textContent.trim();
+        const total = cells[3].textContent.trim();
+        const grade = cells[4].textContent.trim();
+        const remark = cells[5].textContent.trim();
+        rows.push([sampleResult.regNo, sampleResult.name, sampleResult.class, sampleResult.session, sampleResult.term, subj, ca, exam, total, grade, remark]);
+      });
+      const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${sampleResult.regNo || 'subjects'}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+    exportSubjectsBtn.addEventListener('click', exportVisibleSubjects);
+    downloadSubjectCsv.addEventListener('click', exportVisibleSubjects);
+    printSubjectList.addEventListener('click', ()=> { window.print(); });
 
     // Export CSV
     function exportCSV(result){
@@ -773,18 +918,15 @@
 
     // Wire buttons
     searchBtn.addEventListener('click', (e)=>{
-      // In production replace with an API lookup using regNoEl.value, sessionEl.value, classEl.value, termEl.value
-      // For demo we just show sampleResult and populate regNo if provided
       const queryReg = regNoEl.value.trim();
       if(queryReg) sampleResult.regNo = queryReg;
       populate(sampleResult);
-      // ensure scrolled to result
+      applySubjectSearchAndSort();
       document.getElementById('main').scrollIntoView({behavior:'smooth'});
     });
 
     clearBtn.addEventListener('click', ()=> {
       regNoEl.value=''; sessionEl.selectedIndex=0; termEl.selectedIndex=0; classEl.selectedIndex=0;
-      // clear UI
       resultsTableBody.innerHTML = '';
       resultStudentName.textContent='--';
       resultStudentMeta.textContent='Registration • Class • Session';
@@ -803,12 +945,15 @@
       snapLow.textContent='--';
       snapA.textContent='--';
       snapF.textContent='--';
+      snapHighReplica.textContent='--';
+      snapLowReplica.textContent='--';
+      snapAReplica.textContent='--';
+      snapFReplica.textContent='--';
     });
 
     document.getElementById('exportBtn').addEventListener('click', ()=> exportCSV(sampleResult));
     document.getElementById('printBtn').addEventListener('click', printReport);
     document.getElementById('downloadPdfBtn').addEventListener('click', ()=> {
-      // Basic fallback: call print -> user can choose Save as PDF
       printReport();
     });
 
@@ -816,6 +961,7 @@
 
     // Init (pre-populate with sample for immediate feedback)
     populate(sampleResult);
+    applySubjectSearchAndSort();
 
     // Responsive initial state
     if(window.innerWidth <= 980){
