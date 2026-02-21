@@ -16,6 +16,7 @@
       --success: #10b981;
       --danger: #ef4444;
       --topbar-h:64px;
+      --max-modal-w: 720px;
     }
     *{box-sizing:border-box}
     html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial;background:linear-gradient(180deg,var(--bg-0),var(--bg-1));-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;color:#0b2a44;overflow-x:hidden}
@@ -72,6 +73,7 @@
     .btn.ghost{background:transparent;color:var(--accent-2);border:1px solid rgba(59,130,246,0.08)}
     .btn.small{padding:8px 10px;font-size:0.95rem}
     .muted{color:var(--muted)}
+    .btn.tertiary{background:transparent;color:var(--muted);border:1px solid #eef3ff;padding:8px 10px;border-radius:8px}
 
     /* KPI */
     .kpis{display:flex;gap:12px;align-items:stretch}
@@ -83,6 +85,7 @@
     .results-table{width:100%;border-collapse:collapse;margin-top:8px}
     .results-table th,.results-table td{padding:10px;border-bottom:1px solid #f1f5ff;text-align:left;font-size:0.95rem;vertical-align:middle}
     .results-table th{font-weight:800;background:#fbfdff}
+    .results-table td.actions{width:120px;text-align:right}
     .grade-pill{display:inline-block;padding:6px 10px;border-radius:999px;font-weight:800;color:#fff;font-size:0.9rem}
     .grade-A{background:linear-gradient(90deg,#10b981,#059669)} .grade-B{background:linear-gradient(90deg,#f59e0b,#f97316)} .grade-C{background:linear-gradient(90deg,#f97316,#ef4444)} .grade-D{background:#9ca3af}
 
@@ -95,6 +98,43 @@
 
     /* Note */
     .note{padding:12px;border-radius:10px;background:linear-gradient(90deg,#fff,#fbfdff);border-left:4px solid var(--accent)}
+
+    /* Modal */
+    .modal {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      padding: 20px;
+      background: rgba(2,6,23,0.45);
+      -webkit-overflow-scrolling: touch;
+    }
+    .modal.active { display: flex; }
+    .modal-dialog {
+      width: 100%;
+      max-width: var(--max-modal-w);
+      max-height: 86vh;
+      background: #fff;
+      border-radius: 14px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 30px 80px rgba(2,6,23,0.35);
+      border: 1px solid #eef3ff;
+    }
+    .modal-header { display:flex;justify-content:space-between;align-items:center;padding:14px 16px;background:#fbfdff;border-bottom:1px solid #eef3ff; }
+    .modal-title { font-weight:800; font-size:1.05rem; color:var(--accent-2); }
+    .modal-close { background:none;border:0;font-weight:800;font-size:1rem;padding:8px 10px;border-radius:8px;cursor:pointer;color:#64748b }
+    .modal-close:hover { color:#ef4444 }
+    .modal-body { padding:14px 16px; overflow:auto; }
+    .modal-footer { padding:12px 16px; border-top:1px solid #eef3ff; display:flex;justify-content:flex-end; gap:8px; background:#fff; }
+
+    .detail-grid { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    .detail-row { background:#fbfdff; padding:10px; border-radius:8px; border:1px solid #eef3ff; }
+    .detail-label { font-weight:700; color:var(--muted); font-size:0.86rem; margin-bottom:6px; }
+    .detail-value { font-weight:900; color:#0b2a44; font-size:1rem; }
 
     /* Mobile / responsive */
     @media (max-width:980px){
@@ -120,7 +160,7 @@
       .brand .title{font-size:0.96rem}
       .field input,.field select{min-width:120px}
 
-      /* Responsive table: convert to stacked cards, but improve the layout and spacing */
+      /* Responsive table: convert to stacked cards with clear labels */
       .results-table thead{display:none}
       .results-table{border:0}
       .results-table tbody tr{
@@ -138,7 +178,6 @@
         border-bottom:none;
         word-break:break-word;
       }
-      /* Use ::before to show the label for each cell (improves readability) */
       .results-table tbody tr td::before{
         content: attr(data-label) ":";
         display:block;
@@ -147,22 +186,24 @@
         margin-bottom:6px;
         font-size:0.86rem;
       }
-      /* Make grade pill appear more compact on mobile */
+      .results-table tbody tr td.actions{text-align:left}
       .grade-pill{font-size:0.85rem;padding:6px 8px}
-
-      /* Ensure export/quick snapshot cards behave like other cards (same width/stacking) */
       .card { overflow:visible; }
-
-      /* prevent long words overflow */
       .card, .subject, .kpi, .field input, .field select {word-break:break-word;overflow-wrap:break-word}
+      /* Modal full width on very small devices */
+      .modal-dialog { max-width: 96vw; max-height: 92vh; border-radius: 12px; }
     }
 
     /* Print tweaks */
     @media print{
-      .sidebar, .topbar, .hamburger, .overlay, .btn { display: none !important; }
+      .sidebar, .topbar, .hamburger, .overlay, .btn, .modal { display: none !important; }
       .main{margin-left:0;padding-top:0}
       .card{box-shadow:none;border:0}
     }
+
+    /* small helper for action buttons in table on desktop */
+    .table-action-btn { padding:6px 8px; border-radius:8px; font-weight:700; font-size:0.9rem; }
+    .table-action-btn.ghost { background:transparent; border:1px solid #eef3ff; color:var(--accent-2); }
   </style>
 </head>
 <body>
@@ -321,16 +362,17 @@
               <div class="muted">Detailed scores & remarks</div>
             </div>
 
-            <!-- Improved mobile-friendly table: rows become stacked cards with clear labels -->
+            <!-- Improved table: include Actions column (Open modal) -->
             <table class="results-table" id="resultsTable" aria-live="polite">
               <thead>
                 <tr>
-                  <th style="width:30%">Subject</th>
-                  <th>CA</th>
-                  <th>Exam</th>
-                  <th>Total</th>
-                  <th>Grade</th>
+                  <th style="width:28%">Subject</th>
+                  <th style="width:8%">CA</th>
+                  <th style="width:8%">Exam</th>
+                  <th style="width:8%">Total</th>
+                  <th style="width:12%">Grade</th>
                   <th>Remark</th>
+                  <th class="actions">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -392,6 +434,47 @@
     </main>
   </div>
 
+  <!-- Detail Modal (shows detailed breakdown for a subject) -->
+  <div id="detailModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="modalTitle">
+    <div class="modal-dialog" role="document">
+      <div class="modal-header">
+        <div class="modal-title" id="modalTitle">Subject detail</div>
+        <button class="modal-close" id="modalCloseBtn" aria-label="Close detail dialog">&times;</button>
+      </div>
+
+      <div class="modal-body" id="modalBody">
+        <!-- content populated by JS -->
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px">
+          <div>
+            <div class="muted" style="font-weight:700">Student</div>
+            <div id="modalStudent" style="font-weight:900"></div>
+            <div id="modalMeta" class="muted" style="font-size:0.92rem"></div>
+          </div>
+
+          <div style="text-align:right">
+            <div class="muted" style="font-weight:700">Subject Score</div>
+            <div id="modalScore" style="font-weight:900;font-size:1.4rem;color:var(--accent-2)"></div>
+            <div id="modalGrade" style="margin-top:6px"></div>
+          </div>
+        </div>
+
+        <div class="detail-grid" id="modalDetailsGrid">
+          <!-- detail rows appended by JS -->
+        </div>
+
+        <div style="margin-top:12px">
+          <div style="font-weight:800">Teacher remarks</div>
+          <div id="modalRemark" class="muted" style="margin-top:6px">—</div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn ghost" id="modalClose">Close</button>
+        <button class="btn" id="modalPrint">Print subject</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     // Sample data for demo. Replace with real API calls as needed.
     const sampleResult = {
@@ -409,12 +492,12 @@
       rank: '3 / 45',
       teacherComment: 'Excellent performance. Keep up the consistent effort.',
       subjects: [
-        { name: 'Mathematics', ca: 18, exam: 72, total: 90, grade: 'A', remark: 'Excellent' },
-        { name: 'English', ca: 15, exam: 64, total: 79, grade: 'B', remark: 'Good' },
-        { name: 'Biology', ca: 17, exam: 68, total: 85, grade: 'A', remark: 'Very good' },
-        { name: 'Chemistry', ca: 14, exam: 58, total: 72, grade: 'B', remark: 'Good' },
-        { name: 'Physics', ca: 12, exam: 50, total: 62, grade: 'C', remark: 'Satisfactory' },
-        { name: 'Civic', ca: 16, exam: 70, total: 86, grade: 'A', remark: 'Excellent' }
+        { name: 'Mathematics', ca: 18, exam: 72, total: 90, grade: 'A', remark: 'Excellent', teacherNote: 'Outstanding in problem solving.' },
+        { name: 'English', ca: 15, exam: 64, total: 79, grade: 'B', remark: 'Good', teacherNote: 'Work on comprehension speed.' },
+        { name: 'Biology', ca: 17, exam: 68, total: 85, grade: 'A', remark: 'Very good', teacherNote: 'Great practicals.' },
+        { name: 'Chemistry', ca: 14, exam: 58, total: 72, grade: 'B', remark: 'Good', teacherNote: 'Improve lab notes.' },
+        { name: 'Physics', ca: 12, exam: 50, total: 62, grade: 'C', remark: 'Satisfactory', teacherNote: 'Focus on formula application.' },
+        { name: 'Civic', ca: 16, exam: 70, total: 86, grade: 'A', remark: 'Excellent', teacherNote: 'Active participation in class.' }
       ]
     };
 
@@ -446,6 +529,19 @@
     const snapF = document.getElementById('snapF');
     const subjectGrid = document.getElementById('subjectGrid');
 
+    // Modal elements
+    const detailModal = document.getElementById('detailModal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalStudent = document.getElementById('modalStudent');
+    const modalMeta = document.getElementById('modalMeta');
+    const modalScore = document.getElementById('modalScore');
+    const modalGrade = document.getElementById('modalGrade');
+    const modalDetailsGrid = document.getElementById('modalDetailsGrid');
+    const modalRemark = document.getElementById('modalRemark');
+    const modalCloseBtn = document.getElementById('modalCloseBtn');
+    const modalClose = document.getElementById('modalClose');
+    const modalPrint = document.getElementById('modalPrint');
+
     // Sidebar toggle (mobile)
     const sidebar = document.getElementById('sidebar');
     const hamburger = document.getElementById('hamburger');
@@ -469,6 +565,7 @@
       overlay.classList.remove('visible');
       overlay.setAttribute('aria-hidden','true');
       document.body.classList.remove('no-scroll');
+      closeModal();
     });
 
     // Helpers
@@ -478,6 +575,71 @@
       if(grade==='C') return 'grade-C';
       return 'grade-D';
     }
+
+    // Modal control
+    let lastFocusedElement = null;
+    function openModalFor(subject){
+      lastFocusedElement = document.activeElement;
+      // populate modal content
+      modalTitle.textContent = `${subject.name} — Breakdown`;
+      modalStudent.textContent = sampleResult.name;
+      modalMeta.textContent = `${sampleResult.regNo} • ${sampleResult.class} • ${sampleResult.session} — ${sampleResult.term} term`;
+      modalScore.textContent = subject.total + '%';
+      modalGrade.innerHTML = `<span class="grade-pill ${gradeClass(subject.grade)}">${subject.grade}</span>`;
+      modalRemark.textContent = subject.teacherNote || subject.remark || '—';
+
+      // details grid
+      modalDetailsGrid.innerHTML = '';
+      const details = [
+        { label: 'CA score', value: subject.ca },
+        { label: 'Exam score', value: subject.exam },
+        { label: 'Total', value: subject.total },
+        { label: 'Grade', value: subject.grade },
+        { label: 'Remark', value: subject.remark }
+      ];
+      details.forEach(d => {
+        const el = document.createElement('div');
+        el.className = 'detail-row';
+        el.innerHTML = `<div class="detail-label">${d.label}</div><div class="detail-value">${d.value}</div>`;
+        modalDetailsGrid.appendChild(el);
+      });
+
+      // show modal
+      detailModal.classList.add('active');
+      detailModal.setAttribute('aria-hidden','false');
+      document.body.classList.add('no-scroll');
+      // focus on close button for accessibility
+      modalCloseBtn.focus();
+    }
+
+    function closeModal(){
+      detailModal.classList.remove('active');
+      detailModal.setAttribute('aria-hidden','true');
+      document.body.classList.remove('no-scroll');
+      // return focus
+      if(lastFocusedElement) lastFocusedElement.focus();
+    }
+
+    modalCloseBtn.addEventListener('click', closeModal);
+    modalClose.addEventListener('click', closeModal);
+    modalPrint.addEventListener('click', ()=> {
+      // print only the modal content: create a temporary window with modal body
+      const content = document.querySelector('.modal-body').innerHTML;
+      const w = window.open('', '_blank', 'width=800,height=900');
+      w.document.write('<title>Print subject</title>');
+      w.document.write('<style>body{font-family:Inter,system-ui,Arial;padding:20px;color:#0b2a44} .grade-pill{padding:6px 10px;border-radius:999px;color:#fff} .grade-A{background:#059669}.grade-B{background:#f97316}.grade-C{background:#ef4444}.grade-D{background:#9ca3af}</style>');
+      w.document.write(content);
+      w.document.close();
+      w.focus();
+      setTimeout(()=> { w.print(); w.close(); }, 250);
+    });
+
+    // close modal on ESC
+    window.addEventListener('keydown', (e) => {
+      if(e.key === 'Escape' && detailModal.classList.contains('active')){
+        closeModal();
+      }
+    });
 
     function populate(result){
       // Header
@@ -493,10 +655,10 @@
       kpiAtt.textContent = result.attendance + '%';
       kpiDays.textContent = result.days;
 
-      // Table (desktop rows) & mobile friendly labels
+      // Table & mobile-friendly labels
       resultsTableBody.innerHTML = '';
       let high = -Infinity, low = Infinity, countA=0, countF=0;
-      result.subjects.forEach(s => {
+      result.subjects.forEach((s, idx) => {
         const tr = document.createElement('tr');
 
         const tdSubject = document.createElement('td'); tdSubject.setAttribute('data-label','Subject'); tdSubject.innerHTML = `<span style="font-weight:700">${s.name}</span>`;
@@ -506,12 +668,33 @@
         const tdGrade = document.createElement('td'); tdGrade.setAttribute('data-label','Grade'); tdGrade.innerHTML = `<span class="grade-pill ${gradeClass(s.grade)}">${s.grade}</span>`;
         const tdRemark = document.createElement('td'); tdRemark.setAttribute('data-label','Remark'); tdRemark.innerHTML = `<span class="muted">${s.remark}</span>`;
 
+        // action button (open modal)
+        const tdAction = document.createElement('td');
+        tdAction.className = 'actions';
+        tdAction.setAttribute('data-label','Action');
+        const btn = document.createElement('button');
+        btn.className = 'table-action-btn ghost';
+        btn.innerText = 'View';
+        btn.setAttribute('aria-label', `View breakdown for ${s.name}`);
+        btn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          openModalFor(s);
+        });
+        tdAction.appendChild(btn);
+
         tr.appendChild(tdSubject);
         tr.appendChild(tdCA);
         tr.appendChild(tdExam);
         tr.appendChild(tdTotal);
         tr.appendChild(tdGrade);
         tr.appendChild(tdRemark);
+        tr.appendChild(tdAction);
+
+        // also open modal when row clicked (desktop friendly)
+        tr.addEventListener('click', (ev) => {
+          // avoid double-opening when clicking action button (handled above)
+          if(ev.target !== btn) openModalFor(s);
+        });
 
         resultsTableBody.appendChild(tr);
 
@@ -529,7 +712,7 @@
       snapA.textContent = countA;
       snapF.textContent = countF;
 
-      // subjects cards
+      // subjects cards (also open modal)
       subjectGrid.innerHTML = '';
       result.subjects.forEach(s => {
         const div = document.createElement('div');
@@ -545,15 +728,24 @@
             <div><span class="grade-pill ${gradeClass(s.grade)}">${s.grade}</span></div>
             <div class="muted">${s.remark}</div>
           </div>
+          <div style="margin-top:8px; display:flex; gap:8px;">
+            <button class="btn ghost small" aria-label="View ${s.name} breakdown">View breakdown</button>
+          </div>
         `;
-        div.addEventListener('click', ()=>{ showSubjectDetail(s) });
+        // row click opens modal
+        div.addEventListener('click', (ev)=> {
+          // if click on inner button or anywhere, open modal
+          openModalFor(s);
+        });
+        // ensure keyboard access on subject card's button
+        const innerBtn = div.querySelector('button');
+        innerBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          openModalFor(s);
+        });
+
         subjectGrid.appendChild(div);
       });
-    }
-
-    function showSubjectDetail(s){
-      // lightweight detail: can replace with modal later
-      alert(`${s.name}\nCA: ${s.ca}\nExam: ${s.exam}\nTotal: ${s.total}\nGrade: ${s.grade}\nRemark: ${s.remark}`);
     }
 
     // Export CSV
