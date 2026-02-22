@@ -1,0 +1,777 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>CBT Exams | ExamGuard</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link href="https://fonts.googleapis.com/css?family=Inter:400,600,700&display=swap" rel="stylesheet">
+  <link rel="icon" href="../logo.png">
+  <style>
+    :root{
+      --bg-0:#f6f8ff; --bg-1:#eef2ff;
+      --accent:#3b82f6; --accent-2:#6366f1; --muted:#6b7280;
+      --card-bg:#ffffff; --radius:12px;
+      --sidebar-w:300px;
+    }
+    * { box-sizing: border-box; }
+    html,body { height:100%; margin:0; font-family:Inter,system-ui,Arial; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; background:linear-gradient(180deg,var(--bg-0),var(--bg-1)); color:#0b2a44; }
+    a { color:inherit; text-decoration:none; }
+
+    /* App layout */
+    .app { display:flex; min-height:100vh; align-items:stretch; }
+    .overlay { position:fixed; inset:0; background:rgba(2,6,23,0.45); z-index:50; display:none; }
+    .overlay.visible { display:block; }
+
+    /* Sidebar (DESKTOP: visible instantly, no animation) */
+    .sidebar {
+      width: var(--sidebar-w);
+      min-width: var(--sidebar-w);
+      background: linear-gradient(180deg,#0f172a 0%, #1e3a8a 100%);
+      color:#fff; padding:20px 16px; position:fixed; left:0; top:0; bottom:0; z-index:100;
+      box-shadow: 4px 0 28px rgba(15,23,42,0.12);
+      display:flex; flex-direction:column; gap:14px; overflow-y:auto;
+      -webkit-overflow-scrolling: touch;
+      will-change: transform;
+      transform: translateX(0);
+      transition: none;
+    }
+
+    /* Mobile (overlay) behaviour: enable transforms and transitions */
+    @media (max-width:720px) {
+      .sidebar {
+        transform: translateX(-110%);
+        transition: transform .28s ease;
+        position: fixed;
+        width: 86vw;
+        min-width: 86vw;
+      }
+
+      /* hidden state declared first */
+      .sidebar.hidden {
+        transform: translateX(-110%);
+      }
+
+      /* open wins even if both classes present (declared after hidden) */
+      .sidebar.open {
+        transform: translateX(0);
+        box-shadow: 0 24px 48px rgba(2,6,23,0.5);
+      }
+    }
+
+    .brand { display:flex; gap:12px; align-items:center; }
+    .brand img { width:44px; height:44px; border-radius:10px; object-fit:cover; border:3px solid rgba(255,224,102,0.12); background:#fff; }
+    .brand .title { font-weight:800; font-size:1.05rem; color:#ffe066; }
+    .nav { display:flex; flex-direction:column; gap:8px; margin-top:6px; }
+    .nav a {
+      display:flex; align-items:center; gap:10px; padding:12px; border-radius:10px;
+      font-weight:700; font-size:1rem; color:#e6eefc; background:transparent;
+    }
+    .nav a.active, .nav a:hover { background: rgba(255,255,255,0.04); color:#ffe066; }
+
+    .spacer { flex:1; }
+
+    .profile { display:flex; gap:12px; align-items:center; padding-top:10px; border-top:1px solid rgba(255,255,255,0.04); }
+    .profile img { width:48px; height:48px; border-radius:10px; object-fit:cover; border:2px solid #ffe066; }
+
+    /* Topbar */
+    .topbar {
+      position: fixed;
+      left: var(--sidebar-w);
+      top: 0;
+      width: calc(100vw - var(--sidebar-w));
+      z-index: 90;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      backdrop-filter: blur(6px);
+      background: rgba(255, 255, 255, 0.86);
+      border-bottom: 1px solid rgba(11, 42, 60, 0.06);
+      box-shadow: 0 6px 18px rgba(11, 42, 60, 0.04);
+      min-height: 64px;
+    }
+    @media (max-width:720px) {
+      .topbar { left:0; width:100vw; padding:10px 12px; min-height:56px; }
+    }
+
+    .hamburger{display:none;background:var(--accent);color:#fff;border:none;padding:9px 12px;border-radius:10px;cursor:pointer;font-weight:800;font-size:1.05rem}
+    @media (max-width:980px) { .hamburger{display:inline-flex} }
+
+    .page-title { font-weight:800; font-size:1.05rem; color:var(--accent-2); }
+    .small { font-size:0.92rem; color:var(--muted); }
+
+    .main { margin-left: var(--sidebar-w); padding:20px; flex:1; transition: margin-left .28s; min-height:100vh; overflow-y:auto; padding-top:90px; -webkit-overflow-scrolling:touch; }
+    @media (max-width:720px) { .main { margin-left:0; padding:14px; padding-top:80px; } }
+
+    /* Grid & cards */
+    .grid { display:grid; grid-template-columns: repeat(12, 1fr); gap:14px; align-items:start; }
+    .card { background:var(--card-bg); border-radius:12px; padding:14px; box-shadow: 0 8px 20px rgba(11,42,60,0.04); border:1px solid rgba(11,42,60,0.03); }
+    .col-4 { grid-column: span 4; } .col-8 { grid-column: span 8; } .col-6 { grid-column: span 6; } .col-12 { grid-column: 1 / -1; }
+    @media (max-width:980px) {
+      .grid { grid-template-columns: repeat(6, 1fr); }
+      .col-4 { grid-column: span 3; } .col-8 { grid-column: span 6; } .col-6 { grid-column: span 3; }
+    }
+    @media (max-width:720px) {
+      .grid { grid-template-columns: 1fr; }
+      .col-4,.col-8,.col-6{grid-column:auto}
+    }
+
+    /* Exam list */
+    .exam-grid { display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; }
+    .exam-card { border-radius:12px; background:#fff; padding:14px; border:1px solid #eef3ff; display:flex; flex-direction:column; gap:10px; min-height:140px; }
+    .exam-card h3 { margin:0; font-size:1.05rem; font-weight:800; color:#0b2a44; }
+    .meta { color:var(--muted); font-size:0.92rem; }
+    .exam-actions { margin-top:auto; display:flex; gap:8px; align-items:center; }
+    .btn { padding:9px 12px; border-radius:10px; border:none; cursor:pointer; background:linear-gradient(90deg,var(--accent),var(--accent-2)); color:#fff; font-weight:800; }
+    .btn.ghost { background:transparent; color:var(--accent-2); border:1px solid rgba(59,130,246,0.08); }
+
+    /* Practice & AI section */
+    .panel-list { display:grid; grid-template-columns: repeat(2,1fr); gap:12px; }
+    .practice-card { background:#fff;border-radius:12px;padding:12px;border:1px solid #eef3ff; display:flex;flex-direction:column; gap:10px; }
+    @media (max-width:720px) { .exam-grid { grid-template-columns: repeat(2,1fr); } .panel-list { grid-template-columns: 1fr; } }
+
+    /* modal base */
+    .modal { position: fixed; inset: 0; background: rgba(2,6,23,0.45); display: none; align-items:center; justify-content:center; z-index:9999; padding:16px; }
+    .modal.active { display:flex; }
+
+    .modal .panel {
+      background:#fff;
+      width:900px;
+      max-width:95vw;
+      border-radius:12px;
+      overflow:hidden;
+      box-shadow:0 20px 60px rgba(2,6,23,0.25);
+      display:flex;
+      flex-direction:column;
+    }
+
+    .modal .head {
+      padding:12px 16px;
+      border-bottom:1px solid #eef3ff;
+      background:#f8fbff;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+    }
+
+    .modal .body {
+      padding:16px;
+      max-height:72vh;
+      overflow:auto;
+      display:block;
+    }
+
+    /* structured modal content grid - used inside modal body */
+    .modal .body .modal-grid {
+      display:grid;
+      grid-template-columns: 1fr 280px;
+      gap:14px;
+      align-items:start;
+    }
+
+    .modal .body .modal-grid .modal-main { min-width:0; } /* allow truncation */
+    .modal .body .modal-grid .modal-aside { background:#f8fbff;padding:12px;border-radius:8px; }
+
+    /* Smaller screens: stack vertically for better layout */
+    @media (max-width:720px) {
+      .modal .panel { width: 96vw; max-width: 96vw; }
+      .modal .body { padding:12px; max-height:78vh; }
+      .modal .body .modal-grid { grid-template-columns: 1fr; }
+      .modal .body .modal-grid .modal-aside { order: 2; } /* aside goes after main */
+    }
+
+    /* accessibility focus */
+    :focus { outline: 3px solid rgba(99,102,241,0.18); outline-offset:2px; border-radius:6px; }
+
+    .muted-small { font-size:0.9rem; color:var(--muted); }
+    .empty { padding:28px; text-align:center; color:var(--muted); border:1px dashed #eef3ff; border-radius:12px; }
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <div class="overlay" id="overlay" aria-hidden="true"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar" aria-label="Main navigation" role="navigation" aria-hidden="false">
+      <div class="brand" aria-hidden="false">
+        <img src="../logo.png" alt="Logo">
+        <div>
+          <div class="title">Student Portal</div>
+          <div class="subtitle" id="schoolSubtitle" style="font-size:0.95rem;color:rgba(255,255,255,0.88)">Sunrise High • Student</div>
+        </div>
+      </div>
+
+      <nav class="nav" id="nav" aria-label="Primary">
+        <a href="student.html" data-section="home">🏠 Dashboard</a>
+        <a href="marketting/results.html" data-section="results">📘 Results</a>
+        <a href="marketting/cbt-exam.html" data-section="cbt" class="active">🖥️ CBT Exam</a>
+        <a href="assignments.html" data-section="assignments">📝 Assignments</a>
+        <a href="timetable.html" data-section="timetable">⏰ Timetable</a>
+        <a href="messages.html" data-section="messages">✉️ Messages</a>
+        <a href="resources.html" data-section="resources">📂 Resources</a>
+      </nav>
+
+      <div class="spacer" aria-hidden="true"></div>
+
+      <div class="profile" role="region" aria-label="Student profile">
+        <img src="../avatar.jpg" alt="Student avatar" id="studentAvatar">
+        <div>
+          <div class="name" id="studentName">Adaobi Chukwu</div>
+          <div class="muted" id="studentClass">SS2 — Biology</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- topbar -->
+    <div class="topbar" id="topbar">
+      <div style="display:flex;gap:12px;align-items:center;">
+        <button class="hamburger" id="hamburger" aria-label="Open menu">☰</button>
+        <div>
+          <div class="page-title">CBT Exams</div>
+          <div class="small muted">Scheduled exams, practice and AI-generated quizzes</div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:12px;align-items:center;">
+        <div class="small muted">SS2 — Current session</div>
+        <img src="../avatar.jpg" alt="You" style="width:44px;height:44px;border-radius:8px;object-fit:cover;border:2px solid #fff;" id="topbarAvatar">
+      </div>
+    </div>
+
+    <main class="main" id="main" role="main" tabindex="-1">
+      <section aria-labelledby="cbtHeading">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+          <div>
+            <h1 id="cbtHeading" style="margin:0;font-size:1.1rem;font-weight:900">CBT — Scheduled Exams</h1>
+            <div class="muted-small">All exams available for your class. Start when ready.</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn" id="refreshBtn">Refresh</button>
+            <button class="btn ghost" id="historyBtn">Exam history</button>
+          </div>
+        </div>
+
+        <div class="grid" style="margin-bottom:12px;">
+          <div class="card col-8">
+            <div class="exam-grid" id="examGrid" aria-live="polite" aria-label="Scheduled exams">
+              <!-- JS renders exam cards -->
+            </div>
+
+            <div id="noExams" class="empty" style="display:none;margin-top:12px">No scheduled exams for your class.</div>
+          </div>
+
+          <aside class="card col-4">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div style="font-weight:800">Practice & AI Quizzes</div>
+              <div class="muted-small">Try before you sit</div>
+            </div>
+
+            <div style="margin-top:12px" class="panel-list">
+              <div class="practice-card" aria-label="Practice questions">
+                <div style="font-weight:800">Practice Questions</div>
+                <div class="muted-small">Short practice sets aligned to topics</div>
+                <div>
+                  <label for="practiceSubject" class="muted-small">Subject</label>
+                  <select id="practiceSubject" style="width:100%;padding:8px;border-radius:8px;border:1px solid #e6e9ef">
+                    <option value="Biology">Biology</option>
+                    <option value="Mathematics">Mathematics</option>
+                    <option value="English">English</option>
+                    <option value="Chemistry">Chemistry</option>
+                  </select>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:8px">
+                  <button class="btn" id="startPracticeBtn">Start Practice</button>
+                  <button class="btn ghost" id="browsePracticeBtn">Browse</button>
+                </div>
+              </div>
+
+              <div class="practice-card" aria-label="AI generated quiz">
+                <div style="font-weight:800">AI-generated Questions</div>
+                <div class="muted-small">Customize topic, difficulty & length</div>
+
+                <div style="margin-top:8px">
+                  <label class="muted-small" for="aiTopic">Topic</label>
+                  <input id="aiTopic" placeholder="e.g. Cell structure" style="width:100%;padding:8px;border-radius:8px;border:1px solid #e6e9ef" />
+                </div>
+
+                <div style="display:flex;gap:8px;margin-top:8px">
+                  <select id="aiDifficulty" style="flex:1;padding:8px;border-radius:8px;border:1px solid #e6e9ef">
+                    <option value="easy">Easy</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="hard">Hard</option>
+                  </select>
+                  <select id="aiCount" style="width:100px;padding:8px;border-radius:8px;border:1px solid #e6e9ef">
+                    <option>5</option><option selected>10</option><option>20</option>
+                  </select>
+                </div>
+
+                <div style="display:flex;gap:8px;margin-top:8px">
+                  <button class="btn" id="genAiBtn">Generate</button>
+                  <button class="btn ghost" id="previewAiBtn">Preview</button>
+                </div>
+
+                <div id="aiStatus" class="muted-small" style="margin-top:8px">No AI quiz generated yet.</div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <!-- Exam detail modal -->
+    <div class="modal" id="examModal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="examModalTitle">
+      <div class="panel" role="document">
+        <div class="head">
+          <div>
+            <div id="examModalTitle" style="font-weight:800">Exam details</div>
+            <div class="muted-small" id="examModalSub">Exam information</div>
+          </div>
+          <div>
+            <button class="btn ghost" id="closeExamModalBtn">Close</button>
+          </div>
+        </div>
+
+        <div class="body" id="examModalBody">
+          <!-- details populated by JS; will be placed inside .modal-grid for responsive layout -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Practice preview modal -->
+    <div class="modal" id="practiceModal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="practiceModalTitle">
+      <div class="panel" role="document">
+        <div class="head">
+          <div>
+            <div id="practiceModalTitle" style="font-weight:800">Practice set</div>
+            <div class="muted-small" id="practiceModalSub">Sample practice questions</div>
+          </div>
+          <div>
+            <button class="btn ghost" id="closePracticeModalBtn">Close</button>
+          </div>
+        </div>
+
+        <div class="body" id="practiceModalBody">
+          <!-- populated by JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- AI preview modal -->
+    <div class="modal" id="aiModal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="aiModalTitle">
+      <div class="panel" role="document">
+        <div class="head">
+          <div>
+            <div id="aiModalTitle" style="font-weight:800">AI Generated Quiz</div>
+            <div class="muted-small" id="aiModalSub">Preview & start</div>
+          </div>
+          <div>
+            <button class="btn ghost" id="closeAiModalBtn">Close</button>
+          </div>
+        </div>
+
+        <div class="body" id="aiModalBody">
+          <!-- populated by JS -->
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    (function () {
+      // Config / endpoints
+      const API_BASE = 'https://examguide.onrender.com/api'; // replace with real endpoint when available
+
+      // UI elements
+      const examGrid = document.getElementById('examGrid');
+      const noExams = document.getElementById('noExams');
+      const refreshBtn = document.getElementById('refreshBtn');
+      const historyBtn = document.getElementById('historyBtn');
+
+      const examModal = document.getElementById('examModal');
+      const examModalBody = document.getElementById('examModalBody');
+      const closeExamModalBtn = document.getElementById('closeExamModalBtn');
+
+      const practiceSubject = document.getElementById('practiceSubject');
+      const startPracticeBtn = document.getElementById('startPracticeBtn');
+      const browsePracticeBtn = document.getElementById('browsePracticeBtn');
+      const practiceModal = document.getElementById('practiceModal');
+      const practiceModalBody = document.getElementById('practiceModalBody');
+      const closePracticeModalBtn = document.getElementById('closePracticeModalBtn');
+
+      const aiTopic = document.getElementById('aiTopic');
+      const aiDifficulty = document.getElementById('aiDifficulty');
+      const aiCount = document.getElementById('aiCount');
+      const genAiBtn = document.getElementById('genAiBtn');
+      const previewAiBtn = document.getElementById('previewAiBtn');
+      const aiStatus = document.getElementById('aiStatus');
+      const aiModal = document.getElementById('aiModal');
+      const aiModalBody = document.getElementById('aiModalBody');
+      const closeAiModalBtn = document.getElementById('closeAiModalBtn');
+
+      const hamburger = document.getElementById('hamburger');
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('overlay');
+
+      // Mock scheduled exams (replace with real API call)
+      let scheduledExams = [
+        { id:'EXAM-2026-01', title:'Biology — Termly Exam', subject:'Biology', date:'2026-03-10', start:'09:00', durationMinutes:90, totalMarks:100, venue:'CBT Hall A', status:'scheduled', class:'SS2' },
+        { id:'EXAM-2026-02', title:'Mathematics — Midterm', subject:'Mathematics', date:'2026-03-18', start:'11:00', durationMinutes:60, totalMarks:50, venue:'CBT Hall B', status:'scheduled', class:'SS2' },
+        { id:'EXAM-2025-55', title:'English — Mock', subject:'English', date:'2025-12-01', start:'10:00', durationMinutes:60, totalMarks:50, venue:'CBT Lab', status:'archived', class:'SS2' }
+      ];
+
+      // Helpers
+      function formatDate(d) {
+        const dt = new Date(d);
+        if (isNaN(dt)) return d;
+        return dt.toLocaleDateString();
+      }
+
+      function renderExams() {
+        examGrid.innerHTML = '';
+        // Filter scheduled for student's class (assume SS2 stored in studentClass)
+        const className = (document.getElementById('studentClass')?.textContent || '').split('—')[0].trim() || 'SS2';
+        const exams = scheduledExams.filter(e => (e.class === className) && e.status !== 'archived');
+
+        if (exams.length === 0) {
+          noExams.style.display = '';
+        } else {
+          noExams.style.display = 'none';
+        }
+
+        exams.forEach(ex => {
+          const card = document.createElement('article');
+          card.className = 'exam-card';
+          card.setAttribute('tabindex','0');
+          const head = document.createElement('div');
+          head.innerHTML = `<h3>${ex.title}</h3><div class="meta">${ex.subject} • ${formatDate(ex.date)} • ${ex.start} • ${ex.durationMinutes} mins</div>`;
+          const body = document.createElement('div');
+          body.innerHTML = `<div class="muted-small">Total marks: <strong>${ex.totalMarks}</strong></div><div class="muted-small">Venue: ${ex.venue}</div>`;
+          const actions = document.createElement('div'); actions.className = 'exam-actions';
+          const viewBtn = document.createElement('button'); viewBtn.className='btn ghost'; viewBtn.textContent='Details'; viewBtn.onclick = ()=>openExamModal(ex.id);
+          const startBtn = document.createElement('button'); startBtn.className='btn'; startBtn.textContent='Start Exam'; startBtn.onclick = ()=>startExam(ex.id);
+          actions.appendChild(viewBtn); actions.appendChild(startBtn);
+
+          card.appendChild(head); card.appendChild(body); card.appendChild(actions);
+          examGrid.appendChild(card);
+        });
+      }
+
+      // Open modal with exam detail (uses .modal-grid for responsive structure)
+      function openExamModal(id) {
+        const ex = scheduledExams.find(x=>x.id===id);
+        if (!ex) return;
+
+        // Build a clean/deterministic structure (no inline grids) so CSS controls stacking
+        examModalBody.innerHTML = `
+          <div class="modal-grid" role="group" aria-label="Exam details layout">
+            <div class="modal-main">
+              <div style="font-weight:800;font-size:1.05rem">${ex.title}</div>
+              <div class="muted-small" style="margin-top:6px">${ex.subject} • ${ex.class}</div>
+
+              <div style="margin-top:12px">
+                <strong>When:</strong> ${formatDate(ex.date)} at ${ex.start}
+              </div>
+              <div style="margin-top:6px">
+                <strong>Duration:</strong> ${ex.durationMinutes} minutes
+              </div>
+              <div style="margin-top:6px">
+                <strong>Total marks:</strong> ${ex.totalMarks}
+              </div>
+
+              <div style="margin-top:12px">
+                <strong>Venue:</strong> ${ex.venue}
+              </div>
+
+              <div style="margin-top:12px" class="muted-small">
+                Instructions:
+                <ul style="margin:6px 0 0 18px;padding:0;">
+                  <li>Ensure stable internet and a charged device.</li>
+                  <li>Close other tabs & applications while the exam is running.</li>
+                  <li>Do not refresh the page during an active session.</li>
+                </ul>
+              </div>
+            </div>
+
+            <aside class="modal-aside" aria-label="Exam actions">
+              <div style="font-weight:800">Quick actions</div>
+              <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
+                <button class="btn" id="modalStartBtn">Start Exam</button>
+                <button class="btn ghost" id="modalPracticeBtn">Practice similar questions</button>
+                <button class="btn ghost" id="modalDownloadBtn">Download brief (PDF)</button>
+              </div>
+
+              <div style="margin-top:12px" class="muted-small">
+                <div><strong>Exam ID:</strong> <span style="font-weight:700">${ex.id}</span></div>
+                <div style="margin-top:8px"><strong>Proctoring:</strong> Standard</div>
+                <div style="margin-top:8px"><strong>Allowed resources:</strong> None</div>
+              </div>
+            </aside>
+          </div>
+        `;
+
+        // setup actions
+        document.getElementById('modalStartBtn').addEventListener('click', ()=> {
+          examModal.classList.remove('active'); examModal.setAttribute('aria-hidden','true');
+          startExam(id);
+        }, { once:true });
+
+        document.getElementById('modalPracticeBtn').addEventListener('click', ()=>{
+          examModal.classList.remove('active'); examModal.setAttribute('aria-hidden','true');
+          openPracticeForSubject(ex.subject);
+        }, { once:true });
+
+        document.getElementById('modalDownloadBtn').addEventListener('click', ()=>{
+          // Placeholder — in production generate a small PDF
+          alert('Download brief (implement server/pdf generation).');
+        }, { once:true });
+
+        examModal.classList.add('active'); examModal.setAttribute('aria-hidden','false');
+
+        // Move focus to modal for accessibility
+        setTimeout(()=> {
+          const firstInteractive = examModal.querySelector('#modalStartBtn');
+          if (firstInteractive) firstInteractive.focus();
+        }, 60);
+      }
+
+      function startExam(id) {
+        // In a real integration we'd check eligibility, locking, proctoring, token etc.
+        // Redirect to exam in-session page with query param
+        const confirmStart = confirm('Are you ready to start this exam? Your time will begin immediately when you proceed.');
+        if (!confirmStart) return;
+        // redirect (adjust url to actual in-session page)
+        window.location.href = `/cbt-session.html?exam=${encodeURIComponent(id)}`;
+      }
+
+      // Practice flows
+      function openPracticeForSubject(subject) {
+        // simple mock: generate 5 short questions
+        const questions = generatePracticeQuestions(subject, 5);
+        showPracticeModal({ title: `${subject} — Practice`, questions });
+      }
+
+      function generatePracticeQuestions(subject, count) {
+        // Mock generator; replace with API for curated practice sets
+        const sample = [];
+        for (let i=1;i<=count;i++){
+          sample.push({
+            id: `${subject}-P-${i}`,
+            q: `(${subject}) Sample question ${i}: Brief question text to practice ${subject} concept.`,
+            choices: ['A','B','C','D'].map((c,idx)=>`${c}. Option ${idx+1}`),
+            answerIndex: Math.floor(Math.random()*4)
+          });
+        }
+        return sample;
+      }
+
+      function showPracticeModal({ title, questions }) {
+        // Build a simple stacked layout optimized for mobile & desktop
+        practiceModalBody.innerHTML = `
+          <div style="font-weight:800">${title}</div>
+          <div style="margin-top:8px" class="muted-small">Questions: ${questions.length}</div>
+        `;
+        const list = document.createElement('ol');
+        list.style.marginTop = '12px';
+        questions.forEach(q=>{
+          const li = document.createElement('li');
+          li.style.marginBottom = '10px';
+          li.innerHTML = `<div style="font-weight:700">${q.q}</div><div class="muted-small">${q.choices.join(' • ')}</div>`;
+          list.appendChild(li);
+        });
+        practiceModalBody.appendChild(list);
+
+        const controls = document.createElement('div');
+        controls.style.marginTop = '12px';
+        controls.innerHTML = `<button class="btn" id="practiceStartNow">Start practice session</button> <button class="btn ghost" id="practiceCloseNow">Close</button>`;
+        practiceModalBody.appendChild(controls);
+
+        document.getElementById('practiceStartNow').addEventListener('click', ()=>{
+          // start practice as a timed session (redirect to cbt session with practice param)
+          window.location.href = `/cbt-session.html?practice=true&subject=${encodeURIComponent(title)}`;
+        }, { once:true });
+
+        document.getElementById('practiceCloseNow').addEventListener('click', ()=>{
+          practiceModal.classList.remove('active'); practiceModal.setAttribute('aria-hidden','true');
+        }, { once:true });
+
+        practiceModal.classList.add('active'); practiceModal.setAttribute('aria-hidden','false');
+
+        // focus first control
+        setTimeout(()=> {
+          const btn = practiceModal.querySelector('#practiceStartNow');
+          if (btn) btn.focus();
+        }, 60);
+      }
+
+      // AI generation (simulated)
+      let lastAiSet = null;
+      function simulateAiGenerate(topic, difficulty, count) {
+        // placeholder: simulate server/AI latency and produce simple MCQs
+        const questions = [];
+        for (let i=1;i<=count;i++){
+          questions.push({
+            id: `AI-${Date.now()}-${i}`,
+            q: `${topic || 'General'} — AI generated question ${i} (${difficulty})`,
+            choices: ['A','B','C','D'].map((c,idx)=>`${c}. AI option ${idx+1}`),
+            answerIndex: Math.floor(Math.random()*4)
+          });
+        }
+        return questions;
+      }
+
+      genAiBtn.addEventListener('click', ()=>{
+        const topic = (aiTopic.value || '').trim() || 'General';
+        const difficulty = aiDifficulty.value;
+        const count = Number(aiCount.value) || 10;
+        aiStatus.textContent = 'Generating...';
+        genAiBtn.disabled = true;
+        setTimeout(()=>{
+          lastAiSet = simulateAiGenerate(topic, difficulty, count);
+          aiStatus.textContent = `Generated ${lastAiSet.length} questions on "${topic}" (${difficulty}).`;
+          genAiBtn.disabled = false;
+        }, 900);
+      });
+
+      previewAiBtn.addEventListener('click', ()=>{
+        if (!lastAiSet) {
+          alert('No AI quiz available. Click Generate first.');
+          return;
+        }
+
+        // Build a preview layout that's easy on mobile: show brief list, then actions
+        aiModalBody.innerHTML = `<div style="font-weight:800">AI Quiz preview — ${lastAiSet.length} questions</div>`;
+        const list = document.createElement('ol');
+        list.style.marginTop = '12px';
+        lastAiSet.slice(0,10).forEach(q=>{
+          const li = document.createElement('li');
+          li.style.marginBottom = '10px';
+          li.innerHTML = `<div style="font-weight:700">${q.q}</div><div class="muted-small">${q.choices.join(' • ')}</div>`;
+          list.appendChild(li);
+        });
+        aiModalBody.appendChild(list);
+
+        const start = document.createElement('div');
+        start.style.marginTop = '12px';
+        start.innerHTML = `<button class="btn" id="aiStartBtn">Start AI Quiz</button> <button class="btn ghost" id="aiCloseBtn">Close</button>`;
+        aiModalBody.appendChild(start);
+
+        document.getElementById('aiStartBtn').addEventListener('click', ()=>{
+          // start AI quiz session
+          const token = Math.random().toString(36).slice(2,9).toUpperCase();
+          sessionStorage.setItem('eg_ai_quiz_' + token, JSON.stringify(lastAiSet));
+          window.location.href = `/cbt-session.html?ai=${token}`;
+        }, { once:true });
+
+        document.getElementById('aiCloseBtn').addEventListener('click', ()=>{
+          aiModal.classList.remove('active'); aiModal.setAttribute('aria-hidden','true');
+        }, { once:true });
+
+        aiModal.classList.add('active'); aiModal.setAttribute('aria-hidden','false');
+
+        // focus first action
+        setTimeout(()=> {
+          const btn = aiModal.querySelector('#aiStartBtn');
+          if (btn) btn.focus();
+        }, 60);
+      });
+
+      // Buttons
+      refreshBtn.addEventListener('click', ()=> {
+        // In real: fetch from API and update scheduledExams
+        // fetch(`${API_BASE}/exams?schedule_for=SS2`).then(...)
+        alert('Refreshing scheduled exams (mock). In production, this will fetch the server.');
+        renderExams();
+      });
+
+      historyBtn.addEventListener('click', ()=> {
+        window.location.href = '/exam-history.html';
+      });
+
+      // Modal close handlers
+      closeExamModalBtn.addEventListener('click', ()=> {
+        examModal.classList.remove('active'); examModal.setAttribute('aria-hidden','true');
+      });
+      closePracticeModalBtn.addEventListener('click', ()=> {
+        practiceModal.classList.remove('active'); practiceModal.setAttribute('aria-hidden','true');
+      });
+      closeAiModalBtn.addEventListener('click', ()=> {
+        aiModal.classList.remove('active'); aiModal.setAttribute('aria-hidden','true');
+      });
+
+      // Start practice button
+      startPracticeBtn.addEventListener('click', ()=> {
+        const subj = practiceSubject.value;
+        openPracticeForSubject(subj);
+      });
+      browsePracticeBtn.addEventListener('click', ()=> {
+        // In production this would open a curated practice library
+        alert('Open practice library (implement route).');
+      });
+
+      // Sidebar mobile toggles (ensure .hidden removed when opening so CSS ordering doesn't block)
+      hamburger.addEventListener('click', ()=> {
+        sidebar.classList.remove('hidden');
+        sidebar.classList.add('open');
+        sidebar.setAttribute('aria-hidden','false');
+        overlay.classList.add('visible');
+        overlay.setAttribute('aria-hidden','false');
+        document.body.classList.add('no-scroll');
+      });
+
+      overlay.addEventListener('click', ()=> {
+        sidebar.classList.remove('open');
+        sidebar.classList.add('hidden');
+        sidebar.setAttribute('aria-hidden','true');
+        overlay.classList.remove('visible');
+        overlay.setAttribute('aria-hidden','true');
+        document.body.classList.remove('no-scroll');
+      });
+
+      // Close modals with Escape
+      document.addEventListener('keydown', (e)=> {
+        if (e.key === 'Escape') {
+          document.querySelectorAll('.modal.active').forEach(m => {
+            m.classList.remove('active'); m.setAttribute('aria-hidden','true');
+          });
+          // close mobile sidebar if open
+          if (window.innerWidth <= 720 && sidebar.classList.contains('open')) {
+            sidebar.classList.remove('open');
+            sidebar.classList.add('hidden');
+            sidebar.setAttribute('aria-hidden','true');
+            overlay.classList.remove('visible');
+            overlay.setAttribute('aria-hidden','true');
+            document.body.classList.remove('no-scroll');
+          }
+        }
+      });
+
+      // Initialize render
+      renderExams();
+
+      // On resize: ensure sidebar visible on desktop (no animation) and hidden on small screens
+      function handleResize() {
+        if (window.innerWidth > 720) {
+          sidebar.classList.remove('hidden');
+          sidebar.classList.remove('open');
+          sidebar.setAttribute('aria-hidden','false');
+          overlay.classList.remove('visible');
+          overlay.setAttribute('aria-hidden','true');
+          document.body.classList.remove('no-scroll');
+        } else {
+          sidebar.classList.add('hidden');
+          sidebar.setAttribute('aria-hidden','true');
+        }
+      }
+
+      window.addEventListener('resize', handleResize);
+
+      // Set initial state for current viewport
+      handleResize();
+
+    })();
+  </script>
+</body>
+</html>
