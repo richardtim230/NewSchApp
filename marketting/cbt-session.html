@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>CBT Session | ExamGuard</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link href="https://fonts.googleapis.com/css?family=Inter:400,600,700&display=swap" rel="stylesheet">
+  <link rel="icon" href="../logo.png">
+  <style>
+    :root{
+      --bg-0:#f6f8ff; --bg-1:#eef2ff;
+      --accent:#3b82f6; --accent-2:#6366f1; --muted:#6b7280;
+      --card-bg:#ffffff; --sidebar-w:300px; --danger:#ef4444;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial;background:linear-gradient(180deg,var(--bg-0),var(--bg-1));-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;color:#0b2a44}
+    a{color:inherit;text-decoration:none}
+
+    /* App layout + sidebar (desktop instant show) */
+    .app{display:flex;min-height:100vh;align-items:stretch}
+    .overlay{position:fixed;inset:0;background:rgba(2,6,23,0.45);z-index:50;display:none}
+    .overlay.visible{display:block}
+
+    .sidebar{
+      width:var(--sidebar-w);min-width:var(--sidebar-w);
+      background:linear-gradient(180deg,#0f172a 0%, #1e3a8a 100%);color:#fff;padding:20px 16px;position:fixed;left:0;top:0;bottom:0;z-index:100;
+      box-shadow:4px 0 28px rgba(15,23,42,0.12);display:flex;flex-direction:column;gap:14px;overflow-y:auto;transition:none;
+    }
+    @media (max-width:720px){
+      .sidebar{transform:translateX(-110%);transition:transform .28s ease;position:fixed;width:86vw;min-width:86vw}
+      .sidebar.hidden{transform:translateX(-110%)}
+      .sidebar.open{transform:translateX(0);box-shadow:0 24px 48px rgba(2,6,23,0.5)}
+    }
+
+    .brand{display:flex;gap:12px;align-items:center}
+    .brand img{width:44px;height:44px;border-radius:10px;object-fit:cover;border:3px solid rgba(255,224,102,0.12);background:#fff}
+    .brand .title{font-weight:800;font-size:1.05rem;color:#ffe066}
+    .nav{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+    .nav a{display:flex;align-items:center;gap:10px;padding:12px;border-radius:10px;font-weight:700;font-size:1rem;color:#e6eefc}
+    .nav a.active,.nav a:hover{background:rgba(255,255,255,0.04);color:#ffe066}
+
+    .topbar{position:fixed;left:var(--sidebar-w);top:0;width:calc(100vw - var(--sidebar-w));z-index:90;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;backdrop-filter:blur(6px);background:rgba(255,255,255,0.92);border-bottom:1px solid rgba(11,42,60,0.06);box-shadow:0 6px 18px rgba(11,42,60,0.04);min-height:64px}
+    @media (max-width:720px){.topbar{left:0;width:100vw;padding:10px 12px;min-height:56px}}
+
+    .hamburger{display:none;background:var(--accent);color:#fff;border:none;padding:9px 12px;border-radius:10px;cursor:pointer;font-weight:800}
+    @media (max-width:980px){.hamburger{display:inline-flex}}
+
+    .main{margin-left:var(--sidebar-w);padding:20px;flex:1;transition:margin-left .28s;min-height:100vh;padding-top:90px;overflow-y:auto}
+    @media (max-width:720px){.main{margin-left:0;padding:14px;padding-top:80px}}
+
+    /* CBT session layout */
+    .session-wrap{display:grid;grid-template-columns: 1fr 340px; gap:14px; align-items:start}
+    @media (max-width:980px){ .session-wrap{grid-template-columns: 1fr 300px} }
+    @media (max-width:720px){ .session-wrap{grid-template-columns: 1fr} }
+
+    .card{background:var(--card-bg);border-radius:12px;padding:14px;box-shadow:0 8px 20px rgba(11,42,60,0.04);border:1px solid rgba(11,42,60,0.03)}
+    .question-area{min-height:240px;display:flex;flex-direction:column;gap:12px}
+    .question-text{font-weight:800;font-size:1.05rem}
+    .choices{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+    .choice{padding:10px 12px;border-radius:10px;border:1px solid #eef3ff;background:#fff;cursor:pointer;display:flex;gap:12px;align-items:center}
+    .choice.selected{background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#fff;border-color:rgba(59,130,246,0.18)}
+    .choice small{color:var(--muted);font-weight:600}
+
+    .controls{display:flex;gap:8px;align-items:center;margin-top:10px}
+    .btn{padding:9px 12px;border-radius:10px;border:none;cursor:pointer;background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#fff;font-weight:800}
+    .btn.ghost{background:transparent;color:var(--accent-2);border:1px solid rgba(59,130,246,0.08)}
+
+    .timer{font-weight:900;background:#fff;padding:10px;border-radius:10px;border:1px solid #eef3ff;display:inline-block;min-width:110px;text-align:center}
+    .progress{margin-top:8px;height:10px;background:#eef3ff;border-radius:999px;overflow:hidden}
+    .progress > i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent-2));width:0%}
+
+    .side-panel .meta{display:flex;flex-direction:column;gap:8px}
+    .side-actions{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+    .muted-small{font-size:0.9rem;color:var(--muted)}
+    .empty{padding:28px;text-align:center;color:var(--muted);border:1px dashed #eef3ff;border-radius:12px}
+
+    /* result modal */
+    .modal{position:fixed;inset:0;background:rgba(2,6,23,0.5);display:none;align-items:center;justify-content:center;z-index:9999;padding:16px}
+    .modal.active{display:flex}
+    .modal .panel{background:#fff;border-radius:12px;padding:16px;max-width:900px;width:100%;box-shadow:0 20px 60px rgba(2,6,23,0.25)}
+    .modal h2{margin:0 0 8px 0}
+
+    /* accessibility focus */
+    :focus{outline:3px solid rgba(99,102,241,0.18);outline-offset:2px;border-radius:6px}
+
+    /* small helpers */
+    .right{text-align:right}
+    .kbd{display:inline-block;padding:4px 8px;border-radius:6px;border:1px solid #e6eefc;background:#f8fbff;font-weight:700}
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <div class="overlay" id="overlay" aria-hidden="true"></div>
+
+    <aside class="sidebar" id="sidebar" aria-label="Main navigation" role="navigation" aria-hidden="false">
+      <div class="brand">
+        <img src="../logo.png" alt="logo">
+        <div>
+          <div class="title">Student Portal</div>
+          <div class="muted-small">CBT Session</div>
+        </div>
+      </div>
+
+      <nav class="nav" aria-label="primary">
+        <a href="student.html">🏠 Dashboard</a>
+        <a href="marketting/cbt-exam.html">🖥️ Exams</a>
+        <a href="marketting/results.html">📘 Results</a>
+      </nav>
+
+      <div class="spacer" aria-hidden="true"></div>
+
+      <div class="profile">
+        <img src="../avatar.jpg" alt="student" style="width:44px;height:44px;border-radius:8px">
+        <div>
+          <div style="font-weight:800" id="studentName">Adaobi Chukwu</div>
+          <div class="muted-small" id="studentClass">SS2 — Biology</div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="topbar">
+      <div style="display:flex;gap:12px;align-items:center;">
+        <button class="hamburger" id="hamburger" aria-label="Open menu">☰</button>
+        <div>
+          <div style="font-weight:900">CBT Session</div>
+          <div class="muted-small">Exam in progress</div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:12px;align-items:center;">
+        <div class="kbd" id="sessionId">SESSION</div>
+      </div>
+    </div>
+
+    <main class="main" id="main" role="main" tabindex="-1">
+      <div class="session-wrap">
+        <section class="card" aria-labelledby="questionHeading">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+            <div>
+              <div id="questionHeading" style="font-weight:900;font-size:1rem">Question</div>
+              <div class="muted-small" id="examTitle">—</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <div class="timer" id="timer" aria-live="polite">00:00</div>
+              <div style="margin-left:6px" class="muted-small">Time left</div>
+            </div>
+          </div>
+
+          <div class="progress" aria-hidden="false" style="margin-top:10px"><i id="progBar" style="width:0%"></i></div>
+
+          <div class="question-area" id="questionArea" style="margin-top:12px">
+            <!-- rendered by JS -->
+            <div id="questionPlaceholder" class="muted-small">Loading question...</div>
+          </div>
+
+          <div class="controls">
+            <div>
+              <button class="btn ghost" id="prevBtn">Previous</button>
+              <button class="btn ghost" id="nextBtn">Next</button>
+            </div>
+
+            <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+              <button class="btn ghost" id="flagBtn" aria-pressed="false">Flag</button>
+              <button class="btn" id="saveBtn">Save answer</button>
+              <button class="btn" id="submitBtn" style="background:linear-gradient(90deg,var(--danger),#c81d32)">Submit</button>
+            </div>
+          </div>
+        </section>
+
+        <aside class="card side-panel" aria-labelledby="sessionMeta">
+          <div id="sessionMeta" style="font-weight:800">Session overview</div>
+          <div class="meta" style="margin-top:12px">
+            <div>Student: <strong id="metaStudent">Adaobi</strong></div>
+            <div>Exam: <strong id="metaExam">—</strong></div>
+            <div style="margin-top:6px">Questions: <strong id="metaTotal">0</strong></div>
+            <div>Answered: <strong id="metaAnswered">0</strong></div>
+            <div>Flagged: <strong id="metaFlagged">0</strong></div>
+          </div>
+
+          <div class="side-actions">
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn ghost" id="reviewListBtn">Review list</button>
+              <button class="btn" id="finishBtn">Finish & submit</button>
+            </div>
+
+            <div style="margin-top:12px" class="muted-small">
+              Shortcuts: <span class="kbd">←</span> Prev <span class="kbd">→</span> Next <span class="kbd">1-4</span> choose
+            </div>
+          </div>
+
+          <div style="margin-top:12px">
+            <div style="font-weight:700;margin-bottom:6px">Question map</div>
+            <div id="qMap" style="display:grid;grid-template-columns:repeat(5,36px);gap:6px"></div>
+          </div>
+        </aside>
+      </div>
+    </main>
+
+    <!-- Result modal -->
+    <div class="modal" id="resultModal" role="dialog" aria-modal="true" aria-hidden="true">
+      <div class="panel" role="document">
+        <h2 id="resultTitle">Results</h2>
+        <div id="resultBody" class="muted-small">Processing...</div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+          <button class="btn ghost" id="resultCloseBtn">Close</button>
+          <button class="btn" id="downloadReceiptBtn">Download receipt</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      // Simple CBT session client
+      const urlParams = new URLSearchParams(window.location.search);
+      const examId = urlParams.get('exam');
+      const isPractice = urlParams.get('practice') === 'true';
+      const aiToken = urlParams.get('ai');
+      const sessionKeyPrefix = 'eg_cbt_session_';
+      const autoSaveIntervalMs = 4000;
+
+      const studentName = document.getElementById('metaStudent');
+      const examTitleEl = document.getElementById('metaExam');
+      const metaTotal = document.getElementById('metaTotal');
+      const metaAnswered = document.getElementById('metaAnswered');
+      const metaFlagged = document.getElementById('metaFlagged');
+      const progBar = document.getElementById('progBar');
+      const timerEl = document.getElementById('timer');
+      const questionArea = document.getElementById('questionArea');
+      const questionPlaceholder = document.getElementById('questionPlaceholder');
+      const prevBtn = document.getElementById('prevBtn');
+      const nextBtn = document.getElementById('nextBtn');
+      const saveBtn = document.getElementById('saveBtn');
+      const submitBtn = document.getElementById('submitBtn');
+      const flagBtn = document.getElementById('flagBtn');
+      const qMapEl = document.getElementById('qMap');
+      const reviewListBtn = document.getElementById('reviewListBtn');
+      const finishBtn = document.getElementById('finishBtn');
+      const sessionIdEl = document.getElementById('sessionId');
+
+      const resultModal = document.getElementById('resultModal');
+      const resultBody = document.getElementById('resultBody');
+      const resultCloseBtn = document.getElementById('resultCloseBtn');
+      const downloadReceiptBtn = document.getElementById('downloadReceiptBtn');
+
+      // Prevent accidental navigation
+      window.addEventListener('beforeunload', function (e) {
+        // show confirmation if session active
+        if (sessionState && !sessionState.submitted) {
+          e.preventDefault();
+          e.returnValue = '';
+        }
+      });
+
+      // Keyboard shortcuts
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight') showNext();
+        if (e.key === 'ArrowLeft') showPrev();
+        if (/^[1-4]$/.test(e.key)) chooseOption(parseInt(e.key, 10) - 1);
+      });
+
+      // Sidebar mobile behavior (same fix as other pages)
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('overlay');
+      const hamburger = document.getElementById('hamburger');
+      if (hamburger) {
+        hamburger.addEventListener('click', () => {
+          sidebar.classList.remove('hidden');
+          sidebar.classList.add('open');
+          overlay.classList.add('visible');
+          document.body.classList.add('no-scroll');
+        });
+        overlay.addEventListener('click', () => {
+          sidebar.classList.remove('open');
+          sidebar.classList.add('hidden');
+          overlay.classList.remove('visible');
+          document.body.classList.remove('no-scroll');
+        });
+      }
+
+      // Session state
+      let sessionState = {
+        id: null,
+        exam: null,
+        questions: [],
+        answers: {}, // qid -> selectedIndex
+        flags: {}, // qid -> true
+        currentIndex: 0,
+        durationSec: 0,
+        remaining: 0,
+        startedAt: null,
+        autosaveT: null,
+        submitted: false
+      };
+
+      // Utilities
+      function uid(len = 8) { return Math.random().toString(36).slice(2, 2 + len).toUpperCase(); }
+      function el(tag, cls = '') { const e = document.createElement(tag); if (cls) e.className = cls; return e; }
+
+      // Load exam/practice/ai data
+      async function loadSession() {
+        // simple student name placeholder; in production get from auth/session
+        const student = (localStorage.getItem('eg_application') && JSON.parse(localStorage.getItem('eg_application')).firstName) || 'Adaobi';
+        studentName.textContent = student;
+
+        // Determine source
+        if (examId) {
+          // Real exam: fetch exam meta + questions from API (mock here)
+          sessionState.id = 'EXAMSESSION-' + uid(6);
+          sessionState.exam = { id: examId, title: 'Scheduled exam ' + examId };
+          // Mock: create 15 questions
+          sessionState.questions = generateMockQuestions(15, 'Exam');
+          sessionState.durationSec = 90 * 60 / 1; // 90 mins default; for demo reduce later
+          // For demo shorten to 10 minutes unless query param override
+          sessionState.durationSec = 10 * 60;
+        } else if (isPractice) {
+          sessionState.id = 'PRACTICE-' + uid(6);
+          const subject = (new URLSearchParams(window.location.search)).get('subject') || 'Practice';
+          sessionState.exam = { id: sessionState.id, title: `${subject} — Practice set` };
+          sessionState.questions = generateMockQuestions(8, subject);
+          sessionState.durationSec = 10 * 60; // 10 minutes
+        } else if (aiToken) {
+          const key = 'eg_ai_quiz_' + aiToken;
+          const raw = sessionStorage.getItem(key);
+          if (!raw) {
+            alert('AI quiz not found or expired.');
+            window.location.href = '/marketting/cbt-exam.html';
+            return;
+          }
+          sessionState.id = 'AI-' + uid(6);
+          sessionState.exam = { id: sessionState.id, title: 'AI Quiz' };
+          sessionState.questions = JSON.parse(raw).map((q, i) => ({
+            id: q.id || ('AIQ' + i),
+            q: q.q,
+            choices: q.choices,
+            correctIndex: q.answerIndex // may exist
+          }));
+          sessionState.durationSec = Math.max(5, Math.min(30, Math.ceil(sessionState.questions.length * 1.2))) * 60; // heuristic
+          sessionState.durationSec = 10 * 60;
+        } else {
+          // No context — redirect back to exam listing
+          alert('No exam specified. Redirecting to exams page.');
+          window.location.href = '/marketting/cbt-exam.html';
+          return;
+        }
+
+        // Try to restore autosaved answers
+        const saved = localStorage.getItem(sessionKeyPrefix + sessionState.id);
+        if (saved) {
+          try {
+            const s = JSON.parse(saved);
+            sessionState.answers = s.answers || {};
+            sessionState.flags = s.flags || {};
+            sessionState.remaining = typeof s.remaining === 'number' ? s.remaining : sessionState.durationSec;
+            sessionState.startedAt = s.startedAt || null;
+            sessionState.currentIndex = s.currentIndex || 0;
+          } catch (e) { console.warn(e); sessionState.remaining = sessionState.durationSec; }
+        } else {
+          sessionState.remaining = sessionState.durationSec;
+        }
+
+        sessionIdEl.textContent = sessionState.id;
+        examTitleEl.textContent = sessionState.exam.title;
+        metaTotal.textContent = sessionState.questions.length;
+        updateMetaCounts();
+
+        renderQuestion(sessionState.currentIndex);
+        renderQuestionMap();
+        startTimerIfNeeded();
+        startAutoSave();
+      }
+
+      // Mock question generator — in production fetch from API
+      function generateMockQuestions(n = 10, subject = 'Topic') {
+        const out = [];
+        for (let i = 1; i <= n; i++) {
+          const qid = `${subject.replace(/\s+/g,'')}-${i}`;
+          out.push({
+            id: qid,
+            q: `${subject} — Sample question ${i}. Which option best answers the question?`,
+            choices: [
+              `Option A for question ${i}`,
+              `Option B for question ${i}`,
+              `Option C for question ${i}`,
+              `Option D for question ${i}`
+            ],
+            correctIndex: Math.floor(Math.random() * 4),
+            points: 1
+          });
+        }
+        return out;
+      }
+
+      // Render question
+      function renderQuestion(index) {
+        const q = sessionState.questions[index];
+        sessionState.currentIndex = index;
+        // Clear and build
+        questionArea.innerHTML = '';
+        const header = el('div');
+        header.innerHTML = `<div class="question-text">Q${index + 1}. ${escapeHtml(q.q)}</div>`;
+        questionArea.appendChild(header);
+
+        const choicesWrap = el('div', 'choices');
+        q.choices.forEach((c, idx) => {
+          const ch = el('button', 'choice');
+          ch.setAttribute('type', 'button');
+          ch.setAttribute('data-index', idx);
+          ch.setAttribute('aria-pressed', (sessionState.answers[q.id] === idx) ? 'true' : 'false');
+          ch.innerHTML = `<div style="width:26px;text-align:center;font-weight:800">${String.fromCharCode(65 + idx)}</div><div style="flex:1;text-align:left">${escapeHtml(c)}</div>`;
+          if (sessionState.answers[q.id] === idx) ch.classList.add('selected');
+          ch.addEventListener('click', () => {
+            selectAnswer(q.id, idx);
+          });
+          choicesWrap.appendChild(ch);
+        });
+        questionArea.appendChild(choicesWrap);
+
+        // optional explanation / footnote area
+        const foot = el('div', 'muted-small');
+        foot.style.marginTop = '8px';
+        foot.textContent = `Marks: ${q.points || 1}`;
+        questionArea.appendChild(foot);
+
+        // update flag button state
+        flagBtn.setAttribute('aria-pressed', sessionState.flags[q.id] ? 'true' : 'false');
+        flagBtn.textContent = sessionState.flags[q.id] ? 'Flagged' : 'Flag';
+        // update progress UI
+        updateProgress();
+        // focus first choice for keyboard accessibility
+        setTimeout(() => {
+          const first = questionArea.querySelector('.choice');
+          if (first) first.focus();
+        }, 60);
+      }
+
+      function selectAnswer(qid, idx) {
+        sessionState.answers[qid] = idx;
+        updateMetaCounts();
+        renderQuestion(sessionState.currentIndex); // refresh selections
+        // autosave write
+        saveSession();
+      }
+
+      function chooseOption(idx) {
+        const q = sessionState.questions[sessionState.currentIndex];
+        if (!q) return;
+        selectAnswer(q.id, idx);
+      }
+
+      // Navigation
+      function showPrev() {
+        if (sessionState.currentIndex > 0) {
+          renderQuestion(sessionState.currentIndex - 1);
+        }
+      }
+      function showNext() {
+        if (sessionState.currentIndex < sessionState.questions.length - 1) {
+          renderQuestion(sessionState.currentIndex + 1);
+        }
+      }
+
+      prevBtn.addEventListener('click', showPrev);
+      nextBtn.addEventListener('click', showNext);
+
+      // Save and flag
+      saveBtn.addEventListener('click', () => { saveSession(); alert('Answer saved'); });
+      flagBtn.addEventListener('click', () => {
+        const q = sessionState.questions[sessionState.currentIndex];
+        if (!q) return;
+        sessionState.flags[q.id] = !sessionState.flags[q.id];
+        flagBtn.setAttribute('aria-pressed', sessionState.flags[q.id] ? 'true' : 'false');
+        flagBtn.textContent = sessionState.flags[q.id] ? 'Flagged' : 'Flag';
+        updateMetaCounts();
+        saveSession();
+      });
+
+      // Question map
+      function renderQuestionMap() {
+        qMapEl.innerHTML = '';
+        sessionState.questions.forEach((q, i) => {
+          const btn = el('button');
+          btn.className = 'kbd';
+          btn.style.width = '36px';
+          btn.style.height = '36px';
+          btn.style.padding = '6px';
+          btn.textContent = i + 1;
+          btn.setAttribute('data-i', i);
+          const answered = sessionState.answers[q.id] !== undefined;
+          if (answered) { btn.style.background = 'linear-gradient(90deg,var(--accent),var(--accent-2))'; btn.style.color = '#fff'; }
+          if (sessionState.flags[q.id]) { btn.style.border = '2px solid var(--danger)'; }
+          btn.addEventListener('click', () => {
+            renderQuestion(i);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          });
+          qMapEl.appendChild(btn);
+        });
+      }
+
+      function updateMetaCounts() {
+        metaAnswered.textContent = Object.keys(sessionState.answers).length;
+        metaFlagged.textContent = Object.keys(sessionState.flags).filter(k => sessionState.flags[k]).length;
+        renderQuestionMap();
+        // progress bar percent
+        const percent = Math.round((Object.keys(sessionState.answers).length / Math.max(1, sessionState.questions.length)) * 100);
+        progBar.style.width = percent + '%';
+      }
+
+      // Timer
+      let timerInterval = null;
+      function startTimerIfNeeded() {
+        if (!sessionState.startedAt) sessionState.startedAt = Date.now();
+        if (sessionState.remaining <= 0) sessionState.remaining = 0;
+        updateTimerDisplay();
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+          sessionState.remaining -= 1;
+          if (sessionState.remaining <= 0) {
+            sessionState.remaining = 0;
+            clearInterval(timerInterval);
+            // auto submit
+            autoSubmit('Time is up — auto-submitting your answers.');
+          }
+          updateTimerDisplay();
+        }, 1000);
+      }
+
+      function formatTime(sec) {
+        const m = Math.floor(sec / 60).toString().padStart(2, '0');
+        const s = Math.floor(sec % 60).toString().padStart(2, '0');
+        return `${m}:${s}`;
+      }
+
+      function updateTimerDisplay() {
+        timerEl.textContent = formatTime(sessionState.remaining);
+      }
+
+      // Autosave
+      function saveSession() {
+        const payload = {
+          answers: sessionState.answers,
+          flags: sessionState.flags,
+          currentIndex: sessionState.currentIndex,
+          remaining: sessionState.remaining,
+          startedAt: sessionState.startedAt
+        };
+        localStorage.setItem(sessionKeyPrefix + sessionState.id, JSON.stringify(payload));
+        updateMetaCounts();
+      }
+
+      function startAutoSave() {
+        if (sessionState.autosaveT) clearInterval(sessionState.autosaveT);
+        sessionState.autosaveT = setInterval(saveSession, autoSaveIntervalMs);
+      }
+
+      // Submission flow
+      submitBtn.addEventListener('click', () => {
+        const ok = confirm('Submit your answers now? You will not be able to change them after submission.');
+        if (!ok) return;
+        doSubmit('User submitted');
+      });
+
+      finishBtn.addEventListener('click', () => {
+        const ok = confirm('Finish & submit now?');
+        if (!ok) return;
+        doSubmit('User finished from sidebar');
+      });
+
+      function autoSubmit(reason) {
+        // reason is optional; auto invoked by timer
+        doSubmit(reason || 'Auto-submit');
+      }
+
+      async function doSubmit(reason = '') {
+        if (sessionState.submitted) return;
+        // stop timer & autosave
+        if (timerInterval) clearInterval(timerInterval);
+        if (sessionState.autosaveT) clearInterval(sessionState.autosaveT);
+
+        // Prepare payload
+        const answers = sessionState.answers;
+        const totalQuestions = sessionState.questions.length;
+        // Compute score if correctIndex exists
+        let score = 0;
+        let maxScore = 0;
+        const details = [];
+        sessionState.questions.forEach(q => {
+          const correct = typeof q.correctIndex === 'number' ? q.correctIndex : null;
+          const selected = typeof answers[q.id] === 'number' ? answers[q.id] : null;
+          const pts = q.points || 1;
+          maxScore += pts;
+          const got = (correct !== null && selected !== null && selected === correct) ? pts : 0;
+          score += got;
+          details.push({ id: q.id, q: q.q, selected, correct, pts, got });
+        });
+
+        // Mark as submitted
+        sessionState.submitted = true;
+        saveSession(); // final save (keeps record)
+        // Simulate server submission (POST)
+        try {
+          // In production, POST to server with token/auth
+          // const res = await fetch(`${API_BASE}/cbt/submit`, { method:'POST', body: JSON.stringify({ sessionId: sessionState.id, answers }), headers:{'Content-Type':'application/json'}});
+          // const result = await res.json();
+          const result = {
+            ok: true,
+            score,
+            maxScore,
+            details,
+            timestamp: new Date().toISOString(),
+            trace: 'TRC-' + uid(8)
+          };
+          showResults(result);
+        } catch (e) {
+          console.error(e);
+          alert('Network error while submitting. Your answers were saved locally and will be retried.');
+          // leave saved state and mark submitted false so user can try again
+          sessionState.submitted = false;
+          saveSession();
+        }
+      }
+
+      // Results UI
+      function showResults(result) {
+        resultModal.classList.add('active');
+        resultModal.setAttribute('aria-hidden', 'false');
+        const percent = Math.round((result.score / result.maxScore) * 100);
+        resultBody.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+            <div>
+              <div style="font-size:1.2rem;font-weight:900">${result.score} / ${result.maxScore}</div>
+              <div class="muted-small">${percent}%</div>
+            </div>
+            <div class="muted-small right">Submitted: ${new Date(result.timestamp).toLocaleString()}</div>
+          </div>
+
+          <div style="margin-top:12px">
+            <div style="font-weight:800;margin-bottom:6px">Breakdown</div>
+            <div class="muted-small" id="resultList"></div>
+          </div>
+        `;
+        const list = document.getElementById('resultList');
+        result.details.slice(0, 50).forEach((d, i) => {
+          const row = document.createElement('div');
+          row.style.padding = '8px 0';
+          row.style.borderBottom = '1px dashed #eef3ff';
+          row.innerHTML = `<div style="font-weight:700">Q${i + 1}: ${escapeHtml(d.q)}</div>
+            <div class="muted-small">Selected: ${d.selected === null ? '—' : String.fromCharCode(65 + d.selected)} • Correct: ${d.correct === null ? '—' : String.fromCharCode(65 + d.correct)} • Score: ${d.got}/${d.pts}</div>
+          `;
+          list.appendChild(row);
+        });
+
+        // Download receipt action
+        downloadReceiptBtn.onclick = () => {
+          const txt = buildReceiptText(result);
+          const blob = new Blob([txt], { type: 'text/plain' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${sessionState.id}_receipt.txt`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+        };
+
+        resultCloseBtn.onclick = () => {
+          resultModal.classList.remove('active');
+          resultModal.setAttribute('aria-hidden', 'true');
+          // After close: navigate to results or exam listing
+          window.location.href = '/marketting/results.html';
+        };
+      }
+
+      function buildReceiptText(result) {
+        const lines = [];
+        lines.push('ExamGuard - CBT Receipt');
+        lines.push('Student: ' + (studentName.textContent || 'Student'));
+        lines.push('Session ID: ' + sessionState.id);
+        lines.push('Exam: ' + (sessionState.exam.title || ''));
+        lines.push('Score: ' + result.score + ' / ' + result.maxScore + ' (' + Math.round((result.score / result.maxScore) * 100) + '%)');
+        lines.push('Submitted: ' + result.timestamp);
+        lines.push('Trace: ' + result.trace);
+        lines.push('');
+        lines.push('Details:');
+        result.details.forEach((d, i) => {
+          lines.push(`${i + 1}. ${d.q} — selected: ${d.selected === null ? '—' : String.fromCharCode(65 + d.selected)}; correct: ${d.correct === null ? '—' : String.fromCharCode(65 + d.correct)}; score: ${d.got}/${d.pts}`);
+        });
+        return lines.join('\n');
+      }
+
+      // Utility: escape for innerText safety
+      function escapeHtml(s) {
+        if (!s) return '';
+        return String(s).replace(/[&<>"']/g, function (m) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m]; });
+      }
+
+      // Review list popup (simple)
+      reviewListBtn.addEventListener('click', () => {
+        const list = sessionState.questions.map((q, i) => {
+          const answered = sessionState.answers[q.id] !== undefined;
+          const flagged = sessionState.flags[q.id];
+          return `${i + 1}. ${answered ? '✓' : '○'}${flagged ? ' [!]' : ''} ${q.q}`;
+        }).join('\n\n');
+        alert('Question list:\n\n' + list);
+      });
+
+      // Start
+      loadSession();
+
+      // Expose for debugging (optional)
+      window._eg_session = sessionState;
+
+    })();
+  </script>
+</body>
+</html>
