@@ -1,0 +1,676 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Fees & Payments | ExamGuard</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link href="https://fonts.googleapis.com/css?family=Inter:400,600,700&display=swap" rel="stylesheet">
+  <link rel="icon" href="../logo.png">
+  <style>
+    :root{
+      --bg-0:#f6f8ff; --bg-1:#eef2ff;
+      --accent:#0ea5ff; --accent-2:#6366f1; --muted:#6b7280;
+      --card-bg:#ffffff; --radius:12px;
+      --sidebar-w:300px;
+      --success:#10b981; --danger:#ef4444;
+      --glass: rgba(255,255,255,0.86);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial;background:linear-gradient(180deg,var(--bg-0),var(--bg-1));-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;color:#0b2440}
+    a{color:inherit;text-decoration:none}
+    /* App layout */
+    .app{display:flex;min-height:100vh;align-items:stretch}
+    .overlay{position:fixed;inset:0;background:rgba(2,6,23,0.45);z-index:50;display:none}
+    .overlay.visible{display:block}
+    /* Sidebar */
+    .sidebar{
+      width:var(--sidebar-w);min-width:var(--sidebar-w);
+      background:linear-gradient(180deg,#07142b 0%, #0f2b5a 100%); color:#fff;
+      padding:20px 16px; position:fixed; left:0; top:0; bottom:0; z-index:100;
+      box-shadow:4px 0 28px rgba(2,8,23,0.15); transform:translateX(0); transition:transform .28s ease;
+      display:flex; flex-direction:column; gap:14px; overflow-y:auto;
+    }
+    .sidebar.hidden{transform:translateX(-110%)}
+    .brand{display:flex;gap:12px;align-items:center}
+    .brand img{width:44px;height:44px;border-radius:10px;object-fit:cover;border:3px solid rgba(255,224,102,0.12);background:#fff}
+    .brand .title{font-weight:800;font-size:1.05rem;color:#ffea7a}
+    .nav{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+    .nav a{display:flex;align-items:center;gap:10px;padding:12px;border-radius:10px;font-weight:700;font-size:1rem;color:#e6eefc;background:transparent;transition:background .12s,transform .08s}
+    .nav a:hover,.nav a.active{background:rgba(255,255,255,0.04);color:#ffea7a;transform:translateX(3px)}
+    .profile{display:flex;gap:12px;align-items:center;padding-top:10px;border-top:1px solid rgba(255,255,255,0.04)}
+    .profile img{width:48px;height:48px;border-radius:10px;object-fit:cover;border:2px solid #ffe066}
+    .spacer{flex:1}
+    /* Topbar */
+    .topbar{
+      position:fixed; left:var(--sidebar-w); top:0; width:calc(100vw - var(--sidebar-w)); z-index:90;
+      display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;
+      backdrop-filter: blur(6px); background:var(--glass); border-bottom:1px solid rgba(11,42,60,0.06);
+      box-shadow:0 6px 18px rgba(11,42,60,0.04); min-height:64px;
+    }
+    .hamburger{display:none;background:var(--accent);color:#fff;border:none;padding:9px 12px;border-radius:10px;cursor:pointer;font-weight:800;font-size:1.05rem}
+    .page-title{font-weight:800;font-size:1.05rem;color:var(--accent-2)}
+    .main{margin-left:var(--sidebar-w);padding:20px;flex:1;transition:margin-left .28s;min-height:100vh;overflow-y:auto;padding-top:90px}
+    /* Responsive */
+    @media (max-width:980px){ .hamburger{display:inline-flex} .topbar{left:0;width:100vw;padding:10px 12px} }
+    @media (max-width:720px){
+      :root{--sidebar-w:86vw}
+      .sidebar{transform:translateX(-110%);position:fixed;width:var(--sidebar-w);min-width:var(--sidebar-w)}
+      .sidebar.open{transform:translateX(0);box-shadow: 0 24px 48px rgba(2,6,23,0.5)}
+      .overlay{display:none}
+      .overlay.visible{display:block}
+      body.no-scroll{overflow:hidden;height:100vh;touch-action:none}
+      .main{margin-left:0;padding:14px;padding-top:80px}
+      .nav a{padding:14px}
+    }
+
+    /* Grid & Card styles */
+    .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px;align-items:start}
+    .card{background:var(--card-bg);border-radius:12px;padding:16px;box-shadow:0 8px 20px rgba(11,42,60,0.04);border:1px solid rgba(11,42,60,0.03)}
+    .col-4{grid-column:span 4}.col-8{grid-column:span 8}.col-6{grid-column:span 6}.col-12{grid-column:1 / -1}
+    .muted{color:var(--muted)}
+    .small{font-size:0.92rem;color:var(--muted)}
+    /* Fees header */
+    .fees-hero{display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+    .balance{display:flex;gap:14px;align-items:center}
+    .balance .amount{font-weight:900;font-size:1.8rem;color:var(--accent-2)}
+    .balance .label{color:var(--muted)}
+    .actions{display:flex;gap:10px;align-items:center}
+    .btn{padding:10px 14px;border-radius:10px;border:none;cursor:pointer;background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#fff;font-weight:800}
+    .btn.ghost{background:transparent;border:1px solid rgba(59,130,246,0.08);color:var(--accent-2)}
+    .btn.neutral{background:#f3f6fb;color:#0b2033}
+    .chip{padding:8px 10px;border-radius:999px;background:#fff;border:1px solid #eef3ff;font-weight:700}
+
+    /* Invoice table */
+    .table{width:100%;border-collapse:collapse}
+    .table thead th{background:#f8fbff;padding:10px;text-align:left;font-weight:800;border-bottom:1px solid #eef3ff}
+    .table tbody td{padding:10px;border-bottom:1px solid #f1f5fb}
+    .status{padding:6px 8px;border-radius:999px;font-weight:800;font-size:0.85rem}
+    .status.paid{background:rgba(16,185,129,0.12);color:var(--success);border:1px solid rgba(16,185,129,0.12)}
+    .status.unpaid{background:rgba(239,68,68,0.08);color:var(--danger);border:1px solid rgba(239,68,68,0.06)}
+    .status.partial{background:rgba(250,204,21,0.12);color:#b45309;border:1px solid rgba(250,204,21,0.08)}
+
+    /* Mobile invoice cards */
+    .invoice-cards{display:none;gap:12px}
+    @media (max-width:720px){
+      .grid{grid-template-columns:1fr}
+      .col-4,.col-8,.col-6{grid-column:auto}
+      .invoice-table-wrap{display:none}
+      .invoice-cards{display:flex;flex-direction:column}
+    }
+
+    /* Filters */
+    .filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .filters input[type="search"], .filters select{padding:8px 10px;border-radius:8px;border:1px solid #e6e9ef;background:#fff}
+
+    /* modals */
+    .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(2,6,23,0.45);z-index:9999;padding:16px}
+    .modal.active{display:flex}
+    .modal .panel{background:#fff;border-radius:12px;max-width:900px;width:100%;overflow:hidden;box-shadow:0 20px 60px rgba(2,6,23,0.25)}
+    .modal .panel .body{padding:18px}
+    .modal .panel .head{padding:12px 18px;border-bottom:1px solid #eef3ff;background:#f8fbff;display:flex;align-items:center;justify-content:space-between}
+
+    /* payment form */
+    .payment-methods{display:flex;gap:8px;flex-wrap:wrap}
+    .pm{padding:10px 12px;border-radius:10px;border:1px solid #eef3ff;background:#fff;cursor:pointer}
+    .pm.active{box-shadow:0 8px 20px rgba(11,42,60,0.06);border-color:var(--accent-2)}
+    .field{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+    .field input, .field select{padding:10px;border-radius:8px;border:1px solid #e6e9ef}
+
+    /* utilities */
+    .right{margin-left:auto}
+    .muted-small{font-size:0.9rem;color:var(--muted)}
+    .empty{padding:28px;text-align:center;color:var(--muted);border:1px dashed #eef3ff;border-radius:12px}
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <div class="overlay" id="overlay" aria-hidden="true"></div>
+
+    <aside class="sidebar hidden" id="sidebar" aria-label="Main navigation" role="navigation">
+      <div class="brand" aria-hidden="false">
+        <img src="../logo.png" alt="Logo">
+        <div>
+          <div class="title">Student Portal</div>
+          <div class="subtitle" id="schoolSubtitle" style="font-size:0.95rem;color:rgba(255,255,255,0.88)">Sunrise High • Student</div>
+        </div>
+      </div>
+
+      <nav class="nav" id="nav" aria-label="Primary">
+        <a href="student.html" data-section="home">🏠 Dashboard</a>
+        <a href="courses.html" data-section="courses">📘 My Courses</a>
+        <a href="assignments.html" data-section="assignments">📝 Assignments</a>
+        <a href="timetable.html" data-section="timetable">⏰ Timetable</a>
+        <a href="messages.html" data-section="messages">✉️ Messages</a>
+        <a href="fees.html" data-section="fees" class="active">💳 Fees & Payments</a>
+        <a href="resources.html" data-section="resources">📂 Resources</a>
+        <a href="settings.html" data-section="settings">⚙️ Settings</a>
+      </nav>
+
+      <div class="spacer" aria-hidden="true"></div>
+
+      <div class="profile" role="region" aria-label="Student profile">
+        <img src="../avatar.jpg" alt="Student avatar" id="studentAvatar">
+        <div>
+          <div class="name" id="studentName">Adaobi Chukwu</div>
+          <div class="muted" id="studentClass">SS2 — Biology</div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="topbar" id="topbar">
+      <div style="display:flex;gap:12px;align-items:center;">
+        <button class="hamburger" id="hamburger" aria-label="Open menu">☰</button>
+        <div>
+          <div class="page-title" id="pageTitle">Fees & Payments</div>
+          <div class="small muted">Secure, auditable & receipt-backed payments</div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:12px;align-items:center;">
+        <div class="chip" aria-hidden="true">Session: 2025 / 2026</div>
+        <img src="../avatar.jpg" alt="You" style="width:44px;height:44px;border-radius:8px;object-fit:cover;border:2px solid #fff;" id="topbarAvatar">
+      </div>
+    </div>
+
+    <main class="main" id="main" role="main" tabindex="-1">
+      <section aria-labelledby="feesHeading">
+        <div class="card fees-hero" style="margin-bottom:14px">
+          <div class="balance" aria-hidden="false">
+            <div>
+              <div class="small muted">Outstanding Balance</div>
+              <div class="amount" id="outstanding">₦ 0.00</div>
+              <div class="muted-small" id="balanceMeta">No unpaid invoices</div>
+            </div>
+          </div>
+
+          <div class="actions" role="region" aria-label="Actions">
+            <button class="btn" id="payNowBtn" aria-haspopup="dialog">Pay Now</button>
+            <button class="btn ghost" id="exportCsvBtn">Export CSV</button>
+            <button class="btn neutral" id="printBtn">Print</button>
+          </div>
+        </div>
+
+        <div class="grid" style="margin-bottom:12px;">
+          <div class="card col-4" style="min-height:120px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div style="font-weight:800">Summary</div>
+              <div class="small muted">Last 12 months</div>
+            </div>
+            <div style="margin-top:10px">
+              <div class="small muted">Total billed</div>
+              <div style="font-weight:900;font-size:1.18rem" id="totalBilled">₦ 0.00</div>
+              <div style="margin-top:8px" class="small muted">Paid: <strong id="totalPaid">₦ 0.00</strong> • Remaining: <strong id="totalRem">₦ 0.00</strong></div>
+            </div>
+          </div>
+
+          <div class="card col-4" style="min-height:120px;">
+            <div style="font-weight:800">Upcoming</div>
+            <div style="margin-top:10px">
+              <div id="nextDueTitle" style="font-weight:700">No upcoming payments</div>
+              <div class="small muted" id="nextDueMeta">--</div>
+              <div style="margin-top:10px" class="muted-small">You will receive reminders via email & SMS.</div>
+            </div>
+          </div>
+
+          <div class="card col-4" style="min-height:120px;">
+            <div style="font-weight:800">Quick Links</div>
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+              <button class="pm" onclick="openPaymentHistory()">Payment history</button>
+              <button class="pm" onclick="openInvoiceUpload()">Upload proof</button>
+              <button class="pm" onclick="openSupport()">Contact support</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="font-weight:800">Invoices</div>
+            <div class="small muted">Filter & search</div>
+          </div>
+
+          <div style="margin-top:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+            <div class="filters" role="search" aria-label="Invoice filters">
+              <input type="search" id="invoiceSearch" placeholder="Search by invoice reference, description or amount" aria-label="Search invoices">
+              <select id="statusFilter" aria-label="Filter by payment status">
+                <option value="">All statuses</option>
+                <option value="unpaid">Unpaid</option>
+                <option value="partial">Partial</option>
+                <option value="paid">Paid</option>
+              </select>
+              <select id="yearFilter" aria-label="Filter by year">
+                <option value="">All years</option>
+                <option>2026</option>
+                <option>2025</option>
+                <option>2024</option>
+              </select>
+            </div>
+
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="btn ghost" id="newInvoiceBtn">Request invoice</button>
+              <button class="btn" id="toggleViewBtn" aria-pressed="false">Mobile view</button>
+            </div>
+          </div>
+
+          <div style="margin-top:12px" class="invoice-table-wrap">
+            <table class="table" role="table" aria-label="Invoices table">
+              <thead>
+                <tr><th>Ref</th><th>Description</th><th>Due</th><th>Amount</th><th>Status</th><th class="right">Actions</th></tr>
+              </thead>
+              <tbody id="invoicesTbody" role="rowgroup">
+                <!-- populated by JS -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Mobile cards -->
+          <div class="invoice-cards" id="invoiceCards" aria-live="polite">
+            <!-- populated by JS -->
+          </div>
+
+          <div id="emptyInvoices" class="empty" style="display:none">No invoices found.</div>
+        </div>
+
+        <!-- Accessibility note + audit trail -->
+        <div class="card" style="margin-bottom:40px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div><div style="font-weight:800">Payment Audit & Compliance</div><div class="small muted">Receipts, unique trace IDs & tamper-evident records</div></div>
+            <div class="muted-small">PCI DSS-ready • ISO27001-aligned</div>
+          </div>
+
+          <div style="margin-top:12px">
+            <ul class="muted-small">
+              <li>All transactions generate a signed receipt linked to your student account.</li>
+              <li>Export transaction logs for audits or scholarship verification.</li>
+              <li>Support for multiple currencies and international payment gateways (configure backend).</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Invoice details modal -->
+    <div class="modal" id="invoiceModal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="invoiceModalTitle">
+      <div class="panel" role="document">
+        <div class="head">
+          <div>
+            <div id="invoiceModalTitle" style="font-weight:800">Invoice</div>
+            <div class="small muted" id="invoiceModalSubtitle">Invoice details</div>
+          </div>
+          <div>
+            <button class="btn ghost" id="downloadInvoiceBtn">Download</button>
+            <button class="btn neutral" id="closeInvoiceBtn">Close</button>
+          </div>
+        </div>
+        <div class="body" id="invoiceModalBody" style="display:grid;grid-template-columns:1fr 300px;gap:12px;">
+          <div>
+            <!-- invoice content -->
+            <div style="padding:12px 0">
+              <div class="muted-small">Reference</div>
+              <div id="modalRef" style="font-weight:900;font-size:1.05rem">--</div>
+            </div>
+            <div style="padding:12px 0">
+              <div class="muted-small">Description</div>
+              <div id="modalDesc">--</div>
+            </div>
+            <div style="padding:12px 0">
+              <div class="muted-small">Due date</div>
+              <div id="modalDue">--</div>
+            </div>
+            <div style="padding:12px 0">
+              <div class="muted-small">Items</div>
+              <table style="width:100%;border-collapse:collapse">
+                <thead><tr><th style="text-align:left;padding:8px">Item</th><th style="text-align:right;padding:8px">Amount</th></tr></thead>
+                <tbody id="modalItems"></tbody>
+                <tfoot><tr><td style="padding:8px;font-weight:800">Total</td><td style="padding:8px;text-align:right;font-weight:900" id="modalTotal">--</td></tr></tfoot>
+              </table>
+            </div>
+          </div>
+          <aside style="background:#f8fbff;padding:12px;border-radius:8px">
+            <div style="font-weight:800">Status</div>
+            <div style="margin-top:8px" id="modalStatus"></div>
+            <div style="margin-top:12px">
+              <button class="btn" id="modalPayNowBtn">Pay</button>
+              <button class="btn ghost" id="modalUploadBtn">Upload Proof</button>
+            </div>
+            <div style="margin-top:12px" class="muted-small">Trace ID: <span id="modalTrace">--</span></div>
+          </aside>
+        </div>
+      </div>
+    </div>
+
+    <!-- Payment modal -->
+    <div class="modal" id="paymentModal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="paymentModalTitle">
+      <div class="panel" role="document">
+        <div class="head">
+          <div>
+            <div id="paymentModalTitle" style="font-weight:800">Make a Payment</div>
+            <div class="small muted">Secure checkout — simulated gateway</div>
+          </div>
+          <div>
+            <button class="btn neutral" id="cancelPaymentBtn">Cancel</button>
+          </div>
+        </div>
+        <div class="body" style="display:grid;grid-template-columns:1fr 320px;gap:12px;">
+          <form id="paymentForm" style="padding:12px" aria-label="Payment form" novalidate>
+            <div class="field">
+              <label for="pay_invoice">Invoice</label>
+              <select id="pay_invoice" required aria-required="true"></select>
+            </div>
+
+            <div class="field">
+              <label for="pay_amount">Amount</label>
+              <input id="pay_amount" type="number" min="0.01" step="0.01" required aria-required="true">
+            </div>
+
+            <div class="field">
+              <label>Method</label>
+              <div class="payment-methods" role="radiogroup" aria-label="Payment methods">
+                <div class="pm active" role="radio" tabindex="0" aria-checked="true" data-method="card">Card</div>
+                <div class="pm" role="radio" tabindex="0" aria-checked="false" data-method="bank">Bank Transfer</div>
+                <div class="pm" role="radio" tabindex="0" aria-checked="false" data-method="ussd">USSD</div>
+              </div>
+            </div>
+
+            <div id="cardFields">
+              <div class="field">
+                <label for="card_name">Cardholder name</label>
+                <input id="card_name" type="text" autocomplete="cc-name" />
+              </div>
+              <div class="field">
+                <label for="card_number">Card number</label>
+                <input id="card_number" type="text" inputmode="numeric" pattern="[0-9\s]{12,19}" maxlength="19" placeholder="4242 4242 4242 4242" />
+              </div>
+              <div style="display:flex;gap:8px">
+                <div class="field" style="flex:1">
+                  <label for="card_exp">Expiry (MM/YY)</label>
+                  <input id="card_exp" type="text" placeholder="08/26" />
+                </div>
+                <div class="field" style="width:120px">
+                  <label for="card_cvv">CVV</label>
+                  <input id="card_cvv" type="password" inputmode="numeric" maxlength="4" />
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+              <button class="btn" id="confirmPayBtn" type="submit">Confirm payment</button>
+              <button class="btn ghost" type="button" id="saveForLaterBtn">Save for later</button>
+            </div>
+
+            <div id="paymentMessage" class="muted-small" style="margin-top:10px"></div>
+          </form>
+
+          <aside style="background:#f8fbff;padding:12px;border-radius:8px">
+            <div style="font-weight:800">Receipt preview</div>
+            <div style="margin-top:8px" id="receiptPreview">No payment yet</div>
+            <div style="margin-top:12px" class="muted-small">All payments are logged with a unique trace ID and timestamp.</div>
+          </aside>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // Lightweight client-side implementation for demo / integration
+    (function () {
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('overlay');
+      const hamburger = document.getElementById('hamburger');
+      const payNowBtn = document.getElementById('payNowBtn');
+      const paymentModal = document.getElementById('paymentModal');
+      const invoiceModal = document.getElementById('invoiceModal');
+      const invoicesTbody = document.getElementById('invoicesTbody');
+      const invoiceCards = document.getElementById('invoiceCards');
+      const outstandingEl = document.getElementById('outstanding');
+      const totalBilledEl = document.getElementById('totalBilled');
+      const totalPaidEl = document.getElementById('totalPaid');
+      const totalRemEl = document.getElementById('totalRem');
+      const balanceMeta = document.getElementById('balanceMeta');
+      const invoiceSearch = document.getElementById('invoiceSearch');
+      const statusFilter = document.getElementById('statusFilter');
+      const yearFilter = document.getElementById('yearFilter');
+      const toggleViewBtn = document.getElementById('toggleViewBtn');
+      const exportCsvBtn = document.getElementById('exportCsvBtn');
+      const printBtn = document.getElementById('printBtn');
+      const payInvoiceSelect = document.getElementById('pay_invoice');
+      const payAmountInput = document.getElementById('pay_amount');
+      const paymentForm = document.getElementById('paymentForm');
+      const receiptPreview = document.getElementById('receiptPreview');
+      const confirmPayBtn = document.getElementById('confirmPayBtn');
+      const modalPayNowBtn = document.getElementById('modalPayNowBtn');
+
+      // Mock invoices data (replace with API fetch)
+      let invoices = [
+        { id: 'INV-2026-001', desc: 'Tuition Fee — Term 1', due: '2026-03-10', amount: 150000, paid: 0, currency: 'NGN', items:[{name:'Tuition', amount:150000}], trace: '' },
+        { id: 'INV-2025-042', desc: 'Lab Fee', due: '2025-11-01', amount: 15000, paid: 15000, currency: 'NGN', items:[{name:'Lab', amount:15000}], trace: 'TRC-555-01' },
+        { id: 'INV-2026-007', desc: 'Library Fee', due: '2026-04-15', amount: 5000, paid: 2000, currency: 'NGN', items:[{name:'Library', amount:5000}], trace: 'TRC-666-02' }
+      ];
+
+      function formatCurrency(n) {
+        return '₦ ' + Number(n).toLocaleString();
+      }
+
+      function computeSummary() {
+        const total = invoices.reduce((s,i)=>s+i.amount,0);
+        const paid = invoices.reduce((s,i)=>s+i.paid,0);
+        const rem = total - paid;
+        totalBilledEl.textContent = formatCurrency(total);
+        totalPaidEl.textContent = formatCurrency(paid);
+        totalRemEl.textContent = formatCurrency(rem);
+        outstandingEl.textContent = rem > 0 ? formatCurrency(rem) : formatCurrency(0);
+        balanceMeta.textContent = rem > 0 ? `${invoices.filter(i=>i.amount - i.paid > 0).length} unpaid invoice(s)` : 'You have no outstanding payments';
+      }
+
+      function statusFor(inv) {
+        if (inv.paid >= inv.amount) return 'paid';
+        if (inv.paid > 0) return 'partial';
+        return 'unpaid';
+      }
+
+      function renderInvoices() {
+        invoicesTbody.innerHTML = '';
+        invoiceCards.innerHTML = '';
+        const q = (invoiceSearch.value || '').toLowerCase();
+        const status = statusFilter.value;
+        const year = yearFilter.value;
+        const filtered = invoices.filter(inv=>{
+          if (status && statusFor(inv) !== status) return false;
+          if (year && !inv.id.includes(year)) return false;
+          if (!q) return true;
+          return (inv.id + ' ' + inv.desc + ' ' + inv.amount).toLowerCase().includes(q);
+        });
+
+        if (!filtered.length) {
+          document.getElementById('emptyInvoices').style.display = '';
+        } else {
+          document.getElementById('emptyInvoices').style.display = 'none';
+        }
+
+        filtered.forEach(inv=>{
+          // table row
+          const tr = document.createElement('tr');
+          const refTd = document.createElement('td'); refTd.textContent = inv.id;
+          const descTd = document.createElement('td'); descTd.textContent = inv.desc;
+          const dueTd = document.createElement('td'); dueTd.textContent = inv.due;
+          const amtTd = document.createElement('td'); amtTd.textContent = formatCurrency(inv.amount);
+          const statusTd = document.createElement('td'); const s = statusFor(inv);
+          const span = document.createElement('span'); span.className = 'status ' + s; span.textContent = s.toUpperCase();
+          statusTd.appendChild(span);
+          const actionsTd = document.createElement('td'); actionsTd.className = 'right';
+          const viewBtn = document.createElement('button'); viewBtn.className='btn ghost'; viewBtn.textContent='View'; viewBtn.onclick = ()=>openInvoice(inv.id);
+          const payBtn = document.createElement('button'); payBtn.className='btn'; payBtn.style.marginLeft='8px'; payBtn.textContent='Pay'; payBtn.onclick = ()=>openPayment(inv.id);
+          actionsTd.appendChild(viewBtn); actionsTd.appendChild(payBtn);
+          tr.appendChild(refTd); tr.appendChild(descTd); tr.appendChild(dueTd); tr.appendChild(amtTd); tr.appendChild(statusTd); tr.appendChild(actionsTd);
+          invoicesTbody.appendChild(tr);
+
+          // mobile card
+          const card = document.createElement('article'); card.style.background='#fff'; card.style.padding='12px'; card.style.borderRadius='12px'; card.style.border='1px solid #eef3ff';
+          const h = document.createElement('div'); h.style.display='flex'; h.style.justifyContent='space-between'; h.style.alignItems='center';
+          const left = document.createElement('div'); left.innerHTML = '<div style="font-weight:800">'+inv.id+'</div><div class="muted-small">'+inv.desc+'</div>';
+          const right = document.createElement('div'); right.innerHTML = '<div style="font-weight:900">'+formatCurrency(inv.amount)+'</div><div class="muted-small">'+inv.due+'</div>';
+          h.appendChild(left); h.appendChild(right);
+          const foot = document.createElement('div'); foot.style.display='flex'; foot.style.gap='8px'; foot.style.marginTop='10px';
+          const vBtn = document.createElement('button'); vBtn.className='btn ghost'; vBtn.textContent='View'; vBtn.onclick=()=>openInvoice(inv.id);
+          const pBtn = document.createElement('button'); pBtn.className='btn'; pBtn.textContent='Pay'; pBtn.onclick=()=>openPayment(inv.id);
+          const st = document.createElement('div'); st.className='status '+statusFor(inv); st.style.marginLeft='auto'; st.style.alignSelf='center';
+          foot.appendChild(vBtn); foot.appendChild(pBtn); foot.appendChild(st);
+          card.appendChild(h); card.appendChild(foot);
+          invoiceCards.appendChild(card);
+        });
+      }
+
+      // Open / close sidebar
+      function openSidebar() {
+        sidebar.classList.add('open'); sidebar.classList.remove('hidden');
+        overlay.classList.add('visible'); document.body.classList.add('no-scroll');
+      }
+      function closeSidebar() {
+        sidebar.classList.remove('open'); sidebar.classList.add('hidden');
+        overlay.classList.remove('visible'); document.body.classList.remove('no-scroll');
+      }
+      hamburger.addEventListener('click', (e)=> { openSidebar(); });
+      overlay.addEventListener('click', ()=> { closeSidebar(); });
+
+      // Open invoice modal
+      function openInvoice(id) {
+        const inv = invoices.find(i=>i.id===id);
+        if (!inv) return;
+        document.getElementById('modalRef').textContent = inv.id;
+        document.getElementById('modalDesc').textContent = inv.desc;
+        document.getElementById('modalDue').textContent = inv.due;
+        const itemsTbody = document.getElementById('modalItems'); itemsTbody.innerHTML='';
+        inv.items.forEach(it=>{
+          const r = document.createElement('tr');
+          r.innerHTML = `<td style="padding:8px">${it.name}</td><td style="padding:8px;text-align:right">${formatCurrency(it.amount)}</td>`;
+          itemsTbody.appendChild(r);
+        });
+        document.getElementById('modalTotal').textContent = formatCurrency(inv.amount);
+        document.getElementById('modalStatus').innerHTML = `<span class="status ${statusFor(inv)}">${statusFor(inv).toUpperCase()}</span>`;
+        document.getElementById('modalTrace').textContent = inv.trace || '—';
+        document.getElementById('invoiceModal').classList.add('active'); document.getElementById('invoiceModal').setAttribute('aria-hidden','false');
+      }
+
+      // Payment flow
+      function openPayment(invoiceId) {
+        populatePayInvoiceSelect();
+        if (invoiceId) {
+          payInvoiceSelect.value = invoiceId;
+          const inv = invoices.find(i=>i.id===invoiceId);
+          payAmountInput.value = (inv.amount - inv.paid) || inv.amount;
+        }
+        paymentModal.classList.add('active'); paymentModal.setAttribute('aria-hidden','false');
+      }
+
+      function closePayment() {
+        paymentModal.classList.remove('active'); paymentModal.setAttribute('aria-hidden','true');
+        paymentForm.reset(); receiptPreview.textContent = 'No payment yet';
+      }
+
+      // Populate invoice select
+      function populatePayInvoiceSelect() {
+        payInvoiceSelect.innerHTML = '';
+        invoices.forEach(inv=>{
+          const opt = document.createElement('option'); opt.value = inv.id; opt.textContent = `${inv.id} — ${inv.desc} (${formatCurrency(inv.amount - inv.paid)})`;
+          payInvoiceSelect.appendChild(opt);
+        });
+      }
+
+      // Simulate payment
+      paymentForm.addEventListener('submit', (e)=>{
+        e.preventDefault();
+        const invId = payInvoiceSelect.value;
+        const amount = Number(payAmountInput.value);
+        if (!invId || !amount || amount <= 0) {
+          document.getElementById('paymentMessage').textContent = 'Please select invoice and enter a valid amount';
+          return;
+        }
+        const inv = invoices.find(i=>i.id===invId);
+        // simulate server processing
+        confirmPayBtn.disabled = true; confirmPayBtn.textContent = 'Processing...';
+        setTimeout(()=>{
+          inv.paid = Math.min(inv.amount, inv.paid + amount);
+          inv.trace = 'TRC-' + Math.random().toString(36).slice(2,10).toUpperCase();
+          // add receipt preview
+          receiptPreview.innerHTML = `<div style="font-weight:800">Receipt</div><div class="muted-small">Invoice: ${inv.id}</div><div style="margin-top:6px;font-weight:900">${formatCurrency(amount)}</div><div class="muted-small">Trace: ${inv.trace}</div>`;
+          computeSummary(); renderInvoices();
+          document.getElementById('paymentMessage').textContent = 'Payment successful — receipt generated';
+          confirmPayBtn.disabled = false; confirmPayBtn.textContent = 'Confirm payment';
+        }, 1200);
+      });
+
+      // Modal close buttons
+      document.getElementById('closeInvoiceBtn').addEventListener('click', ()=>{
+        invoiceModal.classList.remove('active'); invoiceModal.setAttribute('aria-hidden','true');
+      });
+      document.getElementById('cancelPaymentBtn').addEventListener('click', ()=>{
+        closePayment();
+      });
+
+      // Control trace/actions from invoice modal
+      document.getElementById('modalPayNowBtn').addEventListener('click', ()=>{
+        const ref = document.getElementById('modalRef').textContent;
+        invoiceModal.classList.remove('active'); invoiceModal.setAttribute('aria-hidden','true');
+        openPayment(ref);
+      });
+
+      // Filters & search
+      [invoiceSearch, statusFilter, yearFilter].forEach(el=>el.addEventListener('input', renderInvoices));
+      document.getElementById('toggleViewBtn').addEventListener('click', (e)=>{
+        const pressed = e.currentTarget.getAttribute('aria-pressed') === 'true';
+        e.currentTarget.setAttribute('aria-pressed', String(!pressed));
+        if (!pressed) {
+          document.querySelector('.invoice-table-wrap').style.display = 'none';
+          document.querySelector('.invoice-cards').style.display = 'flex';
+        } else {
+          document.querySelector('.invoice-table-wrap').style.display = '';
+          document.querySelector('.invoice-cards').style.display = 'none';
+        }
+      });
+
+      // Export CSV
+      exportCsvBtn.addEventListener('click', ()=>{
+        const rows = [['Ref','Description','Due','Amount','Paid','Status','Trace']];
+        invoices.forEach(i=>rows.push([i.id,i.desc,i.due,i.amount,i.paid,statusFor(i),i.trace || '']));
+        const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\\n');
+        const blob = new Blob([csv], {type: 'text/csv'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'invoices.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      });
+
+      // Print
+      printBtn.addEventListener('click', ()=>window.print());
+
+      // Simple helpers for other quick links
+      window.openPaymentHistory = function(){ alert('Open payment history (implement route)'); }
+      window.openInvoiceUpload = function(){ alert('Upload proof flow (implement)'); }
+      window.openSupport = function(){ alert('Contact support (implement)'); }
+
+      // Init
+      computeSummary();
+      renderInvoices();
+      populatePayInvoiceSelect();
+
+      // Accessibility: close modals with Escape
+      document.addEventListener('keydown', (e)=>{
+        if (e.key === 'Escape') {
+          document.querySelectorAll('.modal.active').forEach(m=>m.classList.remove('active'));
+          closePayment();
+          invoiceModal.classList.remove('active'); invoiceModal.setAttribute('aria-hidden','true');
+        }
+      });
+
+      // Close sidebar on wider screens if resized
+      window.addEventListener('resize', ()=> {
+        if (window.innerWidth > 720) {
+          sidebar.classList.remove('hidden'); sidebar.classList.remove('open');
+          overlay.classList.remove('visible'); document.body.classList.remove('no-scroll');
+        } else {
+          // keep hidden by default on small screens
+          sidebar.classList.add('hidden');
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
