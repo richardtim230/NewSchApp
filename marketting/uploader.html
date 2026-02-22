@@ -1,0 +1,925 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Question Bank & Exam Scheduler | ExamGuard — Staff</title>
+  <meta name="viewport" content="width=device-width,initial-scale=0.801" />
+  <link href="https://fonts.googleapis.com/css?family=Inter:400,600,700&display=swap" rel="stylesheet">
+  <link rel="icon" href="../logo.png">
+  <style>
+    /* Shared look & feel consistent with other pages */
+    :root{
+      --bg-0:#f6f8ff; --bg-1:#eef2ff;
+      --accent:#3b82f6; --accent-2:#6366f1; --muted:#6b7280;
+      --card-bg:#ffffff; --sidebar-w:300px; --danger:#ef4444;
+      --radius:12px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial;background:linear-gradient(180deg,var(--bg-0),var(--bg-1));-webkit-font-smoothing:antialiased;color:#0b2a44}
+    a{color:inherit;text-decoration:none}
+    .app{display:flex;min-height:100vh;align-items:stretch}
+    .overlay{position:fixed;inset:0;background:rgba(2,6,23,0.45);z-index:50;display:none}
+    .overlay.visible{display:block}
+
+    /* Sidebar (desktop instant show) */
+    .sidebar{
+      width:var(--sidebar-w);min-width:var(--sidebar-w);
+      background:linear-gradient(180deg,#0f172a 0%, #1e3a8a 100%);color:#fff;padding:20px 16px;position:fixed;left:0;top:0;bottom:0;z-index:100;
+      box-shadow:4px 0 28px rgba(15,23,42,0.12);display:flex;flex-direction:column;gap:14px;overflow-y:auto;transition:none;
+    }
+    @media (max-width:720px){
+      .sidebar{transform:translateX(-110%);transition:transform .28s ease;position:fixed;width:86vw;min-width:86vw}
+      .sidebar.hidden{transform:translateX(-110%)}
+      .sidebar.open{transform:translateX(0);box-shadow:0 24px 48px rgba(2,6,23,0.5)}
+    }
+
+    .brand{display:flex;gap:12px;align-items:center}
+    .brand img{width:44px;height:44px;border-radius:10px;object-fit:cover;border:3px solid rgba(255,224,102,0.12);background:#fff}
+    .brand .title{font-weight:800;font-size:1.05rem;color:#ffe066}
+    .nav{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+    .nav a{display:flex;align-items:center;gap:10px;padding:12px;border-radius:10px;font-weight:700;font-size:1rem;color:#e6eefc}
+    .nav a.active,.nav a:hover{background:rgba(255,255,255,0.04);color:#ffe066}
+
+    .spacer{flex:1}
+    .profile{display:flex;gap:12px;align-items:center;padding-top:10px;border-top:1px solid rgba(255,255,255,0.04)}
+    .profile img{width:48px;height:48px;border-radius:10px;object-fit:cover;border:2px solid #ffe066}
+
+    .topbar{position:fixed;left:var(--sidebar-w);top:0;width:calc(100vw - var(--sidebar-w));z-index:90;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;backdrop-filter:blur(6px);background:rgba(255,255,255,0.86);border-bottom:1px solid rgba(11,42,60,0.06);box-shadow:0 6px 18px rgba(11,42,60,0.04);min-height:64px}
+    @media (max-width:720px){.topbar{left:0;width:100vw;padding:10px 12px;min-height:56px}}
+
+    .hamburger{display:none;background:var(--accent);color:#fff;border:none;padding:9px 12px;border-radius:10px;cursor:pointer;font-weight:800}
+    @media (max-width:980px){.hamburger{display:inline-flex}}
+
+    .page-title{font-weight:800;font-size:1.05rem;color:var(--accent-2)}
+    .small{font-size:0.92rem;color:var(--muted)}
+
+    .main{margin-left:var(--sidebar-w);padding:20px;flex:1;transition:margin-left .28s;min-height:100vh;padding-top:90px;overflow-y:auto}
+    @media (max-width:720px){.main{margin-left:0;padding:14px;padding-top:80px}}
+
+    /* two-column content layout with left action column + main area */
+    .layout{display:grid;grid-template-columns: 260px 1fr;gap:14px;align-items:start}
+    @media (max-width:980px){.layout{grid-template-columns:1fr}}
+    .card{background:var(--card-bg);border-radius:12px;padding:14px;border:1px solid #eef3ff;box-shadow:0 8px 20px rgba(11,42,60,0.04)}
+    .muted-small{font-size:0.9rem;color:var(--muted)}
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+    .btn{padding:9px 12px;border-radius:10px;border:none;cursor:pointer;background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#fff;font-weight:800}
+    .btn.ghost{background:transparent;color:var(--accent-2);border:1px solid rgba(59,130,246,0.08)}
+    .btn.warn{background:linear-gradient(90deg,#f59e0b,#f97316);}
+
+    /* bank/table */
+    .search-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .search-row input[type="search"], select, input[type="text"], input[type="number"]{padding:8px;border-radius:8px;border:1px solid #e6e9ef}
+    table{width:100%;border-collapse:collapse}
+    table th{background:#f8fbff;padding:10px;text-align:left;font-weight:800;border-bottom:1px solid #eef3ff}
+    table td{padding:10px;border-bottom:1px solid #f1f5fb;vertical-align:top}
+    .tag{display:inline-block;padding:6px 8px;border-radius:999px;background:#f3f6fb;color:var(--muted);font-weight:700;font-size:0.85rem}
+
+    /* selection row */
+    .selection-bar{display:flex;gap:10px;align-items:center;padding:10px;border-radius:10px;background:linear-gradient(90deg,rgba(99,102,241,0.06),rgba(59,130,246,0.03));margin-bottom:10px}
+
+    /* modals */
+    .modal{position:fixed;inset:0;background:rgba(2,6,23,0.45);display:none;align-items:center;justify-content:center;z-index:9999;padding:12px}
+    .modal.active{display:flex}
+    .modal .panel{background:#fff;border-radius:12px;max-width:960px;width:100%;overflow:hidden;box-shadow:0 20px 60px rgba(2,6,23,0.25)}
+    .modal .head{padding:12px 16px;border-bottom:1px solid #eef3ff;background:#f8fbff;display:flex;justify-content:space-between;align-items:center}
+    .modal .body{padding:14px;max-height:72vh;overflow:auto}
+
+    .inline-grid{display:grid;grid-template-columns:1fr 320px;gap:12px}
+    @media (max-width:920px){.inline-grid{grid-template-columns:1fr}}
+
+    .empty{padding:28px;text-align:center;color:var(--muted);border:1px dashed #eef3ff;border-radius:12px}
+
+    /* small helpers */
+    .right{text-align:right}
+    :focus{outline:3px solid rgba(99,102,241,0.18);outline-offset:2px;border-radius:6px}
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <div class="overlay" id="overlay" aria-hidden="true"></div>
+
+    <aside class="sidebar" id="sidebar" aria-label="Main navigation" role="navigation">
+      <div class="brand">
+        <img src="../logo.png" alt="Logo">
+        <div>
+          <div class="title">ExamGuard Admin</div>
+          <div class="small">Question Bank</div>
+        </div>
+      </div>
+
+      <nav class="nav" aria-label="Primary">
+        <a href="student.html">🏠 Dashboard</a>
+        <a href="marketting/question-manager.html" class="active">🧾 Question Manager</a>
+        <a href="marketting/cbt-exam.html">🖥️ Exams</a>
+        <a href="marketting/teacher-dashboard.html">👩‍🏫 Teachers</a>
+      </nav>
+
+      <div class="spacer" aria-hidden="true"></div>
+
+      <div class="profile">
+        <img src="../avatar.jpg" alt="Staff avatar">
+        <div>
+          <div style="font-weight:800" id="staffName">Mrs. Okonkwo</div>
+          <div class="muted-small">Assessment Officer</div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="topbar">
+      <div style="display:flex;gap:12px;align-items:center;">
+        <button class="hamburger" id="hamburger" aria-label="Open menu">☰</button>
+        <div>
+          <div class="page-title">Question Bank & Scheduler</div>
+          <div class="small muted">Manage questions, create sets and schedule tests</div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:12px;align-items:center;">
+        <div class="muted-small">Env: Demo</div>
+        <img src="../avatar.jpg" alt="you" style="width:44px;height:44px;border-radius:8px;border:2px solid #fff">
+      </div>
+    </div>
+
+    <main class="main" id="main" role="main" tabindex="-1">
+      <div class="layout">
+        <!-- Left: actions / filters -->
+        <aside class="card" aria-labelledby="actionsTitle">
+          <div id="actionsTitle" style="font-weight:800">Actions</div>
+          <div class="muted-small" style="margin-top:6px">Create, upload or build sets</div>
+
+          <div style="margin-top:12px" class="controls">
+            <button class="btn" id="newQuestionBtn">New question</button>
+            <button class="btn" id="newSetBtn">Create set</button>
+            <button class="btn ghost" id="bulkUploadBtn">Upload CSV</button>
+            <button class="btn ghost" id="importBtn">Import JSON</button>
+          </div>
+
+          <hr style="border:none;border-top:1px solid #eef3ff;margin:12px 0">
+
+          <div style="font-weight:800;margin-bottom:6px">Filters</div>
+          <div class="search-row" style="margin-bottom:8px">
+            <select id="filterClass">
+              <option value="">All classes</option>
+              <option>SS1</option><option>SS2</option><option>SS3</option>
+            </select>
+            <select id="filterSubject">
+              <option value="">All subjects</option>
+              <option>Biology</option><option>Mathematics</option><option>English</option><option>Chemistry</option>
+            </select>
+          </div>
+
+          <div class="search-row" style="margin-bottom:8px">
+            <select id="filterDifficulty">
+              <option value="">Any difficulty</option>
+              <option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option>
+            </select>
+            <input type="search" id="filterText" placeholder="Search text / id">
+          </div>
+          <div style="margin-top:8px;display:flex;gap:8px;">
+            <button class="btn" id="applyFiltersBtn">Apply</button>
+            <button class="btn ghost" id="clearFiltersBtn">Clear</button>
+          </div>
+
+          <hr style="border:none;border-top:1px solid #eef3ff;margin:12px 0">
+
+          <div style="font-weight:800;margin-bottom:6px">Selected</div>
+          <div style="margin-bottom:6px" id="selectedCount">0 questions selected</div>
+          <div style="display:flex;gap:8px;margin-bottom:8px">
+            <button class="btn" id="addToSetBtn">Add to set</button>
+            <button class="btn ghost" id="scheduleBtn">Schedule exam</button>
+          </div>
+
+          <div style="font-weight:800;margin-top:12px">Exports</div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn ghost" id="exportJsonBtn">Export JSON</button>
+            <button class="btn ghost" id="exportCsvBtn">Export CSV</button>
+          </div>
+        </aside>
+
+        <!-- Right: main content -->
+        <section class="card" aria-labelledby="bankTitle">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div id="bankTitle" style="font-weight:800">Question Bank</div>
+              <div class="muted-small">Manage and select individual questions or build sets</div>
+            </div>
+
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="search" id="globalSearch" placeholder="Search questions by text, tags or id" style="padding:8px;border-radius:8px;border:1px solid #e6e9ef">
+              <button class="btn ghost" id="refreshBankBtn">Refresh</button>
+            </div>
+          </div>
+
+          <div style="margin-top:12px">
+            <div class="selection-bar" id="selectionBar" style="display:none">
+              <div id="selectionInfo">0 selected</div>
+              <div style="margin-left:auto;display:flex;gap:8px">
+                <button class="btn ghost" id="selectAllBtn">Select all</button>
+                <button class="btn" id="clearSelectionBtn">Clear</button>
+              </div>
+            </div>
+
+            <div style="margin-top:8px;overflow:auto">
+              <table role="table" aria-label="Question list">
+                <thead>
+                  <tr>
+                    <th style="width:46px"><input type="checkbox" id="masterCheck" title="Select visible"></th>
+                    <th>ID</th>
+                    <th>Question</th>
+                    <th>Meta</th>
+                    <th class="right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="questionTbody" role="rowgroup"></tbody>
+              </table>
+            </div>
+
+            <div style="margin-top:12px;display:flex;justify-content:space-between;align-items:center">
+              <div id="pagerInfo" class="muted-small"></div>
+              <div style="display:flex;gap:8px">
+                <button class="btn ghost" id="prevPageBtn">Prev</button>
+                <button class="btn ghost" id="nextPageBtn">Next</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Modals -->
+    <div class="modal" id="questionModal" role="dialog" aria-modal="true" aria-hidden="true">
+      <div class="panel" role="document">
+        <div class="head">
+          <div id="questionModalTitle" style="font-weight:800">Question</div>
+          <div><button class="btn ghost" id="closeQuestionModal">Close</button></div>
+        </div>
+        <div class="body" id="questionModalBody">
+          <!-- dynamic -->
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="setModal" role="dialog" aria-modal="true" aria-hidden="true">
+      <div class="panel" role="document">
+        <div class="head">
+          <div id="setModalTitle" style="font-weight:800">Create Question Set</div>
+          <div><button class="btn ghost" id="closeSetModal">Close</button></div>
+        </div>
+        <div class="body" id="setModalBody">
+          <form id="setForm" style="display:grid;gap:8px">
+            <label>Set name<input id="setName" required></label>
+            <label>Class<select id="setClass"><option>SS1</option><option>SS2</option><option>SS3</option></select></label>
+            <label>Subject<select id="setSubject"><option>Biology</option><option>Mathematics</option><option>English</option></select></label>
+            <label>Difficulty<select id="setDifficulty"><option value="">Mixed</option><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select></label>
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+              <button type="button" class="btn ghost" id="cancelSetBtn">Cancel</button>
+              <button type="submit" class="btn" id="saveSetBtn">Save set (selected)</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="scheduleModal" role="dialog" aria-modal="true" aria-hidden="true">
+      <div class="panel" role="document">
+        <div class="head">
+          <div id="scheduleModalTitle" style="font-weight:800">Schedule Exam</div>
+          <div><button class="btn ghost" id="closeScheduleModal">Close</button></div>
+        </div>
+        <div class="body" id="scheduleModalBody">
+          <form id="scheduleForm" style="display:grid;gap:8px">
+            <label>Title<input id="schTitle" required></label>
+            <label>Class<select id="schClass"><option>SS1</option><option>SS2</option><option>SS3</option></select></label>
+            <label>Subject<select id="schSubject"><option>Biology</option><option>Mathematics</option></select></label>
+            <div style="display:flex;gap:8px">
+              <label style="flex:1">Date<input type="date" id="schDate" required></label>
+              <label style="width:140px">Start time<input type="time" id="schTime" required></label>
+            </div>
+            <label>Duration (mins)<input type="number" id="schDuration" min="1" value="60"></label>
+            <label>Question source<select id="schSource"><option value="selected">Use selected questions</option><option value="set">Use a named set</option></select></label>
+            <div id="schExtra"></div>
+
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+              <button type="button" class="btn ghost" id="cancelScheduleBtn">Cancel</button>
+              <button type="submit" class="btn" id="confirmScheduleBtn">Schedule</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hidden file inputs -->
+    <input type="file" id="csvFile" accept=".csv" style="display:none">
+    <input type="file" id="jsonFile" accept="application/json" style="display:none">
+  </div>
+
+  <script>
+    (function () {
+      /* Lightweight, feature-rich client-side question manager demo.
+         Data is persisted to localStorage under key 'eg_question_bank' for convenience.
+      */
+
+      // Elements
+      const questionTbody = document.getElementById('questionTbody');
+      const globalSearch = document.getElementById('globalSearch');
+      const masterCheck = document.getElementById('masterCheck');
+      const selectionBar = document.getElementById('selectionBar');
+      const selectionInfo = document.getElementById('selectionInfo');
+      const selectedCountEl = document.getElementById('selectedCount');
+      const selectedSetBtn = document.getElementById('addToSetBtn');
+      const scheduleBtn = document.getElementById('scheduleBtn');
+
+      // Filters & controls
+      const filterClass = document.getElementById('filterClass');
+      const filterSubject = document.getElementById('filterSubject');
+      const filterDifficulty = document.getElementById('filterDifficulty');
+      const filterText = document.getElementById('filterText');
+      const applyFiltersBtn = document.getElementById('applyFiltersBtn');
+      const clearFiltersBtn = document.getElementById('clearFiltersBtn');
+      const refreshBankBtn = document.getElementById('refreshBankBtn');
+
+      // Modals
+      const questionModal = document.getElementById('questionModal');
+      const questionModalBody = document.getElementById('questionModalBody');
+      const questionModalTitle = document.getElementById('questionModalTitle');
+      const closeQuestionModal = document.getElementById('closeQuestionModal');
+
+      const setModal = document.getElementById('setModal');
+      const setForm = document.getElementById('setForm');
+      const setNameInput = document.getElementById('setName');
+      const setClassInput = document.getElementById('setClass');
+      const setSubjectInput = document.getElementById('setSubject');
+      const setDifficultyInput = document.getElementById('setDifficulty');
+      const closeSetModal = document.getElementById('closeSetModal');
+      const cancelSetBtn = document.getElementById('cancelSetBtn');
+
+      const scheduleModal = document.getElementById('scheduleModal');
+      const scheduleForm = document.getElementById('scheduleForm');
+      const schSource = document.getElementById('schSource');
+      const schExtra = document.getElementById('schExtra');
+      const closeScheduleModal = document.getElementById('closeScheduleModal');
+      const cancelScheduleBtn = document.getElementById('cancelScheduleBtn');
+
+      const csvFile = document.getElementById('csvFile');
+      const jsonFile = document.getElementById('jsonFile');
+
+      // Storage keys
+      const BANK_KEY = 'eg_question_bank_v1';
+      const SETS_KEY = 'eg_question_sets_v1';
+      const SCHEDULES_KEY = 'eg_exam_schedules_v1';
+
+      // Internal state
+      let bank = [];      // array of questions
+      let sets = [];      // array of { id, name, class, subject, difficulty, questionIds }
+      let schedules = []; // scheduled exams
+      let selected = new Set();
+      let visibleIds = []; // IDs currently visible after filtering/pagination
+
+      // Pagination
+      let page = 1;
+      const PAGE_SIZE = 12;
+
+      // Utilities
+      function uid(prefix = '') { return prefix + Math.random().toString(36).slice(2,9).toUpperCase(); }
+      function saveBank() { localStorage.setItem(BANK_KEY, JSON.stringify(bank)); }
+      function loadBank() { const s = localStorage.getItem(BANK_KEY); bank = s ? JSON.parse(s) : []; }
+      function saveSets() { localStorage.setItem(SETS_KEY, JSON.stringify(sets)); }
+      function loadSets() { const s = localStorage.getItem(SETS_KEY); sets = s ? JSON.parse(s) : []; }
+      function saveSchedules() { localStorage.setItem(SCHEDULES_KEY, JSON.stringify(schedules)); }
+      function loadSchedules() { const s = localStorage.getItem(SCHEDULES_KEY); schedules = s ? JSON.parse(s) : []; }
+
+      // Seed mock data if empty
+      function ensureSeed() {
+        if (!bank.length) {
+          bank = [
+            { id:'Q-'+uid(4), class:'SS2', subject:'Biology', difficulty:'medium', text:'What is the powerhouse of the cell?', choices:['Nucleus','Mitochondria','Ribosome','Golgi'], answer:1, tags:['cells'] },
+            { id:'Q-'+uid(4), class:'SS2', subject:'Biology', difficulty:'easy', text:'Which organ pumps blood?', choices:['Liver','Heart','Kidney','Lung'], answer:1, tags:['circulation'] },
+            { id:'Q-'+uid(4), class:'SS2', subject:'Mathematics', difficulty:'medium', text:'Solve 2x + 3 = 7. x = ?', choices:['1','2','3','4'], answer:1, tags:['algebra'] },
+            { id:'Q-'+uid(4), class:'SS1', subject:'English', difficulty:'easy', text:'Choose the correct plural of "child".', choices:['childs','children','childes','childer'], answer:1, tags:['grammar'] }
+          ];
+          saveBank();
+        }
+        if (!sets.length) {
+          sets = [
+            { id: 'S-'+uid(4), name:'Biology Termly Short', class:'SS2', subject:'Biology', difficulty:'medium', questionIds: bank.filter(q=>q.subject==='Biology').map(q=>q.id) }
+          ];
+          saveSets();
+        }
+      }
+
+      // Rendering functions
+      function renderList() {
+        // Apply filters
+        const cls = filterClass.value || '';
+        const subj = filterSubject.value || '';
+        const diff = filterDifficulty.value || '';
+        const txt = (filterText.value || '').trim().toLowerCase();
+        let results = bank.filter(q => {
+          if (cls && q.class !== cls) return false;
+          if (subj && q.subject !== subj) return false;
+          if (diff && q.difficulty !== diff) return false;
+          if (txt) {
+            const hay = (q.id + ' ' + q.text + ' ' + (q.tags||[]).join(' ') ).toLowerCase();
+            return hay.includes(txt);
+          }
+          return true;
+        });
+
+        // Global search (applies on top if used)
+        const gq = (globalSearch.value || '').trim().toLowerCase();
+        if (gq) results = results.filter(q => (q.id + ' ' + q.text + ' ' + (q.tags||[]).join(' ') + ' ' + q.subject + ' ' + (q.class||'')).toLowerCase().includes(gq));
+
+        // Pagination
+        const total = results.length;
+        const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+        if (page > pages) page = pages;
+        const start = (page - 1) * PAGE_SIZE;
+        const slice = results.slice(start, start + PAGE_SIZE);
+
+        visibleIds = slice.map(q=>q.id);
+
+        questionTbody.innerHTML = '';
+        if (!slice.length) {
+          questionTbody.innerHTML = `<tr><td colspan="5"><div class="empty">No questions found.</div></td></tr>`;
+        } else {
+          slice.forEach(q => {
+            const tr = document.createElement('tr');
+            const checked = selected.has(q.id) ? 'checked' : '';
+            tr.innerHTML = `
+              <td><input type="checkbox" class="row-check" data-id="${q.id}" ${checked}></td>
+              <td><div style="font-weight:800">${q.id}</div><div class="muted-small">${q.class} • ${q.subject}</div></td>
+              <td><div>${escapeHtml(q.text)}</div></td>
+              <td>
+                <div class="muted-small">Difficulty: ${q.difficulty || '—'}</div>
+                <div style="margin-top:6px">${(q.tags||[]).map(t=>`<span class="tag">${t}</span>`).join(' ')}</div>
+              </td>
+              <td class="right">
+                <button class="btn ghost viewBtn" data-id="${q.id}">View</button>
+                <button class="btn" data-id="${q.id}" data-action="select">${selected.has(q.id)?'Deselect':'Select'}</button>
+              </td>
+            `;
+            questionTbody.appendChild(tr);
+          });
+        }
+
+        // Update selection info and pager
+        updateSelectionBar();
+        document.getElementById('pagerInfo').textContent = `Showing ${Math.min(total, start+1)} - ${Math.min(total, start+slice.length)} of ${total} results (page ${page}/${pages})`;
+      }
+
+      function updateSelectionBar() {
+        const count = selected.size;
+        selectedCountEl.textContent = `${count} questions selected`;
+        selectionInfo.textContent = `${count} selected`;
+        selectionBar.style.display = count ? '' : 'none';
+      }
+
+      // Event delegation
+      document.body.addEventListener('click', (e) => {
+        const t = e.target;
+        // row checkbox
+        if (t.matches('.row-check')) {
+          const id = t.dataset.id;
+          if (t.checked) selected.add(id); else selected.delete(id);
+          updateSelectionBar();
+          renderList(); // update action text
+        }
+
+        // master check (select visible)
+        if (t.id === 'masterCheck') {
+          if (t.checked) {
+            visibleIds.forEach(id => selected.add(id));
+          } else {
+            visibleIds.forEach(id => selected.delete(id));
+          }
+          updateSelectionBar();
+          renderList();
+        }
+
+        // Select/Deselect button
+        if (t.matches('button[data-action="select"]')) {
+          const id = t.dataset.id;
+          if (selected.has(id)) selected.delete(id); else selected.add(id);
+          updateSelectionBar();
+          renderList();
+        }
+
+        // View
+        if (t.matches('.viewBtn')) {
+          const id = t.dataset.id;
+          openQuestionModal(id);
+        }
+
+        // New question modal
+        if (t.id === 'newQuestionBtn') {
+          openQuestionEditor();
+        }
+
+        // New set
+        if (t.id === 'newSetBtn') {
+          openSetModal();
+        }
+
+        // CSV upload
+        if (t.id === 'bulkUploadBtn') {
+          csvFile.click();
+        }
+
+        // Import JSON
+        if (t.id === 'importBtn') {
+          jsonFile.click();
+        }
+
+        // Selection helpers
+        if (t.id === 'selectAllBtn') {
+          visibleIds.forEach(id => selected.add(id));
+          updateSelectionBar(); renderList();
+        }
+        if (t.id === 'clearSelectionBtn') {
+          selected.clear(); updateSelectionBar(); renderList();
+        }
+
+        // Add to set
+        if (t.id === 'addToSetBtn') {
+          openSetModal(true);
+        }
+
+        // Schedule exam
+        if (t.id === 'scheduleBtn') {
+          openScheduleModal();
+        }
+
+        // Exports
+        if (t.id === 'exportJsonBtn') {
+          exportSelected('json');
+        }
+        if (t.id === 'exportCsvBtn') {
+          exportSelected('csv');
+        }
+
+        // Refresh
+        if (t.id === 'refreshBankBtn') {
+          loadAll(); renderList();
+          alert('Bank refreshed (local demo).');
+        }
+
+        // Pagination
+        if (t.id === 'prevPageBtn') { if (page>1) { page--; renderList(); } }
+        if (t.id === 'nextPageBtn') { page++; renderList(); }
+
+      });
+
+      // File input handlers
+      csvFile.addEventListener('change', (e) => {
+        const f = e.target.files && e.target.files[0];
+        if (!f) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          parseCsvToQuestions(reader.result);
+          csvFile.value = '';
+        };
+        reader.readAsText(f);
+      });
+      jsonFile.addEventListener('change', (e) => {
+        const f = e.target.files && e.target.files[0];
+        if (!f) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const j = JSON.parse(reader.result);
+            if (Array.isArray(j)) {
+              j.forEach(q => addQuestion(q));
+              saveBank();
+              renderList();
+              alert('Imported ' + j.length + ' questions from JSON.');
+            } else alert('JSON must be an array of questions.');
+          } catch (err) {
+            alert('Invalid JSON file.');
+          }
+          jsonFile.value = '';
+        };
+        reader.readAsText(f);
+      });
+
+      // CSV parsing: expect columns: class,subject,difficulty,text,choiceA,choiceB,choiceC,choiceD,answer,tags
+      function parseCsvToQuestions(csv) {
+        const rows = csv.split(/\r?\n/).map(r => r.trim()).filter(r=>r);
+        if (!rows.length) return alert('No rows found in CSV.');
+        const headers = rows[0].split(',').map(h => h.trim().toLowerCase());
+        const expected = ['class','subject','difficulty','text','choicea','choiceb','choicec','choiced','answer','tags'];
+        // Best-effort mapping
+        const mapIdx = headers.reduce((m,h,i)=> (m[h]=i,m), {});
+        const created = [];
+        for (let i=1;i<rows.length;i++){
+          const cols = rows[i].split(',');
+          const q = {
+            id: 'Q-'+uid(4),
+            class: cols[mapIdx['class']] || 'SS2',
+            subject: cols[mapIdx['subject']] || 'General',
+            difficulty: cols[mapIdx['difficulty']] || 'medium',
+            text: cols[mapIdx['text']] || cols[2] || 'Imported question',
+            choices: [
+              cols[mapIdx['choicea']] || '',
+              cols[mapIdx['choiceb']] || '',
+              cols[mapIdx['choicec']] || '',
+              cols[mapIdx['choiced']] || ''
+            ],
+            answer: parseInt(cols[mapIdx['answer']]) || 0,
+            tags: (cols[mapIdx['tags']] || '').split('|').map(s=>s.trim()).filter(Boolean)
+          };
+          bank.push(q);
+          created.push(q);
+        }
+        saveBank();
+        renderList();
+        alert(`Imported ${created.length} questions from CSV.`);
+      }
+
+      // Question modal / editor
+      function openQuestionModal(id) {
+        const q = bank.find(x=>x.id===id);
+        if (!q) return;
+        questionModalTitle.textContent = `${q.id} — Preview`;
+        questionModalBody.innerHTML = `
+          <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+            <div><strong>${q.subject} • ${q.class}</strong> <div class="muted-small">Difficulty: ${q.difficulty}</div></div>
+            <div class="muted-small">Tags: ${(q.tags||[]).map(t=>`<span class="tag">${t}</span>`).join(' ')}</div>
+          </div>
+          <hr style="border:none;border-top:1px solid #eef3ff;margin:8px 0">
+          <div style="font-weight:800;margin-bottom:8px">${escapeHtml(q.text)}</div>
+          <ol style="padding-left:18px">
+            ${q.choices.map((c, i)=>`<li style="margin-bottom:6px">${escapeHtml(c)} ${i===q.answer?'<strong>(correct)</strong>':''}</li>`).join('')}
+          </ol>
+          <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+            <button class="btn ghost" id="editQuestionBtn" data-id="${q.id}">Edit</button>
+            <button class="btn" id="copyQuestionBtn" data-id="${q.id}">Copy</button>
+            <button class="btn warn" id="deleteQuestionBtn" data-id="${q.id}">Delete</button>
+          </div>
+        `;
+        questionModal.classList.add('active');
+        questionModal.setAttribute('aria-hidden','false');
+
+        // attach modal inline handlers
+        setTimeout(()=> {
+          document.getElementById('editQuestionBtn').addEventListener('click', () => { questionModal.classList.remove('active'); openQuestionEditor(q); });
+          document.getElementById('copyQuestionBtn').addEventListener('click', () => {
+            const copy = JSON.parse(JSON.stringify(q));
+            copy.id = 'Q-' + uid(4);
+            bank.push(copy); saveBank(); renderList();
+            alert('Question copied as ' + copy.id);
+            questionModal.classList.remove('active');
+          });
+          document.getElementById('deleteQuestionBtn').addEventListener('click', () => {
+            if (!confirm('Delete this question?')) return;
+            bank = bank.filter(x=>x.id !== q.id);
+            saveBank(); renderList(); questionModal.classList.remove('active');
+          });
+        }, 20);
+      }
+
+      closeQuestionModal.addEventListener('click', ()=> {
+        questionModal.classList.remove('active'); questionModal.setAttribute('aria-hidden','true');
+      });
+
+      function openQuestionEditor(existing) {
+        const isEdit = !!existing;
+        questionModalTitle.textContent = isEdit ? `Edit ${existing.id}` : 'Create new question';
+        const q = existing || { id:'Q-'+uid(4), class:'SS2', subject:'Biology', difficulty:'medium', text:'', choices:['','','',''], answer:0, tags:[] };
+        questionModalBody.innerHTML = `
+          <form id="qForm" style="display:grid;gap:8px">
+            <label>Question ID<input id="qId" value="${q.id}" readonly></label>
+            <label>Class<select id="qClass"><option>SS1</option><option selected>SS2</option><option>SS3</option></select></label>
+            <label>Subject<select id="qSubject"><option>Biology</option><option>Mathematics</option><option>English</option><option>Chemistry</option></select></label>
+            <label>Difficulty<select id="qDiff"><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select></label>
+            <label>Question text<textarea id="qText" rows="3" style="width:100%;"></textarea></label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <label>Choice A<input id="c0"></label>
+              <label>Choice B<input id="c1"></label>
+              <label>Choice C<input id="c2"></label>
+              <label>Choice D<input id="c3"></label>
+            </div>
+            <label>Correct answer<select id="qAnswer"><option value="0">A</option><option value="1">B</option><option value="2">C</option><option value="3">D</option></select></label>
+            <label>Tags (comma separated)<input id="qTags"></label>
+            <div style="display:flex;justify-content:flex-end;gap:8px">
+              <button type="button" class="btn ghost" id="cancelQBtn">Cancel</button>
+              <button type="submit" class="btn" id="saveQBtn">${isEdit ? 'Save changes' : 'Create question'}</button>
+            </div>
+          </form>
+        `;
+        // populate values
+        document.getElementById('qClass').value = q.class || 'SS2';
+        document.getElementById('qSubject').value = q.subject || 'Biology';
+        document.getElementById('qDiff').value = q.difficulty || 'medium';
+        document.getElementById('qText').value = q.text || '';
+        (q.choices || []).forEach((c,idx)=> { const el = document.getElementById('c'+idx); if (el) el.value = c || ''; });
+        document.getElementById('qAnswer').value = q.answer || '0';
+        document.getElementById('qTags').value = (q.tags || []).join(', ');
+
+        questionModal.classList.add('active');
+        questionModal.setAttribute('aria-hidden','false');
+
+        // handlers
+        setTimeout(()=> {
+          document.getElementById('cancelQBtn').addEventListener('click', ()=> { questionModal.classList.remove('active'); });
+          document.getElementById('qForm').addEventListener('submit', (ev) => {
+            ev.preventDefault();
+            const newQ = {
+              id: document.getElementById('qId').value || ('Q-'+uid(4)),
+              class: document.getElementById('qClass').value,
+              subject: document.getElementById('qSubject').value,
+              difficulty: document.getElementById('qDiff').value,
+              text: document.getElementById('qText').value.trim(),
+              choices: [document.getElementById('c0').value, document.getElementById('c1').value, document.getElementById('c2').value, document.getElementById('c3').value],
+              answer: parseInt(document.getElementById('qAnswer').value),
+              tags: (document.getElementById('qTags').value || '').split(',').map(s=>s.trim()).filter(Boolean)
+            };
+            if (!newQ.text) return alert('Question text is required');
+            if (isEdit) {
+              const idx = bank.findIndex(x=>x.id === existing.id);
+              if (idx >= 0) bank[idx] = newQ;
+            } else bank.unshift(newQ); // add to top
+            saveBank(); renderList();
+            questionModal.classList.remove('active');
+          });
+        }, 20);
+      }
+
+      // Set modal handlers
+      function openSetModal(isAdding = false) {
+        // if adding selected to existing set? For demo we create a new set always
+        setNameInput.value = '';
+        setClassInput.value = filterClass.value || 'SS2';
+        setSubjectInput.value = filterSubject.value || 'Biology';
+        setDifficultyInput.value = '';
+        setModal.classList.add('active'); setModal.setAttribute('aria-hidden','false');
+      }
+      closeSetModal.addEventListener('click', ()=> { setModal.classList.remove('active'); });
+      cancelSetBtn.addEventListener('click', ()=> { setModal.classList.remove('active'); });
+      setForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const name = setNameInput.value.trim();
+        if (!name) return alert('Set name required');
+        const id = 'S-'+uid(4);
+        const qids = Array.from(selected);
+        if (!qids.length) {
+          if (!confirm('No questions selected. Create an empty set?')) return;
+        }
+        const s = {
+          id, name, class: setClassInput.value, subject: setSubjectInput.value, difficulty: setDifficultyInput.value || '', questionIds: qids
+        };
+        sets.push(s); saveSets();
+        setModal.classList.remove('active');
+        alert('Set created: ' + name + ' (' + qids.length + ' questions)');
+      });
+
+      // Schedule modal
+      function openScheduleModal() {
+        // Setup schExtra depending on source
+        schExtra.innerHTML = '';
+        schSource.value = 'selected';
+        scheduleModal.classList.add('active'); scheduleModal.setAttribute('aria-hidden','false');
+
+        // Pre-fill date/time
+        document.getElementById('schDate').value = new Date().toISOString().slice(0,10);
+        document.getElementById('schTime').value = '09:00';
+      }
+      closeScheduleModal.addEventListener('click', ()=> scheduleModal.classList.remove('active'));
+      cancelScheduleBtn.addEventListener('click', ()=> scheduleModal.classList.remove('active'));
+      schSource.addEventListener('change', () => {
+        const val = schSource.value;
+        if (val === 'set') {
+          // show set chooser
+          schExtra.innerHTML = `<label>Choose set<select id="schSet">${sets.map(s => `<option value="${s.id}">${escapeHtml(s.name)} • ${s.class} • ${s.subject} (${s.questionIds.length})</option>`).join('')}</select></label>`;
+        } else {
+          schExtra.innerHTML = `<div class="muted-small">Selected questions will be used (${selected.size})</div>`;
+        }
+      });
+      scheduleForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const title = document.getElementById('schTitle').value.trim() || 'Untitled exam';
+        const cls = document.getElementById('schClass').value;
+        const subject = document.getElementById('schSubject').value;
+        const date = document.getElementById('schDate').value;
+        const time = document.getElementById('schTime').value;
+        const duration = parseInt(document.getElementById('schDuration').value, 10) || 60;
+        let qids = [];
+        if (schSource.value === 'set') {
+          const setIdEl = document.getElementById('schSet');
+          if (!setIdEl) return alert('No set selected');
+          const setId = setIdEl.value;
+          const s = sets.find(x=>x.id===setId);
+          if (!s) return alert('Set not found');
+          qids = s.questionIds.slice();
+        } else {
+          qids = Array.from(selected);
+        }
+        if (!qids.length) return alert('No questions selected for exam');
+        const schedule = {
+          id: 'SCH-'+uid(5),
+          title, class: cls, subject, datetime: date + 'T' + (time || '00:00'), duration, questionIds: qids
+        };
+        schedules.push(schedule); saveSchedules();
+        scheduleModal.classList.remove('active');
+        alert('Exam scheduled: ' + title + ' • ' + qids.length + ' questions');
+        // optionally clear selection
+        selected.clear(); updateSelectionBar(); renderList();
+      });
+
+      // Exports
+      function exportSelected(format = 'json') {
+        const qids = Array.from(selected);
+        if (!qids.length) return alert('No questions selected to export.');
+        const data = bank.filter(q => qids.includes(q.id));
+        if (format === 'json') {
+          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+          downloadBlob(blob, `questions_${Date.now()}.json`);
+        } else {
+          // csv export
+          const rows = [['id','class','subject','difficulty','text','choiceA','choiceB','choiceC','choiceD','answer','tags']];
+          data.forEach(q => {
+            rows.push([q.id,q.class,q.subject,q.difficulty, q.text.replace(/"/g,'""'), q.choices[0]||'', q.choices[1]||'', q.choices[2]||'', q.choices[3]||'', q.answer, (q.tags||[]).join('|')]);
+          });
+          const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+          const blob = new Blob([csv], { type: 'text/csv' });
+          downloadBlob(blob, `questions_${Date.now()}.csv`);
+        }
+      }
+      function downloadBlob(blob, name) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      }
+
+      // Global search & filter apply
+      globalSearch.addEventListener('input', () => { page = 1; renderList(); });
+      applyFiltersBtn.addEventListener('click', ()=> { page = 1; renderList(); });
+      clearFiltersBtn.addEventListener('click', ()=> {
+        filterClass.value = ''; filterSubject.value = ''; filterDifficulty.value = ''; filterText.value = '';
+        page = 1; renderList();
+      });
+
+      // Quick selected-to-set and schedule buttons enable/disable logic
+      function updateButtonsState() {
+        const count = selected.size;
+        document.getElementById('addToSetBtn').disabled = (count === 0);
+        scheduleBtn.disabled = (count === 0 && sets.length === 0);
+      }
+
+      // load all persisted data
+      function loadAll() {
+        loadBank(); loadSets(); loadSchedules(); ensureSeed();
+      }
+
+      // helper: HTML escape
+      function escapeHtml(s) { return String(s || '').replace(/[&<>"']/g, function (m) { return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[m]; }); }
+
+      // Initialization
+      loadAll();
+      ensureSeed();
+      renderList();
+      updateButtonsState();
+
+      // keep UI reactive to selection updates
+      const observer = new MutationObserver(()=> { updateButtonsState(); });
+      observer.observe(questionTbody, { childList:true, subtree:true });
+
+      // Close modals clicking overlay or Escape
+      document.getElementById('overlay').addEventListener('click', ()=> {
+        [questionModal, setModal, scheduleModal].forEach(m=>m.classList.remove('active'));
+      });
+      document.addEventListener('keydown', (e)=> {
+        if (e.key === 'Escape') {
+          [questionModal, setModal, scheduleModal].forEach(m=>m.classList.remove('active'));
+        }
+      });
+
+      // Ensure responsive sidebar show/hide works same as other pages
+      const sidebarEl = document.getElementById('sidebar');
+      const overlayEl = document.getElementById('overlay');
+      const hamburgerEl = document.getElementById('hamburger');
+      if (hamburgerEl) {
+        hamburgerEl.addEventListener('click', ()=> {
+          sidebarEl.classList.remove('hidden'); sidebarEl.classList.add('open');
+          overlayEl.classList.add('visible'); document.body.classList.add('no-scroll');
+        });
+        overlayEl.addEventListener('click', ()=> {
+          sidebarEl.classList.remove('open'); sidebarEl.classList.add('hidden');
+          overlayEl.classList.remove('visible'); document.body.classList.remove('no-scroll');
+        });
+      }
+
+      // simple helpers to expose for debugging
+      window.egQuestionBank = {
+        bank, sets, schedules, saveBank, saveSets, saveSchedules
+      };
+
+      // Public small helpers (bindings)
+      document.getElementById('prevPageBtn').addEventListener('click', ()=> { if (page>1) { page--; renderList(); } });
+      document.getElementById('nextPageBtn').addEventListener('click', ()=> { page++; renderList(); });
+
+      // keep buttons reactive
+      setInterval(()=>{ updateButtonsState(); }, 600);
+
+    })();
+  </script>
+</body>
+</html>
