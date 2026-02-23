@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Admin — Results Management | ExamGuard</title>
+  <meta name="viewport" content="width=device-width,initial-scale=0.901" />
+  <link href="https://fonts.googleapis.com/css?family=Inter:400,600,700&display=swap" rel="stylesheet">
+  <link rel="icon" href="../logo.png">
+  <style>
+    :root{
+      --bg-0:#f6f8ff; --bg-1:#eef2ff;
+      --accent:#3b82f6; --accent-2:#6366f1; --muted:#6b7280;
+      --card-bg:#ffffff; --radius:12px; --max-w:1200px;
+      --danger:#ef4444; --success:#10b981;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial;background:linear-gradient(180deg,var(--bg-0),var(--bg-1));color:#0b2a44;-webkit-font-smoothing:antialiased}
+    a{color:inherit;text-decoration:none}
+
+    /* Page shell */
+    .topbar{position:sticky;top:0;z-index:100;background:rgba(255,255,255,0.96);padding:12px 18px;border-bottom:1px solid rgba(11,42,60,0.04);display:flex;justify-content:space-between;align-items:center}
+    .brand{display:flex;gap:12px;align-items:center}
+    .brand img{width:42px;height:42px;border-radius:8px}
+    .page-title{font-weight:900;color:var(--accent-2)}
+    .muted-small{font-size:0.92rem;color:var(--muted)}
+
+    main{max-width:var(--max-w);margin:20px auto;padding:0 18px}
+
+    /* Tab nav */
+    .tabs{display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+    .tab{padding:8px 12px;border-radius:10px;cursor:pointer;font-weight:700;color:var(--accent-2);background:transparent;border:1px solid transparent}
+    .tab.active{background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#fff;border-color:rgba(59,130,246,0.06)}
+
+    /* Card */
+    .card{background:var(--card-bg);border-radius:12px;padding:14px;border:1px solid rgba(11,42,60,0.04);box-shadow:0 10px 30px rgba(2,6,23,0.04)}
+    .space{height:12px}
+
+    /* Controls */
+    .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+    .btn{padding:9px 12px;border-radius:10px;border:none;cursor:pointer;background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#fff;font-weight:800}
+    .btn.ghost{background:transparent;color:var(--accent-2);border:1px solid rgba(59,130,246,0.08)}
+    .btn.danger{background:linear-gradient(90deg,#ef4444,#dc2626)}
+    .btn.small{padding:7px 10px;font-size:0.92rem}
+
+    .filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .filters select,.filters input[type="search"], .filters input[type="date"]{padding:8px;border-radius:8px;border:1px solid #e6e9ef}
+
+    /* Table */
+    .table-wrap{overflow:auto}
+    table{width:100%;border-collapse:collapse;margin-top:8px}
+    thead th{background:#f8fbff;padding:10px;text-align:left;font-weight:800;border-bottom:1px solid #eef3ff;white-space:nowrap}
+    tbody td{padding:10px;border-bottom:1px solid #f1f5fb;vertical-align:middle}
+    td .muted{color:var(--muted);font-size:0.9rem}
+    .right{text-align:right}
+
+    .status{display:inline-block;padding:6px 8px;border-radius:999px;font-weight:800;font-size:0.85rem}
+    .status.published{background:rgba(16,185,129,0.12);color:var(--success);border:1px solid rgba(16,185,129,0.08)}
+    .status.draft{background:rgba(99,102,241,0.06);color:var(--accent-2);border:1px solid rgba(99,102,241,0.06)}
+    .status.declined{background:rgba(239,68,68,0.08);color:var(--danger);border:1px solid rgba(239,68,68,0.06)}
+    .status.flagged{background:#fff6f6;color:var(--danger);border:1px solid rgba(239,68,68,0.06)}
+
+    /* pager */
+    .pager{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:12px}
+    .page-controls{display:flex;gap:8px}
+
+    /* bulk toolbar */
+    .bulk-bar{display:flex;gap:8px;align-items:center;padding:10px;border-radius:10px;background:linear-gradient(90deg,rgba(59,130,246,0.04),rgba(99,102,241,0.02));margin-bottom:8px}
+
+    /* responsive */
+    @media (max-width:900px){
+      .container-grid { display:block }
+      thead th:nth-child(1), td:nth-child(1) { width:36px }
+    }
+
+    /* modal */
+    .modal-backdrop{position:fixed;inset:0;background:rgba(2,6,23,0.45);display:none;align-items:center;justify-content:center;z-index:200;padding:12px}
+    .modal-backdrop.active{display:flex}
+    .modal-card{background:#fff;border-radius:12px;max-width:900px;width:100%;padding:14px;box-shadow:0 20px 60px rgba(2,6,23,0.2)}
+    .form-row{display:grid;grid-template-columns:1fr 260px;gap:12px}
+    @media (max-width:700px){ .form-row{grid-template-columns:1fr} }
+    .field{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+    .field input, .field select, .field textarea{padding:8px;border-radius:8px;border:1px solid #e6e9ef}
+    .small-muted{font-size:0.9rem;color:var(--muted)}
+
+  </style>
+</head>
+<body>
+  <header class="topbar" role="banner">
+    <div class="brand"><img src="../logo.png" alt="logo"><div><div class="page-title">Results Management — Admin</div><div class="muted-small">Review, publish and moderate submissions</div></div></div>
+    <div class="muted-small">Signed in as: <strong>Admin</strong></div>
+  </header>
+
+  <main>
+    <div class="tabs" role="tablist" aria-label="Results tabs">
+      <div class="tab active" data-tab="overview" role="tab" aria-selected="true">Overview</div>
+      <div class="tab" data-tab="results" role="tab">Results</div>
+      <div class="tab" data-tab="reports" role="tab">Reports</div>
+    </div>
+
+    <!-- OVERVIEW -->
+    <section id="overview" class="tab-section card" role="region" aria-labelledby="overviewTitle">
+      <h2 id="overviewTitle">Overview</h2>
+      <div class="space"></div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+        <div class="card">
+          <div class="muted-small">Total submissions</div>
+          <div style="font-weight:900;font-size:1.3rem" id="statTotal">--</div>
+        </div>
+        <div class="card">
+          <div class="muted-small">Pending (unpublished)</div>
+          <div style="font-weight:900;font-size:1.3rem" id="statPending">--</div>
+        </div>
+        <div class="card">
+          <div class="muted-small">Flagged</div>
+          <div style="font-weight:900;font-size:1.3rem" id="statFlagged">--</div>
+        </div>
+        <div class="card">
+          <div class="muted-small">Published</div>
+          <div style="font-weight:900;font-size:1.3rem" id="statPublished">--</div>
+        </div>
+      </div>
+      <div class="space"></div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-weight:800">Recent submissions</div>
+          <div class="small-muted">Latest activity</div>
+        </div>
+        <div id="recentList" style="margin-top:10px" class="small-muted">No recent activity</div>
+      </div>
+    </section>
+
+    <div style="height:12px"></div>
+
+    <!-- RESULTS -->
+    <section id="results" class="tab-section" style="display:none">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-weight:800">Submissions</div>
+          <div class="small-muted">Filter, search and act on results</div>
+        </div>
+
+        <div class="space"></div>
+
+        <div class="controls">
+          <div class="filters" role="search" aria-label="search filters">
+            <select id="filterClass"><option value="">All classes</option><option>SS1</option><option>SS2</option><option>SS3</option></select>
+            <select id="filterExam"><option value="">All exams</option></select>
+            <select id="filterType"><option value="">All types</option><option value="CA">CA</option><option value="General">General</option></select>
+            <select id="filterStatus"><option value="">All status</option><option value="draft">Draft</option><option value="published">Published</option><option value="declined">Declined</option><option value="flagged">Flagged</option></select>
+            <input type="date" id="filterFrom" title="From date">
+            <input type="date" id="filterTo" title="To date">
+            <input type="search" id="searchBox" placeholder="Search student, admission, id">
+            <button class="btn small" id="applyFilters">Apply</button>
+            <button class="btn ghost small" id="clearFilters">Clear</button>
+          </div>
+
+          <div style="margin-left:auto;display:flex;gap:8px">
+            <button class="btn ghost small" id="exportCsv">Export CSV</button>
+            <button class="btn small" id="refreshBtn">Refresh</button>
+          </div>
+        </div>
+
+        <div class="space"></div>
+
+        <div id="bulkToolbar" class="bulk-bar" style="display:none">
+          <div id="bulkInfo">0 selected</div>
+          <div style="margin-left:auto;display:flex;gap:8px">
+            <button class="btn small" id="bulkPublish">Publish</button>
+            <button class="btn ghost small" id="bulkDecline">Decline</button>
+            <button class="btn ghost small" id="bulkFlag">Flag</button>
+            <button class="btn danger small" id="bulkDelete">Delete</button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table role="table" aria-label="Results table">
+            <thead>
+              <tr>
+                <th style="width:44px"><input type="checkbox" id="masterSelect" title="Select all visible"></th>
+                <th>Student</th>
+                <th>Admission</th>
+                <th>Class</th>
+                <th>Exam</th>
+                <th>Type</th>
+                <th class="right">Score</th>
+                <th class="right">Percent</th>
+                <th>Submitted</th>
+                <th>Status</th>
+                <th class="right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="resultsTbody" role="rowgroup"></tbody>
+          </table>
+        </div>
+
+        <div class="pager">
+          <div class="small-muted" id="pagerInfo">0 results</div>
+          <div class="page-controls">
+            <button class="btn ghost small" id="prevPage">Prev</button>
+            <button class="btn ghost small" id="nextPage">Next</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div style="height:12px"></div>
+
+    <!-- REPORTS -->
+    <section id="reports" class="tab-section card" style="display:none">
+      <h2>Reports</h2>
+      <div class="space"></div>
+      <div class="muted-small">Quick exports and summary reports per class/exam.</div>
+      <div class="space"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <select id="reportClass"><option value="">Class (all)</option><option>SS1</option><option>SS2</option></select>
+        <select id="reportExam"><option value="">Exam (all)</option></select>
+        <button class="btn" id="downloadSummary">Download summary CSV</button>
+        <button class="btn ghost" id="generatePdf">Generate PDF</button>
+      </div>
+      <div class="space"></div>
+      <div id="reportOutput" class="card small-muted">No report generated yet.</div>
+    </section>
+  </main>
+
+  <!-- Modals: view / edit / confirm -->
+  <div id="modalBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal-card" id="modalCard" role="document">
+      <!-- dynamic content -->
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      // Simple client-side admin results manager (demo). Replace API calls with server endpoints in production.
+      const PAGE_SIZE = 12;
+      let page = 1;
+
+      // elements
+      const tabs = Array.from(document.querySelectorAll('.tab'));
+      const sections = document.querySelectorAll('.tab-section');
+      const resultsTbody = document.getElementById('resultsTbody');
+      const masterSelect = document.getElementById('masterSelect');
+      const bulkToolbar = document.getElementById('bulkToolbar');
+      const bulkInfo = document.getElementById('bulkInfo');
+
+      const filterClass = document.getElementById('filterClass');
+      const filterExam = document.getElementById('filterExam');
+      const filterType = document.getElementById('filterType');
+      const filterStatus = document.getElementById('filterStatus');
+      const filterFrom = document.getElementById('filterFrom');
+      const filterTo = document.getElementById('filterTo');
+      const searchBox = document.getElementById('searchBox');
+      const applyFilters = document.getElementById('applyFilters');
+      const clearFilters = document.getElementById('clearFilters');
+      const refreshBtn = document.getElementById('refreshBtn');
+      const exportCsv = document.getElementById('exportCsv');
+
+      const prevPage = document.getElementById('prevPage');
+      const nextPage = document.getElementById('nextPage');
+      const pagerInfo = document.getElementById('pagerInfo');
+
+      const modalBackdrop = document.getElementById('modalBackdrop');
+      const modalCard = document.getElementById('modalCard');
+
+      // bulk actions
+      const bulkPublish = document.getElementById('bulkPublish');
+      const bulkDecline = document.getElementById('bulkDecline');
+      const bulkFlag = document.getElementById('bulkFlag');
+      const bulkDelete = document.getElementById('bulkDelete');
+
+      // Reports selects
+      const reportClass = document.getElementById('reportClass');
+      const reportExam = document.getElementById('reportExam');
+      const downloadSummary = document.getElementById('downloadSummary');
+      const generatePdf = document.getElementById('generatePdf');
+      const reportOutput = document.getElementById('reportOutput');
+
+      // storage key
+      const KEY = 'eg_admin_results_v1';
+
+      let results = []; // array of result objects
+      let selected = new Set();
+
+      // load / seed
+      function load() {
+        const raw = localStorage.getItem(KEY);
+        if (raw) {
+          try { results = JSON.parse(raw); } catch(e){ results = []; }
+        }
+        if (!results.length) seed();
+        populateExamOptions();
+      }
+      function save() { localStorage.setItem(KEY, JSON.stringify(results)); }
+
+      // seed with mock data
+      function seed() {
+        const now = Date.now();
+        const types = ['CA','General'];
+        const statuses = ['draft','published','declined'];
+        const cls = ['SS1','SS2','SS3'];
+        results = [];
+        for (let i=1;i<=86;i++){
+          const cid = 'ADM' + String(1000 + i);
+          const c = cls[i % cls.length];
+          const examId = 'EX' + String(200 + (i % 7));
+          const examTitle = (i%2===0) ? 'Term Assessment' : 'Final Exam';
+          const type = types[i%2];
+          const score = Math.floor(Math.random()*100);
+          const max = 100;
+          const submittedAt = new Date(now - Math.floor(Math.random()*10*24*3600*1000)).toISOString();
+          const status = i%7 === 0 ? 'flagged' : (i%5 === 0 ? 'declined' : (i%3 === 0 ? 'published' : 'draft'));
+          results.push({
+            id: 'R' + String(10000 + i),
+            student: 'Student ' + i,
+            admission: cid,
+            class: c,
+            examId,
+            examTitle,
+            type,
+            score,
+            max,
+            submittedAt,
+            status
+          });
+        }
+        save();
+      }
+
+      // tab switching
+      tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          tabs.forEach(t=>t.classList.remove('active'));
+          tab.classList.add('active');
+          sections.forEach(s=>s.style.display = (s.id === tab.dataset.tab) ? '' : 'none');
+        });
+      });
+
+      // populate unique exam options from data
+      function populateExamOptions() {
+        const examSet = new Map();
+        results.forEach(r => examSet.set(r.examId, r.examTitle));
+        const exams = Array.from(examSet.entries());
+        filterExam.innerHTML = '<option value="">All exams</option>';
+        reportExam.innerHTML = '<option value="">All exams</option>';
+        exams.forEach(([id,title])=>{
+          const o = document.createElement('option'); o.value = id; o.textContent = `${title} • ${id}`; filterExam.appendChild(o);
+          const o2 = o.cloneNode(true); reportExam.appendChild(o2);
+        });
+      }
+
+      // apply filters & render
+      function getFiltered() {
+        const cls = filterClass.value;
+        const ex = filterExam.value;
+        const type = filterType.value;
+        const status = filterStatus.value;
+        const from = filterFrom.value;
+        const to = filterTo.value;
+        const q = (searchBox.value || '').trim().toLowerCase();
+
+        return results.filter(r => {
+          if (cls && r.class !== cls) return false;
+          if (ex && r.examId !== ex) return false;
+          if (type && r.type !== type) return false;
+          if (status && r.status !== status) return false;
+          if (from && new Date(r.submittedAt) < new Date(from)) return false;
+          if (to && new Date(r.submittedAt) > new Date(to + 'T23:59:59')) return false;
+          if (q) {
+            const hay = (r.student + ' ' + r.admission + ' ' + r.id + ' ' + r.examTitle).toLowerCase();
+            if (!hay.includes(q)) return false;
+          }
+          return true;
+        });
+      }
+
+      function render(pageNo = 1) {
+        page = Math.max(1, pageNo);
+        const filtered = getFiltered();
+        const total = filtered.length;
+        const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+        if (page > pages) page = pages;
+        const start = (page - 1) * PAGE_SIZE;
+        const slice = filtered.slice(start, start + PAGE_SIZE);
+        resultsTbody.innerHTML = '';
+        if (!slice.length) {
+          resultsTbody.innerHTML = '<tr><td colspan="11"><div class="small-muted">No submissions found.</div></td></tr>';
+        } else {
+          slice.forEach(r => {
+            const tr = document.createElement('tr');
+            const pct = Math.round((r.score / r.max) * 100);
+            tr.innerHTML = `
+              <td><input type="checkbox" class="row-select" data-id="${r.id}" ${selected.has(r.id)?'checked':''}></td>
+              <td><strong>${escapeHtml(r.student)}</strong><div class="muted">${r.id}</div></td>
+              <td>${escapeHtml(r.admission)}</td>
+              <td>${escapeHtml(r.class)}</td>
+              <td>${escapeHtml(r.examTitle)}<div class="muted">${r.examId}</div></td>
+              <td>${escapeHtml(r.type)}</td>
+              <td class="right">${r.score} / ${r.max}</td>
+              <td class="right">${pct}%</td>
+              <td>${new Date(r.submittedAt).toLocaleString()}</td>
+              <td>${statusLabel(r.status)}</td>
+              <td class="right">
+                <button class="btn small viewBtn" data-id="${r.id}">View</button>
+                <button class="btn ghost small editBtn" data-id="${r.id}">Edit</button>
+                <button class="btn ghost small moreBtn" data-id="${r.id}">More</button>
+              </td>
+            `;
+            resultsTbody.appendChild(tr);
+          });
+        }
+        pagerInfo.textContent = `Showing ${Math.min(total, start+1)} - ${Math.min(total, start + slice.length)} of ${total} results`;
+        updateStats();
+      }
+
+      function statusLabel(st) {
+        const s = document.createElement('span');
+        s.className = 'status ' + (st === 'published' ? 'published' : (st === 'draft' ? 'draft' : (st === 'declined' ? 'declined' : 'flagged')));
+        s.textContent = st.toUpperCase();
+        return s.outerHTML;
+      }
+
+      // events: row actions, selection, bulk
+      document.body.addEventListener('click', (e) => {
+        const t = e.target;
+        if (t.matches('.viewBtn')) openViewModal(t.dataset.id);
+        if (t.matches('.editBtn')) openEditModal(t.dataset.id);
+        if (t.matches('.moreBtn')) openMoreMenu(t.dataset.id, t);
+        if (t.matches('.row-select')) {
+          const id = t.dataset.id;
+          if (t.checked) selected.add(id); else selected.delete(id);
+          refreshBulk();
+        }
+      });
+
+      masterSelect.addEventListener('change', (e) => {
+        const check = masterSelect.checked;
+        const rows = Array.from(document.querySelectorAll('.row-select'));
+        rows.forEach(r => {
+          r.checked = check;
+          const id = r.dataset.id;
+          if (check) selected.add(id); else selected.delete(id);
+        });
+        refreshBulk();
+      });
+
+      function refreshBulk() {
+        const c = selected.size;
+        bulkInfo.textContent = `${c} selected`;
+        bulkToolbar.style.display = c ? '' : 'none';
+      }
+
+      // bulk actions
+      bulkPublish.addEventListener('click', ()=> bulkAction('publish'));
+      bulkDecline.addEventListener('click', ()=> bulkAction('decline'));
+      bulkFlag.addEventListener('click', ()=> bulkAction('flag'));
+      bulkDelete.addEventListener('click', ()=> bulkAction('delete'));
+
+      function bulkAction(action) {
+        if (!selected.size) return alert('Select some submissions first.');
+        if (action === 'delete' && !confirm('Delete selected submissions? This cannot be undone.')) return;
+        Array.from(selected).forEach(id => {
+          const idx = results.findIndex(r => r.id === id);
+          if (idx === -1) return;
+          if (action === 'publish') results[idx].status = 'published';
+          if (action === 'decline') results[idx].status = 'declined';
+          if (action === 'flag') results[idx].status = 'flagged';
+          if (action === 'delete') results.splice(idx,1);
+        });
+        save();
+        selected.clear();
+        render();
+        populateExamOptions();
+        alert('Bulk action completed.');
+      }
+
+      // open view modal
+      function openViewModal(id) {
+        const r = results.find(x=>x.id===id);
+        if (!r) return alert('Not found');
+        modalCard.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div><strong>${escapeHtml(r.student)}</strong><div class="muted-small">${r.admission} • ${r.class}</div></div>
+            <div class="muted-small">${new Date(r.submittedAt).toLocaleString()}</div>
+          </div>
+          <hr style="margin:12px 0">
+          <div><strong>Exam:</strong> ${escapeHtml(r.examTitle)} (${r.examId})</div>
+          <div style="margin-top:8px"><strong>Type:</strong> ${escapeHtml(r.type)}</div>
+          <div style="margin-top:8px"><strong>Score:</strong> ${r.score} / ${r.max} (${Math.round((r.score/r.max)*100)}%)</div>
+          <div style="margin-top:12px"><strong>Status:</strong> ${r.status}</div>
+          <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+            <button class="btn small" id="pubBtn">${r.status==='published'?'Unpublish':'Publish'}</button>
+            <button class="btn ghost small" id="declineBtn">${r.status==='declined'?'Restore':'Decline'}</button>
+            <button class="btn ghost small" id="flagBtnModal">${r.status==='flagged'?'Unflag':'Flag'}</button>
+            <button class="btn danger small" id="delBtn">Delete</button>
+            <button class="btn ghost small" id="closeModal">Close</button>
+          </div>
+        `;
+        modalBackdrop.classList.add('active'); modalBackdrop.setAttribute('aria-hidden','false');
+
+        document.getElementById('closeModal').addEventListener('click', closeModal, { once:true });
+        document.getElementById('pubBtn').addEventListener('click', ()=> {
+          r.status = r.status === 'published' ? 'draft' : 'published'; save(); render(); closeModal();
+        }, { once:true });
+        document.getElementById('declineBtn').addEventListener('click', ()=> {
+          r.status = r.status === 'declined' ? 'draft' : 'declined'; save(); render(); closeModal();
+        }, { once:true });
+        document.getElementById('flagBtnModal').addEventListener('click', ()=> {
+          r.status = r.status === 'flagged' ? 'draft' : 'flagged'; save(); render(); closeModal();
+        }, { once:true });
+        document.getElementById('delBtn').addEventListener('click', ()=> {
+          if (!confirm('Delete this submission?')) return;
+          const idx = results.findIndex(x=>x.id===r.id); if (idx>-1) results.splice(idx,1); save(); render(); closeModal();
+        }, { once:true });
+      }
+
+      function closeModal() { modalBackdrop.classList.remove('active'); modalBackdrop.setAttribute('aria-hidden','true'); modalCard.innerHTML=''; }
+
+      // edit modal (inline simple)
+      function openEditModal(id) {
+        const r = results.find(x=>x.id===id); if (!r) return;
+        modalCard.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div><strong>Edit submission: ${escapeHtml(r.student)}</strong></div>
+            <div><button class="btn ghost small" id="closeEdit">Close</button></div>
+          </div>
+          <hr style="margin:12px 0">
+          <div class="form-row">
+            <div>
+              <div class="field"><label>Score<input type="number" id="editScore" min="0" max="${r.max}" value="${r.score}"></label></div>
+              <div class="field"><label>Max marks<input type="number" id="editMax" min="1" value="${r.max}"></label></div>
+              <div class="field"><label>Type<select id="editType"><option value="CA"${r.type==='CA'?' selected':''}>CA</option><option value="General"${r.type==='General'?' selected':''}>General</option></select></label></div>
+            </div>
+            <div style="min-width:220px">
+              <div class="field"><label>Status<select id="editStatus"><option value="draft"${r.status==='draft'?' selected':''}>Draft</option><option value="published"${r.status==='published'?' selected':''}>Published</option><option value="declined"${r.status==='declined'?' selected':''}>Declined</option><option value="flagged"${r.status==='flagged'?' selected':''}>Flagged</option></select></label></div>
+              <div class="field"><label>Submitted at<input type="datetime-local" id="editSubmitted" value="${new Date(r.submittedAt).toISOString().slice(0,16)}"></label></div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+            <button class="btn ghost small" id="cancelEdit">Cancel</button>
+            <button class="btn small" id="saveEdit">Save</button>
+          </div>
+        `;
+        modalBackdrop.classList.add('active'); modalBackdrop.setAttribute('aria-hidden','false');
+
+        document.getElementById('closeEdit').addEventListener('click', closeModal, { once:true });
+        document.getElementById('cancelEdit').addEventListener('click', closeModal, { once:true });
+        document.getElementById('saveEdit').addEventListener('click', ()=> {
+          r.score = parseFloat(document.getElementById('editScore').value) || r.score;
+          r.max = parseFloat(document.getElementById('editMax').value) || r.max;
+          r.type = document.getElementById('editType').value;
+          r.status = document.getElementById('editStatus').value;
+          r.submittedAt = new Date(document.getElementById('editSubmitted').value).toISOString();
+          save(); render(); closeModal();
+        }, { once:true });
+      }
+
+      // more menu (simple actions)
+      function openMoreMenu(id, anchor) {
+        const r = results.find(x=>x.id===id); if (!r) return;
+        // quick prompt for single-item actions
+        const action = prompt('Action for this submission: publish / decline / flag / delete / copy (type action)');
+        if (!action) return;
+        const a = action.trim().toLowerCase();
+        if (a === 'publish') r.status = 'published';
+        else if (a === 'decline') r.status = 'declined';
+        else if (a === 'flag') r.status = 'flagged';
+        else if (a === 'delete') {
+          if (!confirm('Delete this submission?')) return;
+          const idx = results.findIndex(x=>x.id===r.id); if (idx>-1) results.splice(idx,1);
+        } else if (a === 'copy') {
+          const copy = JSON.parse(JSON.stringify(r)); copy.id = 'R' + Math.floor(Math.random()*100000); copy.submittedAt = new Date().toISOString();
+          results.unshift(copy);
+        } else return alert('Unknown action');
+        save(); render(); populateExamOptions();
+      }
+
+      // export CSV
+      exportCsv.addEventListener('click', ()=> {
+        const rows = [['id','student','admission','class','examId','examTitle','type','score','max','percent','submittedAt','status']];
+        getFiltered().forEach(r => {
+          rows.push([r.id,r.student,r.admission,r.class,r.examId,r.examTitle,r.type,r.score,r.max, Math.round((r.score/r.max)*100), r.submittedAt, r.status]);
+        });
+        const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'results_export.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      });
+
+      // filters
+      applyFilters.addEventListener('click', ()=> { page = 1; render(page); });
+      clearFilters.addEventListener('click', ()=> {
+        filterClass.value=''; filterExam.value=''; filterType.value=''; filterStatus.value=''; filterFrom.value=''; filterTo.value=''; searchBox.value='';
+        page = 1; render(page);
+      });
+      refreshBtn.addEventListener('click', ()=> { load(); render(page); alert('Refreshed'); });
+
+      prevPage.addEventListener('click', ()=> { if (page>1) { page--; render(page); }});
+      nextPage.addEventListener('click', ()=> { page++; render(page); });
+
+      // reports
+      downloadSummary.addEventListener('click', ()=> {
+        const cls = reportClass.value; const ex = reportExam.value;
+        const filtered = results.filter(r => (cls? r.class === cls:true) && (ex? r.examId === ex:true));
+        if (!filtered.length) return alert('No records for selected filters');
+        // produce CSV summary
+        const rows = [['class','examId','examTitle','count','avgPercent']];
+        const grouped = {};
+        filtered.forEach(r => {
+          const key = r.class + '|' + r.examId;
+          grouped[key] = grouped[key] || { class:r.class, examId:r.examId, examTitle:r.examTitle, count:0, totalPct:0 };
+          grouped[key].count += 1;
+          grouped[key].totalPct += Math.round((r.score/r.max)*100);
+        });
+        Object.values(grouped).forEach(g => rows.push([g.class,g.examId,g.examTitle,g.count, Math.round(g.totalPct / g.count)]));
+        const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'results_summary.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      });
+
+      // misc
+      function updateStats() {
+        const total = results.length;
+        const pending = results.filter(r=>r.status==='draft').length;
+        const flagged = results.filter(r=>r.status==='flagged').length;
+        const published = results.filter(r=>r.status==='published').length;
+        document.getElementById('statTotal').textContent = total;
+        document.getElementById('statPending').textContent = pending;
+        document.getElementById('statFlagged').textContent = flagged;
+        document.getElementById('statPublished').textContent = published;
+        // recent list
+        const recent = results.slice(0,6).map(r => `${new Date(r.submittedAt).toLocaleDateString()} — ${r.student} (${r.class}) — ${r.examTitle}`);
+        document.getElementById('recentList').innerHTML = recent.map(s => `<div>${escapeHtml(s)}</div>`).join('');
+      }
+
+      // helpers
+      function getFiltered(){ return getFilteredInternal(); } // wrapper
+      function getFilteredInternal() {
+        const cls = filterClass.value;
+        const ex = filterExam.value;
+        const type = filterType.value;
+        const status = filterStatus.value;
+        const from = filterFrom.value;
+        const to = filterTo.value;
+        const q = (searchBox.value || '').trim().toLowerCase();
+
+        return results.filter(r => {
+          if (cls && r.class !== cls) return false;
+          if (ex && r.examId !== ex) return false;
+          if (type && r.type !== type) return false;
+          if (status && r.status !== status) return false;
+          if (from && new Date(r.submittedAt) < new Date(from)) return false;
+          if (to && new Date(r.submittedAt) > new Date(to + 'T23:59:59')) return false;
+          if (q) {
+            const hay = (r.student + ' ' + r.admission + ' ' + r.id + ' ' + r.examTitle).toLowerCase();
+            if (!hay.includes(q)) return false;
+          }
+          return true;
+        });
+      }
+
+      function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[m]); }
+
+      // initial load & render
+      load(); render(page);
+
+    })();
+  </script>
+</body>
+</html>
