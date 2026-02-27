@@ -50,7 +50,7 @@
     .profile img{width:48px;height:48px;border-radius:10px;object-fit:cover;border:2px solid #ffe066}
 
     /* Topbar */
-    .topbar{position:fixed;left:var(--sidebar-w);top:0;width:calc(100vw - var(--sidebar-w));z-index:90;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;backdrop-filter:blur(6px);background:rgba(255,255,255,0.86);border-bottom:1px solid rgba(11,42,60,0.06);box-shadow:0 6px 18px rgba(11,42,60,0.04);min-height:64px}
+    .topbar{position:fixed;left:var(--sidebar-w);top:0;width:calc(100vw - var(--sidebar-w));z-index:90;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;backdrop-filter: blur(6px);background: rgba(255,255,255,0.92);border-bottom:1px solid rgba(11,42,60,0.06);box-shadow:0 6px 18px rgba(11,42,60,0.04)}
     @media (max-width:720px){.topbar{left:0;width:100vw;padding:10px 12px;min-height:56px}}
 
     .hamburger{display:none;background:var(--accent);color:#fff;border:none;padding:9px 12px;border-radius:10px;cursor:pointer;font-weight:800}
@@ -94,11 +94,29 @@
     .empty{padding:28px;text-align:center;color:var(--muted);border:1px dashed #eef3ff;border-radius:12px}
 
     :focus{outline:3px solid rgba(99,102,241,0.18);outline-offset:2px;border-radius:6px}
+
+    /* page loader */
+    .page-loader { position: fixed; inset: 0; display: none; align-items:center; justify-content:center; z-index:1200; background: rgba(255,255,255,0.92); }
+    .page-loader.active { display:flex; }
+    .page-loader .spinner { width:44px;height:44px;border-radius:50%;border:6px solid rgba(0,0,0,0.06);border-top-color:var(--accent);animation:spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .page-loader .msg { font-weight:800; color:#0b2a44; }
+    .page-loader .sub { color:var(--muted); font-size:0.92rem; margin-top:6px; }
+
   </style>
 </head>
 <body>
   <div class="app" id="app">
     <div class="overlay" id="overlay" aria-hidden="true"></div>
+
+    <!-- loader -->
+    <div id="pageLoader" class="page-loader" role="status" aria-live="polite" aria-hidden="true">
+      <div class="spinner" aria-hidden="true"></div>
+      <div style="text-align:center">
+        <div class="msg" id="loaderMsg">Loading teacher dashboard…</div>
+        <div class="sub" id="loaderSub">Fetching profile and classroom data</div>
+      </div>
+    </div>
 
     <aside class="sidebar" id="sidebar" aria-label="Main navigation" role="navigation" aria-hidden="false">
       <div class="brand">
@@ -128,10 +146,10 @@
       <div class="spacer" aria-hidden="true"></div>
 
       <div class="profile">
-        <img src="../avatar.jpg" alt="Teacher avatar">
+        <img src="../avatar.jpg" alt="Teacher avatar" id="teacherAvatar">
         <div>
-          <div style="font-weight:800" id="teacherName">Mr. Emeka</div>
-          <div class="muted-small" id="teacherDept">Biology • Grade 10</div>
+          <div style="font-weight:800" id="teacherName">Teacher</div>
+          <div class="muted-small" id="teacherDept">—</div>
         </div>
       </div>
     </aside>
@@ -146,8 +164,8 @@
       </div>
 
       <div style="display:flex;gap:12px;align-items:center;">
-        <div class="muted-small">Term: 2025 / 2026</div>
-        <img src="../avatar.jpg" alt="you" style="width:44px;height:44px;border-radius:8px;border:2px solid #fff">
+        <div class="muted-small" id="termInfo">—</div>
+        <img src="../avatar.jpg" alt="you" style="width:44px;height:44px;border-radius:8px;border:2px solid #fff" id="topbarAvatar">
       </div>
     </div>
 
@@ -193,7 +211,7 @@
           <div class="muted-small">Your classes and rosters</div>
 
           <div style="margin-top:12px" class="controls">
-            <select id="classSelect"></select>
+            <select id="classSelect" aria-label="Select class"></select>
             <button class="btn" id="newClassBtn">Create class</button>
             <button class="btn ghost" id="exportRosterBtn">Export roster</button>
           </div>
@@ -221,7 +239,7 @@
           <div class="muted-small">Mark attendance quickly</div>
 
           <div style="margin-top:12px" class="controls">
-            <select id="attClassSelect"></select>
+            <select id="attClassSelect" aria-label="Attendance class"></select>
             <input type="date" id="attDate">
             <button class="btn" id="loadAttendanceBtn">Load</button>
           </div>
@@ -248,7 +266,7 @@
           <div class="muted-small">Enter grades and export reports</div>
 
           <div style="margin-top:12px" class="controls">
-            <select id="gradeClassSelect"></select>
+            <select id="gradeClassSelect" aria-label="Grade class"></select>
             <select id="gradeAssessmentSelect"><option>Assessment A</option></select>
             <button class="btn" id="saveGradesBtn">Save grades</button>
             <button class="btn ghost" id="exportGradesBtn">Export CSV</button>
@@ -341,421 +359,522 @@
 
   <script>
     (function () {
-      // Sidebar mobile handlers (same pattern used earlier)
-      const sidebar = document.getElementById('sidebar');
-      const overlay = document.getElementById('overlay');
-      const hamburger = document.getElementById('hamburger');
-      if (hamburger) {
-        hamburger.addEventListener('click', () => {
-          sidebar.classList.remove('hidden');
-          sidebar.classList.add('open');
-          overlay.classList.add('visible');
-          document.body.classList.add('no-scroll');
-        });
-        overlay.addEventListener('click', () => {
-          sidebar.classList.remove('open');
-          sidebar.classList.add('hidden');
-          overlay.classList.remove('visible');
-          document.body.classList.remove('no-scroll');
-        });
+      const API_BASE = 'https://examguide.onrender.com/api';
+      const TOKEN = localStorage.getItem('eg_token') || null;
+
+      // DOM refs
+      const pageLoader = document.getElementById('pageLoader');
+      const loaderMsg = document.getElementById('loaderMsg');
+      const loaderSub = document.getElementById('loaderSub');
+
+      const teacherNameEl = document.getElementById('teacherName');
+      const teacherDeptEl = document.getElementById('teacherDept');
+      const teacherAvatar = document.getElementById('teacherAvatar');
+      const topbarAvatar = document.getElementById('topbarAvatar');
+      const termInfo = document.getElementById('termInfo');
+
+      // data containers
+      let classes = [];
+      let assignments = [];
+      let exams = [];
+      let resources = [];
+      let messages = [];
+
+      function showLoader(msg, sub) {
+        if (msg) loaderMsg.textContent = msg;
+        if (sub) loaderSub.textContent = sub;
+        pageLoader.classList.add('active'); pageLoader.setAttribute('aria-hidden','false');
+      }
+      function hideLoader() {
+        pageLoader.classList.remove('active'); pageLoader.setAttribute('aria-hidden','true');
       }
 
-      // Tab system driven by sidebar .sidebar-tab
-      const sidebarTabs = Array.from(document.querySelectorAll('.sidebar-tab'));
-      const tabSections = Array.from(document.querySelectorAll('.tab-section'));
-
-      function setActiveTab(name, push = true) {
-        sidebarTabs.forEach(t => {
-          const is = t.dataset.tab === name;
-          t.classList.toggle('active', is);
-          t.setAttribute('aria-current', is ? 'true' : 'false');
-        });
-        tabSections.forEach(s => s.style.display = s.id === name ? '' : 'none');
-        if (push) history.replaceState(null, '', '#' + name);
-        // close mobile sidebar if needed
-        if (window.innerWidth <= 720) {
-          sidebar.classList.remove('open');
-          sidebar.classList.add('hidden');
-          overlay.classList.remove('visible');
-          document.body.classList.remove('no-scroll');
-        }
-        // focus a primary control in section
-        const sec = document.getElementById(name);
-        if (sec) {
-          const focusable = sec.querySelector('button, input, select, a');
-          if (focusable) focusable.focus();
-        }
+      function headers(contentType='application/json') {
+        const h = {};
+        if (contentType) h['Content-Type'] = contentType;
+        if (TOKEN) h['Authorization'] = 'Bearer ' + TOKEN;
+        return h;
       }
 
-      sidebarTabs.forEach(t => {
-        t.addEventListener('click', (e) => {
-          e.preventDefault();
-          setActiveTab(t.dataset.tab);
-        });
-      });
+      // generic fetch candidates helper (tries multiple endpoint shapes)
+      async function tryFetchCandidates(candidates, options={}) {
+        for (const url of candidates) {
+          if (!url) continue;
+          try {
+            const res = await fetch(url, options);
+            if (!res.ok) continue;
+            const data = await res.json();
+            if (Array.isArray(data)) return data;
+            if (Array.isArray(data.items)) return data.items;
+            if (Array.isArray(data.data)) return data.data;
+            if (Array.isArray(data.results)) return data.results;
+            if (Array.isArray(data.classes)) return data.classes;
+            if (Array.isArray(data.assignments)) return data.assignments;
+            // wrap single object
+            if (data && (data.id || data._id)) return [data];
+          } catch (err) {
+            console.warn('candidate fetch failed', url, err);
+          }
+        }
+        return null;
+      }
 
-      // Initialize tab from hash (deep linking)
-      const initial = (location.hash || '').replace('#', '') || 'overview';
-      setActiveTab(initial, false);
-      window.addEventListener('hashchange', () => {
-        const h = (location.hash || '').replace('#', '') || 'overview';
-        setActiveTab(h, false);
-      });
+      // fetch profile / me
+      async function fetchProfile() {
+        const local = (function(){ try { return JSON.parse(localStorage.getItem('eg_application')||'null') || null;} catch { return null; } })();
+        if (!TOKEN) return local || {};
+        const candidates = [`${API_BASE}/me`, `${API_BASE}/profile`, `${API_BASE}/users/me`];
+        for (const url of candidates) {
+          try {
+            const res = await fetch(url, { headers: headers() });
+            if (!res.ok) continue;
+            const data = await res.json();
+            return data.user || data || local || {};
+          } catch (err) {}
+        }
+        return local || {};
+      }
 
-      // Mock data for teacher
-      const classes = [
-        { id: 'C1', name: 'SS2-Biology', students: [
-          { id:'S001', name:'Adaobi Chukwu', admission:'ADM001', contact:'0801000001' },
-          { id:'S002', name:'Chinonso Okafor', admission:'ADM002', contact:'0801000002' },
-          { id:'S003', name:'Mercy A', admission:'ADM003', contact:'0801000003' },
-        ]},
-        { id: 'C2', name: 'SS2-Maths', students: [
-          { id:'S011', name:'John Doe', admission:'ADM011', contact:'0801000011' },
-          { id:'S012', name:'Jane Roe', admission:'ADM012', contact:'0801000012' },
-        ]}
-      ];
+      // fetch resources (classes, assignments, exams, resources, messages)
+      async function fetchTeacherData(teacherId) {
+        // Students may be returned under teacher's classes; adapt to API shapes
+        const [classesData, assignmentsData, examsData, resourcesData, messagesData] = await Promise.all([
+          tryFetchCandidates([`${API_BASE}/teachers/${encodeURIComponent(teacherId)}/classes`, `${API_BASE}/classes?teacher=${encodeURIComponent(teacherId)}`, `${API_BASE}/classes`], { headers: headers() }),
+          tryFetchCandidates([`${API_BASE}/assignments?teacher=${encodeURIComponent(teacherId)}`, `${API_BASE}/teachers/${encodeURIComponent(teacherId)}/assignments`, `${API_BASE}/assignments`], { headers: headers() }),
+          tryFetchCandidates([`${API_BASE}/exams?teacher=${encodeURIComponent(teacherId)}`, `${API_BASE}/teachers/${encodeURIComponent(teacherId)}/exams`, `${API_BASE}/exams`], { headers: headers() }),
+          tryFetchCandidates([`${API_BASE}/resources?teacher=${encodeURIComponent(teacherId)}`, `${API_BASE}/teachers/${encodeURIComponent(teacherId)}/resources`, `${API_BASE}/resources`], { headers: headers() }),
+          tryFetchCandidates([`${API_BASE}/messages?to=${encodeURIComponent(teacherId)}`, `${API_BASE}/teachers/${encodeURIComponent(teacherId)}/messages`, `${API_BASE}/messages?role=teacher`], { headers: headers() })
+        ]);
+        return {
+          classes: Array.isArray(classesData) ? classesData : [],
+          assignments: Array.isArray(assignmentsData) ? assignmentsData : [],
+          exams: Array.isArray(examsData) ? examsData : [],
+          resources: Array.isArray(resourcesData) ? resourcesData : [],
+          messages: Array.isArray(messagesData) ? messagesData : []
+        };
+      }
 
-      const assignments = [
-        { id:'A001', title:'Cell Structure', classId:'C1', due:'2026-03-20', submissions:2 },
-        { id:'A002', title:'Algebra Quiz', classId:'C2', due:'2026-03-22', submissions:1 }
-      ];
-
-      const exams = [
-        { id:'E001', title:'Biology — Term Exam', classId:'C1', date:'2026-04-05', duration:90 }
-      ];
-
-      const resources = [
-        { id:'R001', title:'Cell Notes (PDF)', type:'pdf', uploaded:'2026-02-01' }
-      ];
-
-      const messages = [
-        { id:'M001', to:'C1', subject:'Reminder', body:'Submit assignment by Friday', time:'2026-03-01' }
-      ];
-
-      // Overview render
+      // renderers
       function renderOverview() {
         document.getElementById('statClasses').textContent = classes.length;
-        const totalStudents = classes.reduce((s, c) => s + c.students.length, 0);
+        const totalStudents = classes.reduce((s,c)=> s + (Array.isArray(c.students) ? c.students.length : 0), 0);
         document.getElementById('statStudents').textContent = totalStudents;
-        document.getElementById('statPending').textContent = assignments.reduce((s,a)=>s + (a.submissions === 0 ? 1 : 0), 0);
-        const act = document.getElementById('activityList');
-        act.innerHTML = '';
-        const recent = [
-          'Assignment "Cell Structure" created',
-          'Exam "Biology — Term Exam" scheduled',
-          'Grade submission pending for SS2-Biology'
-        ];
+        const pending = assignments.reduce((s,a)=> s + ((a.submissions && a.submissions.filter(x=>!x.graded).length) || 0), 0);
+        document.getElementById('statPending').textContent = pending;
+        const act = document.getElementById('activityList'); act.innerHTML = '';
         const ul = document.createElement('ul');
-        recent.forEach(r => { const li = document.createElement('li'); li.textContent = r; ul.appendChild(li); });
-        act.appendChild(ul);
+        messages.slice(0,6).forEach(m=> { const li = document.createElement('li'); li.textContent = `${m.subject || m.title} — ${m.to || m.target || 'Broadcast'}`; ul.appendChild(li); });
+        act.appendChild(ul.length ? ul : document.createTextNode('No recent activity'));
       }
 
-      // Classes render
-      const classSelect = document.getElementById('classSelect');
       function renderClassOptions() {
+        const classSelect = document.getElementById('classSelect');
         classSelect.innerHTML = '';
         classes.forEach(c => {
-          const opt = document.createElement('option'); opt.value = c.id; opt.textContent = c.name; classSelect.appendChild(opt);
+          const opt = document.createElement('option'); opt.value = c.id || c._id || c.classId || c.code; opt.textContent = c.name || c.title || opt.value; classSelect.appendChild(opt);
         });
-        // also populate selects used in other sections
+        // attendance & grade selects
         ['attClassSelect','gradeClassSelect'].forEach(id => {
           const el = document.getElementById(id);
           if (!el) return;
           el.innerHTML = '';
-          classes.forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = c.name; el.appendChild(o); });
+          classes.forEach(c => {
+            const o = document.createElement('option'); o.value = c.id || c._id || c.classId || c.code; o.textContent = c.name || c.title || o.value; el.appendChild(o);
+          });
         });
-        // initial roster display
+        // show first roster by default
         if (classes.length) {
-          showRoster(classes[0].id);
-          document.getElementById('rosterTitle').textContent = classes[0].name;
-          document.getElementById('rosterMeta').textContent = `${classes[0].students.length} students`;
-          document.getElementById('classSelect').value = classes[0].id;
+          showRoster(classes[0].id || classes[0]._id || classes[0].classId || classes[0].code);
+        } else {
+          const tbody = document.querySelector('#rosterTable tbody'); tbody.innerHTML = ''; document.getElementById('rosterTitle').textContent = 'No classes';
+          document.getElementById('rosterMeta').textContent = '0 students';
         }
       }
 
       function showRoster(classId) {
-        const cls = classes.find(c=>c.id === classId);
-        const tbody = document.querySelector('#rosterTable tbody');
-        tbody.innerHTML = '';
-        if (!cls) return;
+        const cls = classes.find(c => (c.id===classId || c._id===classId || c.classId===classId || c.code===classId));
+        const tbody = document.querySelector('#rosterTable tbody'); tbody.innerHTML = '';
+        if (!cls || !Array.isArray(cls.students) || !cls.students.length) {
+          tbody.innerHTML = '<tr><td colspan="5" class="empty">No students found in this class.</td></tr>';
+          document.getElementById('rosterTitle').textContent = cls ? (cls.name || cls.title) : 'Class';
+          document.getElementById('rosterMeta').textContent = cls ? `${(cls.students || []).length} students` : '0 students';
+          return;
+        }
         cls.students.forEach((s, idx) => {
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${idx+1}</td><td>${s.name}</td><td>${s.admission}</td><td>${s.contact}</td><td><button class="btn ghost" data-action="profile" data-id="${s.id}">Profile</button></td>`;
+          tr.innerHTML = `<td>${idx+1}</td><td>${s.name || s.fullName || '—'}</td><td>${s.admission || s.regNo || '—'}</td><td>${s.contact || s.phone || '—'}</td><td><button class="btn ghost" data-action="profile" data-id="${s.id || s._id || ''}">Profile</button></td>`;
           tbody.appendChild(tr);
         });
-        document.getElementById('rosterTitle').textContent = cls.name;
+        document.getElementById('rosterTitle').textContent = cls.name || cls.title || 'Class';
         document.getElementById('rosterMeta').textContent = `${cls.students.length} students`;
       }
 
-      // Attendance render
-      function loadAttendance(classId, date) {
-        const cls = classes.find(c=>c.id===classId);
-        const wrap = document.getElementById('attendanceWrap');
-        wrap.innerHTML = '';
-        if (!cls) { wrap.innerHTML = '<div class="empty">Select a class</div>'; return; }
-        const tbl = document.createElement('table');
-        tbl.innerHTML = '<thead><tr><th>#</th><th>Student</th><th>Present</th><th>Notes</th></tr></thead>';
-        const tb = document.createElement('tbody');
+      function renderAssignments() {
+        const wrap = document.getElementById('assignList'); wrap.innerHTML = '';
+        if (!assignments.length) { wrap.innerHTML = '<div class="empty">No assignments yet</div>'; return; }
+        assignments.forEach(a => {
+          const c = document.createElement('article'); c.className='card';
+          c.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:800">${a.title || a.name}</div><div class="muted-small">${a.className || a.class || a.classId || ''}</div></div><div style="text-align:right">${a.due ? ('Due ' + new Date(a.due).toLocaleDateString()) : ''}</div></div>
+            <div style="margin-top:8px;display:flex;gap:8px"><button class="btn" data-action="viewAssign" data-id="${a.id||a._id||''}">View</button><button class="btn ghost" data-action="grade" data-id="${a.id||a._id||''}">Grade</button></div>`;
+          wrap.appendChild(c);
+        });
+      }
+
+      function renderGradebook(classId) {
+        const wrap = document.getElementById('gradebookWrap'); wrap.innerHTML = '';
+        const cls = classes.find(c => (c.id===classId || c._id===classId || c.classId===classId));
+        if (!cls || !Array.isArray(cls.students)) { wrap.innerHTML = '<div class="empty">Select a class</div>'; return; }
+        const table = document.createElement('table');
+        const thead = document.createElement('thead'); thead.innerHTML = '<tr><th>#</th><th>Student</th><th>Assessment</th><th>Score</th></tr>';
+        const tbody = document.createElement('tbody');
         cls.students.forEach((s, i) => {
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${i+1}</td><td>${s.name}</td>
-            <td><input type="checkbox" data-id="${s.id}" checked></td>
-            <td><input type="text" data-id="${s.id}" placeholder="notes"></td>`;
-          tb.appendChild(tr);
-        });
-        tbl.appendChild(tb);
-        const submit = document.createElement('div'); submit.style.marginTop='8px';
-        submit.innerHTML = `<button class="btn" id="saveAttBtn">Save attendance</button> <button class="btn ghost" id="clearAttBtn">Clear</button>`;
-        wrap.appendChild(tbl); wrap.appendChild(submit);
-      }
-
-      // Assignments list
-      function renderAssignments() {
-        const wrap = document.getElementById('assignList');
-        wrap.innerHTML = '';
-        assignments.forEach(a => {
-          const c = document.createElement('article'); c.className = 'card';
-          c.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:800">${a.title}</div><div class="muted-small">${classes.find(c=>c.id===a.classId)?.name || '—'}</div></div><div class="muted-small">Due ${a.due}</div></div>
-            <div style="margin-top:8px;display:flex;gap:8px"><button class="btn" data-action="viewAssign" data-id="${a.id}">View</button><button class="btn ghost" data-action="grade" data-id="${a.id}">Grade</button></div>`;
-          wrap.appendChild(c);
-        });
-      }
-
-      // Gradebook render: editable table
-      function renderGradebook(classId) {
-        const wrap = document.getElementById('gradebookWrap');
-        wrap.innerHTML = '';
-        const cls = classes.find(c=>c.id===classId);
-        if (!cls) { wrap.innerHTML = '<div class="empty">Select a class</div>'; return; }
-        // sample assessment header
-        const table = document.createElement('table');
-        const thead = document.createElement('thead');
-        thead.innerHTML = '<tr><th>#</th><th>Student</th><th>Assessment</th><th>Score</th></tr>';
-        const tbody = document.createElement('tbody');
-        cls.students.forEach((s, idx) => {
-          const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${idx+1}</td><td>${s.name}</td><td>Assessment A</td><td><input type="number" min="0" max="100" data-student="${s.id}" value=""></td>`;
+          tr.innerHTML = `<td>${i+1}</td><td>${s.name||s.fullName}</td><td><input type="text" value="Assessment A" data-student="${s.id||s._id}"></td><td><input type="number" min="0" max="100" data-student="${s.id||s._id}"></td>`;
           tbody.appendChild(tr);
         });
-        table.appendChild(thead); table.appendChild(tbody);
-        wrap.appendChild(table);
+        table.appendChild(thead); table.appendChild(tbody); wrap.appendChild(table);
       }
 
-      // Exams render
       function renderExams() {
-        const wrap = document.getElementById('examList');
-        wrap.innerHTML = '';
-        exams.forEach(e => {
-          const c = document.createElement('article'); c.className='card';
-          c.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:800">${e.title}</div><div class="muted-small">${classes.find(c=>c.id===e.classId)?.name || ''}</div></div><div class="muted-small">${e.date}</div></div>
-            <div style="margin-top:8px;display:flex;gap:8px"><button class="btn" data-action="openExam" data-id="${e.id}">Open</button><button class="btn ghost" data-action="editExam" data-id="${e.id}">Edit</button></div>`;
-          wrap.appendChild(c);
+        const wrap = document.getElementById('examList'); wrap.innerHTML = '';
+        if (!exams.length) { wrap.innerHTML = '<div class="empty">No exams scheduled</div>'; return; }
+        exams.forEach(ex => {
+          const card = document.createElement('article'); card.className='card';
+          card.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:800">${ex.title || ex.name}</div><div class="muted-small">${ex.className || ex.class || ''}</div></div><div>${ex.date ? (new Date(ex.date).toLocaleDateString()) : ''}</div></div>
+            <div style="margin-top:8px;display:flex;gap:8px"><button class="btn" data-action="openExam" data-id="${ex.id||ex._id||''}">Open</button><button class="btn ghost" data-action="editExam" data-id="${ex.id||ex._id||''}">Edit</button></div>`;
+          wrap.appendChild(card);
         });
       }
 
-      // Resources render
       function renderResources() {
-        const wrap = document.getElementById('resGrid');
-        wrap.innerHTML = '';
-        const g = document.createElement('div'); g.className = 'grid';
+        const wrap = document.getElementById('resGrid'); wrap.innerHTML = '';
+        if (!resources.length) { wrap.innerHTML = '<div class="empty">No resources uploaded</div>'; return; }
+        const grid = document.createElement('div'); grid.className='grid';
         resources.forEach(r => {
           const c = document.createElement('article'); c.className='card';
-          c.innerHTML = `<div style="font-weight:800">${r.title}</div><div class="muted-small">${r.type} • Uploaded ${r.uploaded}</div><div style="margin-top:8px;display:flex;gap:8px"><button class="btn" data-action="download" data-id="${r.id}">Download</button><button class="btn ghost" data-action="link" data-id="${r.id}">Link to class</button></div>`;
-          g.appendChild(c);
+          c.innerHTML = `<div style="font-weight:800">${r.title || r.name}</div><div class="muted-small">${r.type || r.mime || ''} • ${r.uploaded || r.createdAt || ''}</div><div style="margin-top:8px;display:flex;gap:8px"><button class="btn" data-action="download" data-id="${r.id||r._id||''}">Download</button><button class="btn ghost" data-action="link" data-id="${r.id||r._id||''}">Link</button></div>`;
+          grid.appendChild(c);
         });
-        wrap.appendChild(g);
+        wrap.appendChild(grid);
       }
 
-      // Messages render
       function renderMessages() {
-        const wrap = document.getElementById('msgList');
-        wrap.innerHTML = '';
+        const wrap = document.getElementById('msgList'); wrap.innerHTML = '';
+        if (!messages.length) { wrap.innerHTML = '<div class="empty">No messages</div>'; return; }
         messages.forEach(m => {
-          const c = document.createElement('article'); c.className = 'card';
-          c.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:800">${m.subject}</div><div class="muted-small">${m.to}</div></div><div class="muted-small">${m.time}</div></div>
-            <div style="margin-top:8px" class="muted-small">${m.body}</div>
-            <div style="margin-top:8px;display:flex;gap:8px"><button class="btn" data-action="reply" data-id="${m.id}">Reply</button><button class="btn ghost" data-action="archive" data-id="${m.id}">Archive</button></div>`;
-          wrap.appendChild(c);
+          const card = document.createElement('article'); card.className='card';
+          card.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:800">${m.subject || m.title}</div><div class="muted-small">${m.to || m.target || ''}</div></div><div>${m.time ? new Date(m.time).toLocaleString() : ''}</div></div><div style="margin-top:8px" class="muted-small">${m.body || m.text}</div><div style="margin-top:8px;display:flex;gap:8px"><button class="btn" data-action="reply" data-id="${m.id||m._id||''}">Reply</button><button class="btn ghost" data-action="archive" data-id="${m.id||m._id||''}">Archive</button></div>`;
+          wrap.appendChild(card);
         });
       }
 
-      // Initial renders & UI wiring
-      function init() {
-        renderOverview();
-        renderClassOptions();
-        renderAssignments();
-        renderExams();
-        renderResources();
-        renderMessages();
-        renderGradebook(classes[0]?.id);
-        // populate selects
-        document.getElementById('attClassSelect').value = classes[0]?.id || '';
-        document.getElementById('gradeClassSelect').value = classes[0]?.id || '';
+      // Actions (POST/PUT to server when possible, otherwise fallback)
+      async function postAction(candidates, payload) {
+        for (const url of candidates) {
+          try {
+            const res = await fetch(url, { method:'POST', headers: headers(), body: JSON.stringify(payload) });
+            if (!res.ok) continue;
+            return await res.json();
+          } catch (err) { console.warn('post candidate failed', url, err); }
+        }
+        throw new Error('No endpoint available');
       }
 
-      // Event listeners (delegated pattern)
-      document.body.addEventListener('click', (e) => {
+      // modal helpers
+      const itemModal = document.getElementById('itemModal');
+      const itemModalBody = document.getElementById('itemModalBody');
+      const closeItemModal = document.getElementById('closeItemModal');
+      function openItemModal(html) { itemModalBody.innerHTML = html; itemModal.classList.add('active'); itemModal.setAttribute('aria-hidden','false'); setTimeout(()=>closeItemModal.focus(),50); }
+      function closeItemModalFn() { itemModal.classList.remove('active'); itemModal.setAttribute('aria-hidden','true'); }
+      closeItemModal.addEventListener('click', closeItemModalFn);
+
+      const formModal = document.getElementById('formModal');
+      const formModalBody = document.getElementById('formModalBody');
+      const closeFormModal = document.getElementById('closeFormModal');
+      function openFormModal(title, bodyHtml) { document.getElementById('formModalTitle').textContent = title; formModalBody.innerHTML = bodyHtml || ''; formModal.classList.add('active'); formModal.setAttribute('aria-hidden','false'); }
+      function closeFormModalFn() { formModal.classList.remove('active'); formModal.setAttribute('aria-hidden','true'); formModalBody.innerHTML = ''; }
+      closeFormModal.addEventListener('click', closeFormModalFn);
+
+      // Delegated UI events
+      document.body.addEventListener('click', async (e) => {
         const t = e.target;
-        // roster profile
+
+        // profile
         if (t.matches('button[data-action="profile"]')) {
           const id = t.dataset.id;
-          let found;
-          classes.forEach(c => { const s = c.students.find(x=>x.id===id); if (s) found = s; });
-          if (found) openItemModal(`<div style="font-weight:800">${found.name}</div><div class="muted-small">Admission: ${found.admission}</div><div style="margin-top:8px">Contact: ${found.contact}</div>`);
+          // try fetch student profile
+          showLoader('Loading profile...', 'Contacting server');
+          try {
+            let student = null;
+            if (TOKEN) {
+              const candidates = [`${API_BASE}/students/${encodeURIComponent(id)}`, `${API_BASE}/users/${encodeURIComponent(id)}`];
+              const data = await tryFetchCandidates(candidates, { headers: headers() });
+              if (Array.isArray(data) && data[0]) student = data[0];
+            }
+            hideLoader();
+            if (!student) openItemModal(`<div style="font-weight:800">Student</div><div class="muted-small">Profile not available</div>`);
+            else openItemModal(`<div style="font-weight:800">${student.name || student.fullName}</div><div class="muted-small">Admission: ${student.admission || student.regNo || ''}</div><div style="margin-top:8px">Contact: ${student.contact || student.phone || ''}</div>`);
+          } catch (err) { hideLoader(); console.error(err); alert('Failed to load profile'); }
         }
 
-        // assignments actions
+        // assignment view/grade
         if (t.matches('button[data-action="viewAssign"]')) {
           const id = t.dataset.id;
-          const a = assignments.find(x=>x.id===id);
-          if (a) openItemModal(`<div style="font-weight:800">${a.title}</div><div class="muted-small">Class: ${classes.find(c=>c.id===a.classId)?.name}</div><div style="margin-top:8px">Due: ${a.due}</div>`);
+          const a = assignments.find(x=> (x.id===id || x._id===id));
+          if (a) openItemModal(`<div style="font-weight:800">${a.title}</div><div class="muted-small">Class: ${a.className || a.class || ''}</div><div style="margin-top:8px">Due: ${a.due ? new Date(a.due).toLocaleDateString() : '—'}</div>`);
         }
         if (t.matches('button[data-action="grade"]')) {
           const id = t.dataset.id;
-          openFormModal('Grade submissions', `<p>Open grading interface for ${id} (mock)</p><div style="display:flex;gap:8px"><button class="btn" id="closeFormInline">Close</button></div>`);
-        }
-
-        // gradebook & export
-        if (t.id === 'exportGradesBtn') {
-          // simple CSV export of gradebook inputs
-          const rows = [['Student','Assessment','Score']];
-          const inputs = document.querySelectorAll('#gradebookWrap input[type="number"]');
-          inputs.forEach(inp => {
-            const tr = inp.closest('tr');
-            const name = tr.children[1].textContent;
-            const assessment = tr.children[2].textContent;
-            rows.push([name, assessment, inp.value || '']);
-          });
-          const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
-          const blob = new Blob([csv], {type:'text/csv'});
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a'); a.href = url; a.download = 'gradebook.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+          openFormModal('Grade submissions', `<div class="muted-small">Opening grading interface for ${id} (server integration required).</div><div style="margin-top:12px;display:flex;justify-content:flex-end"><button id="closeFormInline" class="btn ghost">Close</button></div>`);
+          setTimeout(()=> document.getElementById('closeFormInline')?.addEventListener('click', closeFormModalFn), 50);
         }
 
         // exam actions
         if (t.matches('button[data-action="openExam"]')) {
           const id = t.dataset.id;
-          const ex = exams.find(x=>x.id===id);
-          openItemModal(`<div style="font-weight:800">${ex.title}</div><div class="muted-small">${ex.date} • ${ex.duration} mins</div><div style="margin-top:8px"><button class="btn" onclick="window.location.href='/cbt-session.html?exam=${encodeURIComponent(id)}'">Open session</button></div>`);
+          const ex = exams.find(x=> (x.id===id || x._id===id));
+          if (!ex) { openItemModal('<div class="muted-small">Exam not found</div>'); return; }
+          openItemModal(`<div style="font-weight:800">${ex.title}</div><div class="muted-small">${ex.date ? new Date(ex.date).toLocaleDateString() : ''} • ${ex.duration ? ex.duration + ' mins' : ''}</div><div style="margin-top:12px;display:flex;justify-content:flex-end;gap:8px"><button class="btn" id="openSessionBtn">Open session</button><button class="btn ghost" id="closeItemInline">Close</button></div>`);
+          setTimeout(()=> {
+            document.getElementById('openSessionBtn')?.addEventListener('click', async ()=> {
+              // attempt to open/manage session via backend
+              try {
+                showLoader('Opening session...', 'Contacting server');
+                const candidates = [
+                  `${API_BASE}/exams/${encodeURIComponent(id)}/sessions`,
+                  `${API_BASE}/exams/${encodeURIComponent(id)}/start`,
+                  `${API_BASE}/exams/sessions`
+                ];
+                let created = null;
+                for (const url of candidates) {
+                  try {
+                    const res = await fetch(url, { method:'POST', headers: headers(), body: JSON.stringify({ examId: id }) });
+                    if (!res.ok) continue;
+                    const data = await res.json();
+                    created = data;
+                    break;
+                  } catch (err) {}
+                }
+                hideLoader();
+                if (created) alert('Session opened (server returned confirmation).'); else alert('Session could not be opened (no endpoint).');
+              } catch (err) { hideLoader(); alert('Error opening session'); }
+            });
+            document.getElementById('closeItemInline')?.addEventListener('click', closeItemModalFn);
+          }, 50);
         }
 
-        // resources actions
+        // resource actions
         if (t.matches('button[data-action="download"]')) {
-          alert('Download resource (implement).');
+          const id = t.dataset.id;
+          alert('Download request (implement endpoint).');
         }
         if (t.matches('button[data-action="link"]')) {
-          openFormModal('Link resource', `<p>Link resource to class (mock).</p><div style="display:flex;gap:8px"><button class="btn" id="closeFormInline">Close</button></div>`);
+          const id = t.dataset.id;
+          openFormModal('Link resource', `<div class="muted-small">Link resource ${id} to class (server integration needed)</div><div style="margin-top:12px;display:flex;justify-content:flex-end"><button id="closeFormInline" class="btn ghost">Close</button></div>`);
+          setTimeout(()=> document.getElementById('closeFormInline')?.addEventListener('click', closeFormModalFn), 50);
         }
 
         // messages
         if (t.matches('button[data-action="reply"]')) {
-          openFormModal('Reply', `<label>Message<textarea style="width:100%;height:120px;border:1px solid #e6e9ef;border-radius:8px"></textarea></label><div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn">Send</button></div>`);
-        }
-
-        // simple create actions
-        if (t.id === 'newClassBtn') {
-          openFormModal('Create class', `<form id="createClassForm"><label>Class name<input type="text" id="newClassName" required></label><div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn" type="submit">Create</button></div></form>`);
+          const id = t.dataset.id;
+          openFormModal('Reply', `<form id="replyForm"><label>Message<textarea id="replyText" style="width:100%;height:120px;border:1px solid #e6e9ef;border-radius:8px"></textarea></label><div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px"><button type="button" class="btn ghost" id="closeFormInline">Cancel</button><button type="submit" class="btn">Send</button></div></form>`);
           setTimeout(()=> {
-            const f = document.getElementById('createClassForm');
-            if (f) f.addEventListener('submit', (ev) => {
+            const f = document.getElementById('replyForm');
+            f?.addEventListener('submit', async (ev) => {
               ev.preventDefault();
-              const name = document.getElementById('newClassName').value.trim();
-              if (!name) return alert('Enter class name');
-              const id = 'C' + Math.floor(Math.random()*1000);
-              classes.push({ id, name, students: [] });
-              renderClassOptions();
-              closeFormModal();
-              alert('Class created: ' + name);
+              const text = document.getElementById('replyText').value.trim();
+              if (!text) return alert('Message required');
+              // attempt to send via backend
+              try {
+                const candidate = `${API_BASE}/messages/${encodeURIComponent(id)}/reply`;
+                const res = await fetch(candidate, { method:'POST', headers: headers(), body: JSON.stringify({ body: text }) });
+                if (res.ok) { alert('Reply sent'); closeFormModalFn(); } else { alert('Failed to send reply'); }
+              } catch (err) { alert('Failed to send reply'); }
             });
-          }, 60);
+            document.getElementById('closeFormInline')?.addEventListener('click', closeFormModalFn);
+          }, 50);
         }
 
-        if (t.id === 'newAssignBtn') {
-          openFormModal('New assignment', `<form id="newAForm"><label>Title<input type="text" id="aTitle" required></label><label>Class<select id="aClass">${classes.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select></label><label>Due<input type="date" id="aDue" required></label><div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn" type="submit">Create</button></div></form>`);
-          setTimeout(()=> {
-            const f = document.getElementById('newAForm');
-            if (f) f.addEventListener('submit', (ev)=> {
-              ev.preventDefault();
-              const title = document.getElementById('aTitle').value.trim();
-              const cls = document.getElementById('aClass').value;
-              const due = document.getElementById('aDue').value;
-              assignments.push({ id: 'A' + Math.floor(Math.random()*9999), title, classId: cls, due, submissions: 0 });
-              renderAssignments();
-              closeFormModal();
-              alert('Assignment created');
-            });
-          }, 60);
-        }
-
-        // modal inline close button
-        if (t.id === 'closeFormInline' || t.id === 'closeItemInline') {
-          closeFormModal();
-          closeItemModal();
-        }
       });
 
-      // Select change handlers
-      document.getElementById('classSelect').addEventListener('change', (e)=> showRoster(e.target.value));
-      document.getElementById('loadAttendanceBtn').addEventListener('click', ()=> {
+      // select changes and buttons
+      document.getElementById('classSelect').addEventListener('change', (e) => showRoster(e.target.value));
+      document.getElementById('loadAttendanceBtn').addEventListener('click', () => {
         const cid = document.getElementById('attClassSelect').value;
         const date = document.getElementById('attDate').value || new Date().toISOString().slice(0,10);
         loadAttendance(cid, date);
       });
-
-      document.getElementById('saveGradesBtn').addEventListener('click', ()=> {
-        alert('Grades saved (mock).');
+      document.getElementById('saveGradesBtn')?.addEventListener('click', async () => {
+        // collect values
+        const inputs = document.querySelectorAll('#gradebookWrap input[type="number"]');
+        const payload = [];
+        inputs.forEach(inp => {
+          const student = inp.dataset.student;
+          payload.push({ studentId: student, score: inp.value });
+        });
+        // attempt server save
+        try {
+          const res = await fetch(`${API_BASE}/gradebook/save`, { method:'POST', headers: headers(), body: JSON.stringify({ grades: payload }) });
+          if (res.ok) alert('Grades saved'); else alert('Failed to save grades');
+        } catch (err) { alert('Save failed'); }
       });
 
-      // Open/close modals helpers
-      const itemModal = document.getElementById('itemModal');
-      const itemModalBody = document.getElementById('itemModalBody');
-      const closeItemModalBtn = document.getElementById('closeItemModal');
-      function openItemModal(html) {
-        itemModalBody.innerHTML = html;
-        itemModal.classList.add('active');
-        itemModal.setAttribute('aria-hidden','false');
-        setTimeout(()=> closeItemModalBtn.focus(), 50);
-      }
-      function closeItemModal() {
-        itemModal.classList.remove('active');
-        itemModal.setAttribute('aria-hidden','true');
-      }
-      closeItemModalBtn.addEventListener('click', closeItemModal);
+      // attendance load & save
+      function loadAttendance(classId, date) {
+        const wrap = document.getElementById('attendanceWrap'); wrap.innerHTML = '';
+        if (!classId) { wrap.innerHTML = '<div class="empty">Select a class</div>'; return; }
+        const cls = classes.find(c => (c.id===classId || c._id===classId || c.classId===classId));
+        if (!cls || !Array.isArray(cls.students) || !cls.students.length) { wrap.innerHTML = '<div class="empty">No students</div>'; return; }
+        const table = document.createElement('table'); table.innerHTML = '<thead><tr><th>#</th><th>Student</th><th>Present</th><th>Notes</th></tr></thead>';
+        const tbody = document.createElement('tbody');
+        cls.students.forEach((s, i) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${i+1}</td><td>${s.name}</td><td><input type="checkbox" data-id="${s.id||s._id}" checked></td><td><input type="text" data-id="${s.id||s._id}" placeholder="notes"></td>`;
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        const actions = document.createElement('div'); actions.style.marginTop='8px';
+        actions.innerHTML = `<button class="btn" id="saveAttBtn">Save attendance</button> <button class="btn ghost" id="clearAttBtn">Clear</button>`;
+        wrap.appendChild(table); wrap.appendChild(actions);
 
-      const formModal = document.getElementById('formModal');
-      const formModalBody = document.getElementById('formModalBody');
-      const closeFormModalBtn = document.getElementById('closeFormModal');
-      function openFormModal(titleHtml, bodyHtml) {
-        document.getElementById('formModalTitle').textContent = titleHtml;
-        formModalBody.innerHTML = bodyHtml || '';
-        formModal.classList.add('active');
-        formModal.setAttribute('aria-hidden','false');
-      }
-      function closeFormModal() {
-        formModal.classList.remove('active');
-        formModal.setAttribute('aria-hidden','true');
-        formModalBody.innerHTML = '';
-      }
-      closeFormModalBtn.addEventListener('click', closeFormModal);
+        // save handler
+        document.getElementById('saveAttBtn').addEventListener('click', async () => {
+          const rows = Array.from(tbody.querySelectorAll('tr'));
+          const records = rows.map(r => {
+            const id = r.querySelector('input[type="checkbox"]').dataset.id;
+            const present = r.querySelector('input[type="checkbox"]').checked;
+            const notes = r.querySelector('input[type="text"]').value;
+            return { studentId: id, present, notes, date };
+          });
+          try {
+            const res = await fetch(`${API_BASE}/attendance/save`, { method:'POST', headers: headers(), body: JSON.stringify({ classId, date, records }) });
+            if (res.ok) alert('Attendance saved'); else alert('Failed to save attendance');
+          } catch (err) { alert('Attendance save failed'); }
+        });
 
-      // Close modals on Escape
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-          [itemModal, formModal].forEach(m => m.classList.remove('active'));
-          overlay.classList.remove('visible');
+        document.getElementById('clearAttBtn').addEventListener('click', () => {
+          tbody.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+          tbody.querySelectorAll('input[type="text"]').forEach(i => i.value = '');
+        });
+      }
+
+      // create class form
+      document.getElementById('newClassBtn').addEventListener('click', () => {
+        openFormModal('Create class', `<form id="createClassForm"><label>Class name<input type="text" id="newClassName" required></label><div style="display:flex;justify-content:flex-end;margin-top:12px"><button type="submit" class="btn">Create</button></div></form>`);
+        setTimeout(()=> {
+          const f = document.getElementById('createClassForm');
+          f?.addEventListener('submit', async (ev) => {
+            ev.preventDefault();
+            const name = document.getElementById('newClassName').value.trim();
+            if (!name) return alert('Enter class name');
+            // post to server
+            try {
+              const res = await fetch(`${API_BASE}/classes`, { method:'POST', headers: headers(), body: JSON.stringify({ name }) });
+              if (res.ok) {
+                const data = await res.json();
+                classes.unshift(data.class || data);
+                renderClassOptions();
+                closeFormModalFn();
+                alert('Class created');
+              } else {
+                alert('Failed to create class');
+              }
+            } catch (err) {
+              alert('Failed to create class');
+            }
+          });
+        }, 50);
+      });
+
+      // schedule exam
+      document.getElementById('scheduleExamBtn').addEventListener('click', () => {
+        openFormModal('Schedule exam', `<form id="scheduleExamForm" style="display:grid;gap:8px"><label>Title<input id="schTitle"></label><label>Class<select id="schClass">${classes.map(c=>`<option value="${c.id||c._id}">${c.name||c.title}</option>`).join('')}</select></label><label>Date<input type="date" id="schDate"></label><div style="display:flex;justify-content:flex-end"><button class="btn" type="submit">Schedule</button></div></form>`);
+        setTimeout(()=> {
+          const f = document.getElementById('scheduleExamForm');
+          f?.addEventListener('submit', async (ev) => {
+            ev.preventDefault();
+            const title = document.getElementById('schTitle').value.trim();
+            const cls = document.getElementById('schClass').value;
+            const date = document.getElementById('schDate').value;
+            try {
+              const res = await fetch(`${API_BASE}/exams`, { method:'POST', headers: headers(), body: JSON.stringify({ title, classId: cls, date }) });
+              if (res.ok) {
+                const d = await res.json();
+                exams.unshift(d.exam || d);
+                renderExams();
+                closeFormModalFn();
+                alert('Exam scheduled');
+              } else alert('Failed to schedule exam');
+            } catch (err) { alert('Error scheduling exam'); }
+          });
+        }, 50);
+      });
+
+      // settings save
+      document.getElementById('teacherSettings')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = document.getElementById('setName').value.trim();
+        const dept = document.getElementById('setDept').value.trim();
+        const email = document.getElementById('setEmail').value.trim();
+        try {
+          const res = await fetch(`${API_BASE}/teachers/me`, { method:'PUT', headers: headers(), body: JSON.stringify({ name, dept, email }) });
+          if (res.ok) alert('Settings saved');
+          else alert('Failed to save settings');
+        } catch (err) { alert('Save failed'); }
+      });
+
+      // init: fetch profile and teacher data
+      async function init() {
+        showLoader('Loading teacher dashboard...', 'Fetching profile and classes');
+        try {
+          const profile = await (async () => {
+            const local = (function(){ try { return JSON.parse(localStorage.getItem('eg_application')||'null')||null } catch { return null; } })();
+            if (!TOKEN) return local || {};
+            const candidates = [`${API_BASE}/me`, `${API_BASE}/profile`, `${API_BASE}/users/me`];
+            for (const url of candidates) {
+              try {
+                const res = await fetch(url, { headers: headers() });
+                if (!res.ok) continue;
+                const data = await res.json();
+                return data.user || data || local || {};
+              } catch (err) {}
+            }
+            return local || {};
+          })();
+
+          if (profile) {
+            teacherNameEl.textContent = (profile.firstName || profile.name || profile.username || 'Teacher') + (profile.lastName ? (' ' + profile.lastName) : '');
+            teacherDeptEl.textContent = profile.department || profile.dept || profile.subject || '';
+            if (profile.profilePic) { teacherAvatar.src = profile.profilePic; topbarAvatar.src = profile.profilePic; }
+            if (profile.session) termInfo.textContent = profile.session;
+          }
+
+          const teacherId = profile && (profile.id || profile._id || profile.teacherId || profile.username);
+
+          // fetch teacher data
+          const fetched = await fetchTeacherData(teacherId);
+          classes = Array.isArray(fetched.classes) ? fetched.classes : [];
+          assignments = Array.isArray(fetched.assignments) ? fetched.assignments : [];
+          exams = Array.isArray(fetched.exams) ? fetched.exams : [];
+          resources = Array.isArray(fetched.resources) ? fetched.resources : [];
+          messages = Array.isArray(fetched.messages) ? fetched.messages : [];
+
+          // render sections
+          renderOverview();
+          renderClassOptions();
+          renderAssignments();
+          renderExams();
+          renderResources();
+          renderMessages();
+          renderGradebook((classes[0] && (classes[0].id||classes[0]._id)) || '');
+        } catch (err) {
+          console.error('init error', err);
+        } finally {
+          hideLoader();
         }
-      });
+      }
 
-      // Prevent accidental navigation when teaching (example)
-      window.addEventListener('beforeunload', (e) => {
-        // basic guard; in production check unsaved state
-        if (false) { e.preventDefault(); e.returnValue = ''; }
-      });
-
-      // init UI
-      init();
-
-      // handle responsive initial sidebar state
+      // responsive sidebar
       function handleResize() {
         if (window.innerWidth > 720) {
           sidebar.classList.remove('hidden');
@@ -769,8 +888,18 @@
       window.addEventListener('resize', handleResize);
       handleResize();
 
-      // simple deep-link navigation helper exposed in window for some dynamic buttons
-      window.eg = { setActiveTab };
+      // Close modals on Escape
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          document.querySelectorAll('.modal.active').forEach(m => m.classList.remove('active'));
+        }
+      });
+
+      // start
+      init();
+
+      // expose helper
+      window.eg = { init };
 
     })();
   </script>
