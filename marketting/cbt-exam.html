@@ -94,6 +94,25 @@
     .modal .head { padding:12px 16px; border-bottom:1px solid #eef3ff; background:#f8fbff; display:flex; justify-content:space-between; align-items:center; }
     .modal .body { padding:14px; max-height:72vh; overflow:auto }
 
+    /* loading overlay */
+    .page-loader {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      z-index: 1200;
+      background: rgba(255,255,255,0.9);
+      backdrop-filter: blur(3px);
+      flex-direction: column;
+    }
+    .page-loader.active { display:flex; }
+    .page-loader .spinner { width:44px;height:44px;border-radius:50%;border:6px solid rgba(0,0,0,0.06);border-top-color:var(--accent);animation:spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .page-loader .msg { font-weight:800; color:#0b2a44; }
+    .page-loader .sub { color:var(--muted); font-size:0.92rem; }
+
     /* small helpers */
     .muted-small { font-size:0.9rem; color:var(--muted) }
     .btn { padding:9px 12px; border-radius:10px; border:none; cursor:pointer; background:linear-gradient(90deg,var(--accent),var(--accent-2)); color:#fff; font-weight:800; }
@@ -109,6 +128,13 @@
 <body>
   <div class="app" id="app">
     <div class="overlay" id="overlay" aria-hidden="true"></div>
+
+    <!-- Page loader -->
+    <div id="pageLoader" class="page-loader" role="status" aria-live="polite" aria-hidden="true">
+      <div class="spinner" aria-hidden="true"></div>
+      <div class="msg" id="loaderMsg">Loading exams...</div>
+      <div class="sub" id="loaderSub">Fetching scheduled exams and your profile</div>
+    </div>
 
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar" aria-label="Main navigation" role="navigation">
@@ -132,8 +158,8 @@
       <div class="profile" role="region" aria-label="Student profile">
         <img src="../avatar.jpg" alt="Student avatar" id="studentAvatar">
         <div>
-          <div class="name" id="studentName">Adaobi Chukwu</div>
-          <div class="muted-small" id="studentClass">SS2 — Biology</div>
+          <div class="name" id="studentName">Student</div>
+          <div class="muted-small" id="studentClass">—</div>
         </div>
       </div>
     </aside>
@@ -149,7 +175,7 @@
       </div>
 
       <div style="display:flex;gap:12px;align-items:center;">
-        <div class="small muted" id="termInfo">SS2 • Current session</div>
+        <div class="small muted" id="termInfo">—</div>
         <img src="../avatar.jpg" alt="You" style="width:44px;height:44px;border-radius:8px;border:2px solid #fff;" id="topbarAvatar">
       </div>
     </div>
@@ -189,9 +215,7 @@
                 <div style="font-weight:800">Practice Questions</div>
                 <div class="muted-small">Choose curated topic-based practice sets</div>
                 <label class="muted-small" for="practiceSubject">Subject</label>
-                <select id="practiceSubject" style="width:100%;padding:8px;border-radius:8px;border:1px solid #e6e9ef">
-                  <option>Biology</option><option>Mathematics</option><option>English</option><option>Chemistry</option>
-                </select>
+                <select id="practiceSubject" style="width:100%;padding:8px;border-radius:8px;border:1px solid #e6e9ef"></select>
                 <div style="display:flex;gap:8px;margin-top:8px">
                   <button class="btn" id="startPracticeBtn">Start Practice</button>
                   <button class="btn ghost" id="browsePracticeBtn">Browse Sets</button>
@@ -216,8 +240,8 @@
                 </div>
 
                 <div style="display:flex;gap:8px;margin-top:8px">
-                  <button class="btn" id="genAiBtn">Generate</button>
-                  <button class="btn ghost" id="previewAiBtn">Preview</button>
+                  <button class="btn" id="genAiBtn">Generate (server)</button>
+                  <button class="btn ghost" id="previewAiBtn">Details</button>
                 </div>
 
                 <div id="aiStatus" class="muted-small" style="margin-top:8px">No AI quiz generated yet.</div>
@@ -225,7 +249,7 @@
                 <hr style="margin:10px 0;border:none;border-top:1px solid #eef3ff" />
 
                 <div style="font-weight:700">My AI practice</div>
-                <div class="muted-small" style="margin-top:8px">Generated quizzes you can schedule or start</div>
+                <div class="muted-small" style="margin-top:8px">Generated quizzes you can start</div>
                 <div id="myAiList" style="margin-top:8px"></div>
               </div>
             </div>
@@ -241,7 +265,7 @@
 
           <div style="margin-top:12px">
             <div style="font-weight:700">Current session</div>
-            <div class="muted-small" id="timetableMeta">SS2 • Sunrise High</div>
+            <div class="muted-small" id="timetableMeta">—</div>
             <div style="margin-top:10px" id="nextExam">Next: —</div>
           </div>
 
@@ -259,14 +283,14 @@
             <ul class="muted-small" style="margin-top:8px">
               <li>Ensure a stable connection for timed exams</li>
               <li>Practice quizzes are private and do not affect grades</li>
-              <li>AI quizzes are generated automatically; review carefully</li>
+              <li>AI quizzes are generated by the server; review before starting</li>
             </ul>
           </div>
         </aside>
       </div>
     </main>
 
-    <!-- Exam detail modal -->
+    <!-- Exam detail modal: show details ONLY and option to Start (no previewing questions) -->
     <div class="modal" id="examModal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="examModalTitle">
       <div class="panel" role="document">
         <div class="head">
@@ -280,18 +304,18 @@
         </div>
 
         <div class="body" id="examModalBody">
-          <!-- populated by JS -->
+          <!-- populated by JS: details + Start button (server-verified start) -->
         </div>
       </div>
     </div>
 
-    <!-- Practice modal -->
+    <!-- Practice modal (keeps only start option) -->
     <div class="modal" id="practiceModal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="practiceModalTitle">
       <div class="panel" role="document">
         <div class="head">
           <div>
             <div id="practiceModalTitle" style="font-weight:800">Practice set</div>
-            <div class="muted-small" id="practiceModalSub">Sample practice questions</div>
+            <div class="muted-small" id="practiceModalSub">Start untimed or timed practice</div>
           </div>
           <div>
             <button class="btn ghost" id="closePracticeModalBtn">Close</button>
@@ -302,13 +326,13 @@
       </div>
     </div>
 
-    <!-- AI preview modal -->
+    <!-- AI details modal (no question preview) -->
     <div class="modal" id="aiModal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="aiModalTitle">
       <div class="panel" role="document">
         <div class="head">
           <div>
-            <div id="aiModalTitle" style="font-weight:800">AI Generated Quiz</div>
-            <div class="muted-small" id="aiModalSub">Preview & start</div>
+            <div id="aiModalTitle" style="font-weight:800">AI Quiz</div>
+            <div class="muted-small" id="aiModalSub">Start generated quiz or regenerate</div>
           </div>
           <div>
             <button class="btn ghost" id="closeAiModalBtn">Close</button>
@@ -319,15 +343,19 @@
       </div>
     </div>
 
+    <!-- Loader included at bottom so it's on top -->
   </div>
 
   <script>
     (function () {
-      // API base remains same; adjust endpoints below to match backend if different.
       const API_BASE = 'https://examguide.onrender.com/api';
       const TOKEN = localStorage.getItem('eg_token') || null;
 
       // DOM
+      const pageLoader = document.getElementById('pageLoader');
+      const loaderMsg = document.getElementById('loaderMsg');
+      const loaderSub = document.getElementById('loaderSub');
+
       const examGrid = document.getElementById('examGrid');
       const noExams = document.getElementById('noExams');
       const refreshBtn = document.getElementById('refreshBtn');
@@ -362,56 +390,161 @@
       const sidebar = document.getElementById('sidebar');
       const overlay = document.getElementById('overlay');
 
-      // Data
-      let scheduledExams = []; // will be populated from backend
+      const studentNameEl = document.getElementById('studentName');
+      const studentClassEl = document.getElementById('studentClass');
+      const topbarAvatar = document.getElementById('topbarAvatar');
+      const termInfo = document.getElementById('termInfo');
 
-      // My AI quizzes stored in localStorage under 'eg_ai_quizzes'
-      function loadMyAi() {
+      // state
+      let scheduledExams = []; // loaded from backend
+      let myAiQuizzes = []; // loaded from backend or local
+      let subjectsList = []; // for practiceSubject options
+
+      // helpers
+      function showLoader(msg, sub) {
+        if (msg) loaderMsg.textContent = msg;
+        if (sub) loaderSub.textContent = sub;
+        pageLoader.classList.add('active');
+        pageLoader.setAttribute('aria-hidden', 'false');
+      }
+      function hideLoader() {
+        pageLoader.classList.remove('active');
+        pageLoader.setAttribute('aria-hidden', 'true');
+      }
+
+      function headers(contentType='application/json') {
+        const h = {};
+        if (contentType) h['Content-Type'] = contentType;
+        if (TOKEN) h['Authorization'] = 'Bearer ' + TOKEN;
+        return h;
+      }
+
+      async function tryFetchCandidates(candidates, options = {}) {
+        for (const url of candidates) {
+          if (!url) continue;
+          try {
+            const res = await fetch(url, options);
+            if (!res.ok) continue;
+            const data = await res.json();
+            // Accept many shapes
+            if (Array.isArray(data)) return data;
+            if (Array.isArray(data.exams)) return data.exams;
+            if (Array.isArray(data.data)) return data.data;
+            if (Array.isArray(data.results)) return data.results;
+            if (Array.isArray(data.items)) return data.items;
+            // single object
+            if (data && (data.id || data._id)) return [data];
+          } catch (err) {
+            console.warn('candidate fetch failed', url, err);
+          }
+        }
+        return null;
+      }
+
+      // Load logged in user from localStorage and optionally /me endpoint
+      function getLocalApp() {
+        try { return JSON.parse(localStorage.getItem('eg_application') || 'null') || null; } catch { return null; }
+      }
+      async function fetchProfile() {
+        const local = getLocalApp();
+        if (!TOKEN) {
+          // use local if present
+          return local;
+        }
+        const candidates = [
+          `${API_BASE}/me`,
+          `${API_BASE}/profile`,
+          `${API_BASE}/users/me`
+        ];
+        for (const url of candidates) {
+          try {
+            const res = await fetch(url, { headers: headers() });
+            if (!res.ok) continue;
+            const data = await res.json();
+            // merge into local object
+            return data.user || data || local;
+          } catch (err) { /* ignore */ }
+        }
+        return local;
+      }
+
+      // Fetch scheduled exams for student's class
+      async function fetchScheduledExams(className) {
+        const candidates = [
+          `${API_BASE}/exams?class=${encodeURIComponent(className || '')}&status=scheduled`,
+          `${API_BASE}/exams/scheduled?class=${encodeURIComponent(className || '')}`,
+          `${API_BASE}/exams?status=scheduled`,
+          `${API_BASE}/exams`
+        ];
+        return await tryFetchCandidates(candidates, { headers: headers() });
+      }
+
+      // Fetch subjects (for practice selector)
+      async function fetchSubjects() {
+        const candidates = [
+          `${API_BASE}/subjects`,
+          `${API_BASE}/programs/subjects`,
+          `${API_BASE}/curriculum/subjects`
+        ];
+        return await tryFetchCandidates(candidates, { headers: headers() });
+      }
+
+      // Fetch AI quizzes (server) or fall back to local storage
+      async function fetchMyAi() {
+        if (TOKEN) {
+          const candidates = [
+            `${API_BASE}/ai/quizzes?mine=true`,
+            `${API_BASE}/me/ai-quizzes`,
+            `${API_BASE}/ai/quizzes`
+          ];
+          const data = await tryFetchCandidates(candidates, { headers: headers() });
+          if (Array.isArray(data)) return data;
+        }
+        // fallback to localStorage
         try { return JSON.parse(localStorage.getItem('eg_ai_quizzes') || '[]'); } catch { return []; }
       }
-      function saveMyAi(list) { localStorage.setItem('eg_ai_quizzes', JSON.stringify(list)); }
 
-      function formatDate(d) {
-        const dt = new Date(d);
-        if (isNaN(dt)) return d;
-        return dt.toLocaleDateString();
+      function persistLocalAi(list) {
+        try { localStorage.setItem('eg_ai_quizzes', JSON.stringify(list || [])); } catch {}
       }
 
-      // Fetch scheduled exams from backend
-      async function fetchScheduledExams(className) {
-        // Default endpoint: /exams?class=SS2&status=scheduled
-        // Adjust path/params to match your backend API.
-        const endpoint = `${API_BASE}/exams?status=scheduled${className ? ('&class=' + encodeURIComponent(className)) : ''}`;
-        const headers = {};
-        if (TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
-        try {
-          const res = await fetch(endpoint, { headers });
-          if (!res.ok) {
-            // Backend returned an error — treat as no exams
-            console.warn('Failed to fetch exams', res.status);
-            scheduledExams = [];
-            return;
+      // AI generate: prefer server endpoint, fallback to client simulation
+      async function generateAiQuiz(topic, difficulty, count) {
+        // attempt server
+        if (TOKEN) {
+          const candidates = [
+            `${API_BASE}/ai/generate`,
+            `${API_BASE}/ai/quizzes`,
+            `${API_BASE}/ai/generate-quiz`
+          ];
+          const payload = { topic, difficulty, count };
+          for (const url of candidates) {
+            try {
+              const res = await fetch(url, { method:'POST', headers: headers(), body: JSON.stringify(payload) });
+              if (!res.ok) continue;
+              const data = await res.json();
+              // expected shape: { ok:true, quizId, quiz (optional) }
+              return data;
+            } catch (err) { console.warn('ai generation candidate failed', url, err); }
           }
-          const data = await res.json();
-          // Accept either { exams: [...] } or direct array
-          scheduledExams = Array.isArray(data) ? data : (Array.isArray(data.exams) ? data.exams : []);
-        } catch (err) {
-          console.error('Network error fetching exams', err);
-          scheduledExams = [];
         }
+
+        // fallback simulation
+        const simulated = [];
+        for (let i=1;i<=count;i++) simulated.push({ id:`AI-SIM-${Date.now()}-${i}`, q:`${topic} — AI question ${i} (${difficulty})`, choices:['A','B','C','D'] });
+        return { ok:true, quiz: simulated, quizId: 'SIM-' + Math.random().toString(36).slice(2,8).toUpperCase() };
       }
 
+      // Render functions
       function renderExams() {
         const q = (examSearch.value || '').trim().toLowerCase();
         examGrid.innerHTML = '';
-        const className = (document.getElementById('studentClass')?.textContent || '').split('—')[0].trim() || '';
-        const exams = scheduledExams.filter(e => {
-          // If backend provides class field, filter by class; otherwise include all
-          const matchesClass = !e.class || !className || e.class === className;
-          const notArchived = (e.status || '').toLowerCase() !== 'archived';
-          const text = ((e.title || '') + ' ' + (e.subject || '') + ' ' + (e.date || '')).toLowerCase();
-          const matchesQuery = !q || text.includes(q);
-          return matchesClass && notArchived && matchesQuery;
+        const className = (studentClassEl.textContent || '').split('—')[0].trim() || '';
+        const exams = (scheduledExams || []).filter(e => {
+          if (e.status && e.status.toLowerCase() === 'archived') return false;
+          if (className && e.class && e.class !== className) return false;
+          if (!q) return true;
+          return ((e.title||'') + ' ' + (e.subject||'') + ' ' + (e.date||'')).toLowerCase().includes(q);
         });
 
         if (!exams.length) { noExams.style.display = ''; } else { noExams.style.display = 'none'; }
@@ -421,273 +554,400 @@
           el.className = 'exam-card';
           el.innerHTML = `
             <div>
-              <h4>${sanitize(ex.title || ex.name || 'Untitled exam')}</h4>
-              <div class="exam-meta">${sanitize(ex.subject || '')} • ${formatDate(ex.date || '')} • ${sanitize(ex.start || '')} • ${sanitize(String(ex.durationMinutes || ex.duration || ''))} mins</div>
-              <div class="exam-meta" style="margin-top:8px">Venue: ${sanitize(ex.venue || ex.location || '—')}</div>
+              <h4>${escapeHtml(ex.title || ex.name || 'Untitled')}</h4>
+              <div class="exam-meta">${escapeHtml(ex.subject || '')} • ${formatDate(ex.date)} • ${escapeHtml(ex.start || '')} • ${escapeHtml(String(ex.durationMinutes || ex.duration || ''))} mins</div>
+              <div class="exam-meta" style="margin-top:8px">Venue: ${escapeHtml(ex.venue || ex.location || '—')}</div>
             </div>
             <div class="actions">
-              <button class="btn ghost detailsBtn" data-id="${sanitizeAttr(ex.id || ex._id || '')}">Details</button>
-              <button class="btn startBtn" data-id="${sanitizeAttr(ex.id || ex._id || '')}">Start Exam</button>
+              <button class="btn ghost detailsBtn" data-id="${escapeAttr(ex.id || ex._id || '')}">Details</button>
+              <button class="btn startBtn" data-id="${escapeAttr(ex.id || ex._id || '')}">Start Exam</button>
             </div>
           `;
           examGrid.appendChild(el);
         });
       }
 
-      // sanitize helpers (very small utility to avoid injecting raw HTML)
-      function sanitize(str) { return String(str || '').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-      function sanitizeAttr(str) { return String(str || '').replace(/"/g,'').replace(/'/g,''); }
+      // Render subjects select
+      function renderSubjects(list) {
+        subjectsList = Array.isArray(list) ? list.map(s => (typeof s === 'string' ? { name: s } : s)) : [];
+        practiceSubject.innerHTML = '';
+        subjectsList.forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = s.code || s.name || s.subject || s.title || s.id || s._id || s;
+          opt.textContent = s.name || s.title || s.subject || opt.value;
+          practiceSubject.appendChild(opt);
+        });
+        if (!practiceSubject.options.length) {
+          const opt = document.createElement('option'); opt.text = 'General'; practiceSubject.appendChild(opt);
+        }
+      }
 
-      async function openExamModal(id) {
-        const ex = scheduledExams.find(x=> (x.id===id || x._id===id));
-        if (!ex) {
-          // Fallback: fetch single exam from backend
-          try {
-            const headers = {};
-            if (TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
-            const res = await fetch(`${API_BASE}/exams/${encodeURIComponent(id)}`, { headers });
-            if (res.ok) {
-              const data = await res.json();
-              // accept data.exam or data
-              const examData = data.exam || data;
-              if (examData) {
-                showExamModal(examData);
-                return;
-              }
-            }
-          } catch (err) {
-            console.error('Failed to fetch exam detail', err);
-          }
+      // Render AI list (server-backed)
+      function renderMyAi(list) {
+        myAiQuizzes = Array.isArray(list) ? list : [];
+        myAiList.innerHTML = '';
+        if (!myAiQuizzes.length) {
+          myAiList.innerHTML = '<div class="muted-small">No AI quizzes yet.</div>';
           return;
         }
-        showExamModal(ex);
+        myAiQuizzes.slice(0, 20).forEach(item => {
+          const el = document.createElement('div');
+          el.style.display='flex'; el.style.justifyContent='space-between'; el.style.alignItems='center'; el.style.gap='8px'; el.style.marginTop='8px';
+          const left = document.createElement('div');
+          left.innerHTML = `<div style="font-weight:800">${escapeHtml(item.topic || item.title || 'AI Quiz')}</div><div class="muted-small">${escapeHtml(item.difficulty || item.level || '')} • ${new Date(item.createdAt || item.created || item.date || Date.now()).toLocaleString()}</div>`;
+          const right = document.createElement('div');
+          right.style.display='flex'; right.style.gap='8px';
+          const detailsBtn = document.createElement('button'); detailsBtn.className = 'btn ghost'; detailsBtn.textContent = 'Details'; detailsBtn.dataset.id = item.id || item.quizId || item._id;
+          const startBtn = document.createElement('button'); startBtn.className = 'btn'; startBtn.textContent = 'Start'; startBtn.dataset.id = item.id || item.quizId || item._id;
+          right.appendChild(detailsBtn); right.appendChild(startBtn);
+          el.appendChild(left); el.appendChild(right);
+          myAiList.appendChild(el);
+
+          // handlers
+          detailsBtn.addEventListener('click', ()=> openAiDetails(item));
+          startBtn.addEventListener('click', ()=> startAi(item));
+        });
       }
 
-      function showExamModal(ex) {
-        examModalBody.innerHTML = `
-          <div style="display:grid;grid-template-columns:1fr 220px;gap:12px">
-            <div>
-              <div style="font-weight:800;font-size:1.05rem">${sanitize(ex.title || ex.name)}</div>
-              <div class="muted-small" style="margin-top:6px">${sanitize(ex.subject || '')} • ${sanitize(ex.class || '')}</div>
-              <div style="margin-top:12px"><strong>When:</strong> ${formatDate(ex.date)} at ${sanitize(ex.start || '')}</div>
-              <div style="margin-top:6px"><strong>Duration:</strong> ${sanitize(String(ex.durationMinutes || ex.duration || ''))} minutes</div>
-              <div style="margin-top:6px"><strong>Total marks:</strong> ${sanitize(String(ex.totalMarks || ex.maxMarks || '—'))}</div>
-              <div style="margin-top:12px" class="muted-small">Please ensure you have a stable internet connection and are in a quiet environment.</div>
-            </div>
-            <aside style="background:#f8fbff;padding:12px;border-radius:8px">
-              <div style="font-weight:800">Actions</div>
-              <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
-                <button class="btn startNow" data-id="${sanitizeAttr(ex.id || ex._id)}">Start Exam</button>
-                <button class="btn ghost practiceLike" data-subject="${sanitizeAttr(ex.subject || '')}">Practice similar</button>
+      // Utils
+      function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (m) { return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[m]; }); }
+      function escapeAttr(s) { return String(s == null ? '' : s).replace(/["']/g,''); }
+      function formatDate(d) { const dt = new Date(d); if (isNaN(dt)) return d || '—'; return dt.toLocaleDateString(); }
+
+      // MODALS: exam details (no question preview)
+      function openExamModal(id) {
+        showLoader('Loading exam details...', 'Contacting server');
+        (async () => {
+          // attempt to fetch details from server
+          let detail = (scheduledExams || []).find(x => (x.id || x._id) === id) || null;
+          if (TOKEN) {
+            const candidates = [
+              `${API_BASE}/exams/${encodeURIComponent(id)}`,
+              `${API_BASE}/exams/details/${encodeURIComponent(id)}`
+            ];
+            for (const url of candidates) {
+              try {
+                const res = await fetch(url, { headers: headers() });
+                if (!res.ok) continue;
+                const data = await res.json();
+                detail = data.exam || data || detail;
+                break;
+              } catch (err) { /* continue */ }
+            }
+          }
+          hideLoader();
+          if (!detail) {
+            examModalBody.innerHTML = `<div class="muted-small">Exam details could not be loaded.</div>`;
+          } else {
+            examModalBody.innerHTML = `
+              <div style="display:grid;grid-template-columns:1fr 220px;gap:12px">
+                <div>
+                  <div style="font-weight:800;font-size:1.05rem">${escapeHtml(detail.title || detail.name || 'Untitled')}</div>
+                  <div class="muted-small" style="margin-top:6px">${escapeHtml(detail.subject || '')} • ${escapeHtml(detail.class || detail.forClass || '')}</div>
+                  <div style="margin-top:12px"><strong>When:</strong> ${formatDate(detail.date)} ${escapeHtml(detail.start || '')}</div>
+                  <div style="margin-top:6px"><strong>Duration:</strong> ${escapeHtml(String(detail.durationMinutes || detail.duration || '—'))} minutes</div>
+                  <div style="margin-top:6px"><strong>Total marks:</strong> ${escapeHtml(String(detail.totalMarks || detail.maxScore || '—'))}</div>
+                  <div style="margin-top:12px" class="muted-small">${escapeHtml(detail.instructions || detail.note || 'Please ensure a stable connection.')}</div>
+                </div>
+                <aside style="background:#f8fbff;padding:12px;border-radius:8px">
+                  <div style="font-weight:800">Actions</div>
+                  <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
+                    <button class="btn startNow" data-id="${escapeAttr(id)}">Start Exam</button>
+                    <button class="btn ghost practiceLike" data-subject="${escapeAttr(detail.subject || '')}">Practice similar</button>
+                  </div>
+                </aside>
               </div>
-            </aside>
+            `;
+            // Attach handlers
+            setTimeout(()=> {
+              Array.from(examModal.querySelectorAll('.startNow')).forEach(b => b.addEventListener('click', () => {
+                examModal.classList.remove('active'); examModal.setAttribute('aria-hidden','true');
+                startExam(b.dataset.id);
+              }, { once:true }));
+              Array.from(examModal.querySelectorAll('.practiceLike')).forEach(b => b.addEventListener('click', ()=> {
+                examModal.classList.remove('active'); examModal.setAttribute('aria-hidden','true');
+                openPracticeForSubject(b.dataset.subject);
+              }, { once:true }));
+            }, 10);
+          }
+          examModal.classList.add('active'); examModal.setAttribute('aria-hidden','false');
+        })();
+      }
+
+      // AI details modal (no question preview). Offers Start and Regenerate
+      function openAiDetails(item) {
+        aiModalBody.innerHTML = `<div style="font-weight:800">${escapeHtml(item.topic || item.title || 'AI Quiz')}</div>
+          <div class="muted-small" style="margin-top:6px">${escapeHtml(item.difficulty || item.level || '')} • ${new Date(item.createdAt || item.created || Date.now()).toLocaleString()}</div>
+          <div style="margin-top:12px">${escapeHtml(item.description || '')}</div>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="btn" id="aiStartNow" data-id="${escapeAttr(item.id || item.quizId || '')}">Start</button>
+            <button class="btn ghost" id="aiRegenerate" data-topic="${escapeAttr(item.topic || '')}" data-diff="${escapeAttr(item.difficulty || item.level || 'medium')}" data-count="${escapeAttr(item.count || 10)}">Regenerate</button>
+            <button class="btn ghost" id="aiDelete" data-id="${escapeAttr(item.id || item.quizId || '')}">Delete</button>
           </div>
         `;
-        examModal.classList.add('active'); examModal.setAttribute('aria-hidden','false');
-        setTimeout(()=> {
-          document.querySelectorAll('.startNow').forEach(btn => btn.addEventListener('click', ()=> {
-            examModal.classList.remove('active'); examModal.setAttribute('aria-hidden','true');
-            startExam(btn.dataset.id);
-          }, { once:true }));
-          document.querySelectorAll('.practiceLike').forEach(btn => btn.addEventListener('click', ()=> {
-            examModal.classList.remove('active'); examModal.setAttribute('aria-hidden','true');
-            openPracticeForSubject(btn.dataset.subject);
-          }, { once:true }));
-        }, 30);
-      }
-
-      async function startExam(id) {
-        if (!confirm('Start exam now? Your time will begin immediately.')) return;
-        // Optionally verify with backend before redirecting
-        try {
-          const headers = { 'Content-Type': 'application/json' };
-          if (TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
-          // Example check endpoint - adjust to match your API
-          const checkRes = await fetch(`${API_BASE}/exams/${encodeURIComponent(id)}/start`, { method: 'POST', headers });
-          if (checkRes.ok) {
-            // server prepared/start exam session, redirect to exam session page
-            const body = await checkRes.json();
-            const sessionId = body.sessionId || id;
-            window.location.href = `/marketting/cbt-session.html?exam=${encodeURIComponent(id)}&session=${encodeURIComponent(sessionId)}`;
-            return;
-          } else {
-            // If server returns 4xx/5xx show message if possible
-            const body = await checkRes.json().catch(()=>({ message: 'Could not start exam' }));
-            alert(body.message || 'Unable to start exam. Please contact your administrator.');
-            return;
-          }
-        } catch (err) {
-          console.error('Network error starting exam', err);
-          // fallback to redirect if you want:
-          window.location.href = `/marketting/cbt-session.html?exam=${encodeURIComponent(id)}`;
-        }
-      }
-
-      // Practice flows (kept local/simulated)
-      function openPracticeForSubject(subject) {
-        const questions = generatePracticeQuestions(subject, 6);
-        showPracticeModal({ title: `${subject} — Practice`, questions });
-      }
-
-      function generatePracticeQuestions(subject, n) {
-        const out = [];
-        for (let i=1;i<=n;i++){
-          out.push({ id: `${subject}-P-${i}`, q: `${subject} — Practice ${i}. Brief question text.`, choices:['A','B','C','D'] });
-        }
-        return out;
-      }
-
-      function showPracticeModal({ title, questions }) {
-        practiceModalBody.innerHTML = `<div style="font-weight:800">${sanitize(title)}</div><div class="muted-small" style="margin-top:8px">Questions: ${questions.length}</div>`;
-        const ol = document.createElement('ol'); ol.style.marginTop='12px';
-        questions.forEach(q=>{
-          const li = document.createElement('li'); li.style.marginBottom='10px';
-          li.innerHTML = `<div style="font-weight:700">${sanitize(q.q)}</div><div class="muted-small">${sanitize(q.choices.join(' • '))}</div>`;
-          ol.appendChild(li);
-        });
-        practiceModalBody.appendChild(ol);
-        const actions = document.createElement('div'); actions.style.marginTop='12px';
-        actions.innerHTML = `<button class="btn" id="practiceStartNow">Start practice session</button> <button class="btn ghost" id="practiceCloseNow">Close</button>`;
-        practiceModalBody.appendChild(actions);
-        document.getElementById('practiceStartNow').addEventListener('click', ()=> {
-          // start untimed practice session -> redirect with practice param
-          window.location.href = `/marketting/cbt-session.html?practice=true&subject=${encodeURIComponent(title)}`;
+        // handlers
+        aiModal.querySelector('#aiStartNow').addEventListener('click', (e) => {
+          const id = e.currentTarget.dataset.id;
+          // start by redirecting to session with ai id
+          window.location.href = `marketting/cbt-session.html?ai=${encodeURIComponent(id)}`;
         }, { once:true });
-        document.getElementById('practiceCloseNow').addEventListener('click', ()=> {
-          practiceModal.classList.remove('active'); practiceModal.setAttribute('aria-hidden','true');
+
+        aiModal.querySelector('#aiRegenerate').addEventListener('click', async (e) => {
+          const t = e.currentTarget.dataset.topic;
+          const d = e.currentTarget.dataset.diff;
+          const c = Number(e.currentTarget.dataset.count) || 10;
+          aiModal.classList.remove('active'); aiModal.setAttribute('aria-hidden','true');
+          await handleGenerateAi(t, d, c);
+        });
+
+        aiModal.querySelector('#aiDelete').addEventListener('click', (e) => {
+          const id = e.currentTarget.dataset.id;
+          // remove from local/db
+          myAiQuizzes = myAiQuizzes.filter(q => (q.id || q.quizId) !== id);
+          persistLocalAi(myAiQuizzes);
+          renderMyAi(myAiQuizzes);
+          aiModal.classList.remove('active'); aiModal.setAttribute('aria-hidden','true');
+        }, { once:true });
+
+        aiModal.classList.add('active'); aiModal.setAttribute('aria-hidden','false');
+      }
+
+      // Start AI (from list)
+      function startAi(itemOrId) {
+        const id = typeof itemOrId === 'string' ? itemOrId : (itemOrId.id || itemOrId.quizId);
+        // redirect to cbt-session with ai param
+        window.location.href = `marketting/cbt-session.html?ai=${encodeURIComponent(id)}`;
+      }
+
+      // Start exam: attempt to request server to create session, then redirect to exam-in-session
+      async function startExam(id) {
+        try {
+          showLoader('Starting exam...', 'Requesting server to create session');
+          // preferred endpoints
+          const candidates = [
+            `${API_BASE}/exams/${encodeURIComponent(id)}/start`,
+            `${API_BASE}/exams/start`,
+            `${API_BASE}/session/start`
+          ];
+          for (const url of candidates) {
+            try {
+              const res = await fetch(url, { method:'POST', headers: headers(), body: JSON.stringify({ examId: id }) });
+              if (!res.ok) continue;
+              const data = await res.json();
+              // expect redirect url or session token
+              hideLoader();
+              if (data && data.sessionUrl) {
+                window.location.href = data.sessionUrl;
+                return;
+              }
+              // fallback to exam-in-session page with exam param
+              window.location.href = `marketting/exam-in-session.html?exam=${encodeURIComponent(id)}`;
+              return;
+            } catch (err) { /* continue */ }
+          }
+          // if all server attempts fail, fallback to immediate redirect
+          hideLoader();
+          window.location.href = `marketting/exam-in-session.html?exam=${encodeURIComponent(id)}`;
+        } catch (err) {
+          hideLoader();
+          console.error('startExam failed', err);
+          alert('Could not start exam. Try again.');
+        }
+      }
+
+      // Practice: show details + start option
+      function openPracticeForSubject(subject) {
+        practiceModalBody.innerHTML = `<div style="font-weight:800">${escapeHtml(subject)} — Practice</div>
+          <div class="muted-small" style="margin-top:8px">Start an untimed practice or a timed practice session.</div>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="btn" id="practiceStartNow">Start Untimed</button>
+            <button class="btn ghost" id="practiceStartTimed">Start Timed (10min)</button>
+          </div>
+        `;
+        practiceModal.querySelector('#practiceStartNow').addEventListener('click', ()=> {
+          window.location.href = `marketting/cbt-session.html?practice=true&subject=${encodeURIComponent(subject)}`;
+        }, { once:true });
+        practiceModal.querySelector('#practiceStartTimed').addEventListener('click', ()=> {
+          window.location.href = `marketting/cbt-session.html?practice=true&subject=${encodeURIComponent(subject)}&timed=10`;
         }, { once:true });
         practiceModal.classList.add('active'); practiceModal.setAttribute('aria-hidden','false');
       }
 
-      // AI generation - simulated client-side, persisted to localStorage
-      let lastAiSet = null;
-      function simulateAiGenerate(topic, difficulty, count) {
-        const q = [];
-        for (let i=1;i<=count;i++){
-          q.push({ id:`AI-${Date.now()}-${i}`, q:`${topic || 'General'} — AI question ${i} (${difficulty})`, choices:['A','B','C','D'] });
+      // AI generation handler
+      async function handleGenerateAi(topic, difficulty, count) {
+        showLoader('Generating AI quiz...', 'This runs on the server (may take a few seconds)');
+        try {
+          const res = await generateAiQuiz(topic, difficulty, count);
+          hideLoader();
+          if (!res || !res.ok) {
+            aiStatus.textContent = 'AI generation failed (server).';
+            return;
+          }
+
+          const quizId = res.quizId || (res.quiz && (res.quiz.id || ('SIM-' + Math.random().toString(36).slice(2,8).toUpperCase())));
+          const entry = {
+            id: quizId,
+            topic,
+            difficulty,
+            count,
+            createdAt: new Date().toISOString(),
+            // server may return metadata
+            meta: res.meta || {}
+          };
+
+          // store returned questions if provided
+          if (res.quiz && Array.isArray(res.quiz)) {
+            try { sessionStorage.setItem('eg_ai_quiz_' + entry.id, JSON.stringify(res.quiz)); } catch {}
+          }
+
+          // save to server-local list: prefer server's returned list; otherwise persist locally
+          try {
+            // push to server list if server returned an id and endpoint exists
+            if (TOKEN && res.quizId) {
+              // try to notify server to persist (best-effort)
+              await fetch(`${API_BASE}/ai/quizzes/${encodeURIComponent(res.quizId)}/save`, { method:'POST', headers: headers(), body: JSON.stringify({ topic, difficulty, count }) }).catch(()=>null);
+            }
+          } catch (err) {}
+
+          // merge into local store and render
+          myAiQuizzes.unshift(entry);
+          persistLocalAi(myAiQuizzes);
+          renderMyAi(myAiQuizzes);
+          aiStatus.textContent = `Generated ${count} questions on "${topic}" (${difficulty}).`;
+        } catch (err) {
+          hideLoader();
+          console.error('AI generation failed', err);
+          aiStatus.textContent = 'AI generation failed.';
         }
-        return q;
       }
 
-      genAiBtn.addEventListener('click', ()=> {
-        const topic = (aiTopic.value || '').trim() || 'General';
-        const difficulty = aiDifficulty.value;
-        const count = Number(aiCount.value) || 10;
-        aiStatus.textContent = 'Generating...';
-        genAiBtn.disabled = true;
-        setTimeout(()=> {
-          lastAiSet = simulateAiGenerate(topic, difficulty, count);
-          aiStatus.textContent = `Generated ${lastAiSet.length} questions on "${topic}" (${difficulty}).`;
-          genAiBtn.disabled = false;
-          // Save to 'My AI quizzes' (persist)
-          const list = loadMyAi();
-          const token = Math.random().toString(36).slice(2,9).toUpperCase();
-          const entry = { id: 'AI-' + token, topic, difficulty, count: lastAiSet.length, createdAt: new Date().toISOString() };
-          list.unshift(entry);
-          saveMyAi(list);
-          // store the actual questions in sessionStorage keyed by token
-          sessionStorage.setItem('eg_ai_quiz_' + entry.id, JSON.stringify(lastAiSet));
-          renderMyAi();
-        }, 800);
-      });
-
-      previewAiBtn.addEventListener('click', ()=> {
-        const list = loadMyAi();
-        if (!list.length) return alert('No AI quiz generated yet. Click Generate first.');
-        const latest = list[0];
-        const token = latest.id;
-        const data = JSON.parse(sessionStorage.getItem('eg_ai_quiz_' + token) || 'null');
-        if (!data) return alert('Preview not available (data expired).');
-        aiModalBody.innerHTML = `<div style="font-weight:800">AI Quiz preview — ${data.length} questions</div>`;
-        const ol = document.createElement('ol'); ol.style.marginTop = '12px';
-        data.slice(0,10).forEach(q=>{
-          const li = document.createElement('li'); li.style.marginBottom='10px';
-          li.innerHTML = `<div style="font-weight:700">${sanitize(q.q)}</div><div class="muted-small">${sanitize(q.choices.join(' • '))}</div>`;
-          ol.appendChild(li);
-        });
-        aiModalBody.appendChild(ol);
-        const actions = document.createElement('div'); actions.style.marginTop='12px';
-        actions.innerHTML = `<button class="btn" id="aiStartBtn">Start AI Quiz</button> <button class="btn ghost" id="aiCloseBtn">Close</button>`;
-        aiModalBody.appendChild(actions);
-
-        document.getElementById('aiStartBtn').addEventListener('click', ()=> {
-          const tokenParam = latest.id;
-          window.location.href = `/marketting/cbt-session.html?ai=${encodeURIComponent(tokenParam)}`;
-        }, { once:true });
-        document.getElementById('aiCloseBtn').addEventListener('click', ()=> { aiModal.classList.remove('active'); aiModal.setAttribute('aria-hidden','true'); }, { once:true });
-
-        aiModal.classList.add('active'); aiModal.setAttribute('aria-hidden','false');
-      });
-
-      // Render my AI list
-      function renderMyAi() {
-        const list = loadMyAi();
-        myAiList.innerHTML = '';
-        if (!list.length) { myAiList.innerHTML = '<div class="muted-small">No AI quizzes yet.</div>'; return; }
-        list.slice(0,10).forEach(item => {
-          const el = document.createElement('div'); el.style.display='flex'; el.style.justifyContent='space-between'; el.style.alignItems='center'; el.style.gap='8px'; el.style.marginTop='8px';
-          el.innerHTML = `<div><div style="font-weight:800">${sanitize(item.topic || 'AI Quiz')}</div><div class="muted-small">${sanitize(item.difficulty)} • ${new Date(item.createdAt).toLocaleString()}</div></div>
-            <div style="display:flex;gap:8px">
-              <button class="btn ghost previewAiBtn" data-id="${sanitizeAttr(item.id)}">Preview</button>
-              <button class="btn" data-id="${sanitizeAttr(item.id)}" onclick="startAi('${sanitizeAttr(item.id)}')">Start</button>
-            </div>`;
-          myAiList.appendChild(el);
-        });
-        // attach handlers for preview buttons
-        Array.from(document.querySelectorAll('.previewAiBtn')).forEach(b => b.addEventListener('click', (e)=> {
-          const id = e.currentTarget.dataset.id;
-          const data = JSON.parse(sessionStorage.getItem('eg_ai_quiz_' + id) || 'null');
-          if (!data) return alert('Quiz data not available (session may have expired).');
-          aiModalBody.innerHTML = `<div style="font-weight:800">AI Quiz preview — ${data.length} questions</div>`;
-          const ol = document.createElement('ol'); ol.style.marginTop = '12px';
-          data.slice(0,10).forEach(q=>{
-            const li = document.createElement('li'); li.style.marginBottom='10px';
-            li.innerHTML = `<div style="font-weight:700">${sanitize(q.q)}</div><div class="muted-small">${sanitize(q.choices.join(' • '))}</div>`;
-            ol.appendChild(li);
-          });
-          aiModalBody.appendChild(ol);
-          const actions = document.createElement('div'); actions.style.marginTop='12px';
-          actions.innerHTML = `<button class="btn" id="aiStartNow">Start</button> <button class="btn ghost" id="aiCloseNow">Close</button>`;
-          aiModalBody.appendChild(actions);
-          document.getElementById('aiStartNow').addEventListener('click', ()=> {
-            window.location.href = `/marketting/cbt-session.html?ai=${encodeURIComponent(id)}`;
-          }, { once:true });
-          document.getElementById('aiCloseNow').addEventListener('click', ()=> { aiModal.classList.remove('active'); aiModal.setAttribute('aria-hidden','true'); }, { once:true });
-          aiModal.classList.add('active'); aiModal.setAttribute('aria-hidden','false');
-        }));
+      // generateAiQuiz wrapper to call backend or fallback
+      async function generateAiQuiz(topic, difficulty, count) {
+        return await (async () => {
+          // call server
+          return await (async () => {
+            if (!TOKEN) return null;
+            const candidates = [
+              `${API_BASE}/ai/generate`,
+              `${API_BASE}/ai/quizzes/generate`,
+              `${API_BASE}/ai/generate-quiz`
+            ];
+            const payload = { topic, difficulty, count };
+            for (const url of candidates) {
+              try {
+                const res = await fetch(url, { method:'POST', headers: headers(), body: JSON.stringify(payload) });
+                if (!res.ok) continue;
+                const data = await res.json();
+                return data;
+              } catch (err) { console.warn('ai candidate failed', url, err); }
+            }
+            return null;
+          })();
+        })() || { ok:true, quizId: 'SIM-' + Math.random().toString(36).slice(2,8).toUpperCase(), quiz: (()=>{ const arr=[]; for(let i=1;i<=count;i++) arr.push({id:`SIM-${i}`, q:`${topic} — AI question ${i}`, choices:['A','B','C','D']}); return arr; })() };
       }
 
-      // helpers to start AI quiz from inline button (exposed globally)
-      window.startAi = function(id) {
-        window.location.href = `marketting/cbt-session.html?ai=${encodeURIComponent(id)}`;
-      };
+      // INITIALIZATION: fetch profile, exams, AI list, subjects
+      async function init() {
+        showLoader('Loading...', 'Fetching profile, exams and AI quizzes');
+        try {
+          // fetch profile
+          const profile = await (async () => {
+            const local = (function(){ try { return JSON.parse(localStorage.getItem('eg_application')||'null') || null; } catch { return null; } })();
+            if (!TOKEN) return local || {};
+            const candidates = [`${API_BASE}/me`, `${API_BASE}/profile`, `${API_BASE}/users/me`];
+            for (const url of candidates) {
+              try {
+                const res = await fetch(url, { headers: headers() });
+                if (!res.ok) continue;
+                const data = await res.json();
+                return data.user || data || local || {};
+              } catch (err) { /* ignore */ }
+            }
+            return local || {};
+          })();
 
-      // Buttons
-      refreshBtn.addEventListener('click', async ()=> { await fetchAndRender(); });
+          // populate profile UI
+          if (profile) {
+            studentNameEl.textContent = (profile.firstName || profile.name || profile.username || 'Student') + (profile.lastName ? (' ' + profile.lastName) : '');
+            studentClassEl.textContent = profile.program || profile.class || profile.level || '';
+            if (profile.profilePic) topbarAvatar.src = profile.profilePic;
+            if (profile.session) termInfo.textContent = profile.session;
+          }
+
+          const studentClass = profile.program || profile.class || profile.level || '';
+
+          // fetch scheduled exams and subjects in parallel
+          const [examsData, subjectsData, aiData] = await Promise.all([
+            fetchScheduledExams(studentClass).catch(()=>null),
+            fetchSubjects().catch(()=>null),
+            fetchMyAi().catch(()=>null)
+          ]);
+
+          scheduledExams = Array.isArray(examsData) ? examsData : [];
+          renderExams();
+
+          renderSubjects(subjectsData || []);
+          myAiQuizzes = Array.isArray(aiData) ? aiData : (function(){ try { return JSON.parse(localStorage.getItem('eg_ai_quizzes')||'[]'); } catch { return []; } })();
+          renderMyAi(myAiQuizzes);
+
+        } catch (err) {
+          console.error('initialization error', err);
+        } finally {
+          hideLoader();
+        }
+      }
+
+      // Wire UI handlers
+      refreshBtn.addEventListener('click', ()=> init());
       historyBtn.addEventListener('click', ()=> { window.location.href = '/exam-history.html'; });
+      examSearch.addEventListener('input', ()=> renderExams());
 
+      // exam grid click delegation
+      examGrid.addEventListener('click', (e)=> {
+        const t = e.target;
+        if (t.matches('.detailsBtn')) {
+          const id = t.dataset.id;
+          openExamModal(id);
+        }
+        if (t.matches('.startBtn')) {
+          startExam(t.dataset.id);
+        }
+      });
+
+      // practice handlers
       startPracticeBtn.addEventListener('click', ()=> {
         const subj = practiceSubject.value;
         openPracticeForSubject(subj);
       });
       browsePracticeBtn.addEventListener('click', ()=> { window.location.href = '/practice-library.html'; });
 
-      // Exam details and start handlers
-      examGrid.addEventListener('click', (e)=> {
-        const t = e.target;
-        if (t.matches('.detailsBtn')) openExamModal(t.dataset.id);
-        if (t.matches('.startBtn')) startExam(t.dataset.id);
+      // AI handlers
+      genAiBtn.addEventListener('click', async ()=> {
+        const topic = (aiTopic.value || '').trim() || 'General';
+        const diff = (aiDifficulty.value || 'medium');
+        const count = Number(aiCount.value) || 10;
+        genAiBtn.disabled = true;
+        aiStatus.textContent = 'Generating...';
+        try {
+          await handleGenerateAi(topic, diff, count);
+        } finally {
+          genAiBtn.disabled = false;
+        }
       });
 
-      // Modals close
+      previewAiBtn.addEventListener('click', ()=> {
+        // Show list of AI quizzes (no question preview)
+        if (!myAiQuizzes.length) return alert('No AI quizzes available. Generate one first.');
+        // open modal showing first quiz details (or allow user to select)
+        openAiDetails(myAiQuizzes[0]);
+      });
+
+      // modal close
       closeExamModalBtn.addEventListener('click', ()=> { examModal.classList.remove('active'); examModal.setAttribute('aria-hidden','true'); });
       closePracticeModalBtn.addEventListener('click', ()=> { practiceModal.classList.remove('active'); practiceModal.setAttribute('aria-hidden','true'); });
       closeAiModalBtn.addEventListener('click', ()=> { aiModal.classList.remove('active'); aiModal.setAttribute('aria-hidden','true'); });
 
-      // Search
-      examSearch.addEventListener('input', ()=> renderExams());
-
-      // Sidebar mobile toggles (ensure .hidden removed when opening)
+      // sidebar mobile toggles
       hamburger.addEventListener('click', ()=> {
         sidebar.classList.remove('hidden');
         sidebar.classList.add('open');
@@ -705,27 +965,18 @@
         document.body.classList.remove('no-scroll');
       });
 
-      // Close modals on Escape
+      // escape closes modals
       document.addEventListener('keydown', (e)=> {
         if (e.key === 'Escape') {
           document.querySelectorAll('.modal.active').forEach(m=> { m.classList.remove('active'); m.setAttribute('aria-hidden','true'); });
         }
       });
 
-      // Combined fetch + render
-      async function fetchAndRender() {
-        const className = (document.getElementById('studentClass')?.textContent || '').split('—')[0].trim() || '';
-        await fetchScheduledExams(className);
-        renderExams();
-      }
+      // start
+      init();
 
-      // Initial render
-      (async function init(){
-        await fetchAndRender();
-        renderMyAi();
-        // expose simple diagnostics (optional)
-        window._eg_cbt = { scheduledExams, loadMyAi, saveMyAi };
-      })();
+      // expose for debug
+      window._eg_cbt = { scheduledExams, fetchScheduledExams, fetchMyAi, generateAiQuiz };
 
     })();
   </script>
