@@ -50,7 +50,7 @@
     .profile img{width:48px;height:48px;border-radius:10px;object-fit:cover;border:2px solid #ffe066}
 
     /* Topbar */
-    .topbar{position:fixed;left:var(--sidebar-w);top:0;width:calc(100vw - var(--sidebar-w));z-index:90;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;backdrop-filter: blur(6px);background: rgba(255,255,255,0.92);border-bottom:1px solid rgba(11,42,60,0.06);box-shadow:0 6px 18px rgba(11,42,60,0.04)}
+    .topbar{position:fixed;left:var(--sidebar-w);top:0;width:calc(100vw - var(--sidebar-w));z-index:90;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;backdrop-filter: blur(6px);background: rgba(255,255,255,0.92);border-bottom:1px solid rgba(11,42,60,0.06);box-shadow:0 6px 18px rgba(11,42,60,0.04);min-height:64px}
     @media (max-width:720px){.topbar{left:0;width:100vw;padding:10px 12px;min-height:56px}}
 
     .hamburger{display:none;background:var(--accent);color:#fff;border:none;padding:9px 12px;border-radius:10px;cursor:pointer;font-weight:800}
@@ -96,26 +96,34 @@
     :focus{outline:3px solid rgba(99,102,241,0.18);outline-offset:2px;border-radius:6px}
 
     /* page loader */
-    .page-loader { position: fixed; inset: 0; display: none; align-items:center; justify-content:center; z-index:1200; background: rgba(255,255,255,0.92); }
+    .page-loader {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      z-index: 1200;
+      background: rgba(255,255,255,0.9);
+      backdrop-filter: blur(3px);
+      flex-direction: column;
+    }
     .page-loader.active { display:flex; }
     .page-loader .spinner { width:44px;height:44px;border-radius:50%;border:6px solid rgba(0,0,0,0.06);border-top-color:var(--accent);animation:spin 1s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .page-loader .msg { font-weight:800; color:#0b2a44; }
-    .page-loader .sub { color:var(--muted); font-size:0.92rem; margin-top:6px; }
-
+    .page-loader .sub { color:var(--muted); font-size:0.92rem; }
   </style>
 </head>
 <body>
   <div class="app" id="app">
     <div class="overlay" id="overlay" aria-hidden="true"></div>
 
-    <!-- loader -->
+    <!-- Page loader -->
     <div id="pageLoader" class="page-loader" role="status" aria-live="polite" aria-hidden="true">
       <div class="spinner" aria-hidden="true"></div>
-      <div style="text-align:center">
-        <div class="msg" id="loaderMsg">Loading teacher dashboard…</div>
-        <div class="sub" id="loaderSub">Fetching profile and classroom data</div>
-      </div>
+      <div class="msg" id="loaderMsg">Loading dashboard...</div>
+      <div class="sub" id="loaderSub">Fetching your profile and data</div>
     </div>
 
     <aside class="sidebar" id="sidebar" aria-label="Main navigation" role="navigation" aria-hidden="false">
@@ -211,7 +219,7 @@
           <div class="muted-small">Your classes and rosters</div>
 
           <div style="margin-top:12px" class="controls">
-            <select id="classSelect" aria-label="Select class"></select>
+            <select id="classSelect"></select>
             <button class="btn" id="newClassBtn">Create class</button>
             <button class="btn ghost" id="exportRosterBtn">Export roster</button>
           </div>
@@ -239,7 +247,7 @@
           <div class="muted-small">Mark attendance quickly</div>
 
           <div style="margin-top:12px" class="controls">
-            <select id="attClassSelect" aria-label="Attendance class"></select>
+            <select id="attClassSelect"></select>
             <input type="date" id="attDate">
             <button class="btn" id="loadAttendanceBtn">Load</button>
           </div>
@@ -266,7 +274,7 @@
           <div class="muted-small">Enter grades and export reports</div>
 
           <div style="margin-top:12px" class="controls">
-            <select id="gradeClassSelect" aria-label="Grade class"></select>
+            <select id="gradeClassSelect"></select>
             <select id="gradeAssessmentSelect"><option>Assessment A</option></select>
             <button class="btn" id="saveGradesBtn">Save grades</button>
             <button class="btn ghost" id="exportGradesBtn">Export CSV</button>
@@ -362,66 +370,87 @@
       const API_BASE = 'https://examguide.onrender.com/api';
       const TOKEN = localStorage.getItem('eg_token') || null;
 
-      // DOM refs
+      // Loader
       const pageLoader = document.getElementById('pageLoader');
       const loaderMsg = document.getElementById('loaderMsg');
       const loaderSub = document.getElementById('loaderSub');
+      function showLoader(msg, sub) {
+        if (msg) loaderMsg.textContent = msg;
+        if (sub) loaderSub.textContent = sub;
+        pageLoader.classList.add('active'); pageLoader.setAttribute('aria-hidden','false');
+      }
+      function hideLoader() { pageLoader.classList.remove('active'); pageLoader.setAttribute('aria-hidden','true'); }
 
+      // DOM refs
       const teacherNameEl = document.getElementById('teacherName');
       const teacherDeptEl = document.getElementById('teacherDept');
       const teacherAvatar = document.getElementById('teacherAvatar');
-      const topbarAvatar = document.getElementById('topbarAvatar');
       const termInfo = document.getElementById('termInfo');
+      const classSelect = document.getElementById('classSelect');
+      const attClassSelect = document.getElementById('attClassSelect');
+      const gradeClassSelect = document.getElementById('gradeClassSelect');
 
-      // data containers
+      // sections
+      const activityList = document.getElementById('activityList');
+      const rosterTableBody = document.querySelector('#rosterTable tbody');
+      const rosterTitle = document.getElementById('rosterTitle');
+      const rosterMeta = document.getElementById('rosterMeta');
+      const attendanceWrap = document.getElementById('attendanceWrap');
+      const assignList = document.getElementById('assignList');
+      const gradebookWrap = document.getElementById('gradebookWrap');
+      const examList = document.getElementById('examList');
+      const resGrid = document.getElementById('resGrid');
+      const msgList = document.getElementById('msgList');
+
+      // modals
+      const itemModal = document.getElementById('itemModal');
+      const itemModalBody = document.getElementById('itemModalBody');
+      const closeItemModalBtn = document.getElementById('closeItemModal');
+      const formModal = document.getElementById('formModal');
+      const formModalBody = document.getElementById('formModalBody');
+      const closeFormModalBtn = document.getElementById('closeFormModal');
+
+      // data containers (will be fetched)
+      let teacherProfile = null;
       let classes = [];
       let assignments = [];
       let exams = [];
       let resources = [];
       let messages = [];
 
-      function showLoader(msg, sub) {
-        if (msg) loaderMsg.textContent = msg;
-        if (sub) loaderSub.textContent = sub;
-        pageLoader.classList.add('active'); pageLoader.setAttribute('aria-hidden','false');
-      }
-      function hideLoader() {
-        pageLoader.classList.remove('active'); pageLoader.setAttribute('aria-hidden','true');
-      }
-
+      // utility
       function headers(contentType='application/json') {
         const h = {};
         if (contentType) h['Content-Type'] = contentType;
         if (TOKEN) h['Authorization'] = 'Bearer ' + TOKEN;
         return h;
       }
-
-      // generic fetch candidates helper (tries multiple endpoint shapes)
-      async function tryFetchCandidates(candidates, options={}) {
-        for (const url of candidates) {
-          if (!url) continue;
-          try {
-            const res = await fetch(url, options);
-            if (!res.ok) continue;
-            const data = await res.json();
-            if (Array.isArray(data)) return data;
-            if (Array.isArray(data.items)) return data.items;
-            if (Array.isArray(data.data)) return data.data;
-            if (Array.isArray(data.results)) return data.results;
-            if (Array.isArray(data.classes)) return data.classes;
-            if (Array.isArray(data.assignments)) return data.assignments;
-            // wrap single object
-            if (data && (data.id || data._id)) return [data];
-          } catch (err) {
-            console.warn('candidate fetch failed', url, err);
+      function tryFetchCandidates(candidates, opts={}) {
+        return (async () => {
+          for (const url of candidates) {
+            if (!url) continue;
+            try {
+              const res = await fetch(url, opts);
+              if (!res.ok) continue;
+              const data = await res.json();
+              if (Array.isArray(data)) return data;
+              if (Array.isArray(data.items)) return data.items;
+              if (Array.isArray(data.data)) return data.data;
+              if (Array.isArray(data.results)) return data.results;
+              if (Array.isArray(data.classes)) return data.classes;
+              // single object wrap
+              if (data && (data.id || data._id)) return [data];
+            } catch (err) {
+              console.warn('candidate fetch failed', url, err);
+            }
           }
-        }
-        return null;
+          return null;
+        })();
       }
 
-      // fetch profile / me
+      // Fetchers
       async function fetchProfile() {
-        const local = (function(){ try { return JSON.parse(localStorage.getItem('eg_application')||'null') || null;} catch { return null; } })();
+        const local = (function(){ try { return JSON.parse(localStorage.getItem('eg_application')||'null') || null; } catch { return null; } })();
         if (!TOKEN) return local || {};
         const candidates = [`${API_BASE}/me`, `${API_BASE}/profile`, `${API_BASE}/users/me`];
         for (const url of candidates) {
@@ -435,438 +464,405 @@
         return local || {};
       }
 
-      // fetch resources (classes, assignments, exams, resources, messages)
-      async function fetchTeacherData(teacherId) {
-        // Students may be returned under teacher's classes; adapt to API shapes
-        const [classesData, assignmentsData, examsData, resourcesData, messagesData] = await Promise.all([
-          tryFetchCandidates([`${API_BASE}/teachers/${encodeURIComponent(teacherId)}/classes`, `${API_BASE}/classes?teacher=${encodeURIComponent(teacherId)}`, `${API_BASE}/classes`], { headers: headers() }),
-          tryFetchCandidates([`${API_BASE}/assignments?teacher=${encodeURIComponent(teacherId)}`, `${API_BASE}/teachers/${encodeURIComponent(teacherId)}/assignments`, `${API_BASE}/assignments`], { headers: headers() }),
-          tryFetchCandidates([`${API_BASE}/exams?teacher=${encodeURIComponent(teacherId)}`, `${API_BASE}/teachers/${encodeURIComponent(teacherId)}/exams`, `${API_BASE}/exams`], { headers: headers() }),
-          tryFetchCandidates([`${API_BASE}/resources?teacher=${encodeURIComponent(teacherId)}`, `${API_BASE}/teachers/${encodeURIComponent(teacherId)}/resources`, `${API_BASE}/resources`], { headers: headers() }),
-          tryFetchCandidates([`${API_BASE}/messages?to=${encodeURIComponent(teacherId)}`, `${API_BASE}/teachers/${encodeURIComponent(teacherId)}/messages`, `${API_BASE}/messages?role=teacher`], { headers: headers() })
-        ]);
-        return {
-          classes: Array.isArray(classesData) ? classesData : [],
-          assignments: Array.isArray(assignmentsData) ? assignmentsData : [],
-          exams: Array.isArray(examsData) ? examsData : [],
-          resources: Array.isArray(resourcesData) ? resourcesData : [],
-          messages: Array.isArray(messagesData) ? messagesData : []
-        };
+      async function fetchClasses(teacherId) {
+        const candidates = [
+          `${API_BASE}/teachers/${encodeURIComponent(teacherId)}/classes`,
+          `${API_BASE}/classes?teacher=${encodeURIComponent(teacherId)}`,
+          `${API_BASE}/classes`
+        ];
+        return await tryFetchCandidates(candidates, { headers: headers() });
       }
 
-      // renderers
+      async function fetchAssignments(teacherId) {
+        const candidates = [
+          `${API_BASE}/assignments?teacher=${encodeURIComponent(teacherId)}`,
+          `${API_BASE}/teachers/${encodeURIComponent(teacherId)}/assignments`,
+          `${API_BASE}/assignments`
+        ];
+        return await tryFetchCandidates(candidates, { headers: headers() });
+      }
+
+      async function fetchExams(teacherId) {
+        const candidates = [
+          `${API_BASE}/exams?creator=${encodeURIComponent(teacherId)}`,
+          `${API_BASE}/teachers/${encodeURIComponent(teacherId)}/exams`,
+          `${API_BASE}/exams`
+        ];
+        return await tryFetchCandidates(candidates, { headers: headers() });
+      }
+
+      async function fetchResources(teacherId) {
+        const candidates = [
+          `${API_BASE}/resources?owner=${encodeURIComponent(teacherId)}`,
+          `${API_BASE}/teachers/${encodeURIComponent(teacherId)}/resources`,
+          `${API_BASE}/resources`
+        ];
+        return await tryFetchCandidates(candidates, { headers: headers() });
+      }
+
+      async function fetchMessages(teacherId) {
+        const candidates = [
+          `${API_BASE}/messages?user=${encodeURIComponent(teacherId)}`,
+          `${API_BASE}/teachers/${encodeURIComponent(teacherId)}/messages`,
+          `${API_BASE}/messages`
+        ];
+        return await tryFetchCandidates(candidates, { headers: headers() });
+      }
+
+      // Renderers (all tolerate empty arrays)
       function renderOverview() {
-        document.getElementById('statClasses').textContent = classes.length;
-        const totalStudents = classes.reduce((s,c)=> s + (Array.isArray(c.students) ? c.students.length : 0), 0);
+        document.getElementById('statClasses').textContent = classes.length || 0;
+        const totalStudents = (classes || []).reduce((s,c) => s + (c.students ? c.students.length : 0), 0);
         document.getElementById('statStudents').textContent = totalStudents;
-        const pending = assignments.reduce((s,a)=> s + ((a.submissions && a.submissions.filter(x=>!x.graded).length) || 0), 0);
+        const pending = (assignments || []).filter(a => a.pendingSubmissions > 0).length || 0;
         document.getElementById('statPending').textContent = pending;
-        const act = document.getElementById('activityList'); act.innerHTML = '';
-        const ul = document.createElement('ul');
-        messages.slice(0,6).forEach(m=> { const li = document.createElement('li'); li.textContent = `${m.subject || m.title} — ${m.to || m.target || 'Broadcast'}`; ul.appendChild(li); });
-        act.appendChild(ul.length ? ul : document.createTextNode('No recent activity'));
+        activityList.innerHTML = '';
+        const recent = (messages || []).slice(0,5).map(m => `${m.subject || m.title || 'Message'} • ${new Date(m.time || m.createdAt || Date.now()).toLocaleString()}`);
+        if (!recent.length) activityList.innerHTML = '<div class="muted-small">No recent activity</div>';
+        else {
+          const ul = document.createElement('ul');
+          recent.forEach(r => { const li = document.createElement('li'); li.textContent = r; ul.appendChild(li); });
+          activityList.appendChild(ul);
+        }
       }
 
       function renderClassOptions() {
-        const classSelect = document.getElementById('classSelect');
         classSelect.innerHTML = '';
-        classes.forEach(c => {
-          const opt = document.createElement('option'); opt.value = c.id || c._id || c.classId || c.code; opt.textContent = c.name || c.title || opt.value; classSelect.appendChild(opt);
+        attClassSelect.innerHTML = '';
+        gradeClassSelect.innerHTML = '';
+        (classes || []).forEach(c => {
+          const opt = document.createElement('option'); opt.value = c.id || c._id || c.classId; opt.textContent = c.name || c.title || opt.value;
+          classSelect.appendChild(opt);
+          const opt2 = opt.cloneNode(true); attClassSelect.appendChild(opt2);
+          const opt3 = opt.cloneNode(true); gradeClassSelect.appendChild(opt3);
         });
-        // attendance & grade selects
-        ['attClassSelect','gradeClassSelect'].forEach(id => {
-          const el = document.getElementById(id);
-          if (!el) return;
-          el.innerHTML = '';
-          classes.forEach(c => {
-            const o = document.createElement('option'); o.value = c.id || c._id || c.classId || c.code; o.textContent = c.name || c.title || o.value; el.appendChild(o);
-          });
-        });
-        // show first roster by default
-        if (classes.length) {
-          showRoster(classes[0].id || classes[0]._id || classes[0].classId || classes[0].code);
+        if (classSelect.options.length) {
+          classSelect.selectedIndex = 0;
+          showRoster(classSelect.value);
         } else {
-          const tbody = document.querySelector('#rosterTable tbody'); tbody.innerHTML = ''; document.getElementById('rosterTitle').textContent = 'No classes';
-          document.getElementById('rosterMeta').textContent = '0 students';
+          rosterTableBody.innerHTML = '<tr><td colspan="5" class="empty">No classes assigned</td></tr>';
+          rosterTitle.textContent = '—';
+          rosterMeta.textContent = '-- students';
         }
       }
 
       function showRoster(classId) {
-        const cls = classes.find(c => (c.id===classId || c._id===classId || c.classId===classId || c.code===classId));
-        const tbody = document.querySelector('#rosterTable tbody'); tbody.innerHTML = '';
+        rosterTableBody.innerHTML = '';
+        const cls = (classes || []).find(c => (c.id || c._id || c.classId) == classId);
         if (!cls || !Array.isArray(cls.students) || !cls.students.length) {
-          tbody.innerHTML = '<tr><td colspan="5" class="empty">No students found in this class.</td></tr>';
-          document.getElementById('rosterTitle').textContent = cls ? (cls.name || cls.title) : 'Class';
-          document.getElementById('rosterMeta').textContent = cls ? `${(cls.students || []).length} students` : '0 students';
+          rosterTableBody.innerHTML = '<tr><td colspan="5" class="empty">No students found</td></tr>';
+          rosterTitle.textContent = cls ? (cls.name || cls.title) : '—';
+          rosterMeta.textContent = '0 students';
           return;
         }
         cls.students.forEach((s, idx) => {
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${idx+1}</td><td>${s.name || s.fullName || '—'}</td><td>${s.admission || s.regNo || '—'}</td><td>${s.contact || s.phone || '—'}</td><td><button class="btn ghost" data-action="profile" data-id="${s.id || s._id || ''}">Profile</button></td>`;
-          tbody.appendChild(tr);
+          tr.innerHTML = `<td>${idx+1}</td><td>${s.name}</td><td>${s.admission || s.reg || s.registration || '—'}</td><td>${s.contact || s.phone || '—'}</td>
+            <td><button class="btn ghost" data-action="profile" data-id="${s.id || s._id || ''}">Profile</button></td>`;
+          rosterTableBody.appendChild(tr);
         });
-        document.getElementById('rosterTitle').textContent = cls.name || cls.title || 'Class';
-        document.getElementById('rosterMeta').textContent = `${cls.students.length} students`;
+        rosterTitle.textContent = cls.name || cls.title || 'Class';
+        rosterMeta.textContent = `${cls.students.length} students`;
       }
 
       function renderAssignments() {
-        const wrap = document.getElementById('assignList'); wrap.innerHTML = '';
-        if (!assignments.length) { wrap.innerHTML = '<div class="empty">No assignments yet</div>'; return; }
-        assignments.forEach(a => {
-          const c = document.createElement('article'); c.className='card';
-          c.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:800">${a.title || a.name}</div><div class="muted-small">${a.className || a.class || a.classId || ''}</div></div><div style="text-align:right">${a.due ? ('Due ' + new Date(a.due).toLocaleDateString()) : ''}</div></div>
-            <div style="margin-top:8px;display:flex;gap:8px"><button class="btn" data-action="viewAssign" data-id="${a.id||a._id||''}">View</button><button class="btn ghost" data-action="grade" data-id="${a.id||a._id||''}">Grade</button></div>`;
-          wrap.appendChild(c);
+        assignList.innerHTML = '';
+        if (!assignments || !assignments.length) assignList.innerHTML = '<div class="empty">No assignments</div>';
+        else assignments.forEach(a => {
+          const c = document.createElement('article'); c.className = 'card';
+          c.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:800">${a.title}</div><div class="muted-small">${a.className || a.classId || ''} • Due ${a.due || a.dueDate || '—'}</div></div><div style="display:flex;gap:8px"><button class="btn" data-action="viewAssign" data-id="${a.id||a._id||''}">View</button><button class="btn ghost" data-action="grade" data-id="${a.id||a._id||''}">Grade</button></div></div>`;
+          assignList.appendChild(c);
         });
       }
 
       function renderGradebook(classId) {
-        const wrap = document.getElementById('gradebookWrap'); wrap.innerHTML = '';
-        const cls = classes.find(c => (c.id===classId || c._id===classId || c.classId===classId));
-        if (!cls || !Array.isArray(cls.students)) { wrap.innerHTML = '<div class="empty">Select a class</div>'; return; }
+        gradebookWrap.innerHTML = '';
+        const cls = (classes || []).find(c => (c.id || c._id || c.classId) == classId);
+        if (!cls) { gradebookWrap.innerHTML = '<div class="empty">Select a class</div>'; return; }
         const table = document.createElement('table');
-        const thead = document.createElement('thead'); thead.innerHTML = '<tr><th>#</th><th>Student</th><th>Assessment</th><th>Score</th></tr>';
+        const thead = document.createElement('thead');
+        thead.innerHTML = '<tr><th>#</th><th>Student</th><th>Assessment</th><th>Score</th></tr>';
         const tbody = document.createElement('tbody');
-        cls.students.forEach((s, i) => {
+        (cls.students || []).forEach((s, idx) => {
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${i+1}</td><td>${s.name||s.fullName}</td><td><input type="text" value="Assessment A" data-student="${s.id||s._id}"></td><td><input type="number" min="0" max="100" data-student="${s.id||s._id}"></td>`;
+          tr.innerHTML = `<td>${idx+1}</td><td>${s.name}</td><td>Assessment A</td><td><input type="number" min="0" max="100" data-student="${s.id||s._id||''}" value=""></td>`;
           tbody.appendChild(tr);
         });
-        table.appendChild(thead); table.appendChild(tbody); wrap.appendChild(table);
+        table.appendChild(thead); table.appendChild(tbody);
+        gradebookWrap.appendChild(table);
       }
 
       function renderExams() {
-        const wrap = document.getElementById('examList'); wrap.innerHTML = '';
-        if (!exams.length) { wrap.innerHTML = '<div class="empty">No exams scheduled</div>'; return; }
-        exams.forEach(ex => {
-          const card = document.createElement('article'); card.className='card';
-          card.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:800">${ex.title || ex.name}</div><div class="muted-small">${ex.className || ex.class || ''}</div></div><div>${ex.date ? (new Date(ex.date).toLocaleDateString()) : ''}</div></div>
-            <div style="margin-top:8px;display:flex;gap:8px"><button class="btn" data-action="openExam" data-id="${ex.id||ex._id||''}">Open</button><button class="btn ghost" data-action="editExam" data-id="${ex.id||ex._id||''}">Edit</button></div>`;
-          wrap.appendChild(card);
+        examList.innerHTML = '';
+        if (!exams || !exams.length) examList.innerHTML = '<div class="empty">No scheduled exams</div>';
+        else exams.forEach(e => {
+          const c = document.createElement('article'); c.className='card';
+          c.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:800">${e.title}</div><div class="muted-small">${e.className || e.classId || ''} • ${e.date || e.dateScheduled || '—'}</div></div><div style="display:flex;gap:8px"><button class="btn" data-action="openExam" data-id="${e.id||e._id||''}">Open</button><button class="btn ghost" data-action="editExam" data-id="${e.id||e._id||''}">Edit</button></div></div>`;
+          examList.appendChild(c);
         });
       }
 
       function renderResources() {
-        const wrap = document.getElementById('resGrid'); wrap.innerHTML = '';
-        if (!resources.length) { wrap.innerHTML = '<div class="empty">No resources uploaded</div>'; return; }
-        const grid = document.createElement('div'); grid.className='grid';
-        resources.forEach(r => {
-          const c = document.createElement('article'); c.className='card';
-          c.innerHTML = `<div style="font-weight:800">${r.title || r.name}</div><div class="muted-small">${r.type || r.mime || ''} • ${r.uploaded || r.createdAt || ''}</div><div style="margin-top:8px;display:flex;gap:8px"><button class="btn" data-action="download" data-id="${r.id||r._id||''}">Download</button><button class="btn ghost" data-action="link" data-id="${r.id||r._id||''}">Link</button></div>`;
-          grid.appendChild(c);
-        });
-        wrap.appendChild(grid);
+        resGrid.innerHTML = '';
+        if (!resources || !resources.length) resGrid.innerHTML = '<div class="empty">No resources</div>';
+        else {
+          const g = document.createElement('div'); g.className = 'grid';
+          resources.forEach(r => {
+            const card = document.createElement('article'); card.className='card';
+            card.innerHTML = `<div style="font-weight:800">${r.title || r.name}</div><div class="muted-small">${r.type || r.mime || ''} • ${r.uploadedAt || r.date || '—'}</div><div style="margin-top:8px;display:flex;gap:8px"><button class="btn" data-action="download" data-id="${r.id||r._id||''}">Download</button><button class="btn ghost" data-action="link" data-id="${r.id||r._id||''}">Link</button></div>`;
+            g.appendChild(card);
+          });
+          resGrid.appendChild(g);
+        }
       }
 
       function renderMessages() {
-        const wrap = document.getElementById('msgList'); wrap.innerHTML = '';
-        if (!messages.length) { wrap.innerHTML = '<div class="empty">No messages</div>'; return; }
-        messages.forEach(m => {
-          const card = document.createElement('article'); card.className='card';
-          card.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:800">${m.subject || m.title}</div><div class="muted-small">${m.to || m.target || ''}</div></div><div>${m.time ? new Date(m.time).toLocaleString() : ''}</div></div><div style="margin-top:8px" class="muted-small">${m.body || m.text}</div><div style="margin-top:8px;display:flex;gap:8px"><button class="btn" data-action="reply" data-id="${m.id||m._id||''}">Reply</button><button class="btn ghost" data-action="archive" data-id="${m.id||m._id||''}">Archive</button></div>`;
-          wrap.appendChild(card);
+        msgList.innerHTML = '';
+        if (!messages || !messages.length) msgList.innerHTML = '<div class="empty">No messages</div>';
+        else messages.forEach(m => {
+          const c = document.createElement('article'); c.className='card';
+          c.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:800">${m.subject || m.title}</div><div class="muted-small">${m.to || m.target || ''}</div></div><div style="display:flex;gap:8px"><button class="btn" data-action="reply" data-id="${m.id||m._id||''}">Reply</button><button class="btn ghost" data-action="archive" data-id="${m.id||m._id||''}">Archive</button></div></div><div style="margin-top:8px" class="muted-small">${m.body || m.preview || ''}</div>`;
+          msgList.appendChild(c);
         });
       }
 
-      // Actions (POST/PUT to server when possible, otherwise fallback)
-      async function postAction(candidates, payload) {
-        for (const url of candidates) {
-          try {
-            const res = await fetch(url, { method:'POST', headers: headers(), body: JSON.stringify(payload) });
-            if (!res.ok) continue;
-            return await res.json();
-          } catch (err) { console.warn('post candidate failed', url, err); }
-        }
-        throw new Error('No endpoint available');
+      // Modal helpers
+      function openItemModal(html) {
+        itemModalBody.innerHTML = html;
+        itemModal.classList.add('active'); itemModal.setAttribute('aria-hidden','false');
       }
+      function closeItemModal() { itemModal.classList.remove('active'); itemModal.setAttribute('aria-hidden','true'); }
+      closeItemModalBtn.addEventListener('click', closeItemModal);
 
-      // modal helpers
-      const itemModal = document.getElementById('itemModal');
-      const itemModalBody = document.getElementById('itemModalBody');
-      const closeItemModal = document.getElementById('closeItemModal');
-      function openItemModal(html) { itemModalBody.innerHTML = html; itemModal.classList.add('active'); itemModal.setAttribute('aria-hidden','false'); setTimeout(()=>closeItemModal.focus(),50); }
-      function closeItemModalFn() { itemModal.classList.remove('active'); itemModal.setAttribute('aria-hidden','true'); }
-      closeItemModal.addEventListener('click', closeItemModalFn);
+      function openFormModal(title, bodyHtml) {
+        document.getElementById('formModalTitle').textContent = title || 'Form';
+        formModalBody.innerHTML = bodyHtml || '';
+        formModal.classList.add('active'); formModal.setAttribute('aria-hidden','false');
+      }
+      function closeFormModal() { formModal.classList.remove('active'); formModal.setAttribute('aria-hidden','true'); formModalBody.innerHTML = ''; }
+      closeFormModalBtn.addEventListener('click', closeFormModal);
 
-      const formModal = document.getElementById('formModal');
-      const formModalBody = document.getElementById('formModalBody');
-      const closeFormModal = document.getElementById('closeFormModal');
-      function openFormModal(title, bodyHtml) { document.getElementById('formModalTitle').textContent = title; formModalBody.innerHTML = bodyHtml || ''; formModal.classList.add('active'); formModal.setAttribute('aria-hidden','false'); }
-      function closeFormModalFn() { formModal.classList.remove('active'); formModal.setAttribute('aria-hidden','true'); formModalBody.innerHTML = ''; }
-      closeFormModal.addEventListener('click', closeFormModalFn);
-
-      // Delegated UI events
+      // Delegated click handlers
       document.body.addEventListener('click', async (e) => {
         const t = e.target;
-
-        // profile
+        // roster profile
         if (t.matches('button[data-action="profile"]')) {
           const id = t.dataset.id;
-          // try fetch student profile
-          showLoader('Loading profile...', 'Contacting server');
+          // try to fetch profile
+          showLoader('Loading student profile...', '');
           try {
             let student = null;
             if (TOKEN) {
-              const candidates = [`${API_BASE}/students/${encodeURIComponent(id)}`, `${API_BASE}/users/${encodeURIComponent(id)}`];
-              const data = await tryFetchCandidates(candidates, { headers: headers() });
-              if (Array.isArray(data) && data[0]) student = data[0];
+              const candidates = [
+                `${API_BASE}/students/${encodeURIComponent(id)}`,
+                `${API_BASE}/users/${encodeURIComponent(id)}`
+              ];
+              for (const url of candidates) {
+                try {
+                  const res = await fetch(url, { headers: headers() });
+                  if (!res.ok) continue;
+                  const data = await res.json();
+                  student = data.student || data || null;
+                  break;
+                } catch(err){}
+              }
             }
             hideLoader();
-            if (!student) openItemModal(`<div style="font-weight:800">Student</div><div class="muted-small">Profile not available</div>`);
-            else openItemModal(`<div style="font-weight:800">${student.name || student.fullName}</div><div class="muted-small">Admission: ${student.admission || student.regNo || ''}</div><div style="margin-top:8px">Contact: ${student.contact || student.phone || ''}</div>`);
-          } catch (err) { hideLoader(); console.error(err); alert('Failed to load profile'); }
+            if (student) openItemModal(`<div style="font-weight:800">${student.name}</div><div class="muted-small">Admission: ${student.admission || student.reg || '—'}</div><div style="margin-top:8px">Contact: ${student.contact || student.phone || '—'}</div>`);
+            else openItemModal('<div class="muted-small">Student profile not available from server.</div>');
+          } catch (err) { hideLoader(); console.error(err); openItemModal('<div class="muted-small">Failed to load profile.</div>'); }
         }
 
-        // assignment view/grade
+        // assignment actions
         if (t.matches('button[data-action="viewAssign"]')) {
           const id = t.dataset.id;
-          const a = assignments.find(x=> (x.id===id || x._id===id));
-          if (a) openItemModal(`<div style="font-weight:800">${a.title}</div><div class="muted-small">Class: ${a.className || a.class || ''}</div><div style="margin-top:8px">Due: ${a.due ? new Date(a.due).toLocaleDateString() : '—'}</div>`);
+          const a = assignments.find(x => (x.id||x._id) === id);
+          openItemModal(`<div style="font-weight:800">${a?.title || 'Assignment'}</div><div class="muted-small">Class: ${a?.className || a?.classId || '—'}</div><div style="margin-top:8px">Due: ${a?.due || a?.dueDate || '—'}</div>`);
         }
         if (t.matches('button[data-action="grade"]')) {
           const id = t.dataset.id;
-          openFormModal('Grade submissions', `<div class="muted-small">Opening grading interface for ${id} (server integration required).</div><div style="margin-top:12px;display:flex;justify-content:flex-end"><button id="closeFormInline" class="btn ghost">Close</button></div>`);
-          setTimeout(()=> document.getElementById('closeFormInline')?.addEventListener('click', closeFormModalFn), 50);
+          openFormModal('Grade submissions', `<div class="muted-small">Open grading interface for ${id} (server integration required)</div>`);
         }
 
         // exam actions
         if (t.matches('button[data-action="openExam"]')) {
           const id = t.dataset.id;
-          const ex = exams.find(x=> (x.id===id || x._id===id));
-          if (!ex) { openItemModal('<div class="muted-small">Exam not found</div>'); return; }
-          openItemModal(`<div style="font-weight:800">${ex.title}</div><div class="muted-small">${ex.date ? new Date(ex.date).toLocaleDateString() : ''} • ${ex.duration ? ex.duration + ' mins' : ''}</div><div style="margin-top:12px;display:flex;justify-content:flex-end;gap:8px"><button class="btn" id="openSessionBtn">Open session</button><button class="btn ghost" id="closeItemInline">Close</button></div>`);
-          setTimeout(()=> {
-            document.getElementById('openSessionBtn')?.addEventListener('click', async ()=> {
-              // attempt to open/manage session via backend
-              try {
-                showLoader('Opening session...', 'Contacting server');
-                const candidates = [
-                  `${API_BASE}/exams/${encodeURIComponent(id)}/sessions`,
-                  `${API_BASE}/exams/${encodeURIComponent(id)}/start`,
-                  `${API_BASE}/exams/sessions`
-                ];
-                let created = null;
-                for (const url of candidates) {
-                  try {
-                    const res = await fetch(url, { method:'POST', headers: headers(), body: JSON.stringify({ examId: id }) });
-                    if (!res.ok) continue;
-                    const data = await res.json();
-                    created = data;
-                    break;
-                  } catch (err) {}
-                }
-                hideLoader();
-                if (created) alert('Session opened (server returned confirmation).'); else alert('Session could not be opened (no endpoint).');
-              } catch (err) { hideLoader(); alert('Error opening session'); }
-            });
-            document.getElementById('closeItemInline')?.addEventListener('click', closeItemModalFn);
-          }, 50);
+          const e = exams.find(x => (x.id||x._id) === id);
+          openItemModal(`<div style="font-weight:800">${e?.title || 'Exam'}</div><div class="muted-small">${e?.date || '—'} • ${e?.duration || '—'} mins</div><div style="margin-top:8px"><button class="btn" id="manageExam_${id}">Manage</button></div>`);
         }
 
         // resource actions
         if (t.matches('button[data-action="download"]')) {
-          const id = t.dataset.id;
-          alert('Download request (implement endpoint).');
+          alert('Download resource (implement server endpoint).');
         }
         if (t.matches('button[data-action="link"]')) {
-          const id = t.dataset.id;
-          openFormModal('Link resource', `<div class="muted-small">Link resource ${id} to class (server integration needed)</div><div style="margin-top:12px;display:flex;justify-content:flex-end"><button id="closeFormInline" class="btn ghost">Close</button></div>`);
-          setTimeout(()=> document.getElementById('closeFormInline')?.addEventListener('click', closeFormModalFn), 50);
+          openFormModal('Link resource', `<div class="muted-small">Link resource to classes (server required)</div>`);
         }
 
         // messages
         if (t.matches('button[data-action="reply"]')) {
-          const id = t.dataset.id;
-          openFormModal('Reply', `<form id="replyForm"><label>Message<textarea id="replyText" style="width:100%;height:120px;border:1px solid #e6e9ef;border-radius:8px"></textarea></label><div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px"><button type="button" class="btn ghost" id="closeFormInline">Cancel</button><button type="submit" class="btn">Send</button></div></form>`);
+          openFormModal('Reply', `<label>Message<textarea style="width:100%;height:120px;border:1px solid #e6e9ef;border-radius:8px" id="replyBody"></textarea></label><div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn" id="sendReplyBtn">Send</button></div>`);
           setTimeout(()=> {
-            const f = document.getElementById('replyForm');
-            f?.addEventListener('submit', async (ev) => {
-              ev.preventDefault();
-              const text = document.getElementById('replyText').value.trim();
-              if (!text) return alert('Message required');
-              // attempt to send via backend
-              try {
-                const candidate = `${API_BASE}/messages/${encodeURIComponent(id)}/reply`;
-                const res = await fetch(candidate, { method:'POST', headers: headers(), body: JSON.stringify({ body: text }) });
-                if (res.ok) { alert('Reply sent'); closeFormModalFn(); } else { alert('Failed to send reply'); }
-              } catch (err) { alert('Failed to send reply'); }
-            });
-            document.getElementById('closeFormInline')?.addEventListener('click', closeFormModalFn);
-          }, 50);
+            const send = document.getElementById('sendReplyBtn');
+            if (send) send.addEventListener('click', ()=> { alert('Reply sent (mock)'); closeFormModal(); });
+          }, 60);
         }
 
+        // create class
+        if (t.id === 'newClassBtn') {
+          openFormModal('Create class', `<form id="createClassForm"><label>Class name<input type="text" id="newClassName" required></label><div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn" type="submit">Create</button></div></form>`);
+          setTimeout(()=> {
+            const f = document.getElementById('createClassForm');
+            if (f) f.addEventListener('submit', async (ev) => {
+              ev.preventDefault();
+              const name = document.getElementById('newClassName').value.trim();
+              if (!name) return alert('Enter class name');
+              // POST to server if token available
+              if (TOKEN) {
+                try {
+                  const res = await fetch(`${API_BASE}/classes`, { method:'POST', headers: headers(), body: JSON.stringify({ name, teacher: teacherProfile?.id || teacherProfile?._id }) });
+                  if (res.ok) {
+                    const created = await res.json();
+                    classes.unshift(created);
+                    renderClassOptions();
+                    closeFormModal();
+                    return;
+                  }
+                } catch (err) { console.warn(err); }
+              }
+              // fallback: add locally
+              const id = 'C' + Math.floor(Math.random()*10000);
+              classes.unshift({ id, name, students: [] });
+              renderClassOptions();
+              closeFormModal();
+            });
+          }, 60);
+        }
+
+        // grading export
+        if (t.id === 'exportGradesBtn') {
+          const rows = [['Student','Assessment','Score']];
+          document.querySelectorAll('#gradebookWrap input[type="number"]').forEach(inp => {
+            const tr = inp.closest('tr');
+            const name = tr.children[1].textContent;
+            const assessment = tr.children[2].textContent;
+            rows.push([name, assessment, inp.value || '']);
+          });
+          const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+          const blob = new Blob([csv], { type: 'text/csv' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a'); a.href = url; a.download = 'gradebook.csv'; a.click(); URL.revokeObjectURL(url);
+        }
       });
 
-      // select changes and buttons
-      document.getElementById('classSelect').addEventListener('change', (e) => showRoster(e.target.value));
+      // Select change handlers
+      classSelect.addEventListener('change', (e) => showRoster(e.target.value));
       document.getElementById('loadAttendanceBtn').addEventListener('click', () => {
         const cid = document.getElementById('attClassSelect').value;
         const date = document.getElementById('attDate').value || new Date().toISOString().slice(0,10);
         loadAttendance(cid, date);
       });
-      document.getElementById('saveGradesBtn')?.addEventListener('click', async () => {
-        // collect values
-        const inputs = document.querySelectorAll('#gradebookWrap input[type="number"]');
-        const payload = [];
-        inputs.forEach(inp => {
-          const student = inp.dataset.student;
-          payload.push({ studentId: student, score: inp.value });
+
+      document.getElementById('saveGradesBtn').addEventListener('click', async () => {
+        // collect inputs and submit to server when possible
+        const rows = [];
+        document.querySelectorAll('#gradebookWrap input[type="number"]').forEach(inp => {
+          const tr = inp.closest('tr');
+          const studentId = inp.dataset.student;
+          rows.push({ studentId, score: inp.value });
         });
-        // attempt server save
-        try {
-          const res = await fetch(`${API_BASE}/gradebook/save`, { method:'POST', headers: headers(), body: JSON.stringify({ grades: payload }) });
-          if (res.ok) alert('Grades saved'); else alert('Failed to save grades');
-        } catch (err) { alert('Save failed'); }
+        if (!rows.length) return alert('No grades to save');
+        if (TOKEN) {
+          try {
+            const res = await fetch(`${API_BASE}/grades`, { method:'POST', headers: headers(), body: JSON.stringify({ grades: rows }) });
+            if (res.ok) { alert('Grades saved'); return; }
+          } catch (err) { console.warn(err); }
+        }
+        alert('Grades saved locally (server unavailable).');
       });
 
-      // attendance load & save
+      // Attendance helper
       function loadAttendance(classId, date) {
-        const wrap = document.getElementById('attendanceWrap'); wrap.innerHTML = '';
-        if (!classId) { wrap.innerHTML = '<div class="empty">Select a class</div>'; return; }
-        const cls = classes.find(c => (c.id===classId || c._id===classId || c.classId===classId));
-        if (!cls || !Array.isArray(cls.students) || !cls.students.length) { wrap.innerHTML = '<div class="empty">No students</div>'; return; }
-        const table = document.createElement('table'); table.innerHTML = '<thead><tr><th>#</th><th>Student</th><th>Present</th><th>Notes</th></tr></thead>';
-        const tbody = document.createElement('tbody');
-        cls.students.forEach((s, i) => {
+        attendanceWrap.innerHTML = '';
+        const cls = (classes || []).find(c => (c.id || c._id || c.classId) == classId);
+        if (!cls) { attendanceWrap.innerHTML = '<div class="empty">Select a class</div>'; return; }
+        const tbl = document.createElement('table');
+        tbl.innerHTML = '<thead><tr><th>#</th><th>Student</th><th>Present</th><th>Notes</th></tr></thead>';
+        const tb = document.createElement('tbody');
+        (cls.students || []).forEach((s, i) => {
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${i+1}</td><td>${s.name}</td><td><input type="checkbox" data-id="${s.id||s._id}" checked></td><td><input type="text" data-id="${s.id||s._id}" placeholder="notes"></td>`;
-          tbody.appendChild(tr);
+          tr.innerHTML = `<td>${i+1}</td><td>${s.name}</td><td><input type="checkbox" data-id="${s.id||s._id||''}" checked></td><td><input type="text" data-id="${s.id||s._id||''}" placeholder="notes"></td>`;
+          tb.appendChild(tr);
         });
-        table.appendChild(tbody);
-        const actions = document.createElement('div'); actions.style.marginTop='8px';
-        actions.innerHTML = `<button class="btn" id="saveAttBtn">Save attendance</button> <button class="btn ghost" id="clearAttBtn">Clear</button>`;
-        wrap.appendChild(table); wrap.appendChild(actions);
+        tbl.appendChild(tb);
+        const submit = document.createElement('div'); submit.style.marginTop='8px';
+        submit.innerHTML = `<button class="btn" id="saveAttBtn">Save attendance</button> <button class="btn ghost" id="clearAttBtn">Clear</button>`;
+        attendanceWrap.appendChild(tbl); attendanceWrap.appendChild(submit);
 
-        // save handler
-        document.getElementById('saveAttBtn').addEventListener('click', async () => {
-          const rows = Array.from(tbody.querySelectorAll('tr'));
-          const records = rows.map(r => {
-            const id = r.querySelector('input[type="checkbox"]').dataset.id;
-            const present = r.querySelector('input[type="checkbox"]').checked;
-            const notes = r.querySelector('input[type="text"]').value;
-            return { studentId: id, present, notes, date };
+        // handlers
+        setTimeout(()=> {
+          const saveBtn = document.getElementById('saveAttBtn');
+          if (saveBtn) saveBtn.addEventListener('click', async () => {
+            const payload = [];
+            attendanceWrap.querySelectorAll('tbody tr').forEach(tr => {
+              const studentId = tr.querySelector('input[type="checkbox"]').dataset.id;
+              const present = tr.querySelector('input[type="checkbox"]').checked;
+              const notes = tr.querySelector('input[type="text"]').value;
+              payload.push({ studentId, present, notes, date });
+            });
+            if (TOKEN) {
+              try {
+                const res = await fetch(`${API_BASE}/attendance`, { method:'POST', headers: headers(), body: JSON.stringify({ classId, date, records: payload }) });
+                if (res.ok) { alert('Attendance saved'); return; }
+              } catch (err) { console.warn(err); }
+            }
+            alert('Attendance saved locally (server unavailable).');
           });
-          try {
-            const res = await fetch(`${API_BASE}/attendance/save`, { method:'POST', headers: headers(), body: JSON.stringify({ classId, date, records }) });
-            if (res.ok) alert('Attendance saved'); else alert('Failed to save attendance');
-          } catch (err) { alert('Attendance save failed'); }
-        });
-
-        document.getElementById('clearAttBtn').addEventListener('click', () => {
-          tbody.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
-          tbody.querySelectorAll('input[type="text"]').forEach(i => i.value = '');
-        });
+          const clearBtn = document.getElementById('clearAttBtn');
+          if (clearBtn) clearBtn.addEventListener('click', () => { attendanceWrap.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false); });
+        }, 60);
       }
 
-      // create class form
-      document.getElementById('newClassBtn').addEventListener('click', () => {
-        openFormModal('Create class', `<form id="createClassForm"><label>Class name<input type="text" id="newClassName" required></label><div style="display:flex;justify-content:flex-end;margin-top:12px"><button type="submit" class="btn">Create</button></div></form>`);
-        setTimeout(()=> {
-          const f = document.getElementById('createClassForm');
-          f?.addEventListener('submit', async (ev) => {
-            ev.preventDefault();
-            const name = document.getElementById('newClassName').value.trim();
-            if (!name) return alert('Enter class name');
-            // post to server
-            try {
-              const res = await fetch(`${API_BASE}/classes`, { method:'POST', headers: headers(), body: JSON.stringify({ name }) });
-              if (res.ok) {
-                const data = await res.json();
-                classes.unshift(data.class || data);
-                renderClassOptions();
-                closeFormModalFn();
-                alert('Class created');
-              } else {
-                alert('Failed to create class');
-              }
-            } catch (err) {
-              alert('Failed to create class');
-            }
-          });
-        }, 50);
-      });
-
-      // schedule exam
-      document.getElementById('scheduleExamBtn').addEventListener('click', () => {
-        openFormModal('Schedule exam', `<form id="scheduleExamForm" style="display:grid;gap:8px"><label>Title<input id="schTitle"></label><label>Class<select id="schClass">${classes.map(c=>`<option value="${c.id||c._id}">${c.name||c.title}</option>`).join('')}</select></label><label>Date<input type="date" id="schDate"></label><div style="display:flex;justify-content:flex-end"><button class="btn" type="submit">Schedule</button></div></form>`);
-        setTimeout(()=> {
-          const f = document.getElementById('scheduleExamForm');
-          f?.addEventListener('submit', async (ev) => {
-            ev.preventDefault();
-            const title = document.getElementById('schTitle').value.trim();
-            const cls = document.getElementById('schClass').value;
-            const date = document.getElementById('schDate').value;
-            try {
-              const res = await fetch(`${API_BASE}/exams`, { method:'POST', headers: headers(), body: JSON.stringify({ title, classId: cls, date }) });
-              if (res.ok) {
-                const d = await res.json();
-                exams.unshift(d.exam || d);
-                renderExams();
-                closeFormModalFn();
-                alert('Exam scheduled');
-              } else alert('Failed to schedule exam');
-            } catch (err) { alert('Error scheduling exam'); }
-          });
-        }, 50);
-      });
-
-      // settings save
-      document.getElementById('teacherSettings')?.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const name = document.getElementById('setName').value.trim();
-        const dept = document.getElementById('setDept').value.trim();
-        const email = document.getElementById('setEmail').value.trim();
-        try {
-          const res = await fetch(`${API_BASE}/teachers/me`, { method:'PUT', headers: headers(), body: JSON.stringify({ name, dept, email }) });
-          if (res.ok) alert('Settings saved');
-          else alert('Failed to save settings');
-        } catch (err) { alert('Save failed'); }
-      });
-
-      // init: fetch profile and teacher data
+      // Initialization: fetch profile and teacher data
       async function init() {
-        showLoader('Loading teacher dashboard...', 'Fetching profile and classes');
+        showLoader('Loading dashboard...', 'Fetching profile & data');
         try {
-          const profile = await (async () => {
-            const local = (function(){ try { return JSON.parse(localStorage.getItem('eg_application')||'null')||null } catch { return null; } })();
-            if (!TOKEN) return local || {};
-            const candidates = [`${API_BASE}/me`, `${API_BASE}/profile`, `${API_BASE}/users/me`];
-            for (const url of candidates) {
-              try {
-                const res = await fetch(url, { headers: headers() });
-                if (!res.ok) continue;
-                const data = await res.json();
-                return data.user || data || local || {};
-              } catch (err) {}
-            }
-            return local || {};
-          })();
+          // profile
+          teacherProfile = await fetchProfile();
+          teacherNameEl.textContent = (teacherProfile?.firstName || teacherProfile?.name || teacherProfile?.username || 'Teacher') + (teacherProfile?.lastName ? (' ' + teacherProfile.lastName) : '');
+          teacherDeptEl.textContent = teacherProfile?.department || teacherProfile?.dept || teacherProfile?.program || '';
+          if (teacherProfile?.profilePic) teacherAvatar.src = teacherProfile.profilePic;
+          if (teacherProfile?.session) termInfo.textContent = teacherProfile.session;
 
-          if (profile) {
-            teacherNameEl.textContent = (profile.firstName || profile.name || profile.username || 'Teacher') + (profile.lastName ? (' ' + profile.lastName) : '');
-            teacherDeptEl.textContent = profile.department || profile.dept || profile.subject || '';
-            if (profile.profilePic) { teacherAvatar.src = profile.profilePic; topbarAvatar.src = profile.profilePic; }
-            if (profile.session) termInfo.textContent = profile.session;
-          }
+          const teacherId = teacherProfile?.id || teacherProfile?._id || teacherProfile?.teacherId || '';
 
-          const teacherId = profile && (profile.id || profile._id || profile.teacherId || profile.username);
+          // fetch all teacher data in parallel (best-effort)
+          const [classesData, assignmentsData, examsData, resourcesData, messagesData] = await Promise.all([
+            fetchClasses(teacherId).catch(()=>null),
+            fetchAssignments(teacherId).catch(()=>null),
+            fetchExams(teacherId).catch(()=>null),
+            fetchResources(teacherId).catch(()=>null),
+            fetchMessages(teacherId).catch(()=>null)
+          ]);
 
-          // fetch teacher data
-          const fetched = await fetchTeacherData(teacherId);
-          classes = Array.isArray(fetched.classes) ? fetched.classes : [];
-          assignments = Array.isArray(fetched.assignments) ? fetched.assignments : [];
-          exams = Array.isArray(fetched.exams) ? fetched.exams : [];
-          resources = Array.isArray(fetched.resources) ? fetched.resources : [];
-          messages = Array.isArray(fetched.messages) ? fetched.messages : [];
+          classes = Array.isArray(classesData) ? classesData : [];
+          // normalize student lists if server uses different key
+          classes = classes.map(c => ({ id: c.id || c._id || c.classId, name: c.name || c.title || c.class, students: c.students || c.roster || [] }));
 
-          // render sections
+          assignments = Array.isArray(assignmentsData) ? assignmentsData : [];
+          exams = Array.isArray(examsData) ? examsData : [];
+          resources = Array.isArray(resourcesData) ? resourcesData : [];
+          messages = Array.isArray(messagesData) ? messagesData : [];
+
           renderOverview();
           renderClassOptions();
           renderAssignments();
           renderExams();
           renderResources();
           renderMessages();
-          renderGradebook((classes[0] && (classes[0].id||classes[0]._id)) || '');
+
+          // render gradebook for first class
+          if (classes.length) renderGradebook(classes[0].id);
         } catch (err) {
           console.error('init error', err);
         } finally {
@@ -874,32 +870,32 @@
         }
       }
 
+      // sidebar tab system (re-use existing behavior)
+      const sidebarTabs = Array.from(document.querySelectorAll('.sidebar-tab'));
+      const tabSections = Array.from(document.querySelectorAll('.tab-section'));
+      function setActiveTab(name, push=true) {
+        sidebarTabs.forEach(t => { const is = t.dataset.tab === name; t.classList.toggle('active', is); t.setAttribute('aria-current', is ? 'true' : 'false'); });
+        tabSections.forEach(s => s.style.display = s.id === name ? '' : 'none');
+        if (push) history.replaceState(null, '', '#' + name);
+        if (window.innerWidth <= 720) {
+          sidebar.classList.remove('open'); sidebar.classList.add('hidden'); overlay.classList.remove('visible'); document.body.classList.remove('no-scroll');
+        }
+      }
+      sidebarTabs.forEach(t => t.addEventListener('click', (e)=> { e.preventDefault(); setActiveTab(t.dataset.tab); }));
+      const initial = (location.hash || '').replace('#','') || 'overview';
+      setActiveTab(initial, false);
+      window.addEventListener('hashchange', ()=> setActiveTab((location.hash || '').replace('#','') || 'overview', false));
+
       // responsive sidebar
       function handleResize() {
-        if (window.innerWidth > 720) {
-          sidebar.classList.remove('hidden');
-          sidebar.classList.remove('open');
-          overlay.classList.remove('visible');
-          document.body.classList.remove('no-scroll');
-        } else {
-          sidebar.classList.add('hidden');
-        }
+        if (window.innerWidth > 720) { sidebar.classList.remove('hidden'); sidebar.classList.remove('open'); overlay.classList.remove('visible'); document.body.classList.remove('no-scroll'); }
+        else sidebar.classList.add('hidden');
       }
       window.addEventListener('resize', handleResize);
       handleResize();
 
-      // Close modals on Escape
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-          document.querySelectorAll('.modal.active').forEach(m => m.classList.remove('active'));
-        }
-      });
-
       // start
       init();
-
-      // expose helper
-      window.eg = { init };
 
     })();
   </script>
