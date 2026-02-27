@@ -323,7 +323,9 @@
 
   <script>
     (function () {
-      const API_BASE = 'https://examguide.onrender.com/api'; // placeholder
+      // API base remains same; adjust endpoints below to match backend if different.
+      const API_BASE = 'https://examguide.onrender.com/api';
+      const TOKEN = localStorage.getItem('eg_token') || null;
 
       // DOM
       const examGrid = document.getElementById('examGrid');
@@ -360,12 +362,8 @@
       const sidebar = document.getElementById('sidebar');
       const overlay = document.getElementById('overlay');
 
-      // Mock data: scheduled exams (replace with API)
-      let scheduledExams = [
-        { id:'EXAM-2026-01', title:'Biology — Termly Exam', subject:'Biology', date:'2026-03-10', start:'09:00', durationMinutes:90, totalMarks:100, venue:'Hall A', status:'scheduled', class:'SS2' },
-        { id:'EXAM-2026-02', title:'Mathematics — Midterm', subject:'Mathematics', date:'2026-03-18', start:'11:00', durationMinutes:60, totalMarks:50, venue:'Hall B', status:'scheduled', class:'SS2' },
-        { id:'EXAM-2025-55', title:'English — Mock', subject:'English', date:'2025-12-01', start:'10:00', durationMinutes:60, totalMarks:50, venue:'CBT Lab', status:'archived', class:'SS2' }
-      ];
+      // Data
+      let scheduledExams = []; // will be populated from backend
 
       // My AI quizzes stored in localStorage under 'eg_ai_quizzes'
       function loadMyAi() {
@@ -379,11 +377,42 @@
         return dt.toLocaleDateString();
       }
 
+      // Fetch scheduled exams from backend
+      async function fetchScheduledExams(className) {
+        // Default endpoint: /exams?class=SS2&status=scheduled
+        // Adjust path/params to match your backend API.
+        const endpoint = `${API_BASE}/exams?status=scheduled${className ? ('&class=' + encodeURIComponent(className)) : ''}`;
+        const headers = {};
+        if (TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
+        try {
+          const res = await fetch(endpoint, { headers });
+          if (!res.ok) {
+            // Backend returned an error — treat as no exams
+            console.warn('Failed to fetch exams', res.status);
+            scheduledExams = [];
+            return;
+          }
+          const data = await res.json();
+          // Accept either { exams: [...] } or direct array
+          scheduledExams = Array.isArray(data) ? data : (Array.isArray(data.exams) ? data.exams : []);
+        } catch (err) {
+          console.error('Network error fetching exams', err);
+          scheduledExams = [];
+        }
+      }
+
       function renderExams() {
         const q = (examSearch.value || '').trim().toLowerCase();
         examGrid.innerHTML = '';
-        const className = (document.getElementById('studentClass')?.textContent || '').split('—')[0].trim() || 'SS2';
-        const exams = scheduledExams.filter(e => (e.class === className) && e.status !== 'archived' && (!q || (e.title + ' ' + e.subject + ' ' + e.date).toLowerCase().includes(q)));
+        const className = (document.getElementById('studentClass')?.textContent || '').split('—')[0].trim() || '';
+        const exams = scheduledExams.filter(e => {
+          // If backend provides class field, filter by class; otherwise include all
+          const matchesClass = !e.class || !className || e.class === className;
+          const notArchived = (e.status || '').toLowerCase() !== 'archived';
+          const text = ((e.title || '') + ' ' + (e.subject || '') + ' ' + (e.date || '')).toLowerCase();
+          const matchesQuery = !q || text.includes(q);
+          return matchesClass && notArchived && matchesQuery;
+        });
 
         if (!exams.length) { noExams.style.display = ''; } else { noExams.style.display = 'none'; }
 
@@ -392,37 +421,64 @@
           el.className = 'exam-card';
           el.innerHTML = `
             <div>
-              <h4>${ex.title}</h4>
-              <div class="exam-meta">${ex.subject} • ${formatDate(ex.date)} • ${ex.start} • ${ex.durationMinutes} mins</div>
-              <div class="exam-meta" style="margin-top:8px">Venue: ${ex.venue}</div>
+              <h4>${sanitize(ex.title || ex.name || 'Untitled exam')}</h4>
+              <div class="exam-meta">${sanitize(ex.subject || '')} • ${formatDate(ex.date || '')} • ${sanitize(ex.start || '')} • ${sanitize(String(ex.durationMinutes || ex.duration || ''))} mins</div>
+              <div class="exam-meta" style="margin-top:8px">Venue: ${sanitize(ex.venue || ex.location || '—')}</div>
             </div>
             <div class="actions">
-              <button class="btn ghost detailsBtn" data-id="${ex.id}">Details</button>
-              <button class="btn startBtn" data-id="${ex.id}">Start Exam</button>
+              <button class="btn ghost detailsBtn" data-id="${sanitizeAttr(ex.id || ex._id || '')}">Details</button>
+              <button class="btn startBtn" data-id="${sanitizeAttr(ex.id || ex._id || '')}">Start Exam</button>
             </div>
           `;
           examGrid.appendChild(el);
         });
       }
 
-      function openExamModal(id) {
-        const ex = scheduledExams.find(x=>x.id===id);
-        if (!ex) return;
+      // sanitize helpers (very small utility to avoid injecting raw HTML)
+      function sanitize(str) { return String(str || '').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+      function sanitizeAttr(str) { return String(str || '').replace(/"/g,'').replace(/'/g,''); }
+
+      async function openExamModal(id) {
+        const ex = scheduledExams.find(x=> (x.id===id || x._id===id));
+        if (!ex) {
+          // Fallback: fetch single exam from backend
+          try {
+            const headers = {};
+            if (TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
+            const res = await fetch(`${API_BASE}/exams/${encodeURIComponent(id)}`, { headers });
+            if (res.ok) {
+              const data = await res.json();
+              // accept data.exam or data
+              const examData = data.exam || data;
+              if (examData) {
+                showExamModal(examData);
+                return;
+              }
+            }
+          } catch (err) {
+            console.error('Failed to fetch exam detail', err);
+          }
+          return;
+        }
+        showExamModal(ex);
+      }
+
+      function showExamModal(ex) {
         examModalBody.innerHTML = `
           <div style="display:grid;grid-template-columns:1fr 220px;gap:12px">
             <div>
-              <div style="font-weight:800;font-size:1.05rem">${ex.title}</div>
-              <div class="muted-small" style="margin-top:6px">${ex.subject} • ${ex.class}</div>
-              <div style="margin-top:12px"><strong>When:</strong> ${formatDate(ex.date)} at ${ex.start}</div>
-              <div style="margin-top:6px"><strong>Duration:</strong> ${ex.durationMinutes} minutes</div>
-              <div style="margin-top:6px"><strong>Total marks:</strong> ${ex.totalMarks}</div>
+              <div style="font-weight:800;font-size:1.05rem">${sanitize(ex.title || ex.name)}</div>
+              <div class="muted-small" style="margin-top:6px">${sanitize(ex.subject || '')} • ${sanitize(ex.class || '')}</div>
+              <div style="margin-top:12px"><strong>When:</strong> ${formatDate(ex.date)} at ${sanitize(ex.start || '')}</div>
+              <div style="margin-top:6px"><strong>Duration:</strong> ${sanitize(String(ex.durationMinutes || ex.duration || ''))} minutes</div>
+              <div style="margin-top:6px"><strong>Total marks:</strong> ${sanitize(String(ex.totalMarks || ex.maxMarks || '—'))}</div>
               <div style="margin-top:12px" class="muted-small">Please ensure you have a stable internet connection and are in a quiet environment.</div>
             </div>
             <aside style="background:#f8fbff;padding:12px;border-radius:8px">
               <div style="font-weight:800">Actions</div>
               <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
-                <button class="btn startNow" data-id="${ex.id}">Start Exam</button>
-                <button class="btn ghost practiceLike" data-subject="${ex.subject}">Practice similar</button>
+                <button class="btn startNow" data-id="${sanitizeAttr(ex.id || ex._id)}">Start Exam</button>
+                <button class="btn ghost practiceLike" data-subject="${sanitizeAttr(ex.subject || '')}">Practice similar</button>
               </div>
             </aside>
           </div>
@@ -440,13 +496,34 @@
         }, 30);
       }
 
-      function startExam(id) {
+      async function startExam(id) {
         if (!confirm('Start exam now? Your time will begin immediately.')) return;
-        // redirect to official exam-in-session page
-        window.location.href = `marketting/exam-in-session.html?exam=${encodeURIComponent(id)}`;
+        // Optionally verify with backend before redirecting
+        try {
+          const headers = { 'Content-Type': 'application/json' };
+          if (TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
+          // Example check endpoint - adjust to match your API
+          const checkRes = await fetch(`${API_BASE}/exams/${encodeURIComponent(id)}/start`, { method: 'POST', headers });
+          if (checkRes.ok) {
+            // server prepared/start exam session, redirect to exam session page
+            const body = await checkRes.json();
+            const sessionId = body.sessionId || id;
+            window.location.href = `/marketting/cbt-session.html?exam=${encodeURIComponent(id)}&session=${encodeURIComponent(sessionId)}`;
+            return;
+          } else {
+            // If server returns 4xx/5xx show message if possible
+            const body = await checkRes.json().catch(()=>({ message: 'Could not start exam' }));
+            alert(body.message || 'Unable to start exam. Please contact your administrator.');
+            return;
+          }
+        } catch (err) {
+          console.error('Network error starting exam', err);
+          // fallback to redirect if you want:
+          window.location.href = `/marketting/cbt-session.html?exam=${encodeURIComponent(id)}`;
+        }
       }
 
-      // Practice flows
+      // Practice flows (kept local/simulated)
       function openPracticeForSubject(subject) {
         const questions = generatePracticeQuestions(subject, 6);
         showPracticeModal({ title: `${subject} — Practice`, questions });
@@ -461,11 +538,11 @@
       }
 
       function showPracticeModal({ title, questions }) {
-        practiceModalBody.innerHTML = `<div style="font-weight:800">${title}</div><div class="muted-small" style="margin-top:8px">Questions: ${questions.length}</div>`;
+        practiceModalBody.innerHTML = `<div style="font-weight:800">${sanitize(title)}</div><div class="muted-small" style="margin-top:8px">Questions: ${questions.length}</div>`;
         const ol = document.createElement('ol'); ol.style.marginTop='12px';
         questions.forEach(q=>{
           const li = document.createElement('li'); li.style.marginBottom='10px';
-          li.innerHTML = `<div style="font-weight:700">${q.q}</div><div class="muted-small">${q.choices.join(' • ')}</div>`;
+          li.innerHTML = `<div style="font-weight:700">${sanitize(q.q)}</div><div class="muted-small">${sanitize(q.choices.join(' • '))}</div>`;
           ol.appendChild(li);
         });
         practiceModalBody.appendChild(ol);
@@ -474,7 +551,7 @@
         practiceModalBody.appendChild(actions);
         document.getElementById('practiceStartNow').addEventListener('click', ()=> {
           // start untimed practice session -> redirect with practice param
-          window.location.href = `marketting/cbt-session.html?practice=true&subject=${encodeURIComponent(title)}`;
+          window.location.href = `/marketting/cbt-session.html?practice=true&subject=${encodeURIComponent(title)}`;
         }, { once:true });
         document.getElementById('practiceCloseNow').addEventListener('click', ()=> {
           practiceModal.classList.remove('active'); practiceModal.setAttribute('aria-hidden','true');
@@ -482,7 +559,7 @@
         practiceModal.classList.add('active'); practiceModal.setAttribute('aria-hidden','false');
       }
 
-      // AI generation - simulated
+      // AI generation - simulated client-side, persisted to localStorage
       let lastAiSet = null;
       function simulateAiGenerate(topic, difficulty, count) {
         const q = [];
@@ -525,7 +602,7 @@
         const ol = document.createElement('ol'); ol.style.marginTop = '12px';
         data.slice(0,10).forEach(q=>{
           const li = document.createElement('li'); li.style.marginBottom='10px';
-          li.innerHTML = `<div style="font-weight:700">${q.q}</div><div class="muted-small">${q.choices.join(' • ')}</div>`;
+          li.innerHTML = `<div style="font-weight:700">${sanitize(q.q)}</div><div class="muted-small">${sanitize(q.choices.join(' • '))}</div>`;
           ol.appendChild(li);
         });
         aiModalBody.appendChild(ol);
@@ -535,7 +612,7 @@
 
         document.getElementById('aiStartBtn').addEventListener('click', ()=> {
           const tokenParam = latest.id;
-          window.location.href = `marketting/cbt-session.html?ai=${encodeURIComponent(tokenParam)}`;
+          window.location.href = `/marketting/cbt-session.html?ai=${encodeURIComponent(tokenParam)}`;
         }, { once:true });
         document.getElementById('aiCloseBtn').addEventListener('click', ()=> { aiModal.classList.remove('active'); aiModal.setAttribute('aria-hidden','true'); }, { once:true });
 
@@ -549,10 +626,10 @@
         if (!list.length) { myAiList.innerHTML = '<div class="muted-small">No AI quizzes yet.</div>'; return; }
         list.slice(0,10).forEach(item => {
           const el = document.createElement('div'); el.style.display='flex'; el.style.justifyContent='space-between'; el.style.alignItems='center'; el.style.gap='8px'; el.style.marginTop='8px';
-          el.innerHTML = `<div><div style="font-weight:800">${item.topic || 'AI Quiz'}</div><div class="muted-small">${item.difficulty} • ${new Date(item.createdAt).toLocaleString()}</div></div>
+          el.innerHTML = `<div><div style="font-weight:800">${sanitize(item.topic || 'AI Quiz')}</div><div class="muted-small">${sanitize(item.difficulty)} • ${new Date(item.createdAt).toLocaleString()}</div></div>
             <div style="display:flex;gap:8px">
-              <button class="btn ghost previewAiBtn" data-id="${item.id}">Preview</button>
-              <button class="btn" data-id="${item.id}" onclick="startAi('${item.id}')">Start</button>
+              <button class="btn ghost previewAiBtn" data-id="${sanitizeAttr(item.id)}">Preview</button>
+              <button class="btn" data-id="${sanitizeAttr(item.id)}" onclick="startAi('${sanitizeAttr(item.id)}')">Start</button>
             </div>`;
           myAiList.appendChild(el);
         });
@@ -565,7 +642,7 @@
           const ol = document.createElement('ol'); ol.style.marginTop = '12px';
           data.slice(0,10).forEach(q=>{
             const li = document.createElement('li'); li.style.marginBottom='10px';
-            li.innerHTML = `<div style="font-weight:700">${q.q}</div><div class="muted-small">${q.choices.join(' • ')}</div>`;
+            li.innerHTML = `<div style="font-weight:700">${sanitize(q.q)}</div><div class="muted-small">${sanitize(q.choices.join(' • '))}</div>`;
             ol.appendChild(li);
           });
           aiModalBody.appendChild(ol);
@@ -573,7 +650,7 @@
           actions.innerHTML = `<button class="btn" id="aiStartNow">Start</button> <button class="btn ghost" id="aiCloseNow">Close</button>`;
           aiModalBody.appendChild(actions);
           document.getElementById('aiStartNow').addEventListener('click', ()=> {
-            window.location.href = `marketting/cbt-session.html?ai=${encodeURIComponent(id)}`;
+            window.location.href = `/marketting/cbt-session.html?ai=${encodeURIComponent(id)}`;
           }, { once:true });
           document.getElementById('aiCloseNow').addEventListener('click', ()=> { aiModal.classList.remove('active'); aiModal.setAttribute('aria-hidden','true'); }, { once:true });
           aiModal.classList.add('active'); aiModal.setAttribute('aria-hidden','false');
@@ -585,14 +662,8 @@
         window.location.href = `marketting/cbt-session.html?ai=${encodeURIComponent(id)}`;
       };
 
-      // Load my AI quizzes from localStorage
-      function loadMyAi() {
-        try { return JSON.parse(localStorage.getItem('eg_ai_quizzes') || '[]'); } catch { return []; }
-      }
-      function saveMyAi(list) { localStorage.setItem('eg_ai_quizzes', JSON.stringify(list)); }
-
       // Buttons
-      refreshBtn.addEventListener('click', ()=> { alert('Refreshing (mock). In production this will query the server.'); renderExams(); });
+      refreshBtn.addEventListener('click', async ()=> { await fetchAndRender(); });
       historyBtn.addEventListener('click', ()=> { window.location.href = '/exam-history.html'; });
 
       startPracticeBtn.addEventListener('click', ()=> {
@@ -641,12 +712,20 @@
         }
       });
 
-      // Initial render
-      renderExams();
-      renderMyAi();
+      // Combined fetch + render
+      async function fetchAndRender() {
+        const className = (document.getElementById('studentClass')?.textContent || '').split('—')[0].trim() || '';
+        await fetchScheduledExams(className);
+        renderExams();
+      }
 
-      // Expose some diagnostics (optional)
-      window._eg_cbt = { scheduledExams, loadMyAi, saveMyAi };
+      // Initial render
+      (async function init(){
+        await fetchAndRender();
+        renderMyAi();
+        // expose simple diagnostics (optional)
+        window._eg_cbt = { scheduledExams, loadMyAi, saveMyAi };
+      })();
 
     })();
   </script>
