@@ -17,7 +17,7 @@
       --content-max-w: 980px; /* reduced overall container width as requested */
     }
     *{box-sizing:border-box}
-    html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial;background:linear-gradient(180deg,var(--bg-0),var(--bg-1));-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;color:#0b2a44;overflow-x:hidden}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial;background:linear-gradient(180deg,var(--bg-0),var(--bg-1));-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;color:#0b2a44}
     a{color:inherit;text-decoration:none}
     img{max-width:100%;height:auto;display:block}
 
@@ -139,7 +139,7 @@
     /* Modal */
     .modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 9999; padding: 20px; background: rgba(2,6,23,0.45); -webkit-overflow-scrolling: touch; }
     .modal.active { display: flex; }
-    .modal-dialog { width: 100%; max-width: var(--max-modal-w); max-height: 86vh; background: #fff; border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 30px 80px rgba(2,6,23,0.35); border: 1px solid #eef3ff; }
+    .modal-dialog { width: 100%; max-width: var(--max-modal-w); max-height: 86vh; background: #fff; border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 30px 80px rgba(2,6,23,0.2); }
     .modal-header { display:flex;justify-content:space-between;align-items:center;padding:14px 16px;background:#fbfdff;border-bottom:1px solid #eef3ff; }
     .modal-title { font-weight:800; font-size:1.05rem; color:var(--accent-2); }
     .modal-close { background:none;border:0;font-weight:800;font-size:1rem;padding:8px 10px;border-radius:8px;cursor:pointer;color:#64748b }
@@ -483,354 +483,503 @@
   </div>
 
   <script>
-    // PREVIEW: only 4 subjects now
-    const PREVIEW_SUBJECT_COUNT = 4;
+    (function () {
+      const API_BASE = 'https://examguide.onrender.com/api';
+      const TOKEN = localStorage.getItem('eg_token') || null;
 
-    // Demo data (replace with API data in production)
-    const sampleResult = {
-      regNo: 'EXM/2025/001',
-      name: 'Adaobi Chukwu',
-      class: 'SS2',
-      session: '2024/2025',
-      term: 'First',
-      status: 'Published',
-      attendance: 92,
-      days: 120,
-      gpa: 3.8,
-      overallGrade: 'A',
-      avgPercent: 86,
-      rank: '3 / 45',
-      teacherComment: 'Excellent performance. Keep up the consistent effort.',
-      subjects: [
-        { name: 'Mathematics', ca: 18, exam: 72, total: 90, grade: 'A', remark: 'Excellent', teacherNote: 'Outstanding in problem solving.' },
-        { name: 'English', ca: 15, exam: 64, total: 79, grade: 'B', remark: 'Good', teacherNote: 'Work on comprehension speed.' },
-        { name: 'Biology', ca: 17, exam: 68, total: 85, grade: 'A', remark: 'Very good', teacherNote: 'Great practicals.' },
-        { name: 'Chemistry', ca: 14, exam: 58, total: 72, grade: 'B', remark: 'Good', teacherNote: 'Improve lab notes.' },
-        { name: 'Physics', ca: 12, exam: 50, total: 62, grade: 'C', remark: 'Satisfactory', teacherNote: 'Focus on formula application.' },
-        { name: 'Civic', ca: 16, exam: 70, total: 86, grade: 'A', remark: 'Excellent', teacherNote: 'Active participation in class.' },
-        // other subjects omitted from preview
-        { name: 'Agric Science', ca: 20, exam: 60, total: 80, grade: 'B', remark: 'Very Good' },
-        { name: 'Home Economics', ca: 16, exam: 44, total: 60, grade: 'C', remark: 'Credit' }
-      ]
-    };
+      // UI elements
+      const sidebar = document.getElementById('sidebar');
+      const hamburger = document.getElementById('hamburger');
+      const overlay = document.getElementById('overlay');
 
-    // Elements
-    const sidebar = document.getElementById('sidebar');
-    const hamburger = document.getElementById('hamburger');
-    const overlay = document.getElementById('overlay');
+      const regNoEl = document.getElementById('regNo');
+      const sessionEl = document.getElementById('session');
+      const termEl = document.getElementById('term');
+      const classEl = document.getElementById('classSel');
+      const searchBtn = document.getElementById('searchBtn');
+      const clearBtn = document.getElementById('clearBtn');
 
-    const regNoEl = document.getElementById('regNo');
-    const sessionEl = document.getElementById('session');
-    const termEl = document.getElementById('term');
-    const classEl = document.getElementById('classSel');
-    const searchBtn = document.getElementById('searchBtn');
-    const clearBtn = document.getElementById('clearBtn');
+      const resultStudentName = document.getElementById('resultStudentName');
+      const resultStudentMeta = document.getElementById('resultStudentMeta');
+      const resultStatus = document.getElementById('resultStatus');
+      const kpiAvg = document.getElementById('kpiAvg');
+      const kpiRank = document.getElementById('kpiRank');
+      const kpiSubjects = document.getElementById('kpiSubjects');
+      const kpiPassed = document.getElementById('kpiPassed');
+      const kpiAtt = document.getElementById('kpiAtt');
+      const kpiDays = document.getElementById('kpiDays');
 
-    const resultStudentName = document.getElementById('resultStudentName');
-    const resultStudentMeta = document.getElementById('resultStudentMeta');
-    const resultStatus = document.getElementById('resultStatus');
-    const kpiAvg = document.getElementById('kpiAvg');
-    const kpiRank = document.getElementById('kpiRank');
-    const kpiSubjects = document.getElementById('kpiSubjects');
-    const kpiPassed = document.getElementById('kpiPassed');
-    const kpiAtt = document.getElementById('kpiAtt');
-    const kpiDays = document.getElementById('kpiDays');
+      const resultsTableBody = document.querySelector('#resultsTable tbody');
+      const overallGradeEl = document.getElementById('overallGrade');
+      const overallGPAEl = document.getElementById('overallGPA');
+      const teacherComment = document.getElementById('teacherComment');
+      const snapHigh = document.getElementById('snapHigh');
+      const snapLow = document.getElementById('snapLow');
+      const snapA = document.getElementById('snapA');
+      const snapF = document.getElementById('snapF');
+      const subjectGrid = document.getElementById('subjectGrid');
 
-    const resultsTableBody = document.querySelector('#resultsTable tbody');
-    const overallGradeEl = document.getElementById('overallGrade');
-    const overallGPAEl = document.getElementById('overallGPA');
-    const teacherComment = document.getElementById('teacherComment');
-    const snapHigh = document.getElementById('snapHigh');
-    const snapLow = document.getElementById('snapLow');
-    const snapA = document.getElementById('snapA');
-    const snapF = document.getElementById('snapF');
-    const subjectGrid = document.getElementById('subjectGrid');
+      const subjectsNote = document.getElementById('subjectsNote');
+      const viewFullReportLink = document.getElementById('viewFullReportLink');
 
-    const subjectsNote = document.getElementById('subjectsNote');
-    const viewFullReportLink = document.getElementById('viewFullReportLink');
+      // Modal elements
+      const detailModal = document.getElementById('detailModal');
+      const modalTitle = document.getElementById('modalTitle');
+      const modalStudent = document.getElementById('modalStudent');
+      const modalMeta = document.getElementById('modalMeta');
+      const modalScore = document.getElementById('modalScore');
+      const modalGrade = document.getElementById('modalGrade');
+      const modalDetailsGrid = document.getElementById('modalDetailsGrid');
+      const modalRemark = document.getElementById('modalRemark');
+      const modalCloseBtn = document.getElementById('modalCloseBtn');
+      const modalClose = document.getElementById('modalClose');
+      const modalPrint = document.getElementById('modalPrint');
 
-    // Modal elements
-    const detailModal = document.getElementById('detailModal');
-    const modalTitle = document.getElementById('modalTitle');
-    const modalStudent = document.getElementById('modalStudent');
-    const modalMeta = document.getElementById('modalMeta');
-    const modalScore = document.getElementById('modalScore');
-    const modalGrade = document.getElementById('modalGrade');
-    const modalDetailsGrid = document.getElementById('modalDetailsGrid');
-    const modalRemark = document.getElementById('modalRemark');
-    const modalCloseBtn = document.getElementById('modalCloseBtn');
-    const modalClose = document.getElementById('modalClose');
-    const modalPrint = document.getElementById('modalPrint');
+      // state
+      let currentResult = null;
+      const PREVIEW_SUBJECT_COUNT = 4;
 
-    // Sidebar toggle behavior: always toggle .open (mobile shows overlay + menu contents)
-    hamburger.addEventListener('click', () => {
-      const isOpen = sidebar.classList.toggle('open');
-      if (isOpen) {
-        overlay.classList.add('visible');
-        overlay.setAttribute('aria-hidden','false');
-        document.body.classList.add('no-scroll');
-      } else {
+      // small sanitizers for text content (prevents naive injection)
+      function sanitizeText(s) { return String(s == null ? '' : s); }
+      function sanitizeHtmlSafe(s) { return sanitizeText(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+      function sanitizeAttr(s) { return String(s == null ? '' : s).replace(/["']/g, ''); }
+
+      // Sidebar toggle behavior
+      hamburger.addEventListener('click', () => {
+        const isOpen = sidebar.classList.toggle('open');
+        if (isOpen) {
+          overlay.classList.add('visible');
+          overlay.setAttribute('aria-hidden','false');
+          document.body.classList.add('no-scroll');
+        } else {
+          overlay.classList.remove('visible');
+          overlay.setAttribute('aria-hidden','true');
+          document.body.classList.remove('no-scroll');
+        }
+      });
+      overlay.addEventListener('click', () => {
+        if (sidebar.classList.contains('open')) sidebar.classList.remove('open');
         overlay.classList.remove('visible');
         overlay.setAttribute('aria-hidden','true');
         document.body.classList.remove('no-scroll');
-      }
-    });
-
-    // close sidebar or modal when overlay clicked
-    overlay.addEventListener('click', () => {
-      // close sidebar if open
-      if (sidebar.classList.contains('open')) {
-        sidebar.classList.remove('open');
-      }
-      overlay.classList.remove('visible');
-      overlay.setAttribute('aria-hidden','true');
-      document.body.classList.remove('no-scroll');
-      // also close modal if open
-      closeModal();
-    });
-
-    // Grade class helper
-    function gradeClass(grade){
-      if(grade==='A') return 'grade-A';
-      if(grade==='B') return 'grade-B';
-      if(grade==='C') return 'grade-C';
-      return 'grade-D';
-    }
-
-    // Modal control
-    let lastFocusedElement = null;
-    function openModalFor(subject){
-      lastFocusedElement = document.activeElement;
-      modalTitle.textContent = `${subject.name} — Breakdown`;
-      modalStudent.textContent = sampleResult.name;
-      modalMeta.textContent = `${sampleResult.regNo} • ${sampleResult.class} • ${sampleResult.session} — ${sampleResult.term} term`;
-      modalScore.textContent = (subject.total !== undefined ? subject.total : '--') + '%';
-      modalGrade.innerHTML = subject.grade ? `<span class="grade-pill ${gradeClass(subject.grade)}">${subject.grade}</span>` : '';
-      modalRemark.textContent = subject.teacherNote || subject.remark || '—';
-
-      modalDetailsGrid.innerHTML = '';
-      const details = [
-        { label: 'CA score', value: subject.ca ?? '--' },
-        { label: 'Exam score', value: subject.exam ?? '--' },
-        { label: 'Total', value: subject.total ?? '--' },
-        { label: 'Grade', value: subject.grade ?? '--' },
-        { label: 'Remark', value: subject.remark ?? '--' }
-      ];
-      details.forEach(d => {
-        const el = document.createElement('div');
-        el.className = 'detail-row';
-        el.innerHTML = `<div class="detail-label">${d.label}</div><div class="detail-value">${d.value}</div>`;
-        modalDetailsGrid.appendChild(el);
       });
 
-      detailModal.classList.add('active');
-      detailModal.setAttribute('aria-hidden','false');
-      document.body.classList.add('no-scroll');
-      modalCloseBtn.focus();
-    }
+      // grade class helper
+      function gradeClass(grade){
+        if(grade==='A') return 'grade-A';
+        if(grade==='B') return 'grade-B';
+        if(grade==='C') return 'grade-C';
+        return 'grade-D';
+      }
 
-    function closeModal(){
-      detailModal.classList.remove('active');
-      detailModal.setAttribute('aria-hidden','true');
-      document.body.classList.remove('no-scroll');
-      if(lastFocusedElement) lastFocusedElement.focus();
-    }
+      // modal control
+      let lastFocusedElement = null;
+      function openModalFor(subject){
+        lastFocusedElement = document.activeElement;
+        modalTitle.textContent = `${sanitizeText(subject.name)} — Breakdown`;
+        modalStudent.textContent = sanitizeText(currentResult?.name || '');
+        modalMeta.textContent = `${sanitizeText(currentResult?.regNo || '')} • ${sanitizeText(currentResult?.class || '')} • ${sanitizeText(currentResult?.session || '')} — ${sanitizeText(currentResult?.term || '')} term`;
+        modalScore.textContent = (subject.total !== undefined ? subject.total : '--') + '%';
+        modalGrade.innerHTML = subject.grade ? `<span class="grade-pill ${gradeClass(subject.grade)}">${sanitizeText(subject.grade)}</span>` : '';
+        modalRemark.textContent = subject.teacherNote || subject.remark || '—';
 
-    modalCloseBtn.addEventListener('click', closeModal);
-    modalClose.addEventListener('click', closeModal);
-    modalPrint.addEventListener('click', ()=> {
-      const content = document.querySelector('.modal-body').innerHTML;
-      const w = window.open('', '_blank', 'width=800,height=900');
-      w.document.write('<title>Print subject</title>');
-      w.document.write('<style>body{font-family:Inter,system-ui,Arial;padding:20px;color:#0b2a44} .grade-pill{padding:6px 10px;border-radius:999px;color:#fff} .grade-A{background:#059669}.grade-B{background:#f97316}.grade-C{background:#ef4444}.grade-D{background:#9ca3af}</style>');
-      w.document.write(content);
-      w.document.close();
-      w.focus();
-      setTimeout(()=> { w.print(); w.close(); }, 250);
-    });
+        modalDetailsGrid.innerHTML = '';
+        const details = [
+          { label: 'CA score', value: subject.ca ?? '--' },
+          { label: 'Exam score', value: subject.exam ?? '--' },
+          { label: 'Total', value: subject.total ?? '--' },
+          { label: 'Grade', value: subject.grade ?? '--' },
+          { label: 'Remark', value: subject.remark ?? '--' }
+        ];
+        details.forEach(d => {
+          const el = document.createElement('div');
+          el.className = 'detail-row';
+          el.innerHTML = `<div class="detail-label">${sanitizeText(d.label)}</div><div class="detail-value">${sanitizeText(d.value)}</div>`;
+          modalDetailsGrid.appendChild(el);
+        });
 
-    window.addEventListener('keydown', (e) => {
-      if(e.key === 'Escape'){
-        // close modal if open
-        if(detailModal.classList.contains('active')) closeModal();
-        // close sidebar on mobile
-        if(sidebar.classList.contains('open')) {
-          sidebar.classList.remove('open');
+        detailModal.classList.add('active');
+        detailModal.setAttribute('aria-hidden','false');
+        document.body.classList.add('no-scroll');
+        modalCloseBtn.focus();
+      }
+      function closeModal(){
+        detailModal.classList.remove('active');
+        detailModal.setAttribute('aria-hidden','true');
+        document.body.classList.remove('no-scroll');
+        if(lastFocusedElement) lastFocusedElement.focus();
+      }
+      modalCloseBtn.addEventListener('click', closeModal);
+      modalClose.addEventListener('click', closeModal);
+      modalPrint.addEventListener('click', ()=> {
+        const content = document.querySelector('.modal-body').innerHTML;
+        const w = window.open('', '_blank', 'width=800,height=900');
+        w.document.write('<title>Print subject</title>');
+        w.document.write('<style>body{font-family:Inter,system-ui,Arial;padding:20px;color:#0b2a44} .grade-pill{padding:6px 10px;border-radius:999px;color:#fff}.grade-A{background:#059669}.grade-B{background:#f59e0b}.grade-C{background:#f97316}.grade-D{background:#9ca3af}</style>');
+        w.document.write(content);
+        w.document.close();
+        w.focus();
+        setTimeout(()=> { w.print(); w.close(); }, 250);
+      });
+
+      window.addEventListener('keydown', (e) => {
+        if(e.key === 'Escape'){
+          if(detailModal.classList.contains('active')) closeModal();
+          if(sidebar.classList.contains('open')) {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('visible');
+            document.body.classList.remove('no-scroll');
+          }
+        }
+      });
+
+      // populate UI from result object (defensive)
+      function populate(result){
+        currentResult = result || null;
+        if(!result) {
+          // clear UI
+          resultStudentName.textContent = '--';
+          resultStudentMeta.textContent = 'Registration • Class • Session';
+          resultStatus.textContent = '—';
+          kpiAvg.textContent = '--%'; kpiRank.textContent = '--'; kpiSubjects.textContent = '--';
+          kpiPassed.textContent = '--'; kpiAtt.textContent = '--%'; kpiDays.textContent = '--';
+          resultsTableBody.innerHTML = '';
+          overallGradeEl.textContent = '—'; overallGPAEl.textContent = '--';
+          teacherComment.textContent = '—'; snapHigh.textContent = '--'; snapLow.textContent = '--'; snapA.textContent = '--'; snapF.textContent = '--';
+          subjectGrid.innerHTML = '';
+          subjectsNote.textContent = 'Showing 0 of 0 subjects';
+          return;
+        }
+
+        resultStudentName.textContent = sanitizeText(result.name || result.studentName || '--');
+        resultStudentMeta.textContent = `${sanitizeText(result.regNo || result.registration || '')} • ${sanitizeText(result.class || result.program || '')} • ${sanitizeText(result.session || '')} — ${sanitizeText(result.term || '')} term`;
+        resultStatus.textContent = sanitizeText(result.status || 'Published');
+
+        kpiAvg.textContent = (result.avgPercent ?? result.avg ?? '--') + '%';
+        kpiRank.textContent = result.rank ?? '--';
+        const subjects = Array.isArray(result.subjects) ? result.subjects : (Array.isArray(result.scores) ? result.scores : []);
+        kpiSubjects.textContent = subjects.length;
+        kpiPassed.textContent = subjects.filter(s => (s.total ?? s.score ?? 0) >= 50).length;
+        kpiAtt.textContent = (result.attendance ?? '--') + '%';
+        kpiDays.textContent = result.days ?? '--';
+
+        // Prepare preview slice and counts
+        const totalSubjects = subjects.length;
+        const preview = subjects.slice(0, PREVIEW_SUBJECT_COUNT);
+
+        subjectsNote.textContent = `Showing ${preview.length} of ${totalSubjects} subjects.`;
+        viewFullReportLink.href = 'report.html';
+
+        // Table rows
+        resultsTableBody.innerHTML = '';
+        let high = -Infinity, low = Infinity, countA=0, countF=0;
+        preview.forEach((s) => {
+          const totalVal = (s.total ?? s.score ?? '--');
+          const tr = document.createElement('tr');
+
+          const tdSubject = document.createElement('td');
+          tdSubject.className = 'subject-name';
+          tdSubject.setAttribute('data-label','Subject');
+          tdSubject.innerHTML = `<span>${sanitizeHtmlSafe(s.name || s.subject || '')}</span>`;
+
+          const tdCA = document.createElement('td');
+          tdCA.setAttribute('data-label','CA');
+          tdCA.innerHTML = `<span>${sanitizeText(s.ca ?? '--')}</span>`;
+
+          const tdExam = document.createElement('td');
+          tdExam.setAttribute('data-label','Exam');
+          tdExam.innerHTML = `<span>${sanitizeText(s.exam ?? '--')}</span>`;
+
+          const tdTotal = document.createElement('td');
+          tdTotal.setAttribute('data-label','Total');
+          tdTotal.innerHTML = `<span>${sanitizeText(totalVal)}</span>`;
+
+          tr.appendChild(tdSubject);
+          tr.appendChild(tdCA);
+          tr.appendChild(tdExam);
+          tr.appendChild(tdTotal);
+
+          tr.addEventListener('click', () => openModalFor({
+            name: s.name || s.subject,
+            ca: s.ca,
+            exam: s.exam,
+            total: totalVal,
+            grade: s.grade,
+            remark: s.remark,
+            teacherNote: s.teacherNote
+          }));
+          tr.style.cursor = 'pointer';
+          resultsTableBody.appendChild(tr);
+
+          const numeric = Number(totalVal);
+          if (!isNaN(numeric)) {
+            high = Math.max(high, numeric);
+            low = Math.min(low, numeric);
+            if (s.grade === 'A') countA++;
+            if (s.grade === 'F') countF++;
+          }
+        });
+
+        overallGradeEl.textContent = sanitizeText(result.overallGrade ?? result.grade ?? '—');
+        overallGPAEl.textContent = sanitizeText(result.gpa ?? result.cgpa ?? '--');
+        teacherComment.textContent = sanitizeText(result.teacherComment ?? result.comment ?? '—');
+        snapHigh.textContent = high === -Infinity ? '--' : high;
+        snapLow.textContent = low === Infinity ? '--' : low;
+        snapA.textContent = countA;
+        snapF.textContent = countF;
+
+        // Subject cards preview
+        subjectGrid.innerHTML = '';
+        preview.forEach(s => {
+          const div = document.createElement('div');
+          div.className = 'subject';
+          div.tabIndex = 0;
+          div.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div class="sub-title">${sanitizeHtmlSafe(s.name || s.subject)}</div>
+              <div class="meta">${sanitizeText(s.total ?? s.score ?? '--')}%</div>
+            </div>
+            <div class="meta">CA: ${sanitizeText(s.ca ?? '--')} • Exam: ${sanitizeText(s.exam ?? '--')}</div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div><span class="grade-pill ${gradeClass(s.grade ?? '')}">${sanitizeText(s.grade ?? '')}</span></div>
+              <div class="muted">${sanitizeText(s.remark ?? '')}</div>
+            </div>
+            <div style="margin-top:8px; display:flex; gap:8px;">
+              <button class="btn ghost small" aria-label="View ${sanitizeAttr(s.name || s.subject)} breakdown">View breakdown</button>
+            </div>
+          `;
+          div.addEventListener('click', () => openModalFor({
+            name: s.name || s.subject,
+            ca: s.ca,
+            exam: s.exam,
+            total: s.total ?? s.score,
+            grade: s.grade,
+            remark: s.remark,
+            teacherNote: s.teacherNote
+          }));
+          const innerBtn = div.querySelector('button');
+          innerBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            openModalFor({
+              name: s.name || s.subject,
+              ca: s.ca,
+              exam: s.exam,
+              total: s.total ?? s.score,
+              grade: s.grade,
+              remark: s.remark,
+              teacherNote: s.teacherNote
+            });
+          });
+          subjectGrid.appendChild(div);
+        });
+      }
+
+      // Export CSV (exports full report subjects)
+      function exportCSV(){
+        if(!currentResult) return alert('No result loaded to export.');
+        const result = currentResult;
+        const subjects = Array.isArray(result.subjects) ? result.subjects : (Array.isArray(result.scores) ? result.scores : []);
+        const rows = [
+          ['RegNo','Name','Class','Session','Term','Subject','CA','Exam','Total','Grade','Remark']
+        ];
+        subjects.forEach(s => {
+          rows.push([result.regNo || result.registration || '', result.name || result.studentName || '', result.class || '', result.session || '', result.term || '', s.name || s.subject || '', s.ca ?? '', s.exam ?? '', s.total ?? s.score ?? '', s.grade ?? '', s.remark ?? '']);
+        });
+        const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+        const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${result.regNo || 'result'}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      // Print (prints the current page)
+      function printReport(){
+        window.print();
+      }
+
+      document.getElementById('exportBtn').addEventListener('click', exportCSV);
+      document.getElementById('printBtn').addEventListener('click', printReport);
+      document.getElementById('downloadPdfBtn').addEventListener('click', ()=> { printReport(); });
+
+      function scrollToTable(){ document.querySelector('#resultsTable').scrollIntoView({behavior:'smooth'}); }
+
+      // Fetching results from backend
+      async function fetchResult({ regNo, session, term, className } = {}) {
+        // Try to fetch a single resource by regNo first if regNo provided,
+        // else use query endpoint. Adjust endpoints to match your backend.
+        const headers = {};
+        if (TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
+
+        try {
+          if (regNo) {
+            // try GET /results/:regNo
+            let res = await fetch(`${API_BASE}/results/${encodeURIComponent(regNo)}?session=${encodeURIComponent(session || '')}&term=${encodeURIComponent(term || '')}&class=${encodeURIComponent(className || '')}`, { headers });
+            if (res.ok) {
+              const data = await res.json();
+              // Accept both { result } or direct object
+              return data.result || data.data || data || null;
+            }
+            // fallback to query endpoint
+            res = await fetch(`${API_BASE}/results?regNo=${encodeURIComponent(regNo)}${session ? '&session=' + encodeURIComponent(session) : ''}${term ? '&term=' + encodeURIComponent(term) : ''}${className ? '&class=' + encodeURIComponent(className) : ''}`, { headers });
+            if (res.ok) {
+              const data = await res.json();
+              // accept array or { results: [...] } or { data: [...] } or { result }
+              if (Array.isArray(data)) return data[0] || null;
+              if (Array.isArray(data.results)) return data.results[0] || null;
+              if (Array.isArray(data.data)) return data.data[0] || null;
+              return data.result || data.data || data.results || data || null;
+            }
+            // not ok
+            console.warn('Result fetch returned status', res.status);
+            return null;
+          } else {
+            // no regNo -> try to fetch for logged in user via /me/results or /results/me
+            // try multiple common endpoints
+            const candidates = [
+              `${API_BASE}/me/result`,
+              `${API_BASE}/me/results`,
+              `${API_BASE}/results/me`,
+              `${API_BASE}/results/my`,
+              `${API_BASE}/results/current`
+            ];
+            for (const url of candidates) {
+              try {
+                const res = await fetch(url, { headers });
+                if (res.ok) {
+                  const data = await res.json();
+                  return data.result || data.data || data.results || data || null;
+                }
+              } catch (err) { /* ignore and try next */ }
+            }
+            // as last resort try query without regNo (server should infer from token)
+            try {
+              const res = await fetch(`${API_BASE}/results?mine=true`, { headers });
+              if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data)) return data[0] || null;
+                if (Array.isArray(data.results)) return data.results[0] || null;
+                return data.result || data.data || data || null;
+              }
+            } catch (err) { /* ignore */ }
+            return null;
+          }
+        } catch (err) {
+          console.error('Network error fetching result', err);
+          return null;
+        }
+      }
+
+      // Get logged-in user info from localStorage
+      function getLoggedInApp() {
+        try {
+          return JSON.parse(localStorage.getItem('eg_application') || 'null') || null;
+        } catch (err) {
+          return null;
+        }
+      }
+
+      // main fetch flow used on init and search
+      async function loadResultForCurrentUserOrQuery({ regNo, session, term, className } = {}) {
+        // If regNo not supplied, try to determine from logged-in application
+        if (!regNo) {
+          const app = getLoggedInApp();
+          if (app) {
+            regNo = regNo || app.regNo || app.registration || app.regNO || app.username || app._id || app.id;
+            className = className || app.program || app.class || app.level || app.department || '';
+          }
+        }
+
+        // fetch
+        const result = await fetchResult({ regNo, session, term, className });
+
+        if (!result) {
+          // show friendly empty state
+          populate(null);
+          resultStatus.textContent = 'No result found';
+          return null;
+        }
+
+        // normalize some fields if backend uses different names
+        const normalized = {
+          regNo: result.regNo || result.registration || result.reg || result.studentId || '',
+          name: result.name || result.studentName || result.fullName || '',
+          class: result.class || result.program || result.level || '',
+          session: result.session || result.academicSession || '',
+          term: result.term || result.semester || '',
+          status: result.status || result.state || 'Published',
+          attendance: result.attendance,
+          days: result.days,
+          gpa: result.gpa || result.cgpa,
+          overallGrade: result.overallGrade || result.grade,
+          avgPercent: result.avgPercent || result.avg,
+          rank: result.rank,
+          teacherComment: result.teacherComment || result.comment,
+          subjects: result.subjects || result.scores || result.data || []
+        };
+
+        // populate UI
+        populate(normalized);
+        return normalized;
+      }
+
+      // wire search button to fetch by query/regNo
+      searchBtn.addEventListener('click', async (e) => {
+        const queryReg = regNoEl.value.trim();
+        const session = sessionEl.value;
+        const term = termEl.value;
+        const className = classEl.value;
+        // attempt to fetch the requested result
+        resultStatus.textContent = 'Loading...';
+        await loadResultForCurrentUserOrQuery({ regNo: queryReg || undefined, session, term, className });
+        document.getElementById('main').scrollIntoView({behavior:'smooth'});
+      });
+
+      clearBtn.addEventListener('click', ()=> {
+        regNoEl.value=''; sessionEl.selectedIndex=0; termEl.selectedIndex=0; classEl.selectedIndex=0;
+        populate(null);
+      });
+
+      // Ensure sidebar state sensible on resize
+      function syncSidebarOnResize(){
+        if(window.innerWidth <= 980){
+          sidebar.classList.remove('open'); // hide by default on mobile
+          overlay.classList.remove('visible');
+        } else {
+          sidebar.classList.remove('open'); // desktop shows sidebar by CSS (no transform)
           overlay.classList.remove('visible');
           document.body.classList.remove('no-scroll');
         }
       }
-    });
+      window.addEventListener('resize', syncSidebarOnResize);
+      syncSidebarOnResize();
 
-    // Populate UI, but only preview up to PREVIEW_SUBJECT_COUNT
-    function populate(result){
-      resultStudentName.textContent = result.name;
-      resultStudentMeta.textContent = `${result.regNo} • ${result.class} • ${result.session} — ${result.term} term`;
-      resultStatus.textContent = result.status;
+      // On page init: attempt to fetch the logged-in user's result automatically
+      (async function init(){
+        // Try to set sidebar/profile labels from eg_application if present
+        const app = getLoggedInApp();
+        if (app) {
+          try { document.getElementById('sidebarName').textContent = app.firstName ? (app.firstName + (app.lastName ? (' ' + app.lastName) : '')) : (app.name || app.username || document.getElementById('sidebarName').textContent); } catch {}
+          try { document.getElementById('sidebarClass').textContent = app.program || app.class || app.level || document.getElementById('sidebarClass').textContent; } catch {}
+        }
 
-      kpiAvg.textContent = (result.avgPercent ?? '--') + '%';
-      kpiRank.textContent = result.rank ?? '--';
-      kpiSubjects.textContent = result.subjects.length;
-      kpiPassed.textContent = result.subjects.filter(s => (s.total ?? 0) >= 50).length;
-      kpiAtt.textContent = (result.attendance ?? '--') + '%';
-      kpiDays.textContent = result.days ?? '--';
-
-      // Determine preview slice
-      const totalSubjects = result.subjects.length;
-      const preview = result.subjects.slice(0, PREVIEW_SUBJECT_COUNT);
-
-      // Update subjects note + full report link
-      subjectsNote.textContent = `Showing ${preview.length} of ${totalSubjects} subjects.`;
-      viewFullReportLink.href = 'report.html';
-
-      // Populate table with preview rows
-      resultsTableBody.innerHTML = '';
-      let high = -Infinity, low = Infinity, countA=0, countF=0;
-      preview.forEach((s) => {
-        const tr = document.createElement('tr');
-
-        const tdSubject = document.createElement('td');
-        tdSubject.className = 'subject-name';
-        tdSubject.setAttribute('data-label','Subject');
-        tdSubject.innerHTML = `<span>${s.name}</span>`;
-
-        const tdCA = document.createElement('td');
-        tdCA.setAttribute('data-label','CA');
-        tdCA.innerHTML = `<span>${s.ca ?? '--'}</span>`;
-
-        const tdExam = document.createElement('td');
-        tdExam.setAttribute('data-label','Exam');
-        tdExam.innerHTML = `<span>${s.exam ?? '--'}</span>`;
-
-        const tdTotal = document.createElement('td');
-        tdTotal.setAttribute('data-label','Total');
-        tdTotal.innerHTML = `<span>${s.total ?? '--'}</span>`;
-
-        tr.appendChild(tdSubject);
-        tr.appendChild(tdCA);
-        tr.appendChild(tdExam);
-        tr.appendChild(tdTotal);
-
-        tr.addEventListener('click', () => openModalFor(s));
-        tr.style.cursor = 'pointer';
-
-        resultsTableBody.appendChild(tr);
-
-        high = Math.max(high, s.total ?? -Infinity);
-        low = Math.min(low, s.total ?? Infinity);
-        if(s.grade === 'A') countA++;
-        if(s.grade === 'F') countF++;
-      });
-
-      overallGradeEl.textContent = result.overallGrade ?? '—';
-      overallGPAEl.textContent = result.gpa ?? '--';
-      teacherComment.textContent = result.teacherComment ?? '—';
-      snapHigh.textContent = high === -Infinity ? '--' : high;
-      snapLow.textContent = low === Infinity ? '--' : low;
-      snapA.textContent = countA;
-      snapF.textContent = countF;
-
-      // Subject cards preview
-      subjectGrid.innerHTML = '';
-      preview.forEach(s => {
-        const div = document.createElement('div');
-        div.className = 'subject';
-        div.tabIndex = 0;
-        div.innerHTML = `
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <div class="sub-title">${s.name}</div>
-            <div class="meta">${s.total ?? '--'}%</div>
-          </div>
-          <div class="meta">CA: ${s.ca ?? '--'} • Exam: ${s.exam ?? '--'}</div>
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <div><span class="grade-pill ${gradeClass(s.grade ?? '')}">${s.grade ?? ''}</span></div>
-            <div class="muted">${s.remark ?? ''}</div>
-          </div>
-          <div style="margin-top:8px; display:flex; gap:8px;">
-            <button class="btn ghost small" aria-label="View ${s.name} breakdown">View breakdown</button>
-          </div>
-        `;
-        // row click opens modal
-        div.addEventListener('click', (ev)=> {
-          openModalFor(s);
-        });
-        const innerBtn = div.querySelector('button');
-        innerBtn.addEventListener('click', (ev) => {
-          ev.stopPropagation();
-          openModalFor(s);
-        });
-
-        subjectGrid.appendChild(div);
-      });
-    }
-
-    // Export CSV (exports full report subjects)
-    function exportCSV(result){
-      const rows = [
-        ['RegNo','Name','Class','Session','Term','Subject','CA','Exam','Total','Grade','Remark']
-      ];
-      result.subjects.forEach(s => {
-        rows.push([result.regNo,result.name,result.class,result.session,result.term,s.name,s.ca,s.exam,s.total,s.grade,s.remark]);
-      });
-      const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
-      const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${result.regNo || 'result'}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-    }
-
-    // Print (prints the current page)
-    function printReport(){
-      window.print();
-    }
-
-    // Wire buttons
-    searchBtn.addEventListener('click', (e)=>{
-      const queryReg = regNoEl.value.trim();
-      if(queryReg) sampleResult.regNo = queryReg;
-      populate(sampleResult);
-      document.getElementById('main').scrollIntoView({behavior:'smooth'});
-    });
-
-    clearBtn.addEventListener('click', ()=> {
-      regNoEl.value=''; sessionEl.selectedIndex=0; termEl.selectedIndex=0; classEl.selectedIndex=0;
-      // Clear UI
-      resultsTableBody.innerHTML = '';
-      resultStudentName.textContent='--';
-      resultStudentMeta.textContent='Registration • Class • Session';
-      resultStatus.textContent='—';
-      kpiAvg.textContent='--%'; kpiRank.textContent='--'; kpiSubjects.textContent='--';
-      kpiPassed.textContent='--'; kpiAtt.textContent='--%'; kpiDays.textContent='--';
-      subjectGrid.innerHTML=''; overallGradeEl.textContent='—'; overallGPAEl.textContent='--';
-      teacherComment.textContent='—'; snapHigh.textContent='--'; snapLow.textContent='--'; snapA.textContent='--'; snapF.textContent='--';
-      subjectsNote.textContent = 'Showing 0 of 0 subjects';
-    });
-
-    document.getElementById('exportBtn').addEventListener('click', ()=> exportCSV(sampleResult));
-    document.getElementById('printBtn').addEventListener('click', printReport);
-    document.getElementById('downloadPdfBtn').addEventListener('click', ()=> { printReport(); });
-
-    function scrollToTable(){ document.querySelector('#resultsTable').scrollIntoView({behavior:'smooth'}); }
-
-    // Initialize preview
-    populate(sampleResult);
-
-    // Ensure sidebar state sensible on resize
-    function syncSidebarOnResize(){
-      if(window.innerWidth <= 980){
-        sidebar.classList.remove('open'); // hide by default on mobile
-        overlay.classList.remove('visible');
-      } else {
-        sidebar.classList.remove('open'); // desktop shows sidebar by CSS (no transform)
-        overlay.classList.remove('visible');
-        document.body.classList.remove('no-scroll');
-      }
-    }
-    window.addEventListener('resize', syncSidebarOnResize);
-    syncSidebarOnResize();
+        resultStatus.textContent = 'Loading...';
+        const loaded = await loadResultForCurrentUserOrQuery({});
+        if (!loaded) {
+          // If no result for user, keep page interactive so admin/teacher can lookup by regNo
+          resultStatus.textContent = 'No result available for your account';
+        } else {
+          resultStatus.textContent = loaded.status || 'Published';
+          // prefill form fields with loaded data
+          regNoEl.value = loaded.regNo || '';
+          if (loaded.session) for (let i=0;i<sessionEl.options.length;i++){ if(sessionEl.options[i].value===loaded.session){ sessionEl.selectedIndex=i; break; } }
+          if (loaded.term) for (let i=0;i<termEl.options.length;i++){ if(termEl.options[i].text === loaded.term || termEl.options[i].value === loaded.term){ termEl.selectedIndex=i; break; } }
+          if (loaded.class) for (let i=0;i<classEl.options.length;i++){ if(classEl.options[i].text === loaded.class || classEl.options[i].value === loaded.class){ classEl.selectedIndex=i; break; } }
+        }
+      })();
+    })();
   </script>
 </body>
 </html>
