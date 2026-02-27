@@ -32,7 +32,6 @@
       display:flex; flex-direction:column; gap:14px; overflow-y:auto;
       transform: translateX(0); transition: none;
     }
-    /* Mobile overlay sidebar (hidden by default) */
     @media (max-width:720px) {
       .sidebar { transform: translateX(-110%); transition: transform .28s ease; position:fixed; width:86vw; min-width:86vw; }
       .sidebar.open { transform: translateX(0); box-shadow: 0 24px 48px rgba(2,6,23,0.5); }
@@ -53,7 +52,7 @@
     .profile img { width:48px; height:48px; border-radius:10px; object-fit:cover; border:2px solid #ffe066; }
 
     /* Topbar */
-    .topbar { position: fixed; left: var(--sidebar-w); top: 0; width: calc(100vw - var(--sidebar-w)); z-index: 90; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; backdrop-filter: blur(6px); background: rgba(255,255,255,0.96); border-bottom:1px solid rgba(11,42,60,0.04); box-shadow: 0 6px 18px rgba(11,42,60,0.04); min-height:64px; }
+    .topbar { position: fixed; left: var(--sidebar-w); top: 0; width: calc(100vw - var(--sidebar-w)); z-index: 90; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 16px; backdrop-filter: blur(6px); background: rgba(255,255,255,0.92); border-bottom:1px solid rgba(11,42,60,0.06); box-shadow:0 6px 18px rgba(11,42,60,0.04); min-height:64px; }
     @media (max-width:720px) { .topbar { left:0; width:100vw; padding:10px 12px; } }
 
     .hamburger { display:none; background:var(--accent); color:#fff; border:none; padding:9px 12px; border-radius:10px; cursor:pointer; font-weight:800; }
@@ -63,11 +62,10 @@
     .muted-small { font-size:0.92rem; color:var(--muted); }
 
     /* Main content */
-    main { margin-left: var(--sidebar-w); padding:20px; padding-top:96px; flex:1; transition: margin-left .28s; min-height:100vh; max-width:1200px; margin-right:auto; margin-left:calc(var(--sidebar-w) + 12px); }
+    main { margin-left: var(--sidebar-w); padding:20px; padding-top:96px; flex:1; transition: margin-left .28s; min-height:100vh; max-width:1200px; margin-right:auto; margin-left:calc(var(--sidebar-w) + 20px); }
     @media (max-width:980px) { main { margin-left:20px; margin-right:20px; } }
     @media (max-width:720px) { main { margin-left:12px; margin-right:12px; padding-top:80px; } }
 
-    /* Tab nav inside main (kept for clarity but sidebar drives tabs) */
     .tabs { display:flex; gap:8px; align-items:center; margin-bottom:16px; flex-wrap:wrap; }
     .tab { padding:8px 12px; border-radius:10px; cursor:pointer; font-weight:700; color:var(--accent-2); background:transparent; border:1px solid transparent; }
     .tab.active { background: linear-gradient(90deg,var(--accent),var(--accent-2)); color:#fff; border-color:rgba(59,130,246,0.06); }
@@ -97,20 +95,40 @@
 
     .pager { display:flex; gap:8px; align-items:center; justify-content:space-between; margin-top:12px; }
 
-    /* Modal */
     .modal-backdrop { position:fixed; inset:0; background:rgba(2,6,23,0.45); display:none; align-items:center; justify-content:center; z-index:200; padding:12px; }
     .modal-backdrop.active { display:flex; }
     .modal-card { background:#fff; border-radius:12px; max-width:900px; width:100%; padding:14px; box-shadow:0 20px 60px rgba(2,6,23,0.2); }
 
-    /* responsive tweaks */
-    @media (max-width:920px) {
-      .sidebar { display:none; } /* hide desktop sidebar on narrow screens (we'll use hamburger) */
+    /* page loader */
+    .page-loader {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      z-index: 1200;
+      background: rgba(255,255,255,0.9);
+      backdrop-filter: blur(3px);
+      flex-direction: column;
     }
+    .page-loader.active { display:flex; }
+    .page-loader .spinner { width:44px;height:44px;border-radius:50%;border:6px solid rgba(0,0,0,0.06);border-top-color:var(--accent);animation:spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .page-loader .msg { font-weight:800; color:#0b2a44; }
+    .page-loader .sub { color:var(--muted); font-size:0.92rem; }
   </style>
 </head>
 <body>
   <div class="app" id="app">
     <div class="overlay" id="overlay" aria-hidden="true"></div>
+
+    <!-- Page loader -->
+    <div id="pageLoader" class="page-loader" role="status" aria-live="polite" aria-hidden="true">
+      <div class="spinner" aria-hidden="true"></div>
+      <div class="msg" id="loaderMsg">Loading results...</div>
+      <div class="sub" id="loaderSub">Fetching submissions and profile</div>
+    </div>
 
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar" aria-label="Admin navigation" role="navigation">
@@ -131,10 +149,10 @@
       <div class="spacer" aria-hidden="true"></div>
 
       <div class="profile" role="region" aria-label="Admin profile">
-        <img src="../avatar.jpg" alt="Admin avatar">
+        <img src="../avatar.jpg" alt="Admin avatar" id="adminAvatar">
         <div>
-          <div style="font-weight:800">Admin User</div>
-          <div class="muted-small">Institution: Sunrise High</div>
+          <div style="font-weight:800" id="adminName">Admin User</div>
+          <div class="muted-small" id="adminOrg">Institution: Sunrise High</div>
         </div>
       </div>
     </aside>
@@ -149,18 +167,11 @@
         </div>
       </div>
 
-      <div class="muted-small">Signed in as: <strong>Admin</strong></div>
+      <div class="muted-small" id="signedIn">Signed in as: <strong id="signedInName">Admin</strong></div>
     </div>
 
     <!-- Main content -->
     <main id="main">
-      <div class="tabs" role="tablist" aria-label="Results tabs" style="display:none;">
-        <!-- hidden because sidebar drives tabs, kept for a11y if needed -->
-        <div class="tab active" data-tab="overview" role="tab" aria-selected="true">Overview</div>
-        <div class="tab" data-tab="results" role="tab">Results</div>
-        <div class="tab" data-tab="reports" role="tab">Reports</div>
-      </div>
-
       <!-- OVERVIEW -->
       <section id="overview" class="tab-section card" role="region" aria-labelledby="overviewTitle">
         <h2 id="overviewTitle">Overview</h2>
@@ -207,7 +218,7 @@
 
           <div class="controls">
             <div class="filters" role="search" aria-label="search filters">
-              <select id="filterClass"><option value="">All classes</option><option>SS1</option><option>SS2</option><option>SS3</option></select>
+              <select id="filterClass"><option value="">All classes</option></select>
               <select id="filterExam"><option value="">All exams</option></select>
               <select id="filterType"><option value="">All types</option><option value="CA">CA</option><option value="General">General</option></select>
               <select id="filterStatus"><option value="">All status</option><option value="draft">Draft</option><option value="published">Published</option><option value="declined">Declined</option><option value="flagged">Flagged</option></select>
@@ -276,7 +287,7 @@
         <div class="muted-small">Quick exports and summary reports per class/exam.</div>
         <div class="space"></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <select id="reportClass"><option value="">Class (all)</option><option>SS1</option><option>SS2</option></select>
+          <select id="reportClass"><option value="">Class (all)</option></select>
           <select id="reportExam"><option value="">Exam (all)</option></select>
           <button class="btn" id="downloadSummary">Download summary CSV</button>
           <button class="btn ghost" id="generatePdf">Generate PDF</button>
@@ -288,54 +299,29 @@
 
     <!-- Modals: view / edit / confirm -->
     <div id="modalBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
-      <div class="modal-card" id="modalCard" role="document">
-        <!-- dynamic content -->
-      </div>
+      <div class="modal-card" id="modalCard" role="document"></div>
     </div>
   </div>
 
   <script>
     (function () {
-      // Basic variables (same as previous implementation) with tab wiring for sidebar
+      const API_BASE = 'https://examguide.onrender.com/api';
+      const TOKEN = localStorage.getItem('eg_token') || null;
+      const PAGE_SIZE = 12;
+
+      // DOM refs
       const sideLinks = Array.from(document.querySelectorAll('.side-link'));
       const sections = document.querySelectorAll('.tab-section');
-      const main = document.getElementById('main');
-      const sidebar = document.getElementById('sidebar');
-      const overlay = document.getElementById('overlay');
-      const hamburger = document.getElementById('hamburger');
+      const pageLoader = document.getElementById('pageLoader');
+      const loaderMsg = document.getElementById('loaderMsg');
+      const loaderSub = document.getElementById('loaderSub');
 
-      // hook up sidebar tab switching
-      sideLinks.forEach(l => {
-        l.addEventListener('click', (e) => {
-          e.preventDefault();
-          sideLinks.forEach(x => x.classList.remove('active'));
-          l.classList.add('active');
-          const target = l.dataset.tab;
-          sections.forEach(s => s.style.display = (s.id === target) ? '' : 'none');
-          // close mobile sidebar if open
-          if (window.innerWidth <= 720) {
-            sidebar.classList.remove('open'); sidebar.classList.add('hidden'); overlay.classList.remove('visible');
-          }
-        });
-      });
+      const adminNameEl = document.getElementById('adminName');
+      const adminOrgEl = document.getElementById('adminOrg');
+      const adminAvatar = document.getElementById('adminAvatar');
+      const signedInName = document.getElementById('signedInName');
 
-      // mobile sidebar toggle
-      hamburger.addEventListener('click', () => {
-        sidebar.classList.remove('hidden'); sidebar.classList.add('open'); overlay.classList.add('visible'); document.body.classList.add('no-scroll');
-      });
-      overlay.addEventListener('click', () => {
-        sidebar.classList.remove('open'); sidebar.classList.add('hidden'); overlay.classList.remove('visible'); document.body.classList.remove('no-scroll');
-      });
-
-      // Reuse the previous admin results logic but scoped to this file
-      const PAGE_SIZE = 12;
-      let page = 1;
-
-      const resultsTbody = document.getElementById('resultsTbody');
-      const masterSelect = document.getElementById('masterSelect');
-      const bulkToolbar = document.getElementById('bulkToolbar');
-      const bulkInfo = document.getElementById('bulkInfo');
-
+      // filter & table elements
       const filterClass = document.getElementById('filterClass');
       const filterExam = document.getElementById('filterExam');
       const filterType = document.getElementById('filterType');
@@ -348,6 +334,15 @@
       const refreshBtn = document.getElementById('refreshBtn');
       const exportCsv = document.getElementById('exportCsv');
 
+      const resultsTbody = document.getElementById('resultsTbody');
+      const masterSelect = document.getElementById('masterSelect');
+      const bulkToolbar = document.getElementById('bulkToolbar');
+      const bulkInfo = document.getElementById('bulkInfo');
+      const bulkPublish = document.getElementById('bulkPublish');
+      const bulkDecline = document.getElementById('bulkDecline');
+      const bulkFlag = document.getElementById('bulkFlag');
+      const bulkDelete = document.getElementById('bulkDelete');
+
       const prevPage = document.getElementById('prevPage');
       const nextPage = document.getElementById('nextPage');
       const pagerInfo = document.getElementById('pagerInfo');
@@ -355,146 +350,370 @@
       const modalBackdrop = document.getElementById('modalBackdrop');
       const modalCard = document.getElementById('modalCard');
 
-      const bulkPublish = document.getElementById('bulkPublish');
-      const bulkDecline = document.getElementById('bulkDecline');
-      const bulkFlag = document.getElementById('bulkFlag');
-      const bulkDelete = document.getElementById('bulkDelete');
-
       const reportClass = document.getElementById('reportClass');
       const reportExam = document.getElementById('reportExam');
       const downloadSummary = document.getElementById('downloadSummary');
       const generatePdf = document.getElementById('generatePdf');
       const reportOutput = document.getElementById('reportOutput');
 
-      const KEY = 'eg_admin_results_v1';
-      let results = [];
+      // state
+      let page = 1;
+      let results = []; // array of submission objects from backend
       let selected = new Set();
+      let classes = []; // class list
+      let exams = []; // exam list
 
-      function load() {
-        const raw = localStorage.getItem(KEY);
-        if (raw) {
-          try { results = JSON.parse(raw); } catch(e){ results = []; }
-        }
-        if (!results.length) seed();
-        populateExamOptions();
+      // utilities
+      function showLoader(msg, sub) {
+        if (msg) loaderMsg.textContent = msg;
+        if (sub) loaderSub.textContent = sub;
+        pageLoader.classList.add('active');
+        pageLoader.setAttribute('aria-hidden', 'false');
       }
-      function save() { localStorage.setItem(KEY, JSON.stringify(results)); }
-      function seed() {
-        const now = Date.now();
-        const types = ['CA','General'];
-        const cls = ['SS1','SS2','SS3'];
-        results = [];
-        for (let i=1;i<=86;i++){
-          const cid = 'ADM' + String(1000 + i);
-          const c = cls[i % cls.length];
-          const examId = 'EX' + String(200 + (i % 7));
-          const examTitle = (i%2===0) ? 'Term Assessment' : 'Final Exam';
-          const type = types[i%2];
-          const score = Math.floor(Math.random()*100);
-          const max = 100;
-          const submittedAt = new Date(now - Math.floor(Math.random()*10*24*3600*1000)).toISOString();
-          const status = i%7 === 0 ? 'flagged' : (i%5 === 0 ? 'declined' : (i%3 === 0 ? 'published' : 'draft'));
-          results.push({
-            id: 'R' + String(10000 + i),
-            student: 'Student ' + i,
-            admission: cid,
-            class: c,
-            examId,
-            examTitle,
-            type,
-            score,
-            max,
-            submittedAt,
-            status
-          });
+      function hideLoader() {
+        pageLoader.classList.remove('active');
+        pageLoader.setAttribute('aria-hidden', 'true');
+      }
+      function headers(contentType='application/json') {
+        const h = {};
+        if (contentType) h['Content-Type'] = contentType;
+        if (TOKEN) h['Authorization'] = 'Bearer ' + TOKEN;
+        return h;
+      }
+      function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[m]); }
+
+      // try multiple endpoint shapes
+      async function tryFetchCandidates(candidates, opts = {}) {
+        for (const url of candidates) {
+          if (!url) continue;
+          try {
+            const res = await fetch(url, opts);
+            if (!res.ok) continue;
+            const data = await res.json();
+            if (!data) continue;
+            // common shapes
+            if (Array.isArray(data)) return data;
+            if (Array.isArray(data.items)) return data.items;
+            if (Array.isArray(data.data)) return data.data;
+            if (Array.isArray(data.results)) return data.results;
+            if (Array.isArray(data.submissions)) return data.submissions;
+            if (Array.isArray(data.exams)) return data.exams;
+            if (Array.isArray(data.classes)) return data.classes;
+            // single wrapped object -> return array
+            if (Array.isArray(data.rows)) return data.rows;
+            if (data && (data.id || data._id)) return [data];
+          } catch (err) {
+            console.warn('candidate fetch failed', url, err);
+          }
         }
-        save();
+        return null;
       }
 
-      function populateExamOptions() {
-        const examSet = new Map();
-        results.forEach(r => examSet.set(r.examId, r.examTitle));
-        const exams = Array.from(examSet.entries());
+      // Load admin profile (local fallback if no token)
+      async function loadProfile() {
+        const local = (function(){ try { return JSON.parse(localStorage.getItem('eg_application')||'null') || null; } catch { return null; } })();
+        if (!TOKEN) return local || {};
+        const candidates = [
+          `${API_BASE}/me`,
+          `${API_BASE}/profile`,
+          `${API_BASE}/users/me`
+        ];
+        for (const url of candidates) {
+          try {
+            const res = await fetch(url, { headers: headers() });
+            if (!res.ok) continue;
+            const data = await res.json();
+            return data.user || data || local || {};
+          } catch (err) { /* try next */ }
+        }
+        return local || {};
+      }
+
+      // Fetch submissions from backend with simple server-side filtering support
+      async function fetchSubmissions(params = {}) {
+        // build a candidate set of endpoints
+        const qs = new URLSearchParams();
+        if (params.class) qs.set('class', params.class);
+        if (params.examId) qs.set('examId', params.examId);
+        if (params.type) qs.set('type', params.type);
+        if (params.status) qs.set('status', params.status);
+        if (params.from) qs.set('from', params.from);
+        if (params.to) qs.set('to', params.to);
+        if (params.q) qs.set('q', params.q);
+        qs.set('page', params.page || 1);
+        qs.set('pageSize', params.pageSize || PAGE_SIZE);
+
+        const candidates = [
+          `${API_BASE}/submissions?${qs.toString()}`,
+          `${API_BASE}/results?${qs.toString()}`,
+          `${API_BASE}/submissions/list?${qs.toString()}`
+        ];
+        return await tryFetchCandidates(candidates, { headers: headers() });
+      }
+
+      async function fetchLookups() {
+        // classes & exams lookups
+        const classCandidates = [
+          `${API_BASE}/classes`,
+          `${API_BASE}/lookups/classes`,
+          `${API_BASE}/meta/classes`
+        ];
+        const examCandidates = [
+          `${API_BASE}/exams`,
+          `${API_BASE}/lookups/exams`,
+          `${API_BASE}/meta/exams`
+        ];
+        const [cls, ex] = await Promise.all([
+          tryFetchCandidates(classCandidates, { headers: headers() }).catch(()=>null),
+          tryFetchCandidates(examCandidates, { headers: headers() }).catch(()=>null)
+        ]);
+        return { classes: Array.isArray(cls) ? cls : [], exams: Array.isArray(ex) ? ex : [] };
+      }
+
+      // render helpers
+      function populateFilterLists() {
+        filterClass.innerHTML = '<option value="">All classes</option>';
+        reportClass.innerHTML = '<option value="">All classes</option>';
+        (classes || []).forEach(c => {
+          const id = c.id || c._id || c.classId || c.name;
+          const name = c.name || c.title || id;
+          const o = document.createElement('option'); o.value = id; o.textContent = name; filterClass.appendChild(o);
+          const o2 = o.cloneNode(true); reportClass.appendChild(o2);
+        });
+
         filterExam.innerHTML = '<option value="">All exams</option>';
         reportExam.innerHTML = '<option value="">All exams</option>';
-        exams.forEach(([id,title])=>{
+        (exams || []).forEach(e => {
+          const id = e.id || e._id || e.examId || e.code;
+          const title = e.title || e.name || id;
           const o = document.createElement('option'); o.value = id; o.textContent = `${title} • ${id}`; filterExam.appendChild(o);
           const o2 = o.cloneNode(true); reportExam.appendChild(o2);
         });
       }
 
-      function getFiltered() {
-        const cls = filterClass.value;
-        const ex = filterExam.value;
-        const type = filterType.value;
-        const status = filterStatus.value;
-        const from = filterFrom.value;
-        const to = filterTo.value;
-        const q = (searchBox.value || '').trim().toLowerCase();
-
-        return results.filter(r => {
-          if (cls && r.class !== cls) return false;
-          if (ex && r.examId !== ex) return false;
-          if (type && r.type !== type) return false;
-          if (status && r.status !== status) return false;
-          if (from && new Date(r.submittedAt) < new Date(from)) return false;
-          if (to && new Date(r.submittedAt) > new Date(to + 'T23:59:59')) return false;
-          if (q) {
-            const hay = (r.student + ' ' + r.admission + ' ' + r.id + ' ' + r.examTitle).toLowerCase();
-            if (!hay.includes(q)) return false;
-          }
-          return true;
-        });
-      }
-
-      function render(pageNo = 1) {
-        page = Math.max(1, pageNo);
-        const filtered = getFiltered();
-        const total = filtered.length;
-        const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-        if (page > pages) page = pages;
-        const start = (page - 1) * PAGE_SIZE;
-        const slice = filtered.slice(start, start + PAGE_SIZE);
-
-        resultsTbody.innerHTML = '';
-        if (!slice.length) {
-          resultsTbody.innerHTML = '<tr><td colspan="11"><div class="muted-small">No submissions found.</div></td></tr>';
-        } else {
-          slice.forEach(r => {
-            const tr = document.createElement('tr');
-            const pct = Math.round((r.score / r.max) * 100);
-            tr.innerHTML = `
-              <td><input type="checkbox" class="row-select" data-id="${r.id}" ${selected.has(r.id)?'checked':''}></td>
-              <td><strong>${escapeHtml(r.student)}</strong><div class="muted-small">${r.id}</div></td>
-              <td>${escapeHtml(r.admission)}</td>
-              <td>${escapeHtml(r.class)}</td>
-              <td>${escapeHtml(r.examTitle)}<div class="muted-small">${r.examId}</div></td>
-              <td>${escapeHtml(r.type)}</td>
-              <td class="right">${r.score} / ${r.max}</td>
-              <td class="right">${pct}%</td>
-              <td>${new Date(r.submittedAt).toLocaleString()}</td>
-              <td>${statusLabel(r.status)}</td>
-              <td class="right">
-                <button class="btn small viewBtn" data-id="${r.id}">View</button>
-                <button class="btn ghost small editBtn" data-id="${r.id}">Edit</button>
-                <button class="btn ghost small moreBtn" data-id="${r.id}">More</button>
-              </td>
-            `;
-            resultsTbody.appendChild(tr);
-          });
-        }
-        pagerInfo.textContent = `Showing ${Math.min(total, start+1)} - ${Math.min(total, start + slice.length)} of ${total} results`;
-        updateStats();
-      }
-
       function statusLabel(st) {
         const s = document.createElement('span');
         s.className = 'status ' + (st === 'published' ? 'published' : (st === 'draft' ? 'draft' : (st === 'declined' ? 'declined' : 'flagged')));
-        s.textContent = st.toUpperCase();
+        s.textContent = (st || '').toUpperCase();
         return s.outerHTML;
       }
 
-      // events
+      function renderTable(rows, total) {
+        resultsTbody.innerHTML = '';
+        if (!Array.isArray(rows) || !rows.length) {
+          resultsTbody.innerHTML = '<tr><td colspan="11"><div class="muted-small">No submissions found.</div></td></tr>';
+          pagerInfo.textContent = `0 results`;
+          return;
+        }
+
+        rows.forEach(r => {
+          const pct = r.max ? Math.round((r.score / r.max) * 100) : 0;
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><input type="checkbox" class="row-select" data-id="${escapeHtml(r.id)}" ${selected.has(r.id)?'checked':''}></td>
+            <td><strong>${escapeHtml(r.student)}</strong><div class="muted-small">${escapeHtml(r.id || r.submissionId || '')}</div></td>
+            <td>${escapeHtml(r.admission || r.reg || '')}</td>
+            <td>${escapeHtml(r.class || r.className || '')}</td>
+            <td>${escapeHtml(r.examTitle || r.exam || r.examId || '')}<div class="muted-small">${escapeHtml(r.examId || '')}</div></td>
+            <td>${escapeHtml(r.type || '')}</td>
+            <td class="right">${escapeHtml(String(r.score || 0))} / ${escapeHtml(String(r.max || 0))}</td>
+            <td class="right">${pct}%</td>
+            <td>${new Date(r.submittedAt || r.createdAt || r.time || Date.now()).toLocaleString()}</td>
+            <td>${statusLabel(r.status)}</td>
+            <td class="right">
+              <button class="btn small viewBtn" data-id="${escapeHtml(r.id)}">View</button>
+              <button class="btn ghost small editBtn" data-id="${escapeHtml(r.id)}">Edit</button>
+              <button class="btn ghost small moreBtn" data-id="${escapeHtml(r.id)}">More</button>
+            </td>
+          `;
+          resultsTbody.appendChild(tr);
+        });
+
+        pagerInfo.textContent = `Showing ${rows.length} of ${total} results`;
+      }
+
+      // selection & bulk
+      function refreshBulk() {
+        const c = selected.size;
+        bulkInfo.textContent = `${c} selected`;
+        bulkToolbar.style.display = c ? '' : 'none';
+      }
+
+      async function bulkAction(action) {
+        if (!selected.size) return alert('No submissions selected');
+        if (action === 'delete' && !confirm('Delete selected submissions? This cannot be undone.')) return;
+        showLoader('Processing bulk action...', `Action: ${action}`);
+        const ids = Array.from(selected);
+        // try server bulk endpoint first
+        const candidates = [
+          `${API_BASE}/submissions/bulk`,
+          `${API_BASE}/results/bulk`,
+          `${API_BASE}/submissions/actions`
+        ];
+        let done = false;
+        for (const url of candidates) {
+          try {
+            const res = await fetch(url, { method:'POST', headers: headers(), body: JSON.stringify({ action, ids }) });
+            if (!res.ok) continue;
+            const data = await res.json();
+            // success -> re-fetch list
+            done = true;
+            break;
+          } catch (err) { console.warn('bulk candidate failed', url, err); }
+        }
+        // optimistic local update if server not available
+        if (!done) {
+          ids.forEach(id => {
+            const idx = results.findIndex(r => r.id === id);
+            if (idx === -1) return;
+            if (action === 'publish') results[idx].status = 'published';
+            if (action === 'decline') results[idx].status = 'declined';
+            if (action === 'flag') results[idx].status = 'flagged';
+            if (action === 'delete') results.splice(idx,1);
+          });
+        }
+        selected.clear();
+        await refreshData(); // re-render from server when possible
+        hideLoader();
+        alert('Bulk action completed');
+      }
+
+      // single record actions & modals
+      function openViewModal(id) {
+        const r = results.find(x => x.id === id);
+        if (!r) return alert('Not found');
+        modalCard.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div><strong>${escapeHtml(r.student)}</strong><div class="muted-small">${escapeHtml(r.admission || '')} • ${escapeHtml(r.class || '')}</div></div>
+            <div class="muted-small">${new Date(r.submittedAt || r.createdAt || Date.now()).toLocaleString()}</div>
+          </div>
+          <hr style="margin:12px 0">
+          <div><strong>Exam:</strong> ${escapeHtml(r.examTitle || r.examId || '')}</div>
+          <div style="margin-top:8px"><strong>Type:</strong> ${escapeHtml(r.type || '')}</div>
+          <div style="margin-top:8px"><strong>Score:</strong> ${escapeHtml(String(r.score||0))} / ${escapeHtml(String(r.max||0))} (${Math.round(((r.score||0)/(r.max||1))*100)}%)</div>
+          <div style="margin-top:12px"><strong>Status:</strong> ${escapeHtml(r.status)}</div>
+          <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+            <button class="btn small" id="pubBtn">${r.status==='published'?'Unpublish':'Publish'}</button>
+            <button class="btn ghost small" id="declineBtn">${r.status==='declined'?'Restore':'Decline'}</button>
+            <button class="btn ghost small" id="flagBtnModal">${r.status==='flagged'?'Unflag':'Flag'}</button>
+            <button class="btn danger small" id="delBtn">Delete</button>
+            <button class="btn ghost small" id="closeModal">Close</button>
+          </div>
+        `;
+        modalBackdrop.classList.add('active'); modalBackdrop.setAttribute('aria-hidden','false');
+
+        document.getElementById('closeModal').addEventListener('click', closeModal, { once:true });
+        document.getElementById('pubBtn').addEventListener('click', async ()=>{
+          await singleAction(id, results.find(x=>x.id===id).status==='published' ? 'unpublish' : 'publish');
+          closeModal();
+        }, { once:true });
+        document.getElementById('declineBtn').addEventListener('click', async ()=> { await singleAction(id, 'decline'); closeModal(); }, { once:true });
+        document.getElementById('flagBtnModal').addEventListener('click', async ()=> { await singleAction(id, 'flag'); closeModal(); }, { once:true });
+        document.getElementById('delBtn').addEventListener('click', async ()=> {
+          if (!confirm('Delete this submission?')) return;
+          await singleAction(id, 'delete');
+          closeModal();
+        }, { once:true });
+      }
+
+      function closeModal() { modalBackdrop.classList.remove('active'); modalBackdrop.setAttribute('aria-hidden','true'); modalCard.innerHTML=''; }
+
+      async function singleAction(id, action) {
+        showLoader('Performing action...', action);
+        const candidates = [
+          `${API_BASE}/submissions/${encodeURIComponent(id)}/${action}`,
+          `${API_BASE}/results/${encodeURIComponent(id)}/${action}`,
+          `${API_BASE}/submissions/action`
+        ];
+        let done = false;
+        for (const url of candidates) {
+          try {
+            const body = url.endsWith('/action') ? JSON.stringify({ id, action }) : undefined;
+            const method = body ? 'POST' : 'PUT';
+            const res = await fetch(url, { method, headers: headers(), body });
+            if (!res.ok) continue;
+            done = true;
+            break;
+          } catch (err) { console.warn('singleAction candidate failed', url, err); }
+        }
+        if (!done) {
+          // optimistic local update
+          const idx = results.findIndex(r=>r.id===id);
+          if (idx !== -1) {
+            if (action === 'publish' || action === 'unpublish') results[idx].status = action === 'publish' ? 'published' : 'draft';
+            if (action === 'decline') results[idx].status = 'declined';
+            if (action === 'flag') results[idx].status = 'flagged';
+            if (action === 'delete') results.splice(idx,1);
+          }
+        }
+        await refreshData();
+        hideLoader();
+      }
+
+      // Fetch data from server (with filter support). If server not reachable, keep local results array (initially empty)
+      async function refreshData() {
+        showLoader('Refreshing data...', 'Contacting server');
+        try {
+          // fetch lookups first
+          const lookups = await fetchLookups();
+          classes = Array.isArray(lookups.classes) ? lookups.classes : [];
+          exams = Array.isArray(lookups.exams) ? lookups.exams : [];
+          populateFilterLists();
+
+          // request submissions using filter values (server-side filtering if available)
+          const params = {
+            class: filterClass.value || undefined,
+            examId: filterExam.value || undefined,
+            type: filterType.value || undefined,
+            status: filterStatus.value || undefined,
+            from: filterFrom.value || undefined,
+            to: filterTo.value || undefined,
+            q: (searchBox.value || '').trim() || undefined,
+            page,
+            pageSize: PAGE_SIZE
+          };
+          const data = await fetchSubmissions(params);
+          if (Array.isArray(data)) {
+            // server returned paginated or flat list. If server provides total, try to infer
+            results = data;
+            renderTable(results, results.length);
+          } else {
+            // no server data -> clear table
+            results = [];
+            renderTable([],0);
+          }
+        } catch (err) {
+          console.warn('refresh failed', err);
+          // offline or server error: show previously loaded results (if any)
+          renderTable(results, results.length);
+        } finally {
+          hideLoader();
+        }
+      }
+
+      async function fetchLookups() {
+        const classCandidates = [
+          `${API_BASE}/classes`,
+          `${API_BASE}/lookups/classes`
+        ];
+        const examCandidates = [
+          `${API_BASE}/exams`,
+          `${API_BASE}/lookups/exams`
+        ];
+        const [cls, ex] = await Promise.all([
+          tryFetchCandidates(classCandidates, { headers: headers() }).catch(()=>null),
+          tryFetchCandidates(examCandidates, { headers: headers() }).catch(()=>null)
+        ]);
+        return { classes: Array.isArray(cls) ? cls : [], exams: Array.isArray(ex) ? ex : [] };
+      }
+
+      // wrapper to call fetchSubmissions (keeps UI paging)
+      async function loadAndRender(p = 1) {
+        page = p;
+        await refreshData();
+      }
+
+      // events & delegation
       document.body.addEventListener('click', (e) => {
         const t = e.target;
         if (t.matches('.viewBtn')) openViewModal(t.dataset.id);
@@ -507,10 +726,9 @@
         }
       });
 
-      masterSelect.addEventListener('change', (e) => {
+      masterSelect.addEventListener('change', () => {
         const check = masterSelect.checked;
-        const rows = Array.from(document.querySelectorAll('.row-select'));
-        rows.forEach(r => {
+        document.querySelectorAll('.row-select').forEach(r => {
           r.checked = check;
           const id = r.dataset.id;
           if (check) selected.add(id); else selected.delete(id);
@@ -518,78 +736,65 @@
         refreshBulk();
       });
 
-      function refreshBulk() {
-        const c = selected.size;
-        bulkInfo.textContent = `${c} selected`;
-        bulkToolbar.style.display = c ? '' : 'none';
-      }
-
       bulkPublish.addEventListener('click', ()=> bulkAction('publish'));
       bulkDecline.addEventListener('click', ()=> bulkAction('decline'));
       bulkFlag.addEventListener('click', ()=> bulkAction('flag'));
       bulkDelete.addEventListener('click', ()=> bulkAction('delete'));
 
-      function bulkAction(action) {
-        if (!selected.size) return alert('Select some submissions first.');
-        if (action === 'delete' && !confirm('Delete selected submissions? This cannot be undone.')) return;
-        Array.from(selected).forEach(id => {
-          const idx = results.findIndex(r => r.id === id);
-          if (idx === -1) return;
-          if (action === 'publish') results[idx].status = 'published';
-          if (action === 'decline') results[idx].status = 'declined';
-          if (action === 'flag') results[idx].status = 'flagged';
-          if (action === 'delete') results.splice(idx,1);
-        });
-        save();
-        selected.clear();
-        render();
-        populateExamOptions();
-        alert('Bulk action completed.');
-      }
+      applyFilters.addEventListener('click', ()=> loadAndRender(1));
+      clearFilters.addEventListener('click', ()=> {
+        filterClass.value=''; filterExam.value=''; filterType.value=''; filterStatus.value=''; filterFrom.value=''; filterTo.value=''; searchBox.value='';
+        loadAndRender(1);
+      });
+      refreshBtn.addEventListener('click', ()=> loadAndRender(page));
+      exportCsv.addEventListener('click', async ()=> {
+        showLoader('Preparing export...', 'This may take a moment');
+        try {
+          // if server supports export endpoint, call that with current filters
+          const candidates = [
+            `${API_BASE}/submissions/export`,
+            `${API_BASE}/results/export`
+          ];
+          let done = false;
+          for (const url of candidates) {
+            try {
+              const res = await fetch(url, { method:'POST', headers: headers(), body: JSON.stringify({
+                class: filterClass.value || undefined,
+                examId: filterExam.value || undefined,
+                type: filterType.value || undefined,
+                status: filterStatus.value || undefined,
+                from: filterFrom.value || undefined,
+                to: filterTo.value || undefined,
+                q: (searchBox.value || '').trim() || undefined
+              })});
+              if (!res.ok) continue;
+              const blob = await res.blob();
+              const fname = res.headers.get('x-filename') || 'results_export.csv';
+              const urlObj = URL.createObjectURL(blob);
+              const a = document.createElement('a'); a.href = urlObj; a.download = fname; a.click(); URL.revokeObjectURL(urlObj);
+              done = true;
+              break;
+            } catch (err) { console.warn('export candidate failed', url, err); }
+          }
+          if (!done) {
+            // fallback: client-side export of currently loaded results
+            const rows = [['id','student','admission','class','examId','examTitle','type','score','max','percent','submittedAt','status']];
+            results.forEach(r => rows.push([r.id,r.student,r.admission,r.class,r.examId,r.examTitle,r.type,r.score,r.max, Math.round((r.score/(r.max||1))*100), r.submittedAt, r.status]));
+            const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const urlObj = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = urlObj; a.download = 'results_export.csv'; a.click(); URL.revokeObjectURL(urlObj);
+          }
+        } finally { hideLoader(); }
+      });
 
-      function openViewModal(id) {
+      prevPage.addEventListener('click', ()=> { if (page>1) { page--; loadAndRender(page); }});
+      nextPage.addEventListener('click', ()=> { page++; loadAndRender(page); });
+
+      // edit modal presents fields and saves via server if available
+      function openEditModal(id) {
         const r = results.find(x=>x.id===id);
         if (!r) return alert('Not found');
-        modalCard.innerHTML = `
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <div><strong>${escapeHtml(r.student)}</strong><div class="muted-small">${r.admission} • ${r.class}</div></div>
-            <div class="muted-small">${new Date(r.submittedAt).toLocaleString()}</div>
-          </div>
-          <hr style="margin:12px 0">
-          <div><strong>Exam:</strong> ${escapeHtml(r.examTitle)} (${r.examId})</div>
-          <div style="margin-top:8px"><strong>Type:</strong> ${escapeHtml(r.type)}</div>
-          <div style="margin-top:8px"><strong>Score:</strong> ${r.score} / ${r.max} (${Math.round((r.score/r.max)*100)}%)</div>
-          <div style="margin-top:12px"><strong>Status:</strong> ${r.status}</div>
-          <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
-            <button class="btn small" id="pubBtn">${r.status==='published'?'Unpublish':'Publish'}</button>
-            <button class="btn ghost small" id="declineBtn">${r.status==='declined'?'Restore':'Decline'}</button>
-            <button class="btn ghost small" id="flagBtnModal">${r.status==='flagged'?'Unflag':'Flag'}</button>
-            <button class="btn danger small" id="delBtn">Delete</button>
-            <button class="btn ghost small" id="closeModal">Close</button>
-          </div>
-        `;
-        modalBackdrop.classList.add('active'); modalBackdrop.setAttribute('aria-hidden','false');
-
-        document.getElementById('closeModal').addEventListener('click', closeModal, { once:true });
-        document.getElementById('pubBtn').addEventListener('click', ()=> {
-          r.status = r.status === 'published' ? 'draft' : 'published'; save(); render(); closeModal();
-        }, { once:true });
-        document.getElementById('declineBtn').addEventListener('click', ()=> {
-          r.status = r.status === 'declined' ? 'draft' : 'declined'; save(); render(); closeModal();
-        }, { once:true });
-        document.getElementById('flagBtnModal').addEventListener('click', ()=> {
-          r.status = r.status === 'flagged' ? 'draft' : 'flagged'; save(); render(); closeModal();
-        }, { once:true });
-        document.getElementById('delBtn').addEventListener('click', ()=> {
-          if (!confirm('Delete this submission?')) return;
-          const idx = results.findIndex(x=>x.id===r.id); if (idx>-1) results.splice(idx,1); save(); render(); closeModal();
-        }, { once:true });
-      }
-
-      function closeModal() { modalBackdrop.classList.remove('active'); modalBackdrop.setAttribute('aria-hidden','true'); modalCard.innerHTML=''; }
-
-      function openEditModal(id) {
-        const r = results.find(x=>x.id===id); if (!r) return;
         modalCard.innerHTML = `
           <div style="display:flex;justify-content:space-between;align-items:center">
             <div><strong>Edit submission: ${escapeHtml(r.student)}</strong></div>
@@ -598,13 +803,13 @@
           <hr style="margin:12px 0">
           <div style="display:grid;grid-template-columns:1fr 260px;gap:12px">
             <div>
-              <div class="field"><label>Score<input type="number" id="editScore" min="0" max="${r.max}" value="${r.score}"></label></div>
-              <div class="field"><label>Max marks<input type="number" id="editMax" min="1" value="${r.max}"></label></div>
+              <div class="field"><label>Score<input type="number" id="editScore" min="0" max="${r.max||100}" value="${r.score||0}"></label></div>
+              <div class="field"><label>Max marks<input type="number" id="editMax" min="1" value="${r.max||100}"></label></div>
               <div class="field"><label>Type<select id="editType"><option value="CA"${r.type==='CA'?' selected':''}>CA</option><option value="General"${r.type==='General'?' selected':''}>General</option></select></label></div>
             </div>
             <div>
               <div class="field"><label>Status<select id="editStatus"><option value="draft"${r.status==='draft'?' selected':''}>Draft</option><option value="published"${r.status==='published'?' selected':''}>Published</option><option value="declined"${r.status==='declined'?' selected':''}>Declined</option><option value="flagged"${r.status==='flagged'?' selected':''}>Flagged</option></select></label></div>
-              <div class="field"><label>Submitted at<input type="datetime-local" id="editSubmitted" value="${new Date(r.submittedAt).toISOString().slice(0,16)}"></label></div>
+              <div class="field"><label>Submitted at<input type="datetime-local" id="editSubmitted" value="${new Date(r.submittedAt||Date.now()).toISOString().slice(0,16)}"></label></div>
             </div>
           </div>
           <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
@@ -616,90 +821,211 @@
 
         document.getElementById('closeEdit').addEventListener('click', closeModal, { once:true });
         document.getElementById('cancelEdit').addEventListener('click', closeModal, { once:true });
-        document.getElementById('saveEdit').addEventListener('click', ()=> {
-          r.score = parseFloat(document.getElementById('editScore').value) || r.score;
-          r.max = parseFloat(document.getElementById('editMax').value) || r.max;
-          r.type = document.getElementById('editType').value;
-          r.status = document.getElementById('editStatus').value;
-          r.submittedAt = new Date(document.getElementById('editSubmitted').value).toISOString();
-          save(); render(); closeModal();
+        document.getElementById('saveEdit').addEventListener('click', async () => {
+          const updated = {
+            score: parseFloat(document.getElementById('editScore').value) || 0,
+            max: parseFloat(document.getElementById('editMax').value) || 0,
+            type: document.getElementById('editType').value,
+            status: document.getElementById('editStatus').value,
+            submittedAt: new Date(document.getElementById('editSubmitted').value).toISOString()
+          };
+          showLoader('Saving...', '');
+          try {
+            const candidates = [
+              `${API_BASE}/submissions/${encodeURIComponent(id)}`,
+              `${API_BASE}/results/${encodeURIComponent(id)}`
+            ];
+            let saved = false;
+            for (const url of candidates) {
+              try {
+                const res = await fetch(url, { method:'PUT', headers: headers(), body: JSON.stringify(updated) });
+                if (!res.ok) continue;
+                saved = true;
+                break;
+              } catch (err) { console.warn('save candidate failed', url, err); }
+            }
+            if (!saved) {
+              // optimistic local update
+              const idx = results.findIndex(x=>x.id===id);
+              if (idx > -1) Object.assign(results[idx], updated);
+            } else {
+              // refresh
+              await loadAndRender(page);
+            }
+          } finally {
+            hideLoader();
+            closeModal();
+          }
         }, { once:true });
       }
 
-      function openMoreMenu(id) {
-        const r = results.find(x=>x.id===id); if (!r) return;
+      function openMoreMenu(id, anchor) {
         const action = prompt('Action (publish / decline / flag / delete / copy):');
         if (!action) return;
         const a = action.trim().toLowerCase();
-        if (a === 'publish') r.status = 'published';
-        else if (a === 'decline') r.status = 'declined';
-        else if (a === 'flag') r.status = 'flagged';
-        else if (a === 'delete') {
-          if (!confirm('Delete submission?')) return;
-          const idx = results.findIndex(x=>x.id===id); if (idx>-1) results.splice(idx,1);
-        } else if (a === 'copy') {
-          const copy = JSON.parse(JSON.stringify(r)); copy.id = 'R' + Math.floor(Math.random()*100000); copy.submittedAt = new Date().toISOString();
+        if (a === 'publish') singleAction(id, 'publish');
+        else if (a === 'decline') singleAction(id, 'decline');
+        else if (a === 'flag') singleAction(id, 'flag');
+        else if (a === 'delete') { if (confirm('Delete?')) singleAction(id, 'delete'); }
+        else if (a === 'copy') {
+          const r = results.find(x=>x.id===id);
+          if (!r) return;
+          const copy = JSON.parse(JSON.stringify(r)); copy.id = 'copy-' + Date.now(); copy.submittedAt = new Date().toISOString();
           results.unshift(copy);
-        } else return alert('Unknown action');
-        save(); render(); populateExamOptions();
+          renderTable(results, results.length);
+        } else alert('Unknown action');
       }
 
-      exportCsv.addEventListener('click', ()=> {
-        const rows = [['id','student','admission','class','examId','examTitle','type','score','max','percent','submittedAt','status']];
-        getFiltered().forEach(r => {
-          rows.push([r.id,r.student,r.admission,r.class,r.examId,r.examTitle,r.type,r.score,r.max, Math.round((r.score/r.max)*100), r.submittedAt, r.status]);
-        });
-        const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = 'results_export.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-      });
-
-      applyFilters.addEventListener('click', ()=> { page = 1; render(page); });
-      clearFilters.addEventListener('click', ()=> {
-        filterClass.value=''; filterExam.value=''; filterType.value=''; filterStatus.value=''; filterFrom.value=''; filterTo.value=''; searchBox.value='';
-        page = 1; render(page);
-      });
-      refreshBtn.addEventListener('click', ()=> { load(); render(page); alert('Refreshed'); });
-
-      prevPage.addEventListener('click', ()=> { if (page>1) { page--; render(page); }});
-      nextPage.addEventListener('click', ()=> { page++; render(page); });
-
-      downloadSummary.addEventListener('click', ()=> {
-        const cls = reportClass.value; const ex = reportExam.value;
-        const filtered = results.filter(r => (cls? r.class === cls:true) && (ex? r.examId === ex:true));
-        if (!filtered.length) return alert('No records for selected filters');
-        const rows = [['class','examId','examTitle','count','avgPercent']];
-        const grouped = {};
-        filtered.forEach(r => {
-          const key = r.class + '|' + r.examId;
-          grouped[key] = grouped[key] || { class:r.class, examId:r.examId, examTitle:r.examTitle, count:0, totalPct:0 };
-          grouped[key].count += 1;
-          grouped[key].totalPct += Math.round((r.score/r.max)*100);
-        });
-        Object.values(grouped).forEach(g => rows.push([g.class,g.examId,g.examTitle,g.count, Math.round(g.totalPct / g.count)]));
-        const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = 'results_summary.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-      });
-
-      function updateStats() {
-        const total = results.length;
-        const pending = results.filter(r=>r.status==='draft').length;
-        const flagged = results.filter(r=>r.status==='flagged').length;
-        const published = results.filter(r=>r.status==='published').length;
-        document.getElementById('statTotal').textContent = total;
-        document.getElementById('statPending').textContent = pending;
-        document.getElementById('statFlagged').textContent = flagged;
-        document.getElementById('statPublished').textContent = published;
-        const recent = results.slice(0,6).map(r => `${new Date(r.submittedAt).toLocaleDateString()} — ${r.student} (${r.class}) — ${r.examTitle}`);
-        document.getElementById('recentList').innerHTML = recent.map(s => `<div>${escapeHtml(s)}</div>`).join('');
+      async function singleAction(id, action) {
+        showLoader('Performing action...', action);
+        try {
+          const candidates = [
+            `${API_BASE}/submissions/${encodeURIComponent(id)}/${action}`,
+            `${API_BASE}/results/${encodeURIComponent(id)}/${action}`,
+            `${API_BASE}/submissions/action`
+          ];
+          let done = false;
+          for (const url of candidates) {
+            try {
+              const body = url.endsWith('/action') ? JSON.stringify({ id, action }) : undefined;
+              const method = body ? 'POST' : 'PUT';
+              const res = await fetch(url, { method, headers: headers(), body });
+              if (!res.ok) continue;
+              done = true;
+              break;
+            } catch (err) { console.warn('singleAction candidate failed', url, err); }
+          }
+          if (!done) {
+            // optimistic local update
+            const idx = results.findIndex(r=>r.id===id);
+            if (idx > -1) {
+              if (action === 'publish') results[idx].status = 'published';
+              if (action === 'decline') results[idx].status = 'declined';
+              if (action === 'flag') results[idx].status = 'flagged';
+              if (action === 'delete') results.splice(idx,1);
+            }
+          } else {
+            // if server succeeded, refresh
+            await loadAndRender(page);
+          }
+        } finally {
+          hideLoader();
+        }
       }
 
-      function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[m]); }
+      // lookup and initial load
+      async function init() {
+        showLoader('Loading dashboard...', 'Fetching profile & submissions');
+        try {
+          const profile = await loadProfile();
+          adminNameEl.textContent = (profile.firstName || profile.name || profile.username || 'Admin');
+          adminOrgEl.textContent = profile.institution || profile.school || adminOrgEl.textContent;
+          signedInName.textContent = adminNameEl.textContent;
+          if (profile.profilePic) adminAvatar.src = profile.profilePic;
 
-      load(); render(page);
+          // fetch lookups & submissions (server-supported filtering & paging)
+          const lookups = await fetchLookups();
+          classes = Array.isArray(lookups.classes) ? lookups.classes : [];
+          exams = Array.isArray(lookups.exams) ? lookups.exams : [];
+          populateFilterLists();
+
+          // initial submissions fetch
+          const subs = await fetchSubmissions({ page, pageSize: PAGE_SIZE });
+          results = Array.isArray(subs) ? subs : [];
+          renderTable(results, results.length);
+          updateStats();
+        } catch (err) {
+          console.error('init failed', err);
+          // show empty state
+          results = [];
+          renderTable(results, 0);
+        } finally {
+          hideLoader();
+        }
+      }
+
+      async function fetchLookups() {
+        const classCandidates = [
+          `${API_BASE}/classes`,
+          `${API_BASE}/lookups/classes`
+        ];
+        const examCandidates = [
+          `${API_BASE}/exams`,
+          `${API_BASE}/lookups/exams`
+        ];
+        const [cls, ex] = await Promise.all([
+          tryFetchCandidates(classCandidates, { headers: headers() }).catch(()=>null),
+          tryFetchCandidates(examCandidates, { headers: headers() }).catch(()=>null)
+        ]);
+        return { classes: Array.isArray(cls) ? cls : [], exams: Array.isArray(ex) ? ex : [] };
+      }
+
+      function populateFilterLists() {
+        filterClass.innerHTML = '<option value="">All classes</option>';
+        reportClass.innerHTML = '<option value="">All classes</option>';
+        (classes || []).forEach(c => {
+          const id = c.id || c._id || c.classId || c.name;
+          const name = c.name || c.title || id;
+          const o = document.createElement('option'); o.value = id; o.textContent = name; filterClass.appendChild(o);
+          const o2 = o.cloneNode(true); reportClass.appendChild(o2);
+        });
+
+        filterExam.innerHTML = '<option value="">All exams</option>';
+        reportExam.innerHTML = '<option value="">All exams</option>';
+        (exams || []).forEach(e => {
+          const id = e.id || e._id || e.examId || e.code;
+          const title = e.title || e.name || id;
+          const o = document.createElement('option'); o.value = id; o.textContent = `${title} • ${id}`; filterExam.appendChild(o);
+          const o2 = o.cloneNode(true); reportExam.appendChild(o2);
+        });
+      }
+
+      // event wiring for side links
+      sideLinks.forEach(l => {
+        l.addEventListener('click', (e) => {
+          e.preventDefault();
+          sideLinks.forEach(x=>x.classList.remove('active'));
+          l.classList.add('active');
+          const target = l.dataset.tab;
+          sections.forEach(s => s.style.display = s.id === target ? '' : 'none');
+          if (target === 'results') loadAndRender(1);
+        });
+      });
+
+      // helper to load current filters and render (server side paging attempted)
+      async function loadAndRender(p = 1) {
+        page = p;
+        showLoader('Loading submissions...', 'Applying filters');
+        try {
+          const params = {
+            class: filterClass.value || undefined,
+            examId: filterExam.value || undefined,
+            type: filterType.value || undefined,
+            status: filterStatus.value || undefined,
+            from: filterFrom.value || undefined,
+            to: filterTo.value || undefined,
+            q: (searchBox.value || '').trim() || undefined,
+            page,
+            pageSize: PAGE_SIZE
+          };
+          const subs = await fetchSubmissions(params);
+          results = Array.isArray(subs) ? subs : [];
+          renderTable(results, results.length);
+          updateStats();
+        } catch (err) {
+          console.warn('loadAndRender failed', err);
+        } finally {
+          hideLoader();
+        }
+      }
+
+      // initial call
+      init();
+
+      // keyboard/escape to close modal
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeModal();
+      });
 
     })();
   </script>
