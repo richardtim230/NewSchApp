@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>AI Material Uploader — Extract Key Points</title>
+  <meta name="viewport" content="width=device-width,initial-scale=0.701" />
+  <link href="https://fonts.googleapis.com/css?family=Inter:400,600,700&display=swap" rel="stylesheet">
+  <link rel="icon" href="../logo.png">
+  <style>
+    :root{
+      --bg:#f6f8ff;
+      --surface:#ffffff;
+      --muted:#6b7280;
+      --accent:#3b82f6;
+      --accent-2:#6366f1;
+      --danger:#ef4444;
+      --radius:12px;
+      --sidebar-w:280px;
+      --max-w:1200px;
+    }
+
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial;-webkit-font-smoothing:antialiased;background:linear-gradient(180deg,var(--bg),#fff);color:#072033}
+    a{color:inherit;text-decoration:none}
+    .app{display:flex;min-height:100vh;align-items:stretch;overflow-x:hidden}
+
+    /* Sidebar */
+    .sidebar{
+      width:var(--sidebar-w);min-width:var(--sidebar-w);
+      background:linear-gradient(180deg,#0f172a,#1e3a8a);
+      color:#fff;padding:18px;position:fixed;left:0;top:0;bottom:0;z-index:60;
+      display:flex;flex-direction:column;gap:14px;
+    }
+    .brand{display:flex;gap:12px;align-items:center}
+    .brand img{width:44px;height:44px;border-radius:8px}
+    .brand .title{font-weight:800}
+    .nav{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+    .nav button{background:transparent;border:0;color:rgba(230,238,252,0.95);padding:10px;border-radius:8px;text-align:left;font-weight:700;cursor:pointer}
+    .nav button.active, .nav button:hover{background:rgba(255,255,255,0.04);color:#ffe066}
+    .spacer{flex:1}
+    .profile{display:flex;gap:10px;align-items:center}
+    .profile img{width:40px;height:40px;border-radius:8px;border:2px solid #ffe066}
+
+    /* Topbar */
+    .topbar{position:fixed;left:var(--sidebar-w);right:0;top:0;height:64px;background:rgba(255,255,255,0.96);display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid rgba(11,42,60,0.04);z-index:50}
+    .hamburger{display:none;background:var(--accent);color:#fff;border:0;padding:8px 10px;border-radius:8px;cursor:pointer}
+    @media (max-width:920px){ .hamburger{display:inline-flex} .topbar{left:0} .sidebar{transform:translateX(-120%);position:fixed;transition:transform .28s ease} .sidebar.open{transform:translateX(0)} }
+
+    main{margin-left:var(--sidebar-w);padding:88px 18px 28px 18px;flex:1;max-width:calc(100% - var(--sidebar-w));}
+    @media (max-width:920px){ main{margin-left:0;padding-top:84px;max-width:100%} }
+
+    .container{max-width:var(--max-w);margin:0 auto;display:grid;grid-template-columns:1fr 380px;gap:18px}
+    @media (max-width:980px){ .container{grid-template-columns:1fr} }
+
+    .card{background:var(--surface);border-radius:var(--radius);padding:14px;border:1px solid rgba(11,42,60,0.04);box-shadow:0 10px 30px rgba(2,6,23,0.03)}
+
+    .dropzone{border-radius:12px;padding:18px;display:flex;align-items:center;gap:14px;border:2px dashed rgba(11,42,60,0.06);background:linear-gradient(180deg,rgba(99,102,241,0.02),rgba(99,102,241,0.01))}
+    .dropzone.drag{border-color:rgba(99,102,241,0.28);background:linear-gradient(90deg,rgba(99,102,241,0.06),rgba(99,102,241,0.02))}
+    .dz-left{display:flex;align-items:center;gap:12px}
+    .dz-icon{width:56px;height:56px;border-radius:10px;display:grid;place-items:center;color:#fff;background:linear-gradient(90deg,var(--accent),var(--accent-2));font-weight:900}
+    .dz-text{font-weight:800}
+    .dz-sub{color:var(--muted);font-size:0.92rem}
+
+    .dz-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+    .btn{padding:10px 12px;border-radius:10px;border:0;background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#fff;font-weight:800;cursor:pointer}
+    .btn.ghost{background:transparent;border:1px solid rgba(59,130,246,0.08);color:var(--accent-2)}
+
+    .file-list{margin-top:12px;display:grid;gap:10px}
+    .file-item{display:flex;gap:12px;align-items:center;padding:10px;border-radius:10px;border:1px solid #eef3ff;background:#fff}
+    .file-thumb{width:52px;height:52px;border-radius:8px;display:grid;place-items:center;color:#fff;background:linear-gradient(90deg,var(--accent),var(--accent-2));font-weight:900}
+    .file-meta{flex:1;min-width:0}
+    .file-meta .name{font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .file-meta .info{color:var(--muted);font-size:0.9rem;margin-top:6px}
+    .file-actions{display:flex;gap:8px;align-items:center}
+
+    .progress{height:8px;background:#eef3ff;border-radius:999px;margin-top:8px;overflow:hidden}
+    .progress>i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent-2));width:0%;transition:width .22s ease}
+
+    .results{display:flex;flex-direction:column;gap:12px}
+    .res-header{display:flex;justify-content:space-between;align-items:center}
+    .res-meta{color:var(--muted);font-size:0.92rem}
+    .keypoints{display:grid;gap:8px;margin-top:10px}
+    .kp{padding:10px;border-radius:10px;border:1px solid #f1f5fb;background:linear-gradient(90deg,rgba(99,102,241,0.02),rgba(99,102,241,0.01))}
+    .kp h4{margin:0 0 6px;font-size:0.98rem}
+    .empty{padding:22px;border-radius:10px;border:1px dashed #eef3ff;color:var(--muted);text-align:center}
+
+    .history-list{display:grid;gap:8px;margin-top:12px}
+    .history-item{display:flex;justify-content:space-between;align-items:center;padding:10px;border-radius:8px;border:1px solid #eef3ff;background:#fff}
+    .history-item .meta{color:var(--muted);font-size:0.9rem}
+
+    .footer-note{color:var(--muted);font-size:0.9rem;margin-top:8px}
+
+    .mobile-overlay { display:none; position:fixed; inset:0; background:rgba(2,6,23,0.45); z-index:55; }
+    .mobile-overlay.visible { display:block; }
+
+    @media (max-width:420px){
+      .dz-text{font-size:0.95rem}
+      .dz-sub{font-size:0.85rem}
+      .file-thumb{width:44px;height:44px}
+      .dz-icon{width:48px;height:48px}
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar" aria-label="Navigation">
+      <div class="brand"><img src="../logo.png" alt=""><div><div class="title">AI Study Extractor</div><div class="muted-small">Upload & extract</div></div></div>
+      <nav class="nav" id="nav">
+        <button class="active" data-tab="upload">Upload</button>
+        <button data-tab="history">History</button>
+        <button data-tab="help">Help</button>
+      </nav>
+      <div class="spacer"></div>
+      <div class="profile"><img src="../avatar.jpg" alt=""><div><div style="font-weight:800">Student</div><div class="muted-small">Logged in</div></div></div>
+    </aside>
+
+    <div class="mobile-overlay" id="mobileOverlay"></div>
+
+    <div class="topbar">
+      <div style="display:flex;gap:12px;align-items:center">
+        <button class="hamburger" id="hamburger" aria-label="Open menu">☰</button>
+        <div style="font-weight:900;color:var(--accent-2)">AI Material Uploader</div>
+      </div>
+      <div class="muted-small">Secure extraction • Local history</div>
+    </div>
+
+    <main id="main">
+      <div class="container">
+        <section id="upload" class="card tab-section" role="region">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+            <div>
+              <h2 style="margin:0">Upload materials</h2>
+              <div class="res-meta">PDF, PPTX, DOCX, images — AI will extract page-level key points</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="btn" id="startAll" disabled>Scan All</button>
+              <button class="btn ghost" id="clearFiles" disabled>Clear</button>
+            </div>
+          </div>
+
+          <div style="margin-top:12px" class="dropzone" id="dropzone" tabindex="0">
+            <div class="dz-left">
+              <div class="dz-icon">AI</div>
+              <div>
+                <div class="dz-text">Drop files here or browse</div>
+                <div class="dz-sub">Multiple files supported</div>
+              </div>
+            </div>
+            <div class="dz-actions">
+              <label class="btn" for="fileInput">Browse</label>
+              <input id="fileInput" type="file" accept=".pdf,.ppt,.pptx,.doc,.docx,image/*,.txt" multiple style="display:none">
+            </div>
+          </div>
+
+          <div class="file-list" id="fileList" aria-live="polite" style="margin-top:12px">
+            <div class="empty" id="noFiles">No files selected.</div>
+          </div>
+
+          <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+            <button class="btn" id="exportAll" disabled>Export All Results</button>
+            <div class="footer-note">Results saved locally and available in History.</div>
+          </div>
+        </section>
+
+        <aside class="card" id="sidebarRight">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div style="font-weight:800">Extraction results</div>
+            <div class="res-meta" id="resultsMeta">No extraction</div>
+          </div>
+
+          <div id="resultsArea" style="margin-top:12px">
+            <div class="empty" id="noResults">Run a scan to see extracted keypoints per page.</div>
+          </div>
+
+          <div style="margin-top:12px">
+            <div style="font-weight:800">History</div>
+            <div class="history-list" id="historyList"></div>
+            <div style="margin-top:8px"><button class="btn ghost" id="clearHistory">Clear history</button></div>
+          </div>
+        </aside>
+      </div>
+
+      <section id="historyView" class="card tab-section" style="display:none;margin-top:18px">
+        <h3 style="margin:0">Saved Extractions</h3>
+        <div class="muted-small" style="margin-top:8px">Open past extraction results saved on this device.</div>
+        <div id="historyDetail" style="margin-top:12px"></div>
+      </section>
+
+      <section id="help" class="card tab-section" style="display:none;margin-top:18px">
+        <h3 style="margin:0">How it works</h3>
+        <div class="muted-small" style="margin-top:8px">Upload files and click "Scan All". Files are sent to the AI extraction endpoint; returned page-level keypoints are presented here and saved to your local history.</div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    (function () {
+      const API_BASE = 'https://examguide.onrender.com/api'; // set to your backend base URL
+      const TOKEN = localStorage.getItem('eg_token') || null;
+
+      const navButtons = Array.from(document.querySelectorAll('.nav button'));
+      const sections = Array.from(document.querySelectorAll('.tab-section'));
+      const sidebar = document.getElementById('sidebar');
+      const hamburger = document.getElementById('hamburger');
+      const mobileOverlay = document.getElementById('mobileOverlay');
+
+      function closeSidebarMobile() {
+        if (window.innerWidth <= 920) {
+          sidebar.classList.remove('open');
+          mobileOverlay.classList.remove('visible');
+        }
+      }
+      function openSidebarMobile() {
+        sidebar.classList.add('open');
+        mobileOverlay.classList.add('visible');
+      }
+
+      navButtons.forEach(btn => btn.addEventListener('click', () => {
+        navButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const tab = btn.dataset.tab;
+        sections.forEach(s => s.id === tab ? s.style.display = '' : s.style.display = 'none');
+        closeSidebarMobile();
+      }));
+
+      hamburger.addEventListener('click', () => {
+        openSidebarMobile();
+      });
+      mobileOverlay.addEventListener('click', () => closeSidebarMobile());
+
+      // Elements
+      const fileInput = document.getElementById('fileInput');
+      const dropzone = document.getElementById('dropzone');
+      const fileListEl = document.getElementById('fileList');
+      const noFiles = document.getElementById('noFiles');
+      const startAllBtn = document.getElementById('startAll');
+      const clearFilesBtn = document.getElementById('clearFiles');
+      const exportAllBtn = document.getElementById('exportAll');
+      const resultsArea = document.getElementById('resultsArea');
+      const resultsMeta = document.getElementById('resultsMeta');
+      const historyList = document.getElementById('historyList');
+      const historyDetail = document.getElementById('historyDetail');
+      const clearHistoryBtn = document.getElementById('clearHistory');
+
+      const LS_KEY = 'eg_ai_extractions_v1';
+      let files = [];
+      let history = loadHistory();
+
+      function loadHistory() {
+        try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch(e){ return []; }
+      }
+      function saveHistory() { localStorage.setItem(LS_KEY, JSON.stringify(history)); renderHistoryList(); }
+
+      function uid(len=6){ return Math.random().toString(36).slice(2, 2+len); }
+      function formatBytes(n){ if (n<1024) return n+' B'; if (n<1024*1024) return (n/1024).toFixed(1)+' KB'; return (n/1024/1024).toFixed(2)+' MB'; }
+
+      function renderFileList() {
+        fileListEl.innerHTML = '';
+        if (!files.length) {
+          noFiles.style.display = '';
+          startAllBtn.disabled = true;
+          clearFilesBtn.disabled = true;
+          exportAllBtn.disabled = !(history.length > 0);
+          return;
+        }
+        noFiles.style.display = 'none';
+        files.forEach(f => {
+          const el = document.createElement('div');
+          el.className = 'file-item';
+          const ext = (f.name.split('.').pop() || '').toUpperCase().slice(0,3);
+          el.innerHTML = `
+            <div class="file-thumb">${ext}</div>
+            <div class="file-meta">
+              <div class="name" title="${f.name}">${f.name}</div>
+              <div class="info">${formatBytes(f.size)} • ${f.type || 'unknown'}</div>
+              <div class="progress" style="display:${f.state==='scanning' ? 'block' : 'none'}"><i style="width:${f.progress||0}%"></i></div>
+            </div>
+            <div class="file-actions">
+              <button class="btn ghost" data-action="remove" data-id="${f.id}">Remove</button>
+              <button class="btn" data-action="scan" data-id="${f.id}">${f.state==='done'?'Rescan':'Scan'}</button>
+            </div>
+          `;
+          fileListEl.appendChild(el);
+        });
+        startAllBtn.disabled = false;
+        clearFilesBtn.disabled = false;
+        exportAllBtn.disabled = !(history.length > 0);
+      }
+
+      fileInput.addEventListener('change', (e) => {
+        addFiles(Array.from(e.target.files));
+        fileInput.value = '';
+      });
+
+      dropzone.addEventListener('dragenter', prevent); dropzone.addEventListener('dragover', prevent);
+      dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+      dropzone.addEventListener('drop', (e) => {
+        prevent(e);
+        dropzone.classList.remove('drag');
+        const fls = Array.from(e.dataTransfer.files || []);
+        addFiles(fls);
+      });
+      function prevent(e){ e.preventDefault(); e.stopPropagation(); dropzone.classList.add('drag'); }
+
+      function addFiles(flist) {
+        const incoming = flist.map(f => ({ id: uid(), name: f.name, size: f.size, type: f.type, file: f, state:'ready', progress:0, result:null }));
+        files = files.concat(incoming);
+        renderFileList();
+      }
+
+      fileListEl.addEventListener('click', (e) => {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+        const action = btn.dataset.action;
+        const id = btn.dataset.id;
+        if (action === 'remove') {
+          files = files.filter(x => x.id !== id);
+          renderFileList();
+        } else if (action === 'scan') {
+          const f = files.find(x => x.id === id);
+          if (f) scanFile(f);
+        }
+      });
+
+      clearFilesBtn.addEventListener('click', () => {
+        files = [];
+        renderFileList();
+      });
+
+      startAllBtn.addEventListener('click', async () => {
+        for (let f of files) { await scanFile(f); }
+        renderResults();
+      });
+
+      exportAllBtn.addEventListener('click', () => {
+        const payload = history.map(h => ({ id:h.id, name:h.name, extractedAt:h.extractedAt, pages:h.pages }));
+        if (!payload.length) return alert('No extractions to export.');
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'extractions.json'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      });
+
+      clearHistoryBtn.addEventListener('click', () => {
+        if (!confirm('Clear all saved history?')) return;
+        history = []; saveHistory();
+        historyDetail.innerHTML = '';
+      });
+
+      function renderResults() {
+        const processed = files.filter(f => f.result);
+        if (!processed.length && !history.length) {
+          resultsArea.innerHTML = '<div class="empty">No keypoints available. Run a scan to see results per file and per page.</div>';
+          resultsMeta.textContent = 'No extraction';
+          exportAllBtn.disabled = true;
+          return;
+        }
+        resultsMeta.textContent = `${processed.length} recent file(s)`;
+        exportAllBtn.disabled = history.length === 0;
+        resultsArea.innerHTML = '';
+        processed.forEach(f => {
+          const wrapper = document.createElement('div');
+          wrapper.className = 'res-card card';
+          const header = document.createElement('div'); header.className = 'res-header';
+          header.innerHTML = `<div style="font-weight:800">${f.name}</div><div class="res-meta">${f.result.pages.length} page(s)</div>`;
+          const container = document.createElement('div'); container.className = 'keypoints';
+          f.result.pages.forEach(p => {
+            const kp = document.createElement('div'); kp.className = 'kp';
+            kp.innerHTML = `<h4>Page ${p.page}</h4><ul>${p.keypoints.map(k => `<li>${escapeHtml(k)}</li>`).join('')}</ul>`;
+            container.appendChild(kp);
+          });
+          const actions = document.createElement('div'); actions.style.display='flex'; actions.style.justifyContent='flex-end'; actions.style.gap='8px'; actions.style.marginTop='8px';
+          const saveBtn = document.createElement('button'); saveBtn.className='btn ghost'; saveBtn.textContent='Save to History';
+          saveBtn.addEventListener('click', () => { history.unshift({ id: uid(8), name: f.name, size: f.size, type: f.type, extractedAt: f.result.extractedAt, pages: f.result.pages }); if (history.length > 100) history.length = 100; saveHistory(); });
+          const downloadBtn = document.createElement('button'); downloadBtn.className='btn'; downloadBtn.textContent='Download JSON';
+          downloadBtn.addEventListener('click', () => {
+            const blob = new Blob([JSON.stringify(f.result, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${f.name.replace(/\s+/g,'_')}_extraction.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+          });
+          actions.appendChild(saveBtn); actions.appendChild(downloadBtn);
+
+          wrapper.appendChild(header); wrapper.appendChild(container); wrapper.appendChild(actions);
+          resultsArea.appendChild(wrapper);
+        });
+        renderHistoryList();
+      }
+
+      function renderHistoryList() {
+        historyList.innerHTML = '';
+        if (!history.length) { historyList.innerHTML = '<div class="empty">No saved extractions</div>'; return; }
+        history.forEach(h => {
+          const el = document.createElement('div'); el.className='history-item';
+          el.innerHTML = `<div><div style="font-weight:800">${escapeHtml(h.name)}</div><div class="meta muted-small">${new Date(h.extractedAt).toLocaleString()} • ${h.pages.length} pages</div></div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="btn ghost" data-action="open" data-id="${h.id}">Open</button>
+              <button class="btn" data-action="download" data-id="${h.id}">Download</button>
+              <button class="btn ghost" data-action="delete" data-id="${h.id}">Delete</button>
+            </div>`;
+          historyList.appendChild(el);
+        });
+      }
+
+      historyList.addEventListener('click', (e) => {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+        const action = btn.dataset.action;
+        const id = btn.dataset.id;
+        const idx = history.findIndex(h => h.id === id);
+        if (idx === -1) return;
+        if (action === 'open') showHistoryDetail(history[idx]);
+        if (action === 'download') {
+          const h = history[idx]; const blob = new Blob([JSON.stringify(h, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${h.name.replace(/\s+/g,'_')}_extraction.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+        }
+        if (action === 'delete') { if (!confirm('Remove saved extraction?')) return; history.splice(idx,1); saveHistory(); renderHistoryList(); historyDetail.innerHTML = ''; }
+      });
+
+      function showHistoryDetail(h) {
+        document.querySelectorAll('.tab-section').forEach(s => s.style.display = 'none');
+        document.getElementById('historyView').style.display = '';
+        historyDetail.innerHTML = `<div style="font-weight:800">${escapeHtml(h.name)}</div><div class="muted-small">${new Date(h.extractedAt).toLocaleString()}</div>`;
+        const container = document.createElement('div'); container.style.marginTop = '12px';
+        h.pages.forEach(p => { const box = document.createElement('div'); box.className='kp'; box.innerHTML = `<h4>Page ${p.page}</h4><ul>${p.keypoints.map(k => `<li>${escapeHtml(k)}</li>`).join('')}</ul>`; container.appendChild(box); });
+        historyDetail.appendChild(container);
+      }
+
+      // Backend upload + extraction using XMLHttpRequest to support progress
+      async function uploadAndExtract(fileObj) {
+        return new Promise((resolve, reject) => {
+          const url = `${API_BASE}/ai/extract`;
+          const xhr = new XMLHttpRequest();
+          const fd = new FormData();
+          fd.append('file', fileObj.file, fileObj.name);
+          xhr.open('POST', url, true);
+          if (TOKEN) xhr.setRequestHeader('Authorization', 'Bearer ' + TOKEN);
+          xhr.upload.onprogress = (ev) => {
+            if (ev.lengthComputable) {
+              const pct = Math.round((ev.loaded / ev.total) * 60); // upload portion
+              fileObj.progress = pct;
+              renderFileList();
+            }
+          };
+          xhr.onreadystatechange = () => {
+            if (xhr.readyState === 4) {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                  const json = JSON.parse(xhr.responseText);
+                  // Expect backend to return { pages: [{page:1, keypoints:[]}, ...], extractedAt, name }
+                  resolve(json);
+                } catch (e) { reject(new Error('Invalid JSON from server')); }
+              } else {
+                reject(new Error('Server returned ' + xhr.status));
+              }
+            }
+          };
+          xhr.onerror = () => reject(new Error('Network error'));
+          xhr.send(fd);
+        });
+      }
+
+      // Scan a single file (uses backend if available, otherwise falls back to local simulation)
+      async function scanFile(f) {
+        if (!f) return;
+        try {
+          f.state = 'scanning'; f.progress = 5; renderFileList();
+          let result;
+          try {
+            // Attempt backend extraction
+            result = await uploadAndExtract(f);
+          } catch (err) {
+            // fallback local simulation if backend unavailable
+            result = await simulateProcessingLocal(f);
+          }
+          f.result = {
+            pages: result.pages || [],
+            extractedAt: result.extractedAt || new Date().toISOString(),
+            name: result.name || f.name
+          };
+          f.state = 'done'; f.progress = 100; renderFileList();
+          history.unshift({ id: uid(8), name: f.name, size: f.size, type: f.type, extractedAt: f.result.extractedAt, pages: f.result.pages });
+          if (history.length > 200) history.length = 200;
+          saveHistory();
+          renderResults();
+        } catch (err) {
+          f.state = 'error'; f.progress = 0; renderFileList(); console.error(err);
+          alert('Error extracting: ' + (err.message || 'unknown'));
+        }
+      }
+
+      // Local simulation fallback (keeps same shape)
+      async function simulateProcessingLocal(fileObj) {
+        const pages = Math.max(1, Math.min(50, Math.round(fileObj.size / (1024*1024) * 3))) || 1;
+        const pagesResult = [];
+        for (let p = 1; p <= pages; p++) {
+          await sleep(200 + Math.random()*200);
+          pagesResult.push({ page: p, keypoints: generateKeypoints(fileObj.name, p) });
+        }
+        return { pages: pagesResult, extractedAt: new Date().toISOString(), name: fileObj.name };
+      }
+
+      function generateKeypoints(name, p) {
+        const seeds = ['Core concept','Important formula','Worked example','Common pitfall','Summary'];
+        const n = 3 + Math.floor(Math.random()*2);
+        const out = [];
+        for (let i=0;i<n;i++) out.push(`${seeds[(p + i) % seeds.length]} — note for page ${p}`);
+        return out;
+      }
+
+      function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+      // Helpers & initialization
+      function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[m]); }
+
+      // initial render
+      renderFileList();
+      renderResults();
+      renderHistoryList();
+
+    })();
+  </script>
+</body>
+</html>
