@@ -42,7 +42,7 @@
     .profile img{width:40px;height:40px;border-radius:8px;border:2px solid #ffe066}
 
     /* Topbar */
-    .topbar{position:fixed;left:var(--sidebar-w);right:0;top:0;height:64px;background:rgba(255,255,255,0.96);display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid rgba(11,42,60,0.04);z-index:50}
+    .topbar{position:fixed;left:var(--sidebar-w);right:0;top:0;height:64px;background:rgba(255,255,255,0.96);display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid rgba(2,6,23,0.04)}
     .hamburger{display:none;background:var(--accent);color:#fff;border:0;padding:8px 10px;border-radius:8px;cursor:pointer}
     @media (max-width:920px){ .hamburger{display:inline-flex} .topbar{left:0} .sidebar{transform:translateX(-120%);position:fixed;transition:transform .28s ease} .sidebar.open{transform:translateX(0)} }
 
@@ -54,7 +54,7 @@
 
     .card{background:var(--surface);border-radius:var(--radius);padding:14px;border:1px solid rgba(11,42,60,0.04);box-shadow:0 10px 30px rgba(2,6,23,0.03)}
 
-    .dropzone{border-radius:12px;padding:18px;display:flex;align-items:center;gap:14px;border:2px dashed rgba(11,42,60,0.06);background:linear-gradient(180deg,rgba(99,102,241,0.02),rgba(99,102,241,0.01))}
+    .dropzone{border-radius:12px;padding:18px;display:flex;align-items:center;gap:14px;border:2px dashed rgba(11,42,60,0.06);background:linear-gradient(180deg,rgba(99,102,241,0.02),rgba(99,102,241,0.02))}
     .dropzone.drag{border-color:rgba(99,102,241,0.28);background:linear-gradient(90deg,rgba(99,102,241,0.06),rgba(99,102,241,0.02))}
     .dz-left{display:flex;align-items:center;gap:12px}
     .dz-icon{width:56px;height:56px;border-radius:10px;display:grid;place-items:center;color:#fff;background:linear-gradient(90deg,var(--accent),var(--accent-2));font-weight:900}
@@ -92,6 +92,21 @@
 
     .mobile-overlay { display:none; position:fixed; inset:0; background:rgba(2,6,23,0.45); z-index:55; }
     .mobile-overlay.visible { display:block; }
+
+    /* Modal / Preview / Chat */
+    .modal-overlay{display:none;position:fixed;inset:0;background:rgba(2,6,23,0.5);z-index:100;align-items:center;justify-content:center;padding:18px}
+    .modal-overlay.visible{display:flex}
+    .modal{background:#fff;border-radius:12px;max-width:900px;width:100%;max-height:90vh;overflow:auto;padding:14px;box-shadow:0 20px 60px rgba(2,6,23,0.3)}
+    .modal .modal-header{display:flex;justify-content:space-between;align-items:center;gap:12px}
+    .modal .modal-body{margin-top:12px}
+    .preview-content{max-height:70vh;overflow:auto}
+    .chat-window{display:flex;flex-direction:column;gap:8px}
+    .chat-messages{max-height:50vh;overflow:auto;border:1px solid #eef3ff;border-radius:8px;padding:8px;background:#fafcff}
+    .chat-message{margin-bottom:8px;padding:8px;border-radius:8px}
+    .chat-message.user{background:linear-gradient(90deg,rgba(59,130,246,0.08),rgba(99,102,241,0.04));align-self:flex-end}
+    .chat-message.bot{background:#fff}
+    .chat-input{display:flex;gap:8px;align-items:center;margin-top:8px}
+    .chat-input textarea{flex:1;min-height:56px;border-radius:8px;padding:8px;border:1px solid #eef3ff}
 
     @media (max-width:420px){
       .dz-text{font-size:0.95rem}
@@ -142,7 +157,8 @@
             <div class="dz-left">
               <div class="dz-icon">AI</div>
               <div>
-                <div class="dz-text">Drop files here or browse</div>
+                <!-- shortened dropzone label per request -->
+                <div class="dz-text">Drop files</div>
                 <div class="dz-sub">Multiple files supported</div>
               </div>
             </div>
@@ -188,9 +204,46 @@
 
       <section id="help" class="card tab-section" style="display:none;margin-top:18px">
         <h3 style="margin:0">How it works</h3>
-        <div class="muted-small" style="margin-top:8px">Upload files and click "Scan All". Files are sent to the AI extraction endpoint; returned page-level keypoints are presented here and saved to your local history.</div>
+        <div class="muted-small" style="margin-top:8px">Upload files and click "Scan All". Files are sent to the AI extraction endpoint; returned page-level keypoints are presented here and saved to your browser history. Use the "Chat with AI" button to ask questions about a specific extraction. Use preview to view images, PDFs or text files directly in your browser.</div>
       </section>
     </main>
+  </div>
+
+  <!-- Preview modal -->
+  <div class="modal-overlay" id="previewModal" role="dialog" aria-hidden="true">
+    <div class="modal" role="document">
+      <div class="modal-header">
+        <div style="font-weight:800" id="previewTitle">Preview</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn ghost" id="previewDownload">Download</button>
+          <button class="btn" id="previewClose">Close</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="preview-content" id="previewContent"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat modal -->
+  <div class="modal-overlay" id="chatModal" role="dialog" aria-hidden="true">
+    <div class="modal" role="document">
+      <div class="modal-header">
+        <div style="font-weight:800" id="chatTitle">Chat</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn" id="chatClose">Close</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="chat-window">
+          <div class="chat-messages" id="chatMessages"></div>
+          <div class="chat-input">
+            <textarea id="chatInput" placeholder="Ask a question about this material..."></textarea>
+            <button class="btn" id="chatSend">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -242,9 +295,26 @@
       const historyDetail = document.getElementById('historyDetail');
       const clearHistoryBtn = document.getElementById('clearHistory');
 
+      // modal elements
+      const previewModal = document.getElementById('previewModal');
+      const previewTitle = document.getElementById('previewTitle');
+      const previewContent = document.getElementById('previewContent');
+      const previewClose = document.getElementById('previewClose');
+      const previewDownload = document.getElementById('previewDownload');
+
+      const chatModal = document.getElementById('chatModal');
+      const chatTitle = document.getElementById('chatTitle');
+      const chatMessages = document.getElementById('chatMessages');
+      const chatInput = document.getElementById('chatInput');
+      const chatSend = document.getElementById('chatSend');
+      const chatClose = document.getElementById('chatClose');
+
       const LS_KEY = 'eg_ai_extractions_v1';
       let files = [];
       let history = loadHistory();
+
+      // in-memory chats by file id or history id
+      const chats = {};
 
       function loadHistory() {
         try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch(e){ return []; }
@@ -253,6 +323,8 @@
 
       function uid(len=6){ return Math.random().toString(36).slice(2, 2+len); }
       function formatBytes(n){ if (n<1024) return n+' B'; if (n<1024*1024) return (n/1024).toFixed(1)+' KB'; return (n/1024/1024).toFixed(2)+' MB'; }
+      // reduced default truncate length to 20 characters
+      function truncate(s, n=10){ if (!s) return ''; return s.length <= n ? s : s.slice(0, n-1) + '…'; }
 
       function renderFileList() {
         fileListEl.innerHTML = '';
@@ -268,15 +340,17 @@
           const el = document.createElement('div');
           el.className = 'file-item';
           const ext = (f.name.split('.').pop() || '').toUpperCase().slice(0,3);
+          const displayName = truncate(f.name, 10);
           el.innerHTML = `
             <div class="file-thumb">${ext}</div>
             <div class="file-meta">
-              <div class="name" title="${f.name}">${f.name}</div>
+              <div class="name" title="${escapeHtml(displayName)}" aria-label="${escapeHtml(displayName)}">${escapeHtml(displayName)}</div>
               <div class="info">${formatBytes(f.size)} • ${f.type || 'unknown'}</div>
               <div class="progress" style="display:${f.state==='scanning' ? 'block' : 'none'}"><i style="width:${f.progress||0}%"></i></div>
             </div>
             <div class="file-actions">
               <button class="btn ghost" data-action="remove" data-id="${f.id}">Remove</button>
+              <button class="btn ghost" data-action="preview" data-id="${f.id}">Preview</button>
               <button class="btn" data-action="scan" data-id="${f.id}">${f.state==='done'?'Rescan':'Scan'}</button>
             </div>
           `;
@@ -319,6 +393,9 @@
         } else if (action === 'scan') {
           const f = files.find(x => x.id === id);
           if (f) scanFile(f);
+        } else if (action === 'preview') {
+          const f = files.find(x => x.id === id);
+          if (f) showPreviewForFileObj(f);
         }
       });
 
@@ -361,22 +438,41 @@
           const wrapper = document.createElement('div');
           wrapper.className = 'res-card card';
           const header = document.createElement('div'); header.className = 'res-header';
-          header.innerHTML = `<div style="font-weight:800">${f.name}</div><div class="res-meta">${f.result.pages.length} page(s)</div>`;
+          header.innerHTML = `<div style="font-weight:800">${escapeHtml(f.name)}</div><div class="res-meta">${f.result.pages.length} page(s)</div>`;
           const container = document.createElement('div'); container.className = 'keypoints';
           f.result.pages.forEach(p => {
             const kp = document.createElement('div'); kp.className = 'kp';
-            kp.innerHTML = `<h4>Page ${p.page}</h4><ul>${p.keypoints.map(k => `<li>${escapeHtml(k)}</li>`).join('')}</ul>`;
+            kp.innerHTML = `<h4>Page ${p.page}</h4><ul>${p.keypoints.map(k => `<li>${escapeHtml(truncate(k, 220))}</li>`).join('')}</ul>`;
             container.appendChild(kp);
           });
           const actions = document.createElement('div'); actions.style.display='flex'; actions.style.justifyContent='flex-end'; actions.style.gap='8px'; actions.style.marginTop='8px';
+
+          const previewBtn = document.createElement('button'); previewBtn.className='btn ghost'; previewBtn.textContent='Preview';
+          previewBtn.addEventListener('click', () => { showPreviewForFileObj(f); });
+
+          const chatBtn = document.createElement('button'); chatBtn.className='btn ghost'; chatBtn.textContent='Chat with AI';
+          chatBtn.addEventListener('click', () => { openChatForFile(f); });
+
           const saveBtn = document.createElement('button'); saveBtn.className='btn ghost'; saveBtn.textContent='Save to History';
-          saveBtn.addEventListener('click', () => { history.unshift({ id: uid(8), name: f.name, size: f.size, type: f.type, extractedAt: f.result.extractedAt, pages: f.result.pages }); if (history.length > 100) history.length = 100; saveHistory(); });
+          saveBtn.addEventListener('click', () => {
+            history.unshift({ id: uid(8), name: f.name, size: f.size, type: f.type, extractedAt: f.result.extractedAt, pages: f.result.pages });
+            if (history.length > 200) history.length = 200;
+            saveHistory();
+            renderHistoryList();
+            alert('Saved to History');
+          });
+
           const downloadBtn = document.createElement('button'); downloadBtn.className='btn'; downloadBtn.textContent='Download JSON';
           downloadBtn.addEventListener('click', () => {
             const blob = new Blob([JSON.stringify(f.result, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${f.name.replace(/\s+/g,'_')}_extraction.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = `${f.name.replace(/\s+/g,'_')}_extraction.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
           });
-          actions.appendChild(saveBtn); actions.appendChild(downloadBtn);
+
+          actions.appendChild(previewBtn);
+          actions.appendChild(chatBtn);
+          actions.appendChild(saveBtn);
+          actions.appendChild(downloadBtn);
 
           wrapper.appendChild(header); wrapper.appendChild(container); wrapper.appendChild(actions);
           resultsArea.appendChild(wrapper);
@@ -408,7 +504,10 @@
         if (idx === -1) return;
         if (action === 'open') showHistoryDetail(history[idx]);
         if (action === 'download') {
-          const h = history[idx]; const blob = new Blob([JSON.stringify(h, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${h.name.replace(/\s+/g,'_')}_extraction.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+          const h = history[idx];
+          const blob = new Blob([JSON.stringify(h, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a'); a.href = url; a.download = `${h.name.replace(/\s+/g,'_')}_extraction.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
         }
         if (action === 'delete') { if (!confirm('Remove saved extraction?')) return; history.splice(idx,1); saveHistory(); renderHistoryList(); historyDetail.innerHTML = ''; }
       });
@@ -418,7 +517,11 @@
         document.getElementById('historyView').style.display = '';
         historyDetail.innerHTML = `<div style="font-weight:800">${escapeHtml(h.name)}</div><div class="muted-small">${new Date(h.extractedAt).toLocaleString()}</div>`;
         const container = document.createElement('div'); container.style.marginTop = '12px';
-        h.pages.forEach(p => { const box = document.createElement('div'); box.className='kp'; box.innerHTML = `<h4>Page ${p.page}</h4><ul>${p.keypoints.map(k => `<li>${escapeHtml(k)}</li>`).join('')}</ul>`; container.appendChild(box); });
+        h.pages.forEach(p => {
+          const box = document.createElement('div'); box.className='kp';
+          box.innerHTML = `<h4>Page ${p.page}</h4><ul>${p.keypoints.map(k => `<li>${escapeHtml(k)}</li>`).join('')}</ul>`;
+          container.appendChild(box);
+        });
         historyDetail.appendChild(container);
       }
 
@@ -505,6 +608,132 @@
       }
 
       function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+      // Preview helpers
+      let currentPreviewUrl = null;
+      function showPreviewForFileObj(fileObj) {
+        if (!fileObj || !fileObj.file) return alert('No file to preview');
+        previewTitle.textContent = fileObj.name;
+        previewContent.innerHTML = '';
+        if (currentPreviewUrl) { URL.revokeObjectURL(currentPreviewUrl); currentPreviewUrl = null; }
+        const blob = fileObj.file;
+        const type = blob.type || '';
+        currentPreviewUrl = URL.createObjectURL(blob);
+        previewDownload.onclick = () => {
+          const a = document.createElement('a'); a.href = currentPreviewUrl; a.download = fileObj.name; document.body.appendChild(a); a.click(); a.remove();
+        };
+        if (type.startsWith('image/')) {
+          const img = document.createElement('img'); img.style.maxWidth='100%'; img.src = currentPreviewUrl; previewContent.appendChild(img);
+        } else if (type === 'application/pdf' || fileObj.name.toLowerCase().endsWith('.pdf')) {
+          const obj = document.createElement('object'); obj.type='application/pdf'; obj.data=currentPreviewUrl; obj.style.width='100%'; obj.style.height='70vh'; previewContent.appendChild(obj);
+        } else if (type.startsWith('text/') || fileObj.name.toLowerCase().endsWith('.txt')) {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const pre = document.createElement('pre'); pre.style.whiteSpace='pre-wrap'; pre.textContent = reader.result; previewContent.appendChild(pre);
+          };
+          reader.readAsText(blob);
+        } else {
+          // for docx/pptx/etc: offer to open/download
+          const p = document.createElement('div');
+          p.innerHTML = `<div class="muted-small">Preview not supported for this file type in-browser. You can download or open it in an external viewer.</div>`;
+          previewContent.appendChild(p);
+          const openBtn = document.createElement('button'); openBtn.className='btn'; openBtn.textContent='Open file';
+          openBtn.onclick = () => { window.open(currentPreviewUrl, '_blank'); };
+          previewContent.appendChild(openBtn);
+        }
+        previewModal.classList.add('visible'); previewModal.setAttribute('aria-hidden','false');
+      }
+      previewClose.addEventListener('click', () => {
+        previewModal.classList.remove('visible'); previewModal.setAttribute('aria-hidden','true');
+        if (currentPreviewUrl) { URL.revokeObjectURL(currentPreviewUrl); currentPreviewUrl = null; }
+      });
+
+      // Chat helpers
+      let activeChatTarget = null; // { id, name, type:'file'|'history', pages }
+      function openChatForFile(fileObj) {
+        activeChatTarget = { id: fileObj.id, name: fileObj.name, type:'file', pages: fileObj.result ? fileObj.result.pages : [] };
+        chatTitle.textContent = `Chat about: ${fileObj.name}`;
+        loadChatMessagesFor(activeChatTarget.id);
+        chatModal.classList.add('visible'); chatModal.setAttribute('aria-hidden','false');
+      }
+      function openChatForHistory(h) {
+        activeChatTarget = { id: h.id, name: h.name, type:'history', pages: h.pages };
+        chatTitle.textContent = `Chat about: ${h.name}`;
+        loadChatMessagesFor(activeChatTarget.id);
+        chatModal.classList.add('visible'); chatModal.setAttribute('aria-hidden','false');
+      }
+      function loadChatMessagesFor(id) {
+        chatMessages.innerHTML = '';
+        const msgs = chats[id] || [];
+        msgs.forEach(m => {
+          const d = document.createElement('div'); d.className = 'chat-message ' + (m.role==='user' ? 'user' : 'bot'); d.textContent = m.text;
+          chatMessages.appendChild(d);
+        });
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+      chatClose.addEventListener('click', () => {
+        chatModal.classList.remove('visible'); chatModal.setAttribute('aria-hidden','true');
+      });
+
+      chatSend.addEventListener('click', sendChatFromInput);
+      chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { sendChatFromInput(); } });
+
+      async function sendChatFromInput() {
+        const text = chatInput.value.trim();
+        if (!text || !activeChatTarget) return;
+        pushChatMessage(activeChatTarget.id, { role:'user', text });
+        loadChatMessagesFor(activeChatTarget.id);
+        chatInput.value = '';
+        // call backend
+        try {
+          const reply = await sendChatToBackend(activeChatTarget, text);
+          pushChatMessage(activeChatTarget.id, { role:'bot', text: reply });
+        } catch (err) {
+          pushChatMessage(activeChatTarget.id, { role:'bot', text: 'Error contacting AI: ' + (err.message||'unknown') });
+        }
+        loadChatMessagesFor(activeChatTarget.id);
+      }
+
+      function pushChatMessage(id, msg) {
+        if (!chats[id]) chats[id] = [];
+        chats[id].push(msg);
+        // cap chat length
+        if (chats[id].length > 200) chats[id].shift();
+      }
+
+      async function sendChatToBackend(target, message) {
+        // Expected backend POST: /ai/chat  { fileName, message }
+        try {
+          const resp = await fetch(`${API_BASE}/ai/chat`, {
+            method: 'POST',
+            headers: Object.assign({ 'Content-Type':'application/json' }, TOKEN ? { 'Authorization': 'Bearer ' + TOKEN } : {}),
+            body: JSON.stringify({ fileName: target.name, message })
+          });
+          if (!resp.ok) throw new Error('Server ' + resp.status);
+          const j = await resp.json();
+          // assume { reply: '...' } or { answer: '...' }
+          return j.reply || j.answer || JSON.stringify(j);
+        } catch (err) {
+          // fallback simulated answer using pages/keypoints
+          return simulateChatResponse(target, message);
+        }
+      }
+
+      function simulateChatResponse(target, message) {
+        // produce a simple helpful response using the extracted keypoints
+        const pages = target.pages || [];
+        const flat = pages.flatMap(p => p.keypoints || []);
+        if (!flat.length) return `I don't have extracted content for "${target.name}" yet, but you can scan the file to create extraction results.`;
+        // naive: find keypoints containing a keyword from the message
+        const q = message.toLowerCase().split(/\s+/).filter(Boolean);
+        const matches = flat.filter(k => q.some(tok => k.toLowerCase().includes(tok))).slice(0,6);
+        if (matches.length) {
+          return `Here are relevant keypoints from the material:\n\n- ${matches.join('\n- ')}`;
+        }
+        // else summary
+        const sample = flat.slice(0,6).map((x,i)=>`${i+1}. ${x}`).join('\n');
+        return `Summary of top keypoints:\n\n${sample}`;
+      }
 
       // Helpers & initialization
       function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[m]); }
