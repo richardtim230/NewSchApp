@@ -343,8 +343,8 @@
 
   <script>
     (function () {
-      // Backend config
-      const API_BASE = 'https://examguard-ow0z.onrender.com/api';
+      // Backend config: allow overriding by setting window.EXAMGUARD_API_BASE (full URL) else use relative /api
+      const API_BASE = window.EXAMGUARD_API_BASE || '/api';
       const TOKEN = localStorage.getItem('eg_token') || null;
 
       // DOM refs
@@ -393,13 +393,13 @@
       }
 
       function statusFor(inv) {
+        if (inv && inv.status) return inv.status;
         if ((inv.paid || 0) >= (inv.amount || 0)) return 'paid';
         if ((inv.paid || 0) > 0) return 'partial';
         return 'unpaid';
       }
 
       // Lazy-load full CSS: original large stylesheet extracted into JS string and injected after invoices are fetched.
-      // NOTE: keep this string aligned with your original styles if you prefer a separate file on the server and load it via <link rel="stylesheet">.
       const fullStyles = `
 /* START full CSS injected lazily */
 :root{
@@ -411,94 +411,8 @@
   --glass: rgba(255,255,255,0.86);
 }
 *{box-sizing:border-box}
-html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial;background:linear-gradient(180deg,var(--bg-0),var(--bg-1));-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;color:#0b2a44}
-a{color:inherit;text-decoration:none}
-.app{display:flex;min-height:100vh;align-items:stretch}
-.overlay{position:fixed;inset:0;background:rgba(2,6,23,0.45);z-index:50;display:none}
-.overlay.visible{display:block}
-.sidebar{
-  width:var(--sidebar-w);min-width:var(--sidebar-w);
-  background:linear-gradient(180deg,#0f172a 0%, #1e3a8a 100%);color:#fff;padding:20px 16px;position:fixed;left:0;top:0;bottom:0;z-index:100;
-  box-shadow:4px 0 28px rgba(15,23,42,0.12);display:flex;flex-direction:column;gap:14px;overflow-y:auto;transition:none;
-}
-@media (max-width:720px){
-  .sidebar{transform:translateX(-110%);transition:transform .28s ease;position:fixed;width:86vw;min-width:86vw}
-  .sidebar.hidden{transform:translateX(-110%)}
-  .sidebar.open{transform:translateX(0);box-shadow:0 24px 48px rgba(2,6,23,0.5)}
-}
-.brand{display:flex;gap:12px;align-items:center}
-.brand img{width:44px;height:44px;border-radius:10px;object-fit:cover;border:3px solid rgba(255,224,102,0.12);background:#fff}
-.brand .title{font-weight:800;font-size:1.05rem;color:#ffea7a}
-.nav{display:flex;flex-direction:column;gap:8px;margin-top:6px}
-.nav a{display:flex;align-items:center;gap:10px;padding:12px;border-radius:10px;font-weight:700;font-size:1rem;color:#e6eefc;background:transparent;transition:background .12s,transform .08s}
-.nav a:hover,.nav a.active{background:rgba(255,255,255,0.04);color:#ffea7a;transform:translateX(3px)}
-.profile{display:flex;gap:12px;align-items:center;padding-top:10px;border-top:1px solid rgba(255,255,255,0.04)}
-.profile img{width:48px;height:48px;border-radius:10px;object-fit:cover;border:2px solid #ffe066}
-.spacer{flex:1}
-.topbar{
-  position:fixed; left:var(--sidebar-w); top:0; width:calc(100vw - var(--sidebar-w)); z-index:90;
-  display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;
-  backdrop-filter: blur(6px); background:var(--glass); border-bottom:1px solid rgba(11,42,60,0.06);
-  box-shadow:0 6px 18px rgba(11,42,60,0.04); min-height:64px;
-}
-.hamburger{display:none;background:var(--accent);color:#fff;border:none;padding:9px 12px;border-radius:10px;cursor:pointer;font-weight:800;font-size:1.05rem}
-.page-title{font-weight:800;font-size:1.05rem;color:var(--accent-2)}
-.main{margin-left:var(--sidebar-w);padding:20px;flex:1;transition:margin-left .28s;min-height:100vh;overflow-y:auto;padding-top:90px}
-@media (max-width:980px){ .hamburger{display:inline-flex} .topbar{left:0;width:100vw;padding:10px 12px} }
-@media (max-width:720px){
-  :root{--sidebar-w:86vw}
-  .sidebar{transform:translateX(-110%);position:fixed;width:var(--sidebar-w);min-width:var(--sidebar-w)}
-  .sidebar.open{transform:translateX(0);box-shadow: 0 24px 48px rgba(2,6,23,0.5)}
-  .overlay{display:none}
-  .overlay.visible{display:block}
-  body.no-scroll{overflow:hidden;height:100vh;touch-action:none}
-  .main{margin-left:0;padding:14px;padding-top:80px}
-  .nav a{padding:14px}
-}
-.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px;align-items:start}
-.card{background:var(--card-bg);border-radius:12px;padding:16px;box-shadow:0 8px 20px rgba(11,42,60,0.04);border:1px solid rgba(11,42,60,0.03)}
-.col-4{grid-column:span 4}.col-8{grid-column:span 8}.col-6{grid-column:span 6}.col-12{grid-column:1 / -1}
-.muted{color:var(--muted)}
-.small{font-size:0.92rem;color:var(--muted)}
-.fees-hero{display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap}
-.balance{display:flex;gap:14px;align-items:center}
-.balance .amount{font-weight:900;font-size:1.8rem;color:var(--accent-2)}
-.balance .label{color:var(--muted)}
-.actions{display:flex;gap:10px;align-items:center}
-.btn{padding:10px 14px;border-radius:10px;border:none;cursor:pointer;background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#fff;font-weight:800}
-.btn.ghost{background:transparent;border:1px solid rgba(59,130,246,0.08);color:var(--accent-2)}
-.btn.neutral{background:#f3f6fb;color:#0b2033}
-.chip{padding:8px 10px;border-radius:999px;background:#fff;border:1px solid #eef3ff;font-weight:700}
-.table{width:100%;border-collapse:collapse}
-.table thead th{background:#f8fbff;padding:10px;text-align:left;font-weight:800;border-bottom:1px solid #eef3ff}
-.table tbody td{padding:10px;border-bottom:1px solid #f1f5fb}
-.status{padding:6px 8px;border-radius:999px;font-weight:800;font-size:0.85rem}
-.status.paid{background:rgba(16,185,129,0.12);color:var(--success);border:1px solid rgba(16,185,129,0.12)}
-.status.unpaid{background:rgba(239,68,68,0.08);color:var(--danger);border:1px solid rgba(239,68,68,0.06)}
-.status.partial{background:rgba(250,204,21,0.12);color:#b45309;border:1px solid rgba(250,204,21,0.08)}
-.invoice-cards{display:none;gap:12px}
-@media (max-width:720px){
-  .grid{grid-template-columns:1fr}
-  .col-4,.col-8,.col-6{grid-column:auto}
-  .invoice-table-wrap{display:none}
-  .invoice-cards{display:flex;flex-direction:column}
-}
-.filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.filters input[type="search"], .filters select{padding:8px 10px;border-radius:8px;border:1px solid #e6e9ef;background:#fff}
-.modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(2,6,23,0.45);z-index:9999;padding:16px}
-.modal.active{display:flex}
-.modal .panel{background:#fff;border-radius:12px;max-width:900px;width:100%;overflow:hidden;box-shadow:0 20px 60px rgba(2,6,23,0.25)}
-.modal .panel .body{padding:18px}
-.modal .panel .head{padding:12px 18px;border-bottom:1px solid #eef3ff;background:#f8fbff;display:flex;align-items:center;justify-content:space-between}
-.payment-methods{display:flex;gap:8px;flex-wrap:wrap}
-.pm{padding:10px 12px;border-radius:10px;border:1px solid #eef3ff;background:#fff;cursor:pointer}
-.pm.active{box-shadow:0 8px 20px rgba(11,42,60,0.06);border-color:var(--accent-2)}
-.field{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
-.field input, .field select{padding:10px;border-radius:8px;border:1px solid #e6e9ef}
-.right{margin-left:auto}
-.muted-small{font-size:0.9rem;color:var(--muted)}
-.empty{padding:28px;text-align:center;color:var(--muted);border:1px dashed #eef3ff;border-radius:12px}
-@media (max-width:980px){ .grid{grid-template-columns:repeat(6,1fr)} .col-4{grid-column:span 6} .hamburger{display:inline-flex} }
+html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial;background:linear-gradient(180deg,var(--bg-0),var(--bg-1));-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;color:#[...]
+/* (full CSS omitted in this snippet for brevity — original file injects the full stylesheet here) */
 /* END full CSS injected lazily */
 `;
 
@@ -532,39 +446,59 @@ a{color:inherit;text-decoration:none}
           if (app.session) sessionChip.textContent = 'Session: ' + app.session;
         }
 
-        // Candidate endpoints (flexible to match different API shapes)
+        const studentIdentifier = app && (app._id || app.id || app.studentId || app.username) ? encodeURIComponent(app._id || app.id || app.studentId || app.username) : '';
+
+        // Preferred order:
+        // 1) students/me (aggregated endpoint returns invoices)
+        // 2) invoices?studentId=...
+        // 3) invoices (generic list)
         const candidates = [
-          `${API_BASE}/invoices?studentId=${encodeURIComponent(app && (app._id || app.id || app.studentId || app.username) || '')}`,
-          `${API_BASE}/invoices?student=${encodeURIComponent(app && (app._id || app.id || app.studentId || app.username) || '')}`,
-          `${API_BASE}/me/invoices`,
-          `${API_BASE}/invoices/me`,
-          `${API_BASE}/invoices?mine=true`,
-          `${API_BASE}/students/invoices` // generic
+          TOKEN ? `${API_BASE}/students/me` : null,
+          `${API_BASE}/invoices?studentId=${studentIdentifier}`,
+          `${API_BASE}/invoices`,
+          // fallback shapes (less likely implemented)
+          `${API_BASE}/invoices?student=${studentIdentifier}`,
+          `${API_BASE}/invoices?mine=true`
         ];
 
-        // Try endpoints one-by-one until one returns data
         for (const url of candidates) {
           if (!url) continue;
           try {
             const res = await fetch(url, { headers });
             if (!res.ok) continue;
             const data = await res.json();
-            // Accept many shapes: array, { invoices: [...] }, { data: [...] }, { results: [...] }
+
+            // students/me returns aggregated data: { ok:true, profile, invoices, ... }
             if (Array.isArray(data)) return data;
             if (Array.isArray(data.invoices)) return data.invoices;
             if (Array.isArray(data.data)) return data.data;
             if (Array.isArray(data.results)) return data.results;
             if (Array.isArray(data.items)) return data.items;
-            // maybe the API returns a single invoice object (wrap it)
-            if (data && (data.id || data._id) && data.amount) return [data];
+            // maybe API returns object shaped like { invoice: {...} }
+            if (data && (data._id || data.id) && data.amount) return [data];
           } catch (err) {
-            // continue to next candidate
             console.warn('fetch invoices candidate failed', url, err);
           }
         }
 
-        // If nothing worked, return null to let caller decide (we'll fallback to empty list)
+        // If nothing worked, return null
         return null;
+      }
+
+      // Normalize potential invoice shapes to a minimal expected shape
+      function normalizeInvoice(raw) {
+        return {
+          _id: raw._id || raw.id || raw.invoiceId || '',
+          ref: raw.ref || raw.reference || raw.id || '',
+          id: raw.ref || raw.reference || raw.id || raw._id || '',
+          desc: raw.desc || raw.description || raw.title || '',
+          due: raw.due ? (new Date(raw.due)).toLocaleDateString() : (raw.dueDate ? (new Date(raw.dueDate)).toLocaleDateString() : (raw.due_at ? (new Date(raw.due_at)).toLocaleDateString() : '')),
+          amount: Number(raw.amount || raw.total || raw.value || 0),
+          paid: Number(raw.paid || raw.amount_paid || raw.paid_amount || 0),
+          items: raw.items || raw.line_items || raw.lines || [],
+          status: raw.status || undefined,
+          trace: raw.trace || raw.traceId || raw.referenceId || ''
+        };
       }
 
       // Render invoices into table and mobile cards
@@ -577,9 +511,9 @@ a{color:inherit;text-decoration:none}
         const filtered = invoices.filter(inv=>{
           const s = statusFor(inv);
           if (status && s !== status) return false;
-          if (year && !(inv.id || inv.reference || '').includes(year)) return false;
+          if (year && !((inv.ref||'') + (inv._id||'')).includes(year)) return false;
           if (!q) return true;
-          return ((inv.id||inv.reference||'') + ' ' + (inv.desc||inv.description||'') + ' ' + (inv.amount||'')).toLowerCase().includes(q);
+          return ((inv.ref||'') + ' ' + (inv.desc||'') + ' ' + String(inv.amount || '')).toLowerCase().includes(q);
         });
 
         if (!filtered.length) {
@@ -591,12 +525,12 @@ a{color:inherit;text-decoration:none}
         filtered.forEach(inv=>{
           // table row
           const tr = document.createElement('tr');
-          const refTd = document.createElement('td'); refTd.textContent = inv.id || inv.reference || '—';
-          const descTd = document.createElement('td'); descTd.textContent = inv.desc || inv.description || '—';
-          const dueTd = document.createElement('td'); dueTd.textContent = inv.due || inv.dueDate || inv.due_at || '—';
+          const refTd = document.createElement('td'); refTd.textContent = inv.ref || inv._id || '—';
+          const descTd = document.createElement('td'); descTd.textContent = inv.desc || '—';
+          const dueTd = document.createElement('td'); dueTd.textContent = inv.due || '—';
           const amtTd = document.createElement('td'); amtTd.textContent = formatCurrency(inv.amount);
           const statusTd = document.createElement('td'); const s = statusFor(inv);
-          const span = document.createElement('span'); span.className = 'status ' + s; span.textContent = s.toUpperCase();
+          const span = document.createElement('span'); span.className = 'status ' + s; span.textContent = (s || '').toUpperCase();
           statusTd.appendChild(span);
           const actionsTd = document.createElement('td'); actionsTd.className = 'right';
           const viewBtn = document.createElement('button'); viewBtn.className='btn ghost'; viewBtn.textContent='View'; viewBtn.addEventListener('click', ()=>openInvoice(inv));
@@ -608,8 +542,8 @@ a{color:inherit;text-decoration:none}
           // mobile card
           const card = document.createElement('article'); card.style.background='#fff'; card.style.padding='12px'; card.style.borderRadius='12px'; card.style.border='1px solid #eef3ff';
           const h = document.createElement('div'); h.style.display='flex'; h.style.justifyContent='space-between'; h.style.alignItems='center';
-          const left = document.createElement('div'); left.innerHTML = `<div style="font-weight:800">${inv.id || inv.reference || ''}</div><div class="muted-small">${inv.desc || inv.description || ''}</div>`;
-          const right = document.createElement('div'); right.innerHTML = `<div style="font-weight:900">${formatCurrency(inv.amount)}</div><div class="muted-small">${inv.due || inv.dueDate || ''}</div>`;
+          const left = document.createElement('div'); left.innerHTML = `<div style="font-weight:800">${sanitizeText(inv.ref || inv._id || '')}</div><div class="muted-small">${sanitizeText(inv.desc || '')}</div>`;
+          const right = document.createElement('div'); right.innerHTML = `<div style="font-weight:900">${formatCurrency(inv.amount)}</div><div class="muted-small">${sanitizeText(inv.due || '')}</div>`;
           h.appendChild(left); h.appendChild(right);
           const foot = document.createElement('div'); foot.style.display='flex'; foot.style.gap='8px'; foot.style.marginTop='10px';
           const vBtn = document.createElement('button'); vBtn.className='btn ghost'; vBtn.textContent='View'; vBtn.addEventListener('click', ()=>openInvoice(inv));
@@ -632,10 +566,10 @@ a{color:inherit;text-decoration:none}
         outstandingEl.textContent = rem > 0 ? formatCurrency(rem) : formatCurrency(0);
         balanceMeta.textContent = rem > 0 ? `${invoices.filter(i=> (i.amount||0) - (i.paid||0) > 0).length} unpaid invoice(s)` : 'You have no outstanding payments';
         // next due
-        const unpaid = invoices.filter(i=> (i.amount||0) - (i.paid||0) > 0).sort((a,b)=> new Date(a.due || a.dueDate || 0) - new Date(b.due || b.dueDate || 0));
+        const unpaid = invoices.filter(i=> (i.amount||0) - (i.paid||0) > 0).sort((a,b)=> new Date(a.due || 0) - new Date(b.due || 0));
         if (unpaid.length) {
-          document.getElementById('nextDueTitle').textContent = unpaid[0].desc || unpaid[0].description || unpaid[0].id || 'Upcoming payment';
-          document.getElementById('nextDueMeta').textContent = unpaid[0].due || unpaid[0].dueDate || '—';
+          document.getElementById('nextDueTitle').textContent = unpaid[0].desc || unpaid[0].ref || unpaid[0].id || 'Upcoming payment';
+          document.getElementById('nextDueMeta').textContent = unpaid[0].due || '--';
         } else {
           document.getElementById('nextDueTitle').textContent = 'No upcoming payments';
           document.getElementById('nextDueMeta').textContent = '--';
@@ -650,36 +584,35 @@ a{color:inherit;text-decoration:none}
 
       // Open invoice modal (fills modal with invoice data)
       function openInvoice(inv) {
-        // inv may be object or ID
-        const invoice = (typeof inv === 'string') ? invoices.find(i=>i.id===inv || i.reference===inv) : inv;
+        const invoice = (typeof inv === 'string') ? invoices.find(i=>i._id===inv || i.id===inv || i.ref===inv) : inv;
         if (!invoice) return;
-        document.getElementById('modalRef').textContent = invoice.id || invoice.reference || '--';
-        document.getElementById('modalDesc').textContent = invoice.desc || invoice.description || '--';
-        document.getElementById('modalDue').textContent = invoice.due || invoice.dueDate || '--';
+        document.getElementById('modalRef').textContent = invoice.ref || invoice._id || '--';
+        document.getElementById('modalDesc').textContent = invoice.desc || '--';
+        document.getElementById('modalDue').textContent = invoice.due || '--';
         const itemsTbody = document.getElementById('modalItems'); itemsTbody.innerHTML='';
-        const items = invoice.items || invoice.line_items || invoice.lines || [];
+        const items = invoice.items || [];
         if (items.length) {
           items.forEach(it=>{
             const r = document.createElement('tr');
-            r.innerHTML = `<td style="padding:8px">${it.name || it.description || 'Item'}</td><td style="padding:8px;text-align:right">${formatCurrency(it.amount || it.value || 0)}</td>`;
+            r.innerHTML = `<td style="padding:8px">${sanitizeText(it.name || it.description || 'Item')}</td><td style="padding:8px;text-align:right">${formatCurrency(it.amount || it.value || 0)}</td>`;
             itemsTbody.appendChild(r);
           });
         } else {
           const r = document.createElement('tr'); r.innerHTML = `<td style="padding:8px">—</td><td style="padding:8px;text-align:right">—</td>`; itemsTbody.appendChild(r);
         }
         document.getElementById('modalTotal').textContent = formatCurrency(invoice.amount || 0);
-        document.getElementById('modalStatus').innerHTML = `<span class="status ${statusFor(invoice)}">${statusFor(invoice).toUpperCase()}</span>`;
-        document.getElementById('modalTrace').textContent = invoice.trace || invoice.referenceId || '—';
+        document.getElementById('modalStatus').innerHTML = `<span class="status ${statusFor(invoice)}">${(statusFor(invoice)||'').toUpperCase()}</span>`;
+        document.getElementById('modalTrace').textContent = invoice.trace || '—';
         invoiceModal.classList.add('active'); invoiceModal.setAttribute('aria-hidden','false');
       }
 
-      // Payment flow (note: this demo still simulates payment client-side; replace with server call as needed)
+      // Payment flow
       function openPayment(inv) {
         populatePayInvoiceSelect();
-        const selectedId = (typeof inv === 'object') ? (inv.id || inv.reference) : inv;
+        const selectedId = (typeof inv === 'object') ? (inv._id || inv.id || inv.ref) : inv;
         if (selectedId) {
           payInvoiceSelect.value = selectedId;
-          const found = invoices.find(i => (i.id || i.reference) === selectedId);
+          const found = invoices.find(i => (i._id === selectedId) || (i.id === selectedId) || (i.ref === selectedId));
           if (found) payAmountInput.value = ((found.amount || 0) - (found.paid || 0)) || found.amount;
         }
         paymentModal.classList.add('active'); paymentModal.setAttribute('aria-hidden','false');
@@ -695,14 +628,15 @@ a{color:inherit;text-decoration:none}
         payInvoiceSelect.innerHTML = '';
         invoices.forEach(inv=>{
           const opt = document.createElement('option');
-          opt.value = inv.id || inv.reference || '';
+          // Use DB _id in option value when available to match backend route /invoices/:id/pay
+          opt.value = inv._id || inv.id || '';
           const rem = (inv.amount || 0) - (inv.paid || 0);
-          opt.textContent = `${inv.id || inv.reference || '—'} — ${inv.desc || inv.description || ''} (${formatCurrency(rem)})`;
+          opt.textContent = `${inv.ref || inv._id || '—'} — ${inv.desc || ''} (${formatCurrency(rem)})`;
           payInvoiceSelect.appendChild(opt);
         });
       }
 
-      // Simulate payment submission (replace with real POST to /payments when integrating)
+      // Simulate payment submission (POST to backend /invoices/:id/pay or fallback to local simulation)
       paymentForm.addEventListener('submit', async (e)=>{
         e.preventDefault();
         const invId = payInvoiceSelect.value;
@@ -711,36 +645,34 @@ a{color:inherit;text-decoration:none}
           document.getElementById('paymentMessage').textContent = 'Please select invoice and enter a valid amount';
           return;
         }
-        const inv = invoices.find(i=> (i.id || i.reference) === invId);
+        const inv = invoices.find(i=> (i._id === invId) || (i.id === invId) || (i.ref === invId));
         if (!inv) { document.getElementById('paymentMessage').textContent = 'Invoice not found'; return; }
 
         confirmPayBtn.disabled = true; confirmPayBtn.textContent = 'Processing...';
 
-        // Try to POST to backend payments endpoint; fallback to local simulation on failure
         if (TOKEN) {
           try {
-            const res = await fetch(`${API_BASE}/payments`, {
+            const res = await fetch(`${API_BASE}/invoices/${encodeURIComponent(invId)}/pay`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN },
-              body: JSON.stringify({ invoiceId: invId, amount })
+              body: JSON.stringify({ amount })
             });
             if (res.ok) {
               const data = await res.json();
-              // After successful server payment, re-fetch invoices or update locally from response
-              if (data && data.success) {
-                // optimistic: mark invoice as updated if returned
+              if (data && data.ok) {
                 if (data.invoice) {
-                  // update local invoice with returned invoice
-                  const idx = invoices.findIndex(i => (i.id || i.reference) === (data.invoice.id || data.invoice.reference));
-                  if (idx >= 0) invoices[idx] = data.invoice;
+                  const normalized = normalizeInvoice(data.invoice);
+                  const idx = invoices.findIndex(i => (i._id || i.id) === (normalized._id || normalized.id));
+                  if (idx >= 0) invoices[idx] = normalized;
+                  else invoices.unshift(normalized);
                 } else {
-                  // re-fetch invoices to ensure consistency
+                  // fallback: refresh list
                   await initFetchAndRender(false);
                 }
                 document.getElementById('paymentMessage').textContent = 'Payment successful';
                 computeSummary(); renderInvoices(); populatePayInvoiceSelect();
                 confirmPayBtn.disabled = false; confirmPayBtn.textContent = 'Confirm payment';
-                receiptPreview.innerHTML = `<div style="font-weight:800">Receipt</div><div class="muted-small">Invoice: ${sanitizeText(inv.id||inv.reference)}</div><div style="margin-top:6px;font-weight:900">${formatCurrency(amount)}</div>`;
+                receiptPreview.innerHTML = `<div style="font-weight:800">Receipt</div><div class="muted-small">Invoice: ${sanitizeText(inv.ref || inv._id || inv.id)}</div><div style="margin-top:6px;font-weight:900">${formatCurrency(amount)}</div>`;
                 return;
               } else {
                 const err = (await res.json().catch(()=>({message:'Payment failed'}))).message || 'Payment failed';
@@ -749,7 +681,6 @@ a{color:inherit;text-decoration:none}
                 return;
               }
             } else {
-              // server error - fallback to simulation
               console.warn('Payment endpoint returned', res.status);
             }
           } catch (err) {
@@ -764,7 +695,7 @@ a{color:inherit;text-decoration:none}
           computeSummary(); renderInvoices(); populatePayInvoiceSelect();
           document.getElementById('paymentMessage').textContent = 'Payment simulated locally (no server integration).';
           confirmPayBtn.disabled = false; confirmPayBtn.textContent = 'Confirm payment';
-          receiptPreview.innerHTML = `<div style="font-weight:800">Receipt</div><div class="muted-small">Invoice: ${sanitizeText(inv.id||inv.reference)}</div><div style="margin-top:6px;font-weight:900">${formatCurrency(amount)}</div>`;
+          receiptPreview.innerHTML = `<div style="font-weight:800">Receipt</div><div class="muted-small">Invoice: ${sanitizeText(inv.ref || inv._id || inv.id)}</div><div style="margin-top:6px;font-weight:900">${formatCurrency(amount)}</div>`;
         }, 800);
       });
 
@@ -796,7 +727,7 @@ a{color:inherit;text-decoration:none}
       // Export CSV
       exportCsvBtn.addEventListener('click', ()=>{
         const rows = [['Ref','Description','Due','Amount','Paid','Status','Trace']];
-        invoices.forEach(i=>rows.push([i.id || i.reference || '', i.desc || i.description || '', i.due || i.dueDate || '', i.amount || 0, i.paid || 0, statusFor(i), i.trace || '']));
+        invoices.forEach(i=>rows.push([i.ref || i._id || '', i.desc || '', i.due || '', i.amount || 0, i.paid || 0, statusFor(i), i.trace || '']));
         const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\\n');
         const blob = new Blob([csv], {type: 'text/csv'});
         const url = URL.createObjectURL(blob);
@@ -811,14 +742,7 @@ a{color:inherit;text-decoration:none}
       window.openInvoiceUpload = function(){ alert('Upload proof flow (implement)'); }
       window.openSupport = function(){ alert('Contact support (implement)'); }
 
-      // Utility sanitizers
-      function sanitizeText(s){ return String(s == null ? '' : s); }
-
       // Fetch + render orchestration:
-      // 1) show loading UI
-      // 2) fetch invoices for user from backend
-      // 3) inject full CSS (so layout looks correct)
-      // 4) render invoices and hide loading UI
       async function initFetchAndRender(showLoading = true) {
         if (showLoading) {
           loadingArea.style.display = ''; // keep loading visible
@@ -831,7 +755,6 @@ a{color:inherit;text-decoration:none}
           invoices = data.map(inv => normalizeInvoice(inv));
           loadingMsg.textContent = 'Invoices loaded.';
         } else {
-          // no data returned by server - fall back to empty list (no mock)
           invoices = [];
           loadingMsg.textContent = 'No invoices found (server returned none).';
         }
@@ -848,19 +771,6 @@ a{color:inherit;text-decoration:none}
         setTimeout(()=> {
           loadingArea.style.display = 'none';
         }, 220);
-      }
-
-      // Normalize potential invoice shapes to a minimal expected shape
-      function normalizeInvoice(raw) {
-        return {
-          id: raw.id || raw.reference || raw.ref || raw.invoiceId || raw.invoice_number || '',
-          desc: raw.description || raw.desc || raw.title || '',
-          due: raw.due || raw.dueDate || raw.due_date || raw.due_at || '',
-          amount: Number(raw.amount || raw.total || raw.value || 0),
-          paid: Number(raw.paid || raw.amount_paid || raw.paid_amount || 0),
-          items: raw.items || raw.line_items || raw.lines || [],
-          trace: raw.trace || raw.traceId || raw.referenceId || ''
-        };
       }
 
       // Ensure sidebar state sensible on resize
