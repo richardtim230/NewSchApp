@@ -53,6 +53,9 @@
     @media (max-width:720px){ .grid{grid-template-columns:1fr} .sidebar{display:none} .main{margin-left:0;padding:14px;padding-top:84px} .topbar{left:0;width:100%} }
     .chip { display:inline-block;padding:6px 8px;border-radius:999px;background:#f1f5ff;border:1px solid #e6eefc;margin:4px;font-weight:700 }
     .multiselect { display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1px solid #e6e9ef;border-radius:8px;background:#fff;min-height:44px }
+    .detail-row { display:flex; gap:12px; margin-bottom:8px; align-items:flex-start; }
+    .detail-key { width:160px; font-weight:700; color:var(--muted); }
+    .detail-val { flex:1; }
   </style>
 </head>
 <body>
@@ -234,680 +237,967 @@
       </div>
     </main>
 
-    <!-- Generic item modal (used for viewing JSON/details) -->
+    <!-- Generic item modal (used for viewing & editing details) -->
     <div class="modal" id="itemModal" role="dialog" aria-modal="true" aria-hidden="true">
       <div class="panel">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;border-bottom:1px solid #eef3ff">
           <div id="itemModalTitle" style="font-weight:800">Details</div>
-          <div><button class="btn ghost" id="closeItemModal">Close</button></div>
+          <div>
+            <button class="btn ghost" id="itemEditBtn" style="margin-right:8px;display:none">Edit</button>
+            <button class="btn ghost" id="closeItemModal">Close</button>
+          </div>
         </div>
         <div class="body" id="itemModalBody" style="padding:12px;max-height:70vh;overflow:auto"></div>
       </div>
     </div>
 
-    <!-- Create/Edit modal (form) -->
+    <!-- Create/Edit modal (form) reused earlier createModal -->
     <div class="modal" id="createModal" role="dialog" aria-modal="true" aria-hidden="true">
       <div class="panel">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;border-bottom:1px solid #eef3ff">
           <div id="createModalTitle" style="font-weight:800">Create</div>
           <div><button class="btn ghost" id="closeCreateModal">Close</button></div>
         </div>
-        <div class="body" id="createModalBody" style="padding:12px;max-height:70vh;overflow:auto">
-          <!-- dynamic form injected here -->
-        </div>
+        <div class="body" id="createModalBody" style="padding:12px;max-height:70vh;overflow:auto"></div>
       </div>
     </div>
 
   </div>
 
   <script>
-  (function(){
-    const API_BASE = 'https://examguard-mzok.onrender.com/api';
-    const TOKEN = localStorage.getItem('eg_token') || null;
-    const adminNameEl = document.getElementById('adminName');
-    const serverStatusEl = document.getElementById('serverStatus');
 
-    // small helpers
-    function headers(content='application/json'){ const h = {}; if(content) h['Content-Type']=content; if(TOKEN) h['Authorization']='Bearer '+TOKEN; return h; }
-    async function safeFetch(url, opts={}) {
-      try {
-        const res = await fetch(url, opts);
-        const text = await res.text();
-        try { return { ok: res.ok, status: res.status, data: JSON.parse(text) }; } catch { return { ok: res.ok, status: res.status, data: text }; }
-      } catch (err){ return { ok:false, error:err }; }
-    }
+(() => {
+  const API_BASE = 'https://examguard-mzok.onrender.com/api';
+  const TOKEN = localStorage.getItem('eg_token') || null;
 
-    // onboarding: show admin name from local cache / token payload
+  // DOM refs
+  const adminNameEl = document.getElementById('adminName');
+  const serverStatusEl = document.getElementById('serverStatus');
+  const itemModal = document.getElementById('itemModal');
+  const itemModalBody = document.getElementById('itemModalBody');
+  const itemModalTitle = document.getElementById('itemModalTitle');
+  const itemEditBtn = document.getElementById('itemEditBtn');
+  const createModal = document.getElementById('createModal');
+  const createModalBody = document.getElementById('createModalBody');
+  const createModalTitle = document.getElementById('createModalTitle');
+
+  // caches
+  let studentsCache = [];
+  let staffsCache = [];
+  let classesCache = [];
+  let subjectsCache = [];
+
+  // modal state
+  let modalState = { type: null, id: null, data: null };
+
+  // Helpers
+  function headers(content = 'application/json') {
+    const h = {};
+    if (content) h['Content-Type'] = content;
+    if (TOKEN) h['Authorization'] = 'Bearer ' + TOKEN;
+    return h;
+  }
+
+  async function safeFetch(url, opts = {}) {
     try {
-      const app = JSON.parse(localStorage.getItem('eg_application')||'null') || null;
-      if(app) adminNameEl.textContent = (app.firstName || app.name || app.username || 'Admin');
-    } catch(e){}
-
-    // Tab system
-    const tabs = Array.from(document.querySelectorAll('.sidebar-tab'));
-    const sections = Array.from(document.querySelectorAll('.tab-section'));
-    function setActiveTab(name) {
-      tabs.forEach(t => { const on = t.dataset.tab === name; t.classList.toggle('active', on); });
-      sections.forEach(s => s.id === name ? s.style.display = '' : s.style.display = 'none');
-      location.hash = '#'+name;
-    }
-    tabs.forEach(t => t.addEventListener('click', (e)=> { e.preventDefault(); setActiveTab(t.dataset.tab); }));
-    setActiveTab((location.hash||'#dashboard').replace('#','') || 'dashboard');
-
-    // Modal helpers
-    const itemModal = document.getElementById('itemModal');
-    const itemModalBody = document.getElementById('itemModalBody');
-    const itemModalTitle = document.getElementById('itemModalTitle');
-    document.getElementById('closeItemModal').addEventListener('click', ()=> { itemModal.classList.remove('active'); itemModal.setAttribute('aria-hidden','true'); });
-
-    function openModal(title, html){ itemModalTitle.textContent = title || 'Details'; itemModalBody.innerHTML = html || ''; itemModal.classList.add('active'); itemModal.setAttribute('aria-hidden','false'); }
-
-    const createModal = document.getElementById('createModal');
-    const createModalBody = document.getElementById('createModalBody');
-    const createModalTitle = document.getElementById('createModalTitle');
-    document.getElementById('closeCreateModal').addEventListener('click', ()=> { createModal.classList.remove('active'); createModal.setAttribute('aria-hidden','true'); createModalBody.innerHTML = ''; });
-
-    // caches
-    let studentsCache = [];
-    let staffsCache = [];
-    let classesCache = [];
-    let subjectsCache = [];
-
-    // utility generators
-    function genPassword(len=12){
-      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%*';
-      let out = '';
-      for(let i=0;i<len;i++) out += chars.charAt(Math.floor(Math.random()*chars.length));
-      return out;
-    }
-    function genEmailFromUsername(username, domain='school.example') {
-      username = (username || '').toLowerCase().replace(/[^a-z0-9._-]/g,'');
-      if (!username) username = 'user' + Math.floor(Math.random()*10000);
-      return `${username}@${domain}`;
-    }
-
-    // Fetch classes & subjects for forms
-    async function fetchClassesAndSubjects() {
+      const res = await fetch(url, opts);
+      const text = await res.text();
       try {
-        const c = await safeFetch(API_BASE + '/classes', { headers: headers() });
-        classesCache = (c.ok && Array.isArray(c.data)) ? c.data : [];
-      } catch(e){ classesCache = []; }
-      try {
-        let s = await safeFetch(API_BASE + '/courses', { headers: headers() });
-        if (!s.ok) s = await safeFetch(API_BASE + '/subjects', { headers: headers() });
-        subjectsCache = (s.ok && Array.isArray(s.data)) ? s.data : [];
-      } catch(e){ subjectsCache = []; }
-    }
-
-    // Renderers for students/staffs (unchanged except we ensure using _id or id)
-    function renderStudentsTable(results) {
-      const tbody = document.querySelector('#studentsTable tbody');
-      if (!results || !results.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty">No students</td></tr>'; return; }
-      tbody.innerHTML = '';
-      results.forEach((s, i) => {
-        const tr = document.createElement('tr');
-        const programClass = (s.program ? s.program + (s.className ? ' / ' + s.className : '') : (s.className || s.cohort || '—'));
-        const idv = s._id || s.id || '';
-        tr.innerHTML = `<td>${i+1}</td>
-          <td>${(s.firstName || s.name || '') + (s.lastName ? (' ' + s.lastName) : '')} <div class="muted-small">${s.username ? ('@' + s.username) : ''}</div></td>
-          <td>${s.email || '—'}</td>
-          <td>${programClass}</td>
-          <td>${s.status || '—'}</td>
-          <td>
-            <button class="btn ghost" data-action="view-student" data-id="${idv}">View</button>
-            <button class="btn" data-action="impersonate-student" data-id="${idv}">Impersonate</button>
-            <button class="btn ghost" data-action="toggle-student-status" data-id="${idv}" data-status="${s.status||''}">${s.status === 'disabled' ? 'Enable' : 'Disable'}</button>
-          </td>`;
-        tbody.appendChild(tr);
-      });
-    }
-
-    function renderStaffsTable(results) {
-      const tbody = document.querySelector('#staffsTable tbody');
-      if (!results || !results.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">No staffs</td></tr>'; return; }
-      tbody.innerHTML = '';
-      results.forEach((s, i) => {
-        const idv = s._id || s.id || '';
-        const dept = s.department || s.dept || '—';
-        tr = document.createElement('tr');
-        tr.innerHTML = `<td>${i+1}</td>
-          <td>${(s.firstName || s.name || '') + (s.lastName ? (' ' + s.lastName) : '')} <div class="muted-small">${s.username ? ('@' + s.username) : ''}</div></td>
-          <td>${s.email || '—'}</td>
-          <td>${s.role || '—'}</td>
-          <td>${dept}</td>
-          <td>${s.status || '—'}</td>
-          <td>
-            <button class="btn ghost" data-action="view-staff" data-id="${idv}">View</button>
-            <button class="btn" data-action="impersonate-staff" data-id="${idv}">Impersonate</button>
-            <button class="btn ghost" data-action="toggle-staff-status" data-id="${idv}" data-status="${s.status||''}">${s.status === 'disabled' ? 'Enable' : 'Disable'}</button>
-          </td>`;
-        tbody.appendChild(tr);
-      });
-    }
-
-    // Loaders (use previous logic but keep caches)
-    async function loadStudents({ q='', status='', program='', className='' } = {}) {
-      const tbody = document.querySelector('#studentsTable tbody');
-      tbody.innerHTML = '<tr><td colspan="6" class="empty">Loading…</td></tr>';
-      const params = new URLSearchParams();
-      if (q) params.set('q', q);
-      if (status) params.set('status', status);
-      if (program) params.set('program', program);
-      if (className) params.set('class', className);
-
-      const url = API_BASE + '/admin/students' + (params.toString() ? '?' + params.toString() : '');
-      const r = await safeFetch(url, { headers: headers() });
-      if (!r.ok) {
-        const alt = await safeFetch(API_BASE + '/students' + (params.toString() ? '?' + params.toString() : ''), { headers: headers() });
-        if (alt.ok) { studentsCache = Array.isArray(alt.data) ? alt.data : (alt.data.items || []); }
-        else { tbody.innerHTML = '<tr><td colspan="6" class="empty">Failed to load students</td></tr>'; return; }
-      } else {
-        // r.data may be {data: [], total:..} or array directly
-        studentsCache = Array.isArray(r.data) ? r.data : (r.data.data || r.data.items || []);
+        return { ok: res.ok, status: res.status, data: JSON.parse(text) };
+      } catch {
+        return { ok: res.ok, status: res.status, data: text };
       }
-
-      // client-side safety filtering (same as before)
-      let results = studentsCache.slice();
-      if (q) {
-        const re = new RegExp(String(q).replace(/[.*+?^${}()|[\]\\]/g,'\\$&'), 'i');
-        results = results.filter(s => re.test(s.firstName || s.name || '') || re.test(s.lastName || '') || re.test(s.username || '') || re.test(s.email || ''));
-      }
-      if (status) results = results.filter(s => String(s.status || '').toLowerCase() === String(status).toLowerCase());
-      if (program) results = results.filter(s => String(s.program || '').toLowerCase().includes(String(program).toLowerCase()));
-      if (className) results = results.filter(s => (s.className || s.cohort || '').toLowerCase().includes(className.toLowerCase()));
-
-      renderStudentsTable(results);
+    } catch (err) {
+      return { ok: false, error: err };
     }
+  }
 
-    async function loadStaffs({ q='', role='', dept='', status='' } = {}) {
-      const tbody = document.querySelector('#staffsTable tbody');
-      tbody.innerHTML = '<tr><td colspan="7" class="empty">Loading…</td></tr>';
-      const params = new URLSearchParams();
-      if (q) params.set('q', q);
-      if (role) params.set('role', role);
-      if (dept) params.set('dept', dept);
-      if (status) params.set('status', status);
+  function genPassword(len = 12) {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%*';
+    let out = '';
+    for (let i = 0; i < len; i++) out += chars.charAt(Math.floor(Math.random() * chars.length));
+    return out;
+  }
 
-      const url = API_BASE + '/admin/staffs' + (params.toString() ? '?' + params.toString() : '');
-      const r = await safeFetch(url, { headers: headers() });
-      if (!r.ok) {
-        const alt = await safeFetch(API_BASE + '/staffs' + (params.toString() ? '?' + params.toString() : ''), { headers: headers() });
-        if (alt.ok) { staffsCache = Array.isArray(alt.data) ? alt.data : (alt.data.items || []); }
-        else { tbody.innerHTML = '<tr><td colspan="7" class="empty">Failed to load staffs</td></tr>'; return; }
-      } else {
-        staffsCache = Array.isArray(r.data) ? r.data : (r.data.data || r.data.items || []);
-      }
+  function genEmailFromUsername(username, domain = 'school.example') {
+    username = (username || '').toLowerCase().replace(/[^a-z0-9._-]/g, '');
+    if (!username) username = 'user' + Math.floor(Math.random() * 10000);
+    return `${username}@${domain}`;
+  }
 
-      // client-side filters
-      let results = staffsCache.slice();
-      if (q) {
-        const re = new RegExp(String(q).replace(/[.*+?^${}()|[\]\\]/g,'\\$&'), 'i');
-        results = results.filter(s => re.test(s.firstName || s.name || '') || re.test(s.lastName || '') || re.test(s.username || '') || re.test(s.email || ''));
-      }
-      if (role) results = results.filter(s => (s.role || '').toLowerCase() === role.toLowerCase());
-      if (dept) results = results.filter(s => (s.department || s.dept || '').toLowerCase().includes(dept.toLowerCase()));
-      if (status) results = results.filter(s => (s.status || '').toLowerCase() === status.toLowerCase());
+  function showAlert(msg) { alert(msg); }
 
-      renderStaffsTable(results);
+  // Fetch classes & subjects (used by create/edit staff)
+  async function fetchClassesAndSubjects() {
+    try {
+      const c = await safeFetch(`${API_BASE}/classes`, { headers: headers() });
+      classesCache = c.ok && Array.isArray(c.data) ? c.data : [];
+    } catch { classesCache = []; }
+
+    try {
+      let s = await safeFetch(`${API_BASE}/courses`, { headers: headers() });
+      if (!s.ok) s = await safeFetch(`${API_BASE}/subjects`, { headers: headers() });
+      subjectsCache = s.ok && Array.isArray(s.data) ? s.data : [];
+    } catch { subjectsCache = []; }
+  }
+
+  // Renderers
+  function renderStudentsTable(results) {
+    const tbody = document.querySelector('#studentsTable tbody');
+    if (!results || !results.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty">No students</td></tr>';
+      return;
     }
+    studentsCache = results;
+    tbody.innerHTML = '';
+    results.forEach((s, i) => {
+      const idv = s._id || s.id || '';
+      const programClass = (s.program ? s.program + (s.className ? ' / ' + s.className : '') : (s.className || s.cohort || '—'));
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${i+1}</td>
+        <td>${(s.firstName || s.name || '') + (s.lastName ? (' ' + s.lastName) : '')} <div class="muted-small">${s.username ? ('@' + s.username) : ''}</div></td>
+        <td>${s.email || '—'}</td>
+        <td>${programClass}</td>
+        <td>${s.status || '—'}</td>
+        <td>
+          <button class="btn ghost" data-action="view-student" data-id="${idv}">View</button>
+          <button class="btn ghost" data-action="edit-student" data-id="${idv}">Edit</button>
+          <button class="btn" data-action="toggle-student-status" data-id="${idv}" data-status="${s.status||''}">${s.status==='disabled' ? 'Enable' : 'Disable'}</button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+  }
 
-    // Create Student form
-    function openCreateStudentForm(prefill={}) {
-      createModalTitle.textContent = 'Create new student';
-      const html = `
-        <form id="createStudentForm" novalidate>
-          <div class="form-row">
-            <div><label>First name<input id="cs_firstName" type="text" required></label></div>
-            <div><label>Last name<input id="cs_lastName" type="text" required></label></div>
-          </div>
-          <div class="form-row">
-            <div><label>Username<input id="cs_username" type="text" required></label></div>
-            <div><label>Email<input id="cs_email" type="email"></label></div>
-          </div>
-          <div class="form-row">
-            <div>
-              <label>Password<input id="cs_password" type="text" autocomplete="new-password"></label>
-            </div>
-            <div style="display:flex;gap:8px;align-items:center">
-              <button type="button" id="cs_gen_email" class="small-btn">Auto-generate Email</button>
-              <button type="button" id="cs_gen_pwd" class="small-btn">Auto-generate Password</button>
-              <button type="button" id="cs_copy_creds" class="small-btn">Copy creds</button>
-            </div>
-          </div>
-          <div class="form-row">
-            <div><label>Program<input id="cs_program" type="text"></label></div>
-            <div><label>Class / Cohort<input id="cs_className" type="text"></label></div>
-          </div>
-          <div class="form-row-single">
-            <label>Status
-              <select id="cs_status"><option value="active">active</option><option value="pending">pending</option><option value="disabled">disabled</option></select>
+  function renderStaffsTable(results) {
+    const tbody = document.querySelector('#staffsTable tbody');
+    if (!results || !results.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty">No staffs</td></tr>';
+      return;
+    }
+    staffsCache = results;
+    tbody.innerHTML = '';
+    results.forEach((s, i) => {
+      const idv = s._id || s.id || '';
+      const dept = s.department || s.dept || '—';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${i+1}</td>
+        <td>${(s.firstName || s.name || '') + (s.lastName ? (' ' + s.lastName) : '')} <div class="muted-small">${s.username ? ('@' + s.username) : ''}</div></td>
+        <td>${s.email || '—'}</td>
+        <td>${s.role || '—'}</td>
+        <td>${dept}</td>
+        <td>${s.status || '—'}</td>
+        <td>
+          <button class="btn ghost" data-action="view-staff" data-id="${idv}">View</button>
+          <button class="btn ghost" data-action="edit-staff" data-id="${idv}">Edit</button>
+          <button class="btn" data-action="toggle-staff-status" data-id="${idv}" data-status="${s.status||''}">${s.status==='disabled' ? 'Enable' : 'Disable'}</button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+  }
+
+  // Details & edit form renderers
+  function renderStudentDetailsView(doc) {
+    const rows = [
+      ['Username', doc.username || ''],
+      ['Name', (doc.firstName || '') + (doc.lastName ? (' ' + doc.lastName) : '')],
+      ['Email', doc.email || ''],
+      ['Phone', doc.phone || ''],
+      ['DOB', doc.dob ? (new Date(doc.dob).toLocaleDateString()) : ''],
+      ['Program', doc.program || ''],
+      ['Class / Cohort', doc.className || doc.cohort || ''],
+      ['Status', doc.status || ''],
+      ['Nationality', doc.nationality || ''],
+      ['Address', doc.address || ''],
+      ['Intake term', doc.intakeTerm || ''],
+      ['Created', doc.createdAt ? new Date(doc.createdAt).toLocaleString() : ''],
+      ['Updated', doc.updatedAt ? new Date(doc.updatedAt).toLocaleString() : '']
+    ];
+    const html = rows.map(r => `<div class="detail-row"><div class="detail-key">${r[0]}</div><div class="detail-val">${r[1] || '<span class="muted-small">Not set</span>'}</div></div>`).join('') +
+      `<div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+         <button class="btn ghost" id="closeViewOnly">Close</button>
+         <button class="btn" id="startEditStudent">Edit</button>
+       </div>`;
+    return html;
+  }
+
+  function renderStudentEditForm(doc) {
+    const idv = doc._id || doc.id || '';
+    return `
+      <form id="editStudentForm" novalidate>
+        <input type="hidden" id="es_id" value="${idv}">
+        <div class="form-row">
+          <div><label>First name<input id="es_firstName" type="text" value="${(doc.firstName||'').replace(/"/g,'&quot;')}" required></label></div>
+          <div><label>Last name<input id="es_lastName" type="text" value="${(doc.lastName||'').replace(/"/g,'&quot;')}" required></label></div>
+        </div>
+        <div class="form-row">
+          <div><label>Username<input id="es_username" type="text" value="${(doc.username||'').replace(/"/g,'&quot;')}" required></label></div>
+          <div><label>Email<input id="es_email" type="email" value="${(doc.email||'').replace(/"/g,'&quot;')}"></label></div>
+        </div>
+        <div class="form-row">
+          <div><label>Phone<input id="es_phone" type="text" value="${(doc.phone||'').replace(/"/g,'&quot;')}"></label></div>
+          <div><label>DOB<input id="es_dob" type="date" value="${doc.dob ? new Date(doc.dob).toISOString().slice(0,10) : ''}"></label></div>
+        </div>
+        <div class="form-row">
+          <div><label>Program<input id="es_program" type="text" value="${(doc.program||'').replace(/"/g,'&quot;')}"></label></div>
+          <div><label>Class / Cohort<input id="es_className" type="text" value="${(doc.className||doc.cohort||'').replace(/"/g,'&quot;')}"></label></div>
+        </div>
+        <div class="form-row-single">
+          <label>Status
+            <select id="es_status">
+              <option value="active" ${doc.status==='active'?'selected':''}>active</option>
+              <option value="pending" ${doc.status==='pending'?'selected':''}>pending</option>
+              <option value="disabled" ${doc.status==='disabled'?'selected':''}>disabled</option>
+            </select>
+          </label>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+          <button type="button" class="btn ghost" id="es_cancel">Cancel</button>
+          <button type="submit" class="btn" id="es_save">Save</button>
+        </div>
+      </form>
+    `;
+  }
+
+  function renderStaffDetailsView(doc) {
+    const rows = [
+      ['Username', doc.username || ''],
+      ['Name', (doc.firstName || '') + (doc.lastName ? (' ' + doc.lastName) : '')],
+      ['Email', doc.email || ''],
+      ['Role', doc.role || ''],
+      ['Department', doc.department || doc.dept || ''],
+      ['Status', doc.status || ''],
+      ['Class assigned', (doc.classAssigned || doc.className || '')],
+      ['Subjects', (Array.isArray(doc.subjects) ? doc.subjects.join(', ') : (doc.subjects || ''))],
+      ['Created', doc.createdAt ? new Date(doc.createdAt).toLocaleString() : ''],
+      ['Updated', doc.updatedAt ? new Date(doc.updatedAt).toLocaleString() : '']
+    ];
+    const html = rows.map(r => `<div class="detail-row"><div class="detail-key">${r[0]}</div><div class="detail-val">${r[1] || '<span class="muted-small">Not set</span>'}</div></div>`).join('') +
+      `<div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+         <button class="btn ghost" id="closeViewOnly">Close</button>
+         <button class="btn" id="startEditStaff">Edit</button>
+       </div>`;
+    return html;
+  }
+
+  function renderStaffEditForm(doc) {
+    const idv = doc._id || doc.id || '';
+    const classOptions = (classesCache || []).map(c => `<option value="${c._id||c.id||c.name}" ${String(doc.classAssigned||'') === String(c._id||c.id||c.name) ? 'selected' : ''}>${c.name || c.title || c._id}</option>`).join('');
+    const subjectOptions = (subjectsCache || []).map(s => {
+      const v = s._id || s.id || s.code || s.title;
+      const selected = Array.isArray(doc.subjects) && doc.subjects.map(String).includes(String(v));
+      return `<option value="${v}" ${selected ? 'selected' : ''}>${s.title || s.name || v}</option>`;
+    }).join('');
+    return `
+      <form id="editStaffForm" novalidate>
+        <input type="hidden" id="sf_id" value="${idv}">
+        <div class="form-row">
+          <div><label>First name<input id="sf_firstName" type="text" value="${(doc.firstName||'').replace(/"/g,'&quot;')}" required></label></div>
+          <div><label>Last name<input id="sf_lastName" type="text" value="${(doc.lastName||'').replace(/"/g,'&quot;')}" required></label></div>
+        </div>
+        <div class="form-row">
+          <div><label>Username<input id="sf_username" type="text" value="${(doc.username||'').replace(/"/g,'&quot;')}" required></label></div>
+          <div><label>Email<input id="sf_email" type="email" value="${(doc.email||'').replace(/"/g,'&quot;')}"></label></div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>Role
+              <select id="sf_role">
+                <option value="teacher" ${doc.role==='teacher'?'selected':''}>Teacher</option>
+                <option value="admin" ${doc.role==='admin'?'selected':''}>Admin</option>
+                <option value="support" ${doc.role==='support'?'selected':''}>Support</option>
+              </select>
             </label>
           </div>
-          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
-            <button type="button" class="btn ghost" id="cs_cancel">Cancel</button>
-            <button type="submit" class="btn" id="cs_submit">Create student</button>
-          </div>
-        </form>
-      `;
-      createModalBody.innerHTML = html;
-      // prefill if provided
-      if (prefill.firstName) document.getElementById('cs_firstName').value = prefill.firstName;
-      if (prefill.lastName) document.getElementById('cs_lastName').value = prefill.lastName;
-      if (prefill.username) document.getElementById('cs_username').value = prefill.username;
-      if (prefill.email) document.getElementById('cs_email').value = prefill.email;
-
-      document.getElementById('cs_gen_email').addEventListener('click', ()=> {
-        const username = document.getElementById('cs_username').value.trim();
-        document.getElementById('cs_email').value = username ? `${username}@school.example` : genEmailFromUsername(username);
-      });
-      document.getElementById('cs_gen_pwd').addEventListener('click', ()=> {
-        document.getElementById('cs_password').value = genPassword(12);
-      });
-      document.getElementById('cs_copy_creds').addEventListener('click', ()=> {
-        const u = document.getElementById('cs_username').value;
-        const e = document.getElementById('cs_email').value;
-        const p = document.getElementById('cs_password').value;
-        const txt = `username: ${u}\nemail: ${e}\npassword: ${p}`;
-        navigator.clipboard?.writeText(txt).then(()=> alert('Credentials copied to clipboard')).catch(()=> alert('Copy failed'));
-      });
-      document.getElementById('cs_cancel').addEventListener('click', ()=> { createModal.classList.remove('active'); createModal.setAttribute('aria-hidden','true'); createModalBody.innerHTML=''; });
-
-      document.getElementById('createStudentForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const payload = {
-          username: document.getElementById('cs_username').value.trim(),
-          password: document.getElementById('cs_password').value,
-          firstName: document.getElementById('cs_firstName').value.trim(),
-          lastName: document.getElementById('cs_lastName').value.trim(),
-          email: document.getElementById('cs_email').value.trim(),
-          program: document.getElementById('cs_program').value.trim(),
-          className: document.getElementById('cs_className').value.trim(),
-          status: document.getElementById('cs_status').value
-        };
-        if (!payload.username || !payload.password || !payload.firstName || !payload.lastName || !payload.email) {
-          return alert('Please fill all required fields (username, password, first and last name, email).');
-        }
-        try {
-          const res = await fetch(API_BASE + '/admin/students', { method: 'POST', headers: headers('application/json'), body: JSON.stringify(payload) });
-          const text = await res.text();
-          let data;
-          try { data = JSON.parse(text); } catch { data = { message: text }; }
-          if (res.status === 201 || res.ok) {
-            alert('Student created');
-            createModal.classList.remove('active'); createModal.setAttribute('aria-hidden','true'); createModalBody.innerHTML='';
-            loadStudents({});
-          } else {
-            alert('Create failed: ' + (data.message || JSON.stringify(data)));
-          }
-        } catch (err) {
-          console.error(err);
-          alert('Create failed');
-        }
-      });
-
-      createModal.classList.add('active'); createModal.setAttribute('aria-hidden','false');
-    }
-
-    // Create Staff form
-    function openCreateStaffForm(prefill={}) {
-      createModalTitle.textContent = 'Create new staff';
-      // build subject options (if subjectsCache available)
-      const subjectOptions = (subjectsCache || []).map(s => `<option value="${s._id || s.id || (s.code || s.title)}">${s.title || s.name || s}</option>`).join('');
-      const classOptions = (classesCache || []).map(c => `<option value="${c._id || c.id || c.name}">${c.name || c.title || c._id}</option>`).join('');
-      const html = `
-        <form id="createStaffForm" novalidate>
-          <div class="form-row">
-            <div><label>First name<input id="cf_firstName" type="text" required></label></div>
-            <div><label>Last name<input id="cf_lastName" type="text" required></label></div>
-          </div>
-          <div class="form-row">
-            <div><label>Username<input id="cf_username" type="text" required></label></div>
-            <div><label>Email<input id="cf_email" type="email"></label></div>
-          </div>
-          <div class="form-row">
-            <div><label>Password<input id="cf_password" type="text" autocomplete="new-password"></label></div>
-            <div style="display:flex;gap:8px;align-items:center">
-              <button type="button" id="cf_gen_email" class="small-btn">Auto-generate Email</button>
-              <button type="button" id="cf_gen_pwd" class="small-btn">Auto-generate Password</button>
-              <button type="button" id="cf_copy_creds" class="small-btn">Copy creds</button>
-            </div>
-          </div>
+          <div><label>Department<input id="sf_department" type="text" value="${(doc.department||doc.dept||'').replace(/"/g,'&quot;')}"></label></div>
+        </div>
+        <div id="sf_teacher_extra" style="display:${doc.role === 'teacher' ? '' : 'none'};margin-top:8px">
           <div class="form-row">
             <div>
-              <label>Role
-                <select id="cf_role">
-                  <option value="teacher">Teacher</option>
-                  <option value="admin">Admin</option>
-                  <option value="support">Support</option>
+              <label>Assign class
+                <select id="sf_classSelect">
+                  <option value="">-- select class --</option>
+                  ${classOptions}
                 </select>
               </label>
             </div>
-            <div><label>Department<input id="cf_department" type="text"></label></div>
-          </div>
-
-          <div id="cf_teacher_extra" style="display:none;margin-top:8px">
-            <div class="form-row">
-              <div>
-                <label>Assign class
-                  <select id="cf_classSelect">
-                    <option value="">-- select class --</option>
-                    ${classOptions}
-                  </select>
-                </label>
-              </div>
-              <div>
-                <label>Subjects (select multiple)
-                  <select id="cf_subjectsSelect" multiple size="4" style="width:100%">
-                    ${subjectOptions}
-                  </select>
-                </label>
-              </div>
+            <div>
+              <label>Subjects (multi)
+                <select id="sf_subjectsSelect" multiple size="4" style="width:100%">
+                  ${subjectOptions}
+                </select>
+              </label>
             </div>
-            <div class="muted-small">Hold Ctrl/Cmd to multi-select subjects.</div>
           </div>
+        </div>
+        <div class="form-row-single">
+          <label>Status
+            <select id="sf_status"><option value="active" ${doc.status==='active'?'selected':''}>active</option><option value="disabled" ${doc.status==='disabled'?'selected':''}>disabled</option></select>
+          </label>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+          <button type="button" class="btn ghost" id="sf_cancel">Cancel</button>
+          <button type="submit" class="btn" id="sf_save">Save</button>
+        </div>
+      </form>
+    `;
+  }
 
-          <div class="form-row-single">
-            <label>Status
-              <select id="cf_status"><option value="active">active</option><option value="disabled">disabled</option></select>
+  // Open item modal with friendly view; show Edit button if editable
+  function openItemModal(title, html, canEdit = false, state = { type: null, id: null, data: null }) {
+    modalState = state;
+    itemModalTitle.textContent = title || 'Details';
+    itemModalBody.innerHTML = html || '';
+    itemModal.classList.add('active'); itemModal.setAttribute('aria-hidden', 'false');
+    itemEditBtn.style.display = canEdit ? '' : 'none';
+  }
+
+  // Start editing from modal Edit button: delegate to special handler below
+  itemEditBtn.addEventListener('click', () => {
+    if (!modalState || !modalState.type || !modalState.data) return;
+    if (modalState.type === 'student') {
+      itemModalBody.innerHTML = renderStudentEditForm(modalState.data);
+      wireStudentEditForm();
+    } else if (modalState.type === 'staff') {
+      itemModalBody.innerHTML = renderStaffEditForm(modalState.data);
+      wireStaffEditForm();
+    }
+  });
+
+  // Wire edit student form actions
+  function wireStudentEditForm() {
+    const cancel = document.getElementById('es_cancel');
+    if (cancel) cancel.addEventListener('click', () => {
+      itemModalBody.innerHTML = renderStudentDetailsView(modalState.data);
+    });
+    const form = document.getElementById('editStudentForm');
+    if (!form) return;
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('es_id').value;
+      const payload = {
+        username: document.getElementById('es_username').value.trim(),
+        firstName: document.getElementById('es_firstName').value.trim(),
+        lastName: document.getElementById('es_lastName').value.trim(),
+        email: document.getElementById('es_email').value.trim(),
+        phone: document.getElementById('es_phone').value.trim(),
+        dob: document.getElementById('es_dob').value || null,
+        program: document.getElementById('es_program').value.trim(),
+        className: document.getElementById('es_className').value.trim(),
+        status: document.getElementById('es_status').value
+      };
+      try {
+        const res = await safeFetch(`${API_BASE}/admin/students/${encodeURIComponent(id)}`, {
+          method: 'PUT',
+          headers: headers('application/json'),
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          showAlert('Student updated');
+          modalState.data = (res.data && (res.data.data || res.data)) || payload;
+          itemModalBody.innerHTML = renderStudentDetailsView(modalState.data);
+          loadStudents({});
+        } else {
+          showAlert('Update failed: ' + (res.data && res.data.message ? res.data.message : JSON.stringify(res.data)));
+        }
+      } catch (err) {
+        console.error(err);
+        showAlert('Update failed');
+      }
+    });
+  }
+
+  // Wire edit staff form actions
+  function wireStaffEditForm() {
+    const roleEl = document.getElementById('sf_role');
+    if (roleEl) roleEl.addEventListener('change', (e) => {
+      document.getElementById('sf_teacher_extra').style.display = e.target.value === 'teacher' ? '' : 'none';
+    });
+    const cancel = document.getElementById('sf_cancel');
+    if (cancel) cancel.addEventListener('click', () => {
+      itemModalBody.innerHTML = renderStaffDetailsView(modalState.data);
+    });
+    const form = document.getElementById('editStaffForm');
+    if (!form) return;
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('sf_id').value;
+      const payload = {
+        username: document.getElementById('sf_username').value.trim(),
+        firstName: document.getElementById('sf_firstName').value.trim(),
+        lastName: document.getElementById('sf_lastName').value.trim(),
+        email: document.getElementById('sf_email').value.trim(),
+        role: document.getElementById('sf_role').value,
+        department: document.getElementById('sf_department').value.trim(),
+        status: document.getElementById('sf_status').value
+      };
+      if (payload.role === 'teacher') {
+        payload.classAssigned = document.getElementById('sf_classSelect').value || null;
+        const sel = Array.from(document.getElementById('sf_subjectsSelect').selectedOptions || []).map(o => o.value);
+        payload.subjects = sel;
+      }
+      try {
+        const res = await safeFetch(`${API_BASE}/admin/staffs/${encodeURIComponent(id)}`, {
+          method: 'PUT',
+          headers: headers('application/json'),
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          showAlert('Staff updated');
+          modalState.data = (res.data && (res.data.data || res.data)) || payload;
+          itemModalBody.innerHTML = renderStaffDetailsView(modalState.data);
+          loadStaffs({});
+        } else {
+          showAlert('Update failed: ' + (res.data && res.data.message ? res.data.message : JSON.stringify(res.data)));
+        }
+      } catch (err) {
+        console.error(err);
+        showAlert('Update failed');
+      }
+    });
+  }
+
+  // Create forms
+  function openCreateStudentForm(prefill = {}) {
+    createModalTitle.textContent = 'Create new student';
+    createModalBody.innerHTML = `
+      <form id="createStudentForm" novalidate>
+        <div class="form-row">
+          <div><label>First name<input id="cs_firstName" type="text" required></label></div>
+          <div><label>Last name<input id="cs_lastName" type="text" required></label></div>
+        </div>
+        <div class="form-row">
+          <div><label>Username<input id="cs_username" type="text" required></label></div>
+          <div><label>Email<input id="cs_email" type="email"></label></div>
+        </div>
+        <div class="form-row">
+          <div><label>Password<input id="cs_password" type="text" autocomplete="new-password"></label></div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button type="button" id="cs_gen_email" class="small-btn">Auto-generate Email</button>
+            <button type="button" id="cs_gen_pwd" class="small-btn">Auto-generate Password</button>
+            <button type="button" id="cs_copy_creds" class="small-btn">Copy creds</button>
+          </div>
+        </div>
+        <div class="form-row">
+          <div><label>Program<input id="cs_program" type="text"></label></div>
+          <div><label>Class / Cohort<input id="cs_className" type="text"></label></div>
+        </div>
+        <div class="form-row-single">
+          <label>Status
+            <select id="cs_status"><option value="active">active</option><option value="pending">pending</option><option value="disabled">disabled</option></select>
+          </label>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+          <button type="button" class="btn ghost" id="cs_cancel">Cancel</button>
+          <button type="submit" class="btn" id="cs_submit">Create student</button>
+        </div>
+      </form>
+    `;
+    // prefill
+    if (prefill.firstName) document.getElementById('cs_firstName').value = prefill.firstName;
+    if (prefill.lastName) document.getElementById('cs_lastName').value = prefill.lastName;
+    if (prefill.username) document.getElementById('cs_username').value = prefill.username;
+    if (prefill.email) document.getElementById('cs_email').value = prefill.email;
+
+    document.getElementById('cs_gen_email').addEventListener('click', () => {
+      const username = document.getElementById('cs_username').value.trim();
+      document.getElementById('cs_email').value = username ? `${username}@school.example` : genEmailFromUsername(username);
+    });
+    document.getElementById('cs_gen_pwd').addEventListener('click', () => {
+      document.getElementById('cs_password').value = genPassword(12);
+    });
+    document.getElementById('cs_copy_creds').addEventListener('click', () => {
+      const u = document.getElementById('cs_username').value;
+      const e = document.getElementById('cs_email').value;
+      const p = document.getElementById('cs_password').value;
+      const txt = `username: ${u}\nemail: ${e}\npassword: ${p}`;
+      navigator.clipboard?.writeText(txt).then(() => showAlert('Credentials copied to clipboard')).catch(() => showAlert('Copy failed'));
+    });
+    document.getElementById('cs_cancel').addEventListener('click', () => {
+      createModal.classList.remove('active'); createModal.setAttribute('aria-hidden', 'true'); createModalBody.innerHTML = '';
+    });
+
+    document.getElementById('createStudentForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const payload = {
+        username: document.getElementById('cs_username').value.trim(),
+        password: document.getElementById('cs_password').value,
+        firstName: document.getElementById('cs_firstName').value.trim(),
+        lastName: document.getElementById('cs_lastName').value.trim(),
+        email: document.getElementById('cs_email').value.trim(),
+        program: document.getElementById('cs_program').value.trim(),
+        className: document.getElementById('cs_className').value.trim(),
+        status: document.getElementById('cs_status').value
+      };
+      if (!payload.username || !payload.password || !payload.firstName || !payload.lastName || !payload.email) {
+        return showAlert('Please fill all required fields (username, password, first and last name, email).');
+      }
+      try {
+        const res = await safeFetch(`${API_BASE}/admin/students`, {
+          method: 'POST',
+          headers: headers('application/json'),
+          body: JSON.stringify(payload)
+        });
+        if (res.ok && (res.status === 201 || res.status === 200)) {
+          showAlert('Student created');
+          createModal.classList.remove('active'); createModal.setAttribute('aria-hidden', 'true'); createModalBody.innerHTML = '';
+          await loadStudents({});
+        } else {
+          showAlert('Create failed: ' + (res.data && res.data.message ? res.data.message : JSON.stringify(res.data)));
+        }
+      } catch (err) {
+        console.error(err); showAlert('Create failed');
+      }
+    });
+
+    createModal.classList.add('active'); createModal.setAttribute('aria-hidden', 'false');
+  }
+
+  function openCreateStaffForm(prefill = {}) {
+    createModalTitle.textContent = 'Create new staff';
+    const subjectOptions = (subjectsCache || []).map(s => `<option value="${s._id || s.id || s.code || s.title}">${s.title || s.name || s}</option>`).join('');
+    const classOptions = (classesCache || []).map(c => `<option value="${c._id || c.id || c.name}">${c.name || c.title || c._id}</option>`).join('');
+    createModalBody.innerHTML = `
+      <form id="createStaffForm" novalidate>
+        <div class="form-row">
+          <div><label>First name<input id="cf_firstName" type="text" required></label></div>
+          <div><label>Last name<input id="cf_lastName" type="text" required></label></div>
+        </div>
+        <div class="form-row">
+          <div><label>Username<input id="cf_username" type="text" required></label></div>
+          <div><label>Email<input id="cf_email" type="email"></label></div>
+        </div>
+        <div class="form-row">
+          <div><label>Password<input id="cf_password" type="text" autocomplete="new-password"></label></div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button type="button" id="cf_gen_email" class="small-btn">Auto-generate Email</button>
+            <button type="button" id="cf_gen_pwd" class="small-btn">Auto-generate Password</button>
+            <button type="button" id="cf_copy_creds" class="small-btn">Copy creds</button>
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>Role
+              <select id="cf_role">
+                <option value="teacher">Teacher</option>
+                <option value="admin">Admin</option>
+                <option value="support">Support</option>
+              </select>
             </label>
           </div>
-
-          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
-            <button type="button" class="btn ghost" id="cf_cancel">Cancel</button>
-            <button type="submit" class="btn" id="cf_submit">Create staff</button>
+          <div><label>Department<input id="cf_department" type="text"></label></div>
+        </div>
+        <div id="cf_teacher_extra" style="display:none;margin-top:8px">
+          <div class="form-row">
+            <div>
+              <label>Assign class
+                <select id="cf_classSelect">
+                  <option value="">-- select class --</option>
+                  ${classOptions}
+                </select>
+              </label>
+            </div>
+            <div>
+              <label>Subjects (select multiple)
+                <select id="cf_subjectsSelect" multiple size="4" style="width:100%">
+                  ${subjectOptions}
+                </select>
+              </label>
+            </div>
           </div>
-        </form>
-      `;
-      createModalBody.innerHTML = html;
+          <div class="muted-small">Hold Ctrl/Cmd to multi-select subjects.</div>
+        </div>
+        <div class="form-row-single">
+          <label>Status
+            <select id="cf_status"><option value="active">active</option><option value="disabled">disabled</option></select>
+          </label>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+          <button type="button" class="btn ghost" id="cf_cancel">Cancel</button>
+          <button type="submit" class="btn" id="cf_submit">Create staff</button>
+        </div>
+      </form>
+    `;
 
-      if (prefill.firstName) document.getElementById('cf_firstName').value = prefill.firstName;
-      if (prefill.lastName) document.getElementById('cf_lastName').value = prefill.lastName;
-      if (prefill.username) document.getElementById('cf_username').value = prefill.username;
-      if (prefill.email) document.getElementById('cf_email').value = prefill.email;
+    if (prefill.firstName) document.getElementById('cf_firstName').value = prefill.firstName;
+    if (prefill.lastName) document.getElementById('cf_lastName').value = prefill.lastName;
+    if (prefill.username) document.getElementById('cf_username').value = prefill.username;
+    if (prefill.email) document.getElementById('cf_email').value = prefill.email;
 
-      const roleEl = document.getElementById('cf_role');
-      function toggleTeacherExtra() {
-        const val = roleEl.value;
-        document.getElementById('cf_teacher_extra').style.display = val === 'teacher' ? '' : 'none';
+    document.getElementById('cf_gen_email').addEventListener('click', () => {
+      const username = document.getElementById('cf_username').value.trim();
+      document.getElementById('cf_email').value = username ? `${username}@school.example` : genEmailFromUsername(username);
+    });
+    document.getElementById('cf_gen_pwd').addEventListener('click', () => {
+      document.getElementById('cf_password').value = genPassword(12);
+    });
+    document.getElementById('cf_copy_creds').addEventListener('click', () => {
+      const u = document.getElementById('cf_username').value;
+      const e = document.getElementById('cf_email').value;
+      const p = document.getElementById('cf_password').value;
+      const txt = `username: ${u}\nemail: ${e}\npassword: ${p}`;
+      navigator.clipboard?.writeText(txt).then(() => showAlert('Credentials copied to clipboard')).catch(() => showAlert('Copy failed'));
+    });
+
+    const roleEl = document.getElementById('cf_role');
+    roleEl.addEventListener('change', () => {
+      document.getElementById('cf_teacher_extra').style.display = roleEl.value === 'teacher' ? '' : 'none';
+    });
+
+    document.getElementById('cf_cancel').addEventListener('click', () => {
+      createModal.classList.remove('active'); createModal.setAttribute('aria-hidden', 'true'); createModalBody.innerHTML = '';
+    });
+
+    document.getElementById('createStaffForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const payload = {
+        username: document.getElementById('cf_username').value.trim(),
+        password: document.getElementById('cf_password').value,
+        firstName: document.getElementById('cf_firstName').value.trim(),
+        lastName: document.getElementById('cf_lastName').value.trim(),
+        email: document.getElementById('cf_email').value.trim(),
+        role: document.getElementById('cf_role').value,
+        department: document.getElementById('cf_department').value.trim(),
+        status: document.getElementById('cf_status').value
+      };
+      if (payload.role === 'teacher') {
+        payload.classAssigned = document.getElementById('cf_classSelect').value || null;
+        const sel = Array.from(document.getElementById('cf_subjectsSelect').selectedOptions || []).map(o => o.value);
+        payload.subjects = sel;
       }
-      roleEl.addEventListener('change', toggleTeacherExtra);
-      toggleTeacherExtra();
-
-      document.getElementById('cf_gen_email').addEventListener('click', ()=> {
-        const username = document.getElementById('cf_username').value.trim();
-        document.getElementById('cf_email').value = username ? `${username}@school.example` : genEmailFromUsername(username);
-      });
-      document.getElementById('cf_gen_pwd').addEventListener('click', ()=> {
-        document.getElementById('cf_password').value = genPassword(12);
-      });
-      document.getElementById('cf_copy_creds').addEventListener('click', ()=> {
-        const u = document.getElementById('cf_username').value;
-        const e = document.getElementById('cf_email').value;
-        const p = document.getElementById('cf_password').value;
-        const txt = `username: ${u}\nemail: ${e}\npassword: ${p}`;
-        navigator.clipboard?.writeText(txt).then(()=> alert('Credentials copied to clipboard')).catch(()=> alert('Copy failed'));
-      });
-
-      document.getElementById('cf_cancel').addEventListener('click', ()=> { createModal.classList.remove('active'); createModal.setAttribute('aria-hidden','true'); createModalBody.innerHTML=''; });
-
-      document.getElementById('createStaffForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const payload = {
-          username: document.getElementById('cf_username').value.trim(),
-          password: document.getElementById('cf_password').value,
-          firstName: document.getElementById('cf_firstName').value.trim(),
-          lastName: document.getElementById('cf_lastName').value.trim(),
-          email: document.getElementById('cf_email').value.trim(),
-          role: document.getElementById('cf_role').value,
-          department: document.getElementById('cf_department').value.trim(),
-          status: document.getElementById('cf_status').value
-        };
-        if (payload.role === 'teacher') {
-          payload.classAssigned = document.getElementById('cf_classSelect').value || null;
-          const sel = Array.from(document.getElementById('cf_subjectsSelect').selectedOptions || []).map(o => o.value);
-          payload.subjects = sel;
+      if (!payload.username || !payload.password || !payload.firstName || !payload.lastName || !payload.email || !payload.role) {
+        return showAlert('Please fill all required fields (username, password, first and last name, email, role).');
+      }
+      try {
+        const res = await safeFetch(`${API_BASE}/admin/staffs`, {
+          method: 'POST',
+          headers: headers('application/json'),
+          body: JSON.stringify(payload)
+        });
+        if (res.ok && (res.status === 201 || res.status === 200)) {
+          showAlert('Staff created');
+          createModal.classList.remove('active'); createModal.setAttribute('aria-hidden', 'true'); createModalBody.innerHTML = '';
+          await loadStaffs({});
+        } else {
+          showAlert('Create failed: ' + (res.data && res.data.message ? res.data.message : JSON.stringify(res.data)));
         }
-        if (!payload.username || !payload.password || !payload.firstName || !payload.lastName || !payload.email || !payload.role) {
-          return alert('Please fill all required fields (username, password, first and last name, email, role).');
-        }
-        try {
-          const res = await fetch(API_BASE + '/admin/staffs', { method: 'POST', headers: headers('application/json'), body: JSON.stringify(payload) });
-          const text = await res.text();
-          let data;
-          try { data = JSON.parse(text); } catch { data = { message: text }; }
-          if (res.status === 201 || res.ok) {
-            alert('Staff created');
-            createModal.classList.remove('active'); createModal.setAttribute('aria-hidden','true'); createModalBody.innerHTML='';
-            loadStaffs({});
-          } else {
-            alert('Create failed: ' + (data.message || JSON.stringify(data)));
-          }
-        } catch (err) {
-          console.error(err);
-          alert('Create failed');
-        }
+      } catch (err) {
+        console.error(err); showAlert('Create failed');
+      }
+    });
+
+    createModal.classList.add('active'); createModal.setAttribute('aria-hidden', 'false');
+  }
+
+  // Loaders
+  async function loadStudents({ q = '', status = '', program = '', className = '' } = {}) {
+    const tbody = document.querySelector('#studentsTable tbody');
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">Loading…</td></tr>';
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (status) params.set('status', status);
+    if (program) params.set('program', program);
+    if (className) params.set('class', className);
+    const url = `${API_BASE}/admin/students${params.toString() ? '?' + params.toString() : ''}`;
+    const r = await safeFetch(url, { headers: headers() });
+    if (!r.ok) {
+      const alt = await safeFetch(`${API_BASE}/students${params.toString() ? '?' + params.toString() : ''}`, { headers: headers() });
+      if (alt.ok) studentsCache = Array.isArray(alt.data) ? alt.data : (alt.data.items || []);
+      else { tbody.innerHTML = '<tr><td colspan="6" class="empty">Failed to load students</td></tr>'; return; }
+    } else {
+      studentsCache = Array.isArray(r.data) ? r.data : (r.data.data || r.data.items || []);
+    }
+    // client filtering
+    let results = studentsCache.slice();
+    if (q) {
+      const re = new RegExp(String(q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      results = results.filter(s => re.test(s.firstName || s.name || '') || re.test(s.lastName || '') || re.test(s.username || '') || re.test(s.email || ''));
+    }
+    if (status) results = results.filter(s => String(s.status || '').toLowerCase() === String(status).toLowerCase());
+    if (program) results = results.filter(s => String(s.program || '').toLowerCase().includes(String(program).toLowerCase()));
+    if (className) results = results.filter(s => (s.className || s.cohort || '').toLowerCase().includes(className.toLowerCase()));
+    renderStudentsTable(results);
+  }
+
+  async function loadStaffs({ q = '', role = '', dept = '', status = '' } = {}) {
+    const tbody = document.querySelector('#staffsTable tbody');
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">Loading…</td></tr>';
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (role) params.set('role', role);
+    if (dept) params.set('dept', dept);
+    if (status) params.set('status', status);
+    const url = `${API_BASE}/admin/staffs${params.toString() ? '?' + params.toString() : ''}`;
+    const r = await safeFetch(url, { headers: headers() });
+    if (!r.ok) {
+      const alt = await safeFetch(`${API_BASE}/staffs${params.toString() ? '?' + params.toString() : ''}`, { headers: headers() });
+      if (alt.ok) staffsCache = Array.isArray(alt.data) ? alt.data : (alt.data.items || []);
+      else { tbody.innerHTML = '<tr><td colspan="7" class="empty">Failed to load staffs</td></tr>'; return; }
+    } else {
+      staffsCache = Array.isArray(r.data) ? r.data : (r.data.data || r.data.items || []);
+    }
+    // filter out any students (ensure only staff)
+    let results = (staffsCache || []).filter(s => {
+      const roleVal = (s.role || '').toString().toLowerCase();
+      return roleVal && roleVal !== 'student';
+    });
+    if (q) {
+      const re = new RegExp(String(q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      results = results.filter(s => re.test(s.firstName || s.name || '') || re.test(s.lastName || '') || re.test(s.username || '') || re.test(s.email || ''));
+    }
+    if (role) results = results.filter(s => (s.role || '').toLowerCase() === role.toLowerCase());
+    if (dept) results = results.filter(s => (s.department || s.dept || '').toLowerCase().includes(dept.toLowerCase()));
+    if (status) results = results.filter(s => (s.status || '').toLowerCase() === status.toLowerCase());
+    renderStaffsTable(results);
+  }
+
+  // Delegated clicks for view/edit/toggle
+  document.body.addEventListener('click', async (ev) => {
+    const t = ev.target;
+    const action = t.dataset.action;
+    if (!action) return;
+
+    // STUDENT: view
+    if (action === 'view-student') {
+      const id = t.dataset.id;
+      const r = await safeFetch(`${API_BASE}/admin/students/${encodeURIComponent(id)}`, { headers: headers() });
+      if (r.ok) {
+        const doc = (r.data && r.data.data) ? r.data.data : (r.data || {});
+        modalState = { type: 'student', id, data: doc };
+        const html = renderStudentDetailsView(doc);
+        openItemModal('Student', html, true, modalState);
+        setTimeout(() => {
+          const closeBtn = document.getElementById('closeViewOnly');
+          if (closeBtn) closeBtn.addEventListener('click', () => { itemModal.classList.remove('active'); itemModal.setAttribute('aria-hidden', 'true'); });
+          const editBtn = document.getElementById('startEditStudent');
+          if (editBtn) editBtn.addEventListener('click', () => itemEditBtn.click());
+        }, 20);
+      } else openItemModal('Error', '<div class="muted-small">Failed to load student.</div>', false);
+      return;
+    }
+
+    // STUDENT: edit button in table
+    if (action === 'edit-student') {
+      const id = t.dataset.id;
+      const r = await safeFetch(`${API_BASE}/admin/students/${encodeURIComponent(id)}`, { headers: headers() });
+      if (r.ok) {
+        const doc = (r.data && r.data.data) ? r.data.data : (r.data || {});
+        modalState = { type: 'student', id, data: doc };
+        itemModalBody.innerHTML = renderStudentEditForm(doc);
+        itemModal.classList.add('active'); itemModal.setAttribute('aria-hidden', 'false');
+        wireStudentEditForm();
+      } else showAlert('Failed to load student for edit');
+      return;
+    }
+
+    // STUDENT: toggle status
+    if (action === 'toggle-student-status') {
+      const id = t.dataset.id;
+      const current = t.dataset.status || '';
+      const next = current === 'disabled' ? 'active' : 'disabled';
+      if (!confirm(`${next === 'disabled' ? 'Disable' : 'Enable'} this student?`)) return;
+      const r = await safeFetch(`${API_BASE}/admin/students/${encodeURIComponent(id)}/status`, {
+        method: 'PUT', headers: headers('application/json'), body: JSON.stringify({ status: next })
       });
-
-      createModal.classList.add('active'); createModal.setAttribute('aria-hidden','false');
+      if (r.ok) { showAlert('Updated'); loadStudents({}); } else showAlert('Update failed');
+      return;
     }
 
-    // Delegated click handlers (view/impersonate/toggle etc)
-    document.body.addEventListener('click', async (e) => {
-      const t = e.target;
-      const action = t.dataset.action;
-      if (!action) return;
+    // STAFF: view
+    if (action === 'view-staff') {
+      const id = t.dataset.id;
+      const r = await safeFetch(`${API_BASE}/admin/staffs/${encodeURIComponent(id)}`, { headers: headers() });
+      if (r.ok) {
+        const doc = (r.data && r.data.data) ? r.data.data : (r.data || {});
+        modalState = { type: 'staff', id, data: doc };
+        const html = renderStaffDetailsView(doc);
+        openItemModal('Staff', html, true, modalState);
+        setTimeout(() => {
+          const closeBtn = document.getElementById('closeViewOnly');
+          if (closeBtn) closeBtn.addEventListener('click', () => { itemModal.classList.remove('active'); itemModal.setAttribute('aria-hidden', 'true'); });
+          const editBtn = document.getElementById('startEditStaff');
+          if (editBtn) editBtn.addEventListener('click', () => itemEditBtn.click());
+        }, 20);
+      } else openItemModal('Error', '<div class="muted-small">Failed to load staff.</div>', false);
+      return;
+    }
 
-      if (action === 'view-student') {
-        const id = t.dataset.id;
-        const r = await safeFetch(API_BASE + '/admin/students/' + encodeURIComponent(id), { headers: headers() });
-        if (r.ok) openModal('Student', `<pre>${JSON.stringify(r.data, null, 2)}</pre>`);
-        else openModal('Error', '<div class="muted-small">Failed to load student.</div>');
-      }
-      if (action === 'impersonate-student') {
-        alert('Impersonation endpoint not implemented on this UI (requires backend support).');
-      }
-      if (action === 'toggle-student-status') {
-        const id = t.dataset.id;
-        const current = t.dataset.status || '';
-        const next = current === 'disabled' ? 'active' : 'disabled';
-        if (!confirm(`${next === 'disabled' ? 'Disable' : 'Enable'} this student?`)) return;
-        const r = await safeFetch(API_BASE + '/admin/students/' + encodeURIComponent(id) + '/status', { method: 'PUT', headers: headers('application/json'), body: JSON.stringify({ status: next }) });
-        if (r.ok) { alert('Updated'); loadStudents({ q: document.getElementById('studentQuery').value || '' }); }
-        else alert('Update failed');
-      }
+    // STAFF: edit in table
+    if (action === 'edit-staff') {
+      const id = t.dataset.id;
+      const r = await safeFetch(`${API_BASE}/admin/staffs/${encodeURIComponent(id)}`, { headers: headers() });
+      if (r.ok) {
+        const doc = (r.data && r.data.data) ? r.data.data : (r.data || {});
+        modalState = { type: 'staff', id, data: doc };
+        itemModalBody.innerHTML = renderStaffEditForm(doc);
+        itemModal.classList.add('active'); itemModal.setAttribute('aria-hidden', 'false');
+        wireStaffEditForm();
+      } else showAlert('Failed to load staff for edit');
+      return;
+    }
 
-      if (action === 'view-staff') {
-        const id = t.dataset.id;
-        const r = await safeFetch(API_BASE + '/admin/staffs/' + encodeURIComponent(id), { headers: headers() });
-        if (r.ok) openModal('Staff', `<pre>${JSON.stringify(r.data, null, 2)}</pre>`);
-        else openModal('Error', '<div class="muted-small">Failed to load staff.</div>');
-      }
-      if (action === 'impersonate-staff') {
-        alert('Impersonation endpoint not implemented on this UI (requires backend support).');
-      }
-      if (action === 'toggle-staff-status') {
-        const id = t.dataset.id;
-        const current = t.dataset.status || '';
-        const next = current === 'disabled' ? 'active' : 'disabled';
-        if (!confirm(`${next === 'disabled' ? 'Disable' : 'Enable'} this staff?`)) return;
-        const r = await safeFetch(API_BASE + '/admin/staffs/' + encodeURIComponent(id) + '/status', { method: 'PUT', headers: headers('application/json'), body: JSON.stringify({ status: next }) });
-        if (r.ok) { alert('Updated'); loadStaffs({ q: document.getElementById('staffQuery').value || '' }); }
-        else alert('Update failed');
-      }
-    });
-
-    // Wire create buttons
-    document.getElementById('newStudentBtn').addEventListener('click', async () => {
-      await fetchClassesAndSubjects(); // prefetch to help form if needed
-      openCreateStudentForm({});
-    });
-    document.getElementById('newStaffBtn').addEventListener('click', async () => {
-      await fetchClassesAndSubjects();
-      openCreateStaffForm({});
-    });
-
-    // wire search/controls
-    document.getElementById('searchStudentsBtn').addEventListener('click', () => {
-      loadStudents({
-        q: document.getElementById('studentQuery').value,
-        status: document.getElementById('studentStatus').value,
-        program: document.getElementById('studentProgram').value,
-        className: document.getElementById('studentClass').value
+    // STAFF: toggle status
+    if (action === 'toggle-staff-status') {
+      const id = t.dataset.id;
+      const current = t.dataset.status || '';
+      const next = current === 'disabled' ? 'active' : 'disabled';
+      if (!confirm(`${next === 'disabled' ? 'Disable' : 'Enable'} this staff?`)) return;
+      const r = await safeFetch(`${API_BASE}/admin/staffs/${encodeURIComponent(id)}/status`, {
+        method: 'PUT', headers: headers('application/json'), body: JSON.stringify({ status: next })
       });
-    });
-    document.getElementById('searchStaffBtn').addEventListener('click', () => {
-      loadStaffs({
-        q: document.getElementById('staffQuery').value,
-        role: document.getElementById('staffRole').value,
-        dept: document.getElementById('staffDept').value,
-        status: document.getElementById('staffStatus').value
-      });
-    });
-
-    document.getElementById('exportStudentsBtn').addEventListener('click', () => {
-      const filtered = (studentsCache || []);
-      exportCSV(filtered, ['_id','username','firstName','lastName','email','program','className','status'], 'students.csv');
-    });
-    document.getElementById('exportStaffBtn').addEventListener('click', () => {
-      const filtered = (staffsCache || []);
-      exportCSV(filtered, ['_id','username','firstName','lastName','email','role','department','status'], 'staffs.csv');
-    });
-
-    // other existing admin handlers (applications, resources, health) reused/adapted
-    async function loadOverview(){
-      serverStatusEl.textContent = 'Checking...';
-      const health = await safeFetch(API_BASE + '/admin/health', { headers: headers() });
-      if(health.ok) {
-        serverStatusEl.textContent = 'Healthy';
-        document.getElementById('mActiveUsers').textContent = health.data.activeUsers || '—';
-        document.getElementById('mPendingApps').textContent = health.data.pendingApplications || '—';
-        document.getElementById('mStorage').textContent = health.data.storage || '—';
-        // recent activity (adminActions log not exposed in this UI by default)
-        const wrap = document.getElementById('adminActivity'); wrap.innerHTML = '';
-        if(!health.data.recentAdminActivity || !health.data.recentAdminActivity.length) wrap.innerHTML = '<div class="muted-small">No recent activity</div>';
-        else {
-          const ul = document.createElement('ul'); (health.data.recentAdminActivity||[]).slice(0,8).forEach(a => { const li = document.createElement('li'); li.textContent = `${a.actor} • ${a.action} • ${new Date(a.time).toLocaleString()}`; ul.appendChild(li); });
-          wrap.appendChild(ul);
-        }
-      } else {
-        serverStatusEl.textContent = 'Unavailable';
-      }
+      if (r.ok) { showAlert('Updated'); loadStaffs({}); } else showAlert('Update failed');
+      return;
     }
+  });
 
-    async function loadApplications(q='', status=''){
-      const wrap = document.getElementById('appsList');
-      wrap.innerHTML = '<div class="empty">Loading…</div>';
-      const params = new URLSearchParams();
-      if(q) params.set('q', q);
-      if(status) params.set('status', status);
-      const r = await safeFetch(API_BASE + '/admin/applications?' + params.toString(), { headers: headers() });
-      if(!r.ok) { wrap.innerHTML = '<div class="empty">Failed to load applications</div>'; return; }
-      const apps = Array.isArray(r.data) ? r.data : (r.data.items || r.data.data || []);
-      if(!apps.length) { wrap.innerHTML = '<div class="empty">No applications</div>'; return; }
-      const table = document.createElement('table'); table.innerHTML = '<thead><tr><th>#</th><th>Applicant</th><th>Email</th><th>Status</th><th>Submitted</th><th>Actions</th></tr></thead>';
-      const tbody = document.createElement('tbody');
-      apps.forEach((a, i) => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${i+1}</td><td>${a.firstName || a.username}</td><td>${a.email||'—'}</td><td>${a.status||'—'}</td><td>${new Date(a.createdAt||Date.now()).toLocaleString()}</td>
-          <td>
-            <button class="btn ghost" data-action="view-app" data-id="${a._id||a.id}">View</button>
-            <button class="btn" data-action="approve-app" data-id="${a._id||a.id}">Approve</button>
-            <button class="btn ghost" data-action="reject-app" data-id="${a._id||a.id}">Reject</button>
-          </td>`;
-        tbody.appendChild(tr);
-      });
-      table.appendChild(tbody);
-      wrap.innerHTML = ''; wrap.appendChild(table);
-    }
+  // Wire create buttons (from DOM)
+  const newStudentBtn = document.getElementById('newStudentBtn');
+  const newStaffBtn = document.getElementById('newStaffBtn');
+  if (newStudentBtn) newStudentBtn.addEventListener('click', async () => {
+    await fetchClassesAndSubjects();
+    openCreateStudentForm({});
+  });
+  if (newStaffBtn) newStaffBtn.addEventListener('click', async () => {
+    await fetchClassesAndSubjects();
+    openCreateStaffForm({});
+  });
 
-    async function loadResources(q=''){
-      const wrap = document.getElementById('resList');
-      wrap.innerHTML = '<div class="empty">Loading…</div>';
-      const params = q ? '?q=' + encodeURIComponent(q) : '';
-      const r = await safeFetch(API_BASE + '/admin/resources' + params, { headers: headers() });
-      if(!r.ok) { wrap.innerHTML = '<div class="empty">Failed to load resources</div>'; return; }
-      const items = Array.isArray(r.data) ? r.data : (r.data.items || r.data.data || []);
-      if(!items.length) { wrap.innerHTML = '<div class="empty">No resources</div>'; return; }
-      const g = document.createElement('div'); g.className = 'grid';
-      items.forEach(it => {
-        const c = document.createElement('div'); c.className = 'card';
-        c.innerHTML = `<div style="font-weight:800">${it.title||it.name}</div><div class="muted-small">${it.owner || it.uploader || '—'} • ${it.size ? (Math.round(it.size/1024)+' KB') : '—'}</div>
-          <div style="margin-top:8px"><button class="btn ghost" data-action="view-res" data-id="${it._id||it.id}">View</button> <button class="btn" data-action="delete-res" data-id="${it._id||it.id}">Delete</button></div>`;
-        g.appendChild(c);
-      });
-      wrap.innerHTML = ''; wrap.appendChild(g);
-    }
-
-    async function loadSimpleList(path, containerId){
-      const wrap = document.getElementById(containerId); wrap.innerHTML = '<div class="empty">Loading…</div>';
-      const r = await safeFetch(API_BASE + path, { headers: headers() });
-      if(!r.ok) { wrap.innerHTML = '<div class="empty">Failed to load</div>'; return; }
-      const items = Array.isArray(r.data) ? r.data : (r.data.items||r.data.data||[]);
-      if(!items.length) { wrap.innerHTML = '<div class="empty">No items</div>'; return; }
-      const ul = document.createElement('ul');
-      items.forEach(it => { const li = document.createElement('li'); li.textContent = (it.name || it.title || it._id || it.id); ul.appendChild(li); });
-      wrap.innerHTML = ''; wrap.appendChild(ul);
-    }
-
-    // other wiring (search buttons, load logs, health, backup)
-    document.getElementById('searchAppsBtn').addEventListener('click', ()=> loadApplications(document.getElementById('appQuery').value, document.getElementById('appStatus').value));
-    document.getElementById('searchResBtn').addEventListener('click', ()=> loadResources(document.getElementById('resQuery').value));
-    document.getElementById('loadLogsBtn').addEventListener('click', async ()=> {
-      const q = document.getElementById('logsQuery').value || '';
-      const r = await safeFetch(API_BASE + '/admin/logs' + (q ? '?lines='+encodeURIComponent(q) : ''), { headers: headers() });
-      if(r.ok) document.getElementById('logsOutput').textContent = typeof r.data === 'string' ? r.data : JSON.stringify(r.data, null, 2);
-      else document.getElementById('logsOutput').textContent = 'Failed to load logs';
+  // Wire search controls
+  const searchStudentsBtn = document.getElementById('searchStudentsBtn');
+  const searchStaffBtn = document.getElementById('searchStaffBtn');
+  if (searchStudentsBtn) searchStudentsBtn.addEventListener('click', () => {
+    loadStudents({
+      q: document.getElementById('studentQuery').value,
+      status: document.getElementById('studentStatus').value,
+      program: document.getElementById('studentProgram').value,
+      className: document.getElementById('studentClass').value
     });
-    document.getElementById('viewHealthBtn').addEventListener('click', async ()=> {
-      const r = await safeFetch(API_BASE + '/admin/health', { headers: headers() });
-      document.getElementById('settingsOutput').textContent = r.ok ? JSON.stringify(r.data, null, 2) : 'Health check failed';
+  });
+  if (searchStaffBtn) searchStaffBtn.addEventListener('click', () => {
+    loadStaffs({
+      q: document.getElementById('staffQuery').value,
+      role: document.getElementById('staffRole').value,
+      dept: document.getElementById('staffDept').value,
+      status: document.getElementById('staffStatus').value
     });
-    document.getElementById('runBackupBtn').addEventListener('click', async ()=> {
-      if(!confirm('Run manual backup now?')) return;
-      const r = await safeFetch(API_BASE + '/admin/backup', { method: 'POST', headers: headers() });
-      alert(r.ok ? 'Backup started' : 'Backup failed');
+  });
+
+  // Health, apps, resources loaders reused from HTML (light versions)
+  async function loadOverview() {
+    serverStatusEl.textContent = 'Checking...';
+    const health = await safeFetch(`${API_BASE}/admin/health`, { headers: headers() });
+    if (health.ok) {
+      serverStatusEl.textContent = 'Healthy';
+      document.getElementById('mActiveUsers').textContent = health.data.activeUsers || '—';
+      document.getElementById('mPendingApps').textContent = health.data.pendingApplications || '—';
+      document.getElementById('mStorage').textContent = health.data.storage || '—';
+    } else serverStatusEl.textContent = 'Unavailable';
+  }
+
+  async function loadApplications(q = '', status = '') {
+    const wrap = document.getElementById('appsList');
+    if (!wrap) return;
+    wrap.innerHTML = '<div class="empty">Loading…</div>';
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (status) params.set('status', status);
+    const r = await safeFetch(`${API_BASE}/admin/applications?${params.toString()}`, { headers: headers() });
+    if (!r.ok) { wrap.innerHTML = '<div class="empty">Failed to load applications</div>'; return; }
+    const apps = Array.isArray(r.data) ? r.data : (r.data.items || r.data.data || []);
+    if (!apps.length) { wrap.innerHTML = '<div class="empty">No applications</div>'; return; }
+    const table = document.createElement('table');
+    table.innerHTML = '<thead><tr><th>#</th><th>Applicant</th><th>Email</th><th>Status</th><th>Submitted</th><th>Actions</th></tr></thead>';
+    const tbody = document.createElement('tbody');
+    apps.forEach((a, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${i+1}</td><td>${a.firstName || a.username}</td><td>${a.email||'—'}</td><td>${a.status||'—'}</td><td>${new Date(a.createdAt||Date.now()).toLocaleString()}</td>
+        <td>
+          <button class="btn ghost" data-action="view-app" data-id="${a._id||a.id}">View</button>
+          <button class="btn" data-action="approve-app" data-id="${a._id||a.id}">Approve</button>
+          <button class="btn ghost" data-action="reject-app" data-id="${a._id||a.id}">Reject</button>
+        </td>`;
+      tbody.appendChild(tr);
     });
-    document.getElementById('clearCacheBtn').addEventListener('click', async ()=> {
-      if(!confirm('Clear caches?')) return;
-      const r = await safeFetch(API_BASE + '/admin/cache/clear', { method: 'POST', headers: headers() });
-      alert(r.ok ? 'Cache cleared' : 'Clear failed');
+    table.appendChild(tbody);
+    wrap.innerHTML = ''; wrap.appendChild(table);
+  }
+
+  async function loadResources(q = '') {
+    const wrap = document.getElementById('resList');
+    if (!wrap) return;
+    wrap.innerHTML = '<div class="empty">Loading…</div>';
+    const params = q ? '?q=' + encodeURIComponent(q) : '';
+    const r = await safeFetch(`${API_BASE}/admin/resources${params}`, { headers: headers() });
+    if (!r.ok) { wrap.innerHTML = '<div class="empty">Failed to load resources</div>'; return; }
+    const items = Array.isArray(r.data) ? r.data : (r.data.items || r.data.data || []);
+    if (!items.length) { wrap.innerHTML = '<div class="empty">No resources</div>'; return; }
+    const g = document.createElement('div'); g.className = 'grid';
+    items.forEach(it => {
+      const c = document.createElement('div'); c.className = 'card';
+      c.innerHTML = `<div style="font-weight:800">${it.title||it.name}</div><div class="muted-small">${it.owner || it.uploader || '—'} • ${it.size ? (Math.round(it.size/1024)+' KB') : '—'}</div>
+        <div style="margin-top:8px"><button class="btn ghost" data-action="view-res" data-id="${it._id||it.id}">View</button> <button class="btn" data-action="delete-res" data-id="${it._id||it.id}">Delete</button></div>`;
+      g.appendChild(c);
     });
+    wrap.innerHTML = ''; wrap.appendChild(g);
+  }
 
-    document.getElementById('logoutBtn').addEventListener('click', ()=> { localStorage.removeItem('eg_token'); alert('Signed out'); location.reload(); });
+  async function loadSimpleList(path, containerId) {
+    const wrap = document.getElementById(containerId);
+    if (!wrap) return;
+    wrap.innerHTML = '<div class="empty">Loading…</div>';
+    const r = await safeFetch(`${API_BASE}${path}`, { headers: headers() });
+    if (!r.ok) { wrap.innerHTML = '<div class="empty">Failed to load</div>'; return; }
+    const items = Array.isArray(r.data) ? r.data : (r.data.items || r.data.data || []);
+    if (!items.length) { wrap.innerHTML = '<div class="empty">No items</div>'; return; }
+    const ul = document.createElement('ul');
+    items.forEach(it => { const li = document.createElement('li'); li.textContent = (it.name || it.title || it._id || it.id); ul.appendChild(li); });
+    wrap.innerHTML = ''; wrap.appendChild(ul);
+  }
 
-    // initial load
-    async function init(){
-      await fetchClassesAndSubjects();
-      await loadOverview();
-      loadStudents({});
-      loadStaffs({});
-      await loadApplications();
-      await loadResources();
-      // small lists
-      loadSimpleList('/classes', 'classesList');
-      loadSimpleList('/courses', 'coursesList');
-      loadSimpleList('/exams', 'examsList');
-      loadSimpleList('/assignments', 'assignmentsList');
-      loadSimpleList('/messages', 'messagesList');
-    }
-    init();
+  // Wire small UI elements
+  document.getElementById('closeItemModal')?.addEventListener('click', () => {
+    itemModal.classList.remove('active'); itemModal.setAttribute('aria-hidden', 'true'); itemModalBody.innerHTML = ''; itemEditBtn.style.display = 'none';
+  });
+  document.getElementById('closeCreateModal')?.addEventListener('click', () => {
+    createModal.classList.remove('active'); createModal.setAttribute('aria-hidden', 'true'); createModalBody.innerHTML = '';
+  });
 
-    // utility: export CSV (used elsewhere)
-    function exportCSV(items, columns, filename='export.csv') {
-      const rows = [columns.join(',')];
-      items.forEach(it => {
-        const row = columns.map(c => {
-          const v = (it[c] === undefined || it[c] === null) ? '' : String(it[c]).replace(/"/g,'""');
-          return `"${v}"`;
-        }).join(',');
-        rows.push(row);
-      });
-      const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
-    }
+  document.getElementById('runBackupBtn')?.addEventListener('click', async () => {
+    if (!confirm('Run manual backup now?')) return;
+    const r = await safeFetch(`${API_BASE}/admin/backup`, { method: 'POST', headers: headers() });
+    showAlert(r.ok ? 'Backup started' : 'Backup failed');
+  });
 
-  })();
+  document.getElementById('viewHealthBtn')?.addEventListener('click', async () => {
+    const r = await safeFetch(`${API_BASE}/admin/health`, { headers: headers() });
+    document.getElementById('settingsOutput').textContent = r.ok ? JSON.stringify(r.data, null, 2) : 'Health check failed';
+  });
+
+  // Initialisation
+  async function init() {
+    // set admin name from cache if present
+    try {
+      const app = JSON.parse(localStorage.getItem('eg_application') || 'null') || null;
+      if (app) adminNameEl.textContent = (app.firstName || app.name || app.username || 'Admin');
+    } catch (e) { /* ignore */ }
+
+    await fetchClassesAndSubjects();
+    await loadOverview();
+    loadStudents({});
+    loadStaffs({});
+    await loadApplications();
+    await loadResources();
+    // small lists
+    loadSimpleList('/classes', 'classesList');
+    loadSimpleList('/courses', 'coursesList');
+    loadSimpleList('/exams', 'examsList');
+    loadSimpleList('/assignments', 'assignmentsList');
+    loadSimpleList('/messages', 'messagesList');
+  }
+
+  // Start
+  init();
+
+})();
   </script>
 </body>
 </html>
