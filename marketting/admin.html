@@ -418,344 +418,285 @@
       return html;
     }
 
-(function () {
-  // Wait for a named global to exist (polling)
-  function waitForGlobal(name, timeout = 8000) {
-    return new Promise((resolve, reject) => {
-      const start = Date.now();
-      (function check() {
-        if (window[name] !== undefined) return resolve(window[name]);
-        if (Date.now() - start > timeout) return reject(new Error('Timeout waiting for ' + name));
-        setTimeout(check, 40);
-      })();
-    });
-  }
-
-  // Normalize safeFetch: provide a wrapper that returns { ok, status, data }
-  function normalizeSafeFetch(sf) {
-    if (typeof sf !== 'function') {
-      // fallback to window.fetch -> normalized shape
-      return async function (url, opts = {}) {
-        try {
-          const res = await fetch(url, opts);
-          const text = await res.text();
-          try { return { ok: res.ok, status: res.status, data: JSON.parse(text) }; } catch { return { ok: res.ok, status: res.status, data: text }; }
-        } catch (err) { return { ok: false, error: err }; }
-      };
+(function(){
+  async function loadSubjects(opts = {}) {
+    const q = (opts.q || document.getElementById('subjectQuery')?.value || '').trim();
+    const url = API_BASE + '/subjects' + (q ? ('?q=' + encodeURIComponent(q)) : '');
+    const r = await safeFetch(url, { headers: headers() });
+    const container = document.getElementById('coursesList');
+    if (!container) return;
+    if (!r || !r.ok) {
+      container.innerHTML = '<div class="empty">Failed to load subjects</div>';
+      return;
     }
-    // assume sf has the expected signature and return as-is
-    return sf;
+    const items = Array.isArray(r.data) ? r.data : (Array.isArray(r.data?.data) ? r.data.data : []);
+    renderSubjectsList(items || []);
   }
 
-  // Small HTML escape helper
+  function renderSubjectsList(items) {
+    const container = document.getElementById('coursesList');
+    if (!container) return;
+    if (!items || !items.length) {
+      container.innerHTML = '<div class="empty">No subjects found</div>';
+      return;
+    }
+
+    const rows = items.map((s, idx) => {
+      const idv = s._id || s.id || '';
+      const classesArr = (s.meta && Array.isArray(s.meta.classes)) ? s.meta.classes : (s.classes || []);
+      const teachersArr = (s.meta && Array.isArray(s.meta.teachers)) ? s.meta.teachers : (s.teachers || []);
+      const classesLabel = classesArr.length ? classesArr.map(c => {
+        // try to show name if object present
+        if (typeof c === 'object') return (c.name || c.title || c._id || '').toString();
+        return c.toString();
+      }).join(', ') : '—';
+      const teachersLabel = teachersArr.length ? teachersArr.map(t => {
+        if (typeof t === 'object') return ((t.firstName || '') + (t.lastName ? (' ' + t.lastName) : '') + (t.username ? (' @' + t.username) : '')).trim();
+        return t.toString();
+      }).join(', ') : '—';
+
+      return `<tr>
+        <td>${idx+1}</td>
+        <td>
+          <strong>${escapeHtml(s.title || s.name || s.code || 'Untitled')}</strong>
+          <div class="muted-small">${escapeHtml(s.code || '')}</div>
+          <div class="muted-small">${escapeHtml(s.desc || '')}</div>
+        </td>
+        <td>${escapeHtml(classesLabel)}</td>
+        <td>${escapeHtml(teachersLabel)}</td>
+        <td>${s.credits || 0}</td>
+        <td style="white-space:nowrap">
+          <button class="small-btn" data-action="view-subject" data-id="${idv}">View</button>
+          <button class="small-btn" data-action="edit-subject" data-id="${idv}">Edit</button>
+          <button class="small-btn" data-action="delete-subject" data-id="${idv}">Delete</button>
+        </td>
+      </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+      <table style="width:100%">
+        <thead><tr><th>#</th><th>Subject</th><th>Classes</th><th>Teachers</th><th>Credits</th><th>Actions</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }
+
+  // Utility: escape HTML to avoid injection when rendering strings
   function escapeHtml(s) {
     if (s === undefined || s === null) return '';
-    return String(s).replace(/[&<>"']/g, function (m) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]); });
+    return String(s).replace(/[&<>"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]); });
   }
 
-  // Render small chips for arrays (classes/teachers)
-  function chipsHtml(arr, mapFn) {
-    if (!arr || !arr.length) return '<div class="muted-small">None</div>';
-    return '<div class="chips">' + arr.map(it => {
-      const txt = mapFn ? mapFn(it) : (typeof it === 'object' ? (it.name || it.title || it._id || '') : String(it));
-      return `<span class="chip">${escapeHtml(txt)}</span>`;
-    }).join('') + '</div>';
-  }
+  // Open create/edit form for Subject
+  async function openCreateSubjectForm(prefill = {}) {
+    // ensure classes & teachers loaded
+    try { await fetchClassesAndSubjects(); } catch (e) {}
+    createModalTitle.textContent = prefill._id ? 'Edit Subject' : 'Create Subject';
 
-  async function init() {
-    try {
-      // Wait for core globals (safeFetch and headers are critical)
-      await waitForGlobal('API_BASE', 8000);
-      await waitForGlobal('safeFetch', 8000).catch(() => {}); // optional - we normalize later
-      await waitForGlobal('headers', 8000).catch(() => {});
+    const classOptions = (classesCache || []).map(c => {
+      const val = escapeHtml(c._id || c.id || c.name || '');
+      const label = escapeHtml(c.name || c.title || c._id || '');
+      return `<option value="${val}">${label}</option>`;
+    }).join('');
 
-      // Local references (use window.* to avoid ReferenceError at parse time)
-      const API = window.API_BASE;
-      const safeFetch = normalizeSafeFetch(window.safeFetch);
-      const headersFn = typeof window.headers === 'function' ? window.headers : (() => ({}));
-      const fetchClassesAndSubjects = typeof window.fetchClassesAndSubjects === 'function' ? window.fetchClassesAndSubjects : (async () => { /* no-op */ });
+    const teacherOptions = (teachersCache || []).map(t => {
+      const val = escapeHtml(t._id || t.id || t.username || '');
+      const label = escapeHtml(((t.firstName||'') + (t.lastName ? (' ' + t.lastName) : '') + (t.username ? (' @' + t.username) : '')).trim() || t.email || t.username || t._id);
+      return `<option value="${val}">${label}</option>`;
+    }).join('');
 
-      // caches read from window (may be populated by fetchClassesAndSubjects)
-      const getClassesCache = () => window.classesCache || [];
-      const getTeachersCache = () => window.teachersCache || [];
-      const getSubjectsCache = () => window.subjectsCache || [];
+    const selectedClasses = (prefill.meta && Array.isArray(prefill.meta.classes)) ? prefill.meta.classes.map(String) : (prefill.classes || []).map(String || (()=>[]));
+    const selectedTeachers = (prefill.meta && Array.isArray(prefill.meta.teachers)) ? prefill.meta.teachers.map(String) : (prefill.teachers || []).map(String || (()=>[]));
 
-      // Main loaders
-      async function loadSubjects(opts = {}) {
-        const q = (opts.q || document.getElementById('subjectQuery')?.value || '').trim();
-        const url = API + '/subjects' + (q ? ('?q=' + encodeURIComponent(q)) : '');
-        const r = await safeFetch(url, { headers: headersFn() });
-        const container = document.getElementById('coursesList');
-        if (!container) return;
-        if (!r || !r.ok) {
-          container.innerHTML = '<div class="empty">Failed to load subjects</div>';
-          return;
-        }
-        const items = Array.isArray(r.data) ? r.data : (Array.isArray(r.data?.data) ? r.data.data : []);
-        renderSubjectsList(items || []);
-      }
-
-      function renderSubjectsList(items) {
-        const container = document.getElementById('coursesList');
-        if (!container) return;
-        if (!items || !items.length) {
-          container.innerHTML = '<div class="empty">No subjects found</div>';
-          return;
-        }
-
-        const rows = items.map((s, idx) => {
-          const idv = s._id || s.id || '';
-          const classesArr = (s.meta && Array.isArray(s.meta.classes)) ? s.meta.classes : (s.classes || []);
-          const teachersArr = (s.meta && Array.isArray(s.meta.teachers)) ? s.meta.teachers : (s.teachers || []);
-          const classesLabel = classesArr.length ? classesArr.map(c => (typeof c === 'object' ? (c.name || c.title || c._id) : c)).join(', ') : '—';
-          const teachersLabel = teachersArr.length ? teachersArr.map(t => (typeof t === 'object' ? ((t.firstName || '') + (t.lastName ? (' ' + t.lastName) : '') + (t.username ? (' @' + t.username) : '')).trim() : t)).join(', ') : '—';
-
-          return `<tr>
-            <td>${idx + 1}</td>
-            <td>
-              <strong>${escapeHtml(s.title || s.name || s.code || 'Untitled')}</strong>
-              <div class="muted-small">${escapeHtml(s.code || '')}</div>
-              <div class="muted-small">${escapeHtml((s.desc || '').slice(0, 200))}${(s.desc && s.desc.length>200)?'…':''}</div>
-            </td>
-            <td>${escapeHtml(classesLabel)}</td>
-            <td>${escapeHtml(teachersLabel)}</td>
-            <td>${escapeHtml(s.credits || 0)}</td>
-            <td style="white-space:nowrap">
-              <button class="small-btn" data-action="view-subject" data-id="${idv}">View</button>
-              <button class="small-btn" data-action="edit-subject" data-id="${idv}">Edit</button>
-              <button class="small-btn" data-action="delete-subject" data-id="${idv}">Delete</button>
-            </td>
-          </tr>`;
-        }).join('');
-
-        container.innerHTML = `
-          <table style="width:100%">
-            <thead><tr><th style="width:48px">#</th><th>Subject</th><th>Classes</th><th>Teachers</th><th style="width:88px">Credits</th><th style="width:170px">Actions</th></tr></thead>
-            <tbody>${rows}</tbody>
-          </table>
-        `;
-      }
-
-      // Open create/edit subject. Prefer window.openCreateSubjectForm (restyled modal).
-      // If not present, provide a compact fallback form.
-      async function openCreateSubjectFormLocal(prefill = {}) {
-        if (typeof window.openCreateSubjectForm === 'function') {
-          return window.openCreateSubjectForm(prefill);
-        }
-
-        // Fallback: build a minimal form that posts to API
-        await fetchClassesAndSubjects().catch(() => {});
-        const classes = getClassesCache();
-        const teachers = getTeachersCache();
-
-        const classOptions = classes.map(c => `<option value="${escapeHtml(c._id || c.id || c.name)}">${escapeHtml(c.name || c.title || c._id)}</option>`).join('');
-        const teacherOptions = teachers.map(t => `<option value="${escapeHtml(t._id || t.id || t.username)}">${escapeHtml(((t.firstName||'') + (t.lastName ? (' ' + t.lastName) : '') + (t.username ? (' @' + t.username) : '')).trim() || t.email || t.username || t._id)}</option>`).join('');
-
-        const createModalTitle = document.getElementById('createModalTitle');
-        const createModalBody = document.getElementById('createModalBody');
-        const createModal = document.getElementById('createModal');
-
-        createModalTitle.textContent = prefill._id ? 'Edit Subject' : 'Create Subject';
-        createModalBody.innerHTML = `
-          <form id="fallbackCreateSubjectForm" novalidate>
-            <input type="hidden" id="sub_id" value="${escapeHtml(prefill._id || prefill.id || '')}">
-            <div class="form-row">
-              <div><label>Title<input id="sub_title" type="text" value="${escapeHtml(prefill.title || prefill.name || '')}" required></label></div>
-              <div><label>Code<input id="sub_code" type="text" value="${escapeHtml(prefill.code || '')}"></label></div>
-            </div>
-            <div class="form-row-single">
-              <label>Description
-                <textarea id="sub_desc" rows="3">${escapeHtml(prefill.desc || '')}</textarea>
-              </label>
-            </div>
-            <div class="form-row">
-              <div><label>Credits<input id="sub_credits" type="number" min="0" value="${escapeHtml(prefill.credits || 0)}"></label></div>
-              <div>
-                <label>Assign classes (multi)
-                  <select id="sub_classes" multiple size="6" style="width:100%">${classOptions}</select>
-                </label>
-              </div>
-            </div>
-            <div class="form-row">
-              <div style="flex:1">
-                <label>Assign teachers (multi)
-                  <select id="sub_teachers" multiple size="6" style="width:100%">${teacherOptions}</select>
-                </label>
-              </div>
-            </div>
-
-            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
-              <button type="button" class="btn ghost" id="sub_cancel">Cancel</button>
-              <button type="submit" class="btn" id="sub_save">${prefill._id ? 'Save changes' : 'Create subject'}</button>
-            </div>
-          </form>
-        `;
-        // set selected options if prefill provided
-        try {
-          const cs = document.getElementById('sub_classes');
-          const ts = document.getElementById('sub_teachers');
-          const selClasses = (prefill.meta && Array.isArray(prefill.meta.classes)) ? prefill.meta.classes.map(String) : (prefill.classes || []).map(String);
-          const selTeachers = (prefill.meta && Array.isArray(prefill.meta.teachers)) ? prefill.meta.teachers.map(String) : (prefill.teachers || []).map(String);
-          if (cs && selClasses.length) Array.from(cs.options).forEach(o => { if (selClasses.includes(o.value)) o.selected = true; });
-          if (ts && selTeachers.length) Array.from(ts.options).forEach(o => { if (selTeachers.includes(o.value)) o.selected = true; });
-        } catch (e) { /* ignore */ }
-
-        document.getElementById('sub_cancel')?.addEventListener('click', () => {
-          createModal.classList.remove('active'); createModal.setAttribute('aria-hidden', 'true'); createModalBody.innerHTML = '';
-        });
-
-        const form = document.getElementById('fallbackCreateSubjectForm');
-        form.addEventListener('submit', async (e) => {
-          e.preventDefault();
-          const id = document.getElementById('sub_id').value;
-          const payload = {
-            title: document.getElementById('sub_title').value.trim(),
-            code: document.getElementById('sub_code').value.trim(),
-            desc: document.getElementById('sub_desc').value.trim(),
-            credits: Number(document.getElementById('sub_credits').value) || 0,
-            meta: {
-              classes: Array.from(document.getElementById('sub_classes').selectedOptions || []).map(o => o.value),
-              teachers: Array.from(document.getElementById('sub_teachers').selectedOptions || []).map(o => o.value)
-            }
-          };
-
-          try {
-            let res;
-            if (id) {
-              res = await safeFetch(API + '/subjects/' + encodeURIComponent(id), { method: 'PUT', headers: headersFn('application/json'), body: JSON.stringify(payload) });
-            } else {
-              res = await safeFetch(API + '/subjects', { method: 'POST', headers: headersFn('application/json'), body: JSON.stringify(payload) });
-            }
-            if (res && res.ok) {
-              alert('Saved');
-              createModal.classList.remove('active'); createModal.setAttribute('aria-hidden', 'true'); createModalBody.innerHTML = '';
-              loadSubjects({});
-            } else {
-              alert('Save failed: ' + (res && res.data && res.data.message ? res.data.message : JSON.stringify(res && res.data)));
-            }
-          } catch (err) {
-            console.error(err);
-            alert('Save failed');
-          }
-        });
-
-        createModal.classList.add('active'); createModal.setAttribute('aria-hidden', 'false');
-      }
-
-      // View subject: prefer window.viewSubject (restyled). Fallback to inline view modal.
-      async function viewSubjectLocal(id) {
-        if (typeof window.viewSubject === 'function') {
-          return window.viewSubject(id);
-        }
-
-        const r = await safeFetch(API + '/subjects/' + encodeURIComponent(id), { headers: headersFn() });
-        if (!r || !r.ok) {
-          openItemModal?.('Error', '<div class="muted-small">Failed to load subject</div>');
-          return;
-        }
-        const doc = (r.data && r.data.data) ? r.data.data : (r.data || {});
-        const classesArr = (doc.meta && Array.isArray(doc.meta.classes)) ? doc.meta.classes : (doc.classes || []);
-        const teachersArr = (doc.meta && Array.isArray(doc.meta.teachers)) ? doc.meta.teachers : (doc.teachers || []);
-
-        const html = `
-          <div class="detail-row"><div class="detail-key">Title</div><div class="detail-val">${escapeHtml(doc.title || doc.name || '')}</div></div>
-          <div class="detail-row"><div class="detail-key">Code</div><div class="detail-val">${escapeHtml(doc.code || '')}</div></div>
-          <div class="detail-row"><div class="detail-key">Description</div><div class="detail-val">${escapeHtml(doc.desc || '')}</div></div>
-          <div class="detail-row"><div class="detail-key">Credits</div><div class="detail-val">${escapeHtml(doc.credits || 0)}</div></div>
-          <div class="detail-row"><div class="detail-key">Classes</div><div class="detail-val">${chipsHtml(classesArr, (c) => typeof c === 'object' ? (c.name || c.title || c._id) : String(c))}</div></div>
-          <div class="detail-row"><div class="detail-key">Teachers</div><div class="detail-val">${chipsHtml(teachersArr, (t) => typeof t === 'object' ? (((t.firstName||'') + ' ' + (t.lastName||'')).trim() || t.username) : String(t))}</div></div>
-          <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
-            <button class="btn ghost" id="closeViewOnly">Close</button>
-            <button class="btn" id="editSubjectBtn">Edit</button>
+    const html = `
+      <form id="createSubjectForm" novalidate>
+        <input type="hidden" id="sub_id" value="${escapeHtml(prefill._id || prefill.id || '')}">
+        <div class="form-row">
+          <div><label>Title<input id="sub_title" type="text" value="${escapeHtml(prefill.title || prefill.name || '')}" required></label></div>
+          <div><label>Code<input id="sub_code" type="text" value="${escapeHtml(prefill.code || '')}"></label></div>
+        </div>
+        <div class="form-row-single">
+          <label>Description
+            <textarea id="sub_desc" rows="3">${escapeHtml(prefill.desc || '')}</textarea>
+          </label>
+        </div>
+        <div class="form-row">
+          <div><label>Credits<input id="sub_credits" type="number" min="0" value="${escapeHtml(prefill.credits || 0)}"></label></div>
+          <div>
+            <label>Assign classes (multi)
+              <select id="sub_classes" multiple size="6" style="width:100%">
+                ${classOptions}
+              </select>
+            </label>
           </div>
-        `;
-        // set modal state and open
-        modalState = { type: 'subject', id, data: doc };
-        openItemModal?.('Subject', html, true);
-        setTimeout(() => {
-          document.getElementById('closeViewOnly')?.addEventListener('click', () => {
-            document.getElementById('itemModal')?.classList.remove('active');
-            document.getElementById('itemModal')?.setAttribute('aria-hidden', 'true');
-          });
-          document.getElementById('editSubjectBtn')?.addEventListener('click', () => {
-            document.getElementById('itemModal')?.classList.remove('active');
-            document.getElementById('itemModal')?.setAttribute('aria-hidden', 'true');
-            openCreateSubjectFormLocal(doc);
-          });
-        }, 30);
-      }
+        </div>
+        <div class="form-row">
+          <div style="flex:1">
+            <label>Assign teachers (multi)
+              <select id="sub_teachers" multiple size="6" style="width:100%">
+                ${teacherOptions}
+              </select>
+            </label>
+          </div>
+        </div>
 
-      // Delete subject
-      async function deleteSubjectLocal(id) {
-        if (!confirm('Delete this subject? This cannot be undone.')) return;
-        const r = await safeFetch(API + '/subjects/' + encodeURIComponent(id), { method: 'DELETE', headers: headersFn() });
-        if (r && r.ok) {
-          alert('Deleted');
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+          <button type="button" class="btn ghost" id="sub_cancel">Cancel</button>
+          <button type="submit" class="btn" id="sub_save">${prefill._id ? 'Save changes' : 'Create subject'}</button>
+        </div>
+      </form>
+    `;
+    createModalBody.innerHTML = html;
+
+    // set selected options
+    try {
+      const cs = document.getElementById('sub_classes');
+      const ts = document.getElementById('sub_teachers');
+      if (cs && selectedClasses.length) {
+        Array.from(cs.options).forEach(o => { if (selectedClasses.includes(o.value)) o.selected = true; });
+      }
+      if (ts && selectedTeachers.length) {
+        Array.from(ts.options).forEach(o => { if (selectedTeachers.includes(o.value)) o.selected = true; });
+      }
+    } catch (e){}
+
+    // handlers
+    document.getElementById('sub_cancel').addEventListener('click', ()=> {
+      createModal.classList.remove('active'); createModal.setAttribute('aria-hidden','true'); createModalBody.innerHTML='';
+    });
+
+    const form = document.getElementById('createSubjectForm');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('sub_id').value;
+      const payload = {
+        title: document.getElementById('sub_title').value.trim(),
+        code: document.getElementById('sub_code').value.trim(),
+        desc: document.getElementById('sub_desc').value.trim(),
+        credits: Number(document.getElementById('sub_credits').value) || 0,
+        meta: {
+          classes: Array.from(document.getElementById('sub_classes').selectedOptions || []).map(o => o.value),
+          teachers: Array.from(document.getElementById('sub_teachers').selectedOptions || []).map(o => o.value)
+        }
+      };
+
+      try {
+        let res;
+        if (id) {
+          res = await safeFetch(API_BASE + '/subjects/' + encodeURIComponent(id), { method: 'PUT', headers: headers('application/json'), body: JSON.stringify(payload) });
+        } else {
+          res = await safeFetch(API_BASE + '/subjects', { method: 'POST', headers: headers('application/json'), body: JSON.stringify(payload) });
+        }
+        if (res && res.ok) {
+          alert('Saved');
+          createModal.classList.remove('active'); createModal.setAttribute('aria-hidden','true'); createModalBody.innerHTML='';
           loadSubjects({});
         } else {
-          alert('Delete failed');
+          alert('Save failed: ' + (res && res.data && res.data.message ? res.data.message : JSON.stringify(res && res.data)));
         }
+      } catch (err) {
+        console.error(err);
+        alert('Save failed');
       }
+    });
 
-      // Event delegation for actions
-      document.body.addEventListener('click', async (e) => {
-        const t = e.target;
-        const action = t.dataset.action;
-        if (!action) return;
-        const id = t.dataset.id;
-        if (action === 'view-subject') { await viewSubjectLocal(id); return; }
-        if (action === 'edit-subject') {
-          // fetch and open edit (prefers restyled openCreateSubjectForm if present)
-          const r = await safeFetch(API + '/subjects/' + encodeURIComponent(id), { headers: headersFn() });
-          if (r && r.ok) {
-            const doc = (r.data && r.data.data) ? r.data.data : (r.data || {});
-            await openCreateSubjectFormLocal(doc);
-          } else {
-            alert('Failed to load subject for edit');
-          }
-          return;
-        }
-        if (action === 'delete-subject') { await deleteSubjectLocal(id); return; }
+    createModal.classList.add('active'); createModal.setAttribute('aria-hidden','false');
+  }
+
+  // View subject details (in item modal)
+  async function viewSubject(id) {
+    const r = await safeFetch(API_BASE + '/subjects/' + encodeURIComponent(id), { headers: headers() });
+    if (!r || !r.ok) {
+      openItemModal('Error', '<div class="muted-small">Failed to load subject</div>');
+      return;
+    }
+    const doc = (r.data && r.data.data) ? r.data.data : (r.data || {});
+    const classesArr = (doc.meta && Array.isArray(doc.meta.classes)) ? doc.meta.classes : (doc.classes || []);
+    const teachersArr = (doc.meta && Array.isArray(doc.meta.teachers)) ? doc.meta.teachers : (doc.teachers || []);
+    const classesLabel = classesArr.length ? classesArr.map(c => (typeof c === 'object' ? (c.name || c.title || c._id) : c)).join(', ') : '<span class="muted-small">None</span>';
+    const teachersLabel = teachersArr.length ? teachersArr.map(t => (typeof t === 'object' ? ((t.firstName||'') + ' ' + (t.lastName||'')).trim() : t)).join(', ') : '<span class="muted-small">None</span>';
+    const html = `
+      <div class="detail-row"><div class="detail-key">Title</div><div class="detail-val">${escapeHtml(doc.title || doc.name || '')}</div></div>
+      <div class="detail-row"><div class="detail-key">Code</div><div class="detail-val">${escapeHtml(doc.code || '')}</div></div>
+      <div class="detail-row"><div class="detail-key">Description</div><div class="detail-val">${escapeHtml(doc.desc || '')}</div></div>
+      <div class="detail-row"><div class="detail-key">Credits</div><div class="detail-val">${escapeHtml(doc.credits || 0)}</div></div>
+      <div class="detail-row"><div class="detail-key">Classes</div><div class="detail-val">${escapeHtml(classesLabel)}</div></div>
+      <div class="detail-row"><div class="detail-key">Teachers</div><div class="detail-val">${escapeHtml(teachersLabel)}</div></div>
+      <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn ghost" id="closeViewOnly">Close</button>
+        <button class="btn" id="editSubjectBtn">Edit</button>
+      </div>
+    `;
+    modalState = { type: 'subject', id, data: doc };
+    openItemModal('Subject', html, true);
+    setTimeout(()=> {
+      const closeBtn = document.getElementById('closeViewOnly');
+      if (closeBtn) closeBtn.addEventListener('click', ()=> { itemModal.classList.remove('active'); itemModal.setAttribute('aria-hidden','true'); });
+      const editBtn = document.getElementById('editSubjectBtn');
+      if (editBtn) editBtn.addEventListener('click', ()=> {
+        itemModal.classList.remove('active'); itemModal.setAttribute('aria-hidden','true');
+        openCreateSubjectForm(doc);
       });
+    }, 40);
+  }
 
-      // Top-level controls
-      document.getElementById('newSubjectBtn')?.addEventListener('click', () => openCreateSubjectFormLocal({}));
-      document.getElementById('searchSubjectsBtn')?.addEventListener('click', () => loadSubjects({}));
-      document.getElementById('subjectQuery')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') loadSubjects({}); });
-
-      // init when courses tab activated
-      async function initSubjectsTab() {
-        try { await fetchClassesAndSubjects(); } catch (e) { /* ignore */ }
-        await loadSubjects({});
-      }
-
-      // hook into the tab system: when courses tab activated call initSubjectsTab
-      (function hookTabWatcher() {
-        const coursesTab = document.querySelector('.sidebar-tab[data-tab="courses"]');
-        if (coursesTab) {
-          coursesTab.addEventListener('click', () => { setTimeout(() => initSubjectsTab(), 80); });
-        }
-        // also if loaded with hash= #courses
-        if ((location.hash || '').replace('#', '') === 'courses') { setTimeout(() => initSubjectsTab(), 120); }
-      })();
-
-      // expose loader globally so other code (modal) can refresh
-      window.loadSubjects = loadSubjects;
-
-      // If the courses tab is already active on load, initialize immediately
-      if ((location.hash || '').replace('#', '') === 'courses') {
-        initSubjectsTab().catch(() => {});
-      }
-
-      // done
-      console.log('[subjects-list] initialized');
-    } catch (err) {
-      console.warn('[subjects-list] initialization failed:', err && err.message);
+  // Delete subject
+  async function deleteSubject(id) {
+    if (!confirm('Delete this subject? This cannot be undone.')) return;
+    const r = await safeFetch(API_BASE + '/subjects/' + encodeURIComponent(id), { method: 'DELETE', headers: headers() });
+    if (r && r.ok) {
+      alert('Deleted');
+      loadSubjects({});
+    } else {
+      alert('Delete failed');
     }
   }
 
-  // start
-  init();
+  // Event delegation for subject actions
+  document.body.addEventListener('click', async (e) => {
+    const t = e.target;
+    const action = t.dataset.action;
+    if (!action) return;
+    const id = t.dataset.id;
+    if (action === 'view-subject') { await viewSubject(id); return; }
+    if (action === 'edit-subject') { // fetch and open edit
+      const r = await safeFetch(API_BASE + '/subjects/' + encodeURIComponent(id), { headers: headers() });
+      if (r && r.ok) {
+        const doc = (r.data && r.data.data) ? r.data.data : (r.data || {});
+        openCreateSubjectForm(doc);
+      } else {
+        alert('Failed to load subject for edit');
+      }
+      return;
+    }
+    if (action === 'delete-subject') { await deleteSubject(id); return; }
+  });
+
+  // Wire top-level controls
+  document.getElementById('newSubjectBtn')?.addEventListener('click', ()=> openCreateSubjectForm({}));
+  document.getElementById('searchSubjectsBtn')?.addEventListener('click', ()=> loadSubjects({}));
+  document.getElementById('subjectQuery')?.addEventListener('keydown', (e)=> { if (e.key === 'Enter') loadSubjects({}); });
+
+  // initial load when courses tab activated
+  // ensure classes/teachers are loaded then subjects
+  async function initSubjectsTab() {
+    try { await fetchClassesAndSubjects(); } catch (e) {}
+    await loadSubjects({});
+  }
+
+  // hook into the tab system: when courses tab activated call initSubjectsTab
+  (function hookTabWatcher(){
+    const coursesTab = document.querySelector('.sidebar-tab[data-tab="courses"]');
+    if (coursesTab) {
+      coursesTab.addEventListener('click', () => { setTimeout(()=> initSubjectsTab(), 80); });
+    }
+    // also if loaded with hash= #courses
+    if ((location.hash || '').replace('#','') === 'courses') { setTimeout(()=> initSubjectsTab(), 120); }
+  })();
+
+  // expose loader so other scripts can refresh the list
+  window.loadSubjects = loadSubjects;
+
 })();
 
     // Student edit form (returns HTML)
