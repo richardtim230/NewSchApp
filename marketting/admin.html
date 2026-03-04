@@ -1549,27 +1549,59 @@ function initClassesTab() {
 initClassesTab();
 
    
+
 async function loadSimpleList(path, opts = {}) {
-  const targetId = opts.targetId || `${path}List`;
+  if (!path && !opts.path) {
+    console.warn('loadSimpleList: missing path');
+    return { ok: false, reason: 'missing-path' };
+  }
+
+  // Accept either a string path or full URL in opts.path / path
+  let raw = String(opts.path || path || '').trim();
+
+  // If caller passed a full URL (starts with http...), use it as-is for fetch while deriving an id.
+  const isFullUrl = /^https?:\/\//i.test(raw);
+
+  // Extract query string if present
+  let pathname = raw;
+  let query = '';
+  const qIdx = raw.indexOf('?');
+  if (qIdx !== -1) {
+    pathname = raw.slice(0, qIdx);
+    query = raw.slice(qIdx); // includes '?'
+  }
+
+  // Strip leading slashes to form a DOM id (e.g. "/classes" -> "classes")
+  const normalizedPath = pathname.replace(/^\/+/, '');
+
+  // Guard: if normalizedPath is empty, bail
+  if (!normalizedPath) {
+    console.warn('loadSimpleList: normalized path empty for raw=', raw);
+    return { ok: false, reason: 'empty-normalized-path', raw };
+  }
+
+  // Determine target element id (allow explicit override via opts.targetId)
+  const targetId = opts.targetId || `${normalizedPath}List`;
   const targetEl = document.getElementById(targetId);
   if (!targetEl) {
-    // Helpful debugging message instead of throwing
-    console.warn(`loadSimpleList: target element not found for path="${path}", expected id="${targetId}". Skipping render.`);
-    return { ok: false, reason: 'missing-target', targetId, path };
+    console.warn(`loadSimpleList: target element not found for path="${raw}", expected id="${targetId}". Skipping render.`);
+    return { ok: false, reason: 'missing-target', targetId, path: raw };
   }
 
   targetEl.innerHTML = '<div class="empty">Loading…</div>';
 
+  // Build the API path to request
+  const apiPath = isFullUrl ? raw : ('/' + normalizedPath + query);
+  const url = isFullUrl ? raw : (API_BASE + apiPath);
+
   try {
-    const url = API_BASE + '/' + path;
     const r = await safeFetch(url, { headers: headers() });
     if (!r.ok) {
-      targetEl.innerHTML = `<div class="empty muted-small">Failed to load ${path}</div>`;
+      targetEl.innerHTML = `<div class="empty muted-small">Failed to load ${normalizedPath}</div>`;
       return { ok: false, status: r.status, data: r.data };
     }
 
     const items = Array.isArray(r.data) ? r.data : (r.data && Array.isArray(r.data.data) ? r.data.data : []);
-    // Allow caller to provide a custom renderer
     const html = typeof opts.render === 'function'
       ? opts.render(items)
       : (items.length ? items.map(it => `<div class="card">${(it.name||it.title||it._id||'Item')}</div>`).join('') : '<div class="empty">No items</div>');
@@ -1578,10 +1610,11 @@ async function loadSimpleList(path, opts = {}) {
     return { ok: true, items };
   } catch (err) {
     console.error('loadSimpleList error', err);
-    targetEl.innerHTML = `<div class="empty muted-small">Error loading ${path}</div>`;
+    targetEl.innerHTML = `<div class="empty muted-small">Error loading ${normalizedPath}</div>`;
     return { ok: false, error: err };
   }
 }
+
 
     // other wiring (search buttons, load logs, health, backup)
     document.getElementById('searchAppsBtn').addEventListener('click', ()=> loadApplications(document.getElementById('appQuery').value, document.getElementById('appStatus').value));
