@@ -233,7 +233,150 @@
   <div id="coursesList" style="margin-top:12px"></div>
 </section>
 
-<script>
+
+
+        <section id="exams" class="section tab-section" style="display:none">
+          <h2>Exams</h2>
+          <div id="examsList"></div>
+        </section>
+
+        <section id="assignments" class="section tab-section" style="display:none">
+          <h2>Assignments</h2>
+          <div id="assignmentsList"></div>
+        </section>
+
+        <section id="messages" class="section tab-section" style="display:none">
+          <h2>Messages</h2>
+          <div id="messagesList"></div>
+        </section>
+
+        <!-- Logs -->
+        <section id="logs" class="section tab-section" style="display:none">
+          <h2>Logs & Reports</h2>
+          <div class="controls" style="margin-top:8px">
+            <input type="text" id="logsQuery" placeholder="Search logs">
+            <button class="btn" id="loadLogsBtn">Load logs</button>
+            <button class="btn ghost" id="downloadLogsBtn">Download</button>
+          </div>
+          <pre id="logsOutput" style="margin-top:12px;max-height:360px;overflow:auto;background:#0f172a;color:#fff;padding:12px;border-radius:8px"></pre>
+        </section>
+
+        <!-- Settings -->
+        <section id="settings" class="section tab-section" style="display:none">
+          <h2>Settings & Maintenance</h2>
+          <div style="margin-top:8px" class="controls">
+            <button class="btn" id="runBackupBtn">Run backup</button>
+            <button class="btn ghost" id="clearCacheBtn">Clear cache</button>
+            <button class="btn ghost" id="viewHealthBtn">Check health</button>
+          </div>
+          <div style="margin-top:12px" id="settingsOutput"></div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Generic item modal (used for viewing & editing details) -->
+    <div class="modal" id="itemModal" role="dialog" aria-modal="true" aria-hidden="true">
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;border-bottom:1px solid #eef3ff">
+          <div id="itemModalTitle" style="font-weight:800">Details</div>
+          <div>
+            <button class="btn ghost" id="itemEditBtn" style="margin-right:8px;display:none">Edit</button>
+            <button class="btn ghost" id="closeItemModal">Close</button>
+          </div>
+        </div>
+        <div class="body" id="itemModalBody" style="padding:12px;max-height:70vh;overflow:auto"></div>
+      </div>
+    </div>
+
+    <!-- Create/Edit modal (form) reused earlier createModal -->
+    <div class="modal" id="createModal" role="dialog" aria-modal="true" aria-hidden="true">
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;border-bottom:1px solid #eef3ff">
+          <div id="createModalTitle" style="font-weight:800">Create</div>
+          <div><button class="btn ghost" id="closeCreateModal">Close</button></div>
+        </div>
+        <div class="body" id="createModalBody" style="padding:12px;max-height:70vh;overflow:auto"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+  (function(){
+    const API_BASE = 'https://examguard-mzok.onrender.com/api';
+    const TOKEN = localStorage.getItem('eg_token') || null;
+    const adminNameEl = document.getElementById('adminName');
+    const serverStatusEl = document.getElementById('serverStatus');
+
+    // small helpers
+    function headers(content='application/json'){ const h = {}; if(content) h['Content-Type']=content; if(TOKEN) h['Authorization']='Bearer '+TOKEN; return h; }
+    async function safeFetch(url, opts={}) {
+      try {
+        const res = await fetch(url, opts);
+        const text = await res.text();
+        try { return { ok: res.ok, status: res.status, data: JSON.parse(text) }; } catch { return { ok: res.ok, status: res.status, data: text }; }
+      } catch (err){ return { ok:false, error:err }; }
+    }
+
+    // onboarding: show admin name from local cache / token payload
+    try {
+      const app = JSON.parse(localStorage.getItem('eg_application')||'null') || null;
+      if(app) adminNameEl.textContent = (app.firstName || app.name || app.username || 'Admin');
+    } catch(e){}
+
+    // Tab system
+    const tabs = Array.from(document.querySelectorAll('.sidebar-tab'));
+    const sections = Array.from(document.querySelectorAll('.tab-section'));
+    function setActiveTab(name) {
+      tabs.forEach(t => { const on = t.dataset.tab === name; t.classList.toggle('active', on); });
+      sections.forEach(s => s.id === name ? s.style.display = '' : s.style.display = 'none');
+      location.hash = '#'+name;
+    }
+    tabs.forEach(t => t.addEventListener('click', (e)=> { e.preventDefault(); setActiveTab(t.dataset.tab); }));
+    setActiveTab((location.hash||'#dashboard').replace('#','') || 'dashboard');
+
+    // Modal helpers
+    const itemModal = document.getElementById('itemModal');
+    const itemModalBody = document.getElementById('itemModalBody');
+    const itemModalTitle = document.getElementById('itemModalTitle');
+    const itemEditBtn = document.getElementById('itemEditBtn');
+    document.getElementById('closeItemModal').addEventListener('click', ()=> { itemModal.classList.remove('active'); itemModal.setAttribute('aria-hidden','true'); itemModalBody.innerHTML=''; itemEditBtn.style.display='none'; });
+
+    function openItemModal(title, html, canEdit=false) {
+      itemModalTitle.textContent = title || 'Details';
+      itemModalBody.innerHTML = html || '';
+      itemModal.classList.add('active'); itemModal.setAttribute('aria-hidden','false');
+      itemEditBtn.style.display = canEdit ? '' : 'none';
+    }
+
+    // state to hold current viewed item in modal (for edit)
+    let modalState = { type: null, id: null, data: null };
+
+    // Render a details view for student
+    function renderStudentDetailsView(doc) {
+      const rows = [
+        ['Username', doc.username || doc.username || ''],
+        ['Name', (doc.firstName || '') + (doc.lastName ? (' ' + doc.lastName) : '')],
+        ['Email', doc.email || ''],
+        ['Phone', doc.phone || ''],
+        ['DOB', doc.dob ? (new Date(doc.dob).toLocaleDateString()) : ''],
+        ['Program', doc.program || ''],
+        ['Class / Cohort', doc.className || doc.cohort || ''],
+        ['Status', doc.status || ''],
+        ['Nationality', doc.nationality || ''],
+        ['Address', doc.address || ''],
+        ['Intake term', doc.intakeTerm || ''],
+        ['Created', doc.createdAt ? new Date(doc.createdAt).toLocaleString() : ''],
+        ['Updated', doc.updatedAt ? new Date(doc.updatedAt).toLocaleString() : '']
+      ];
+      const html = rows.map(r => `<div class="detail-row"><div class="detail-key">${r[0]}</div><div class="detail-val">${r[1] || '<span class="muted-small">Not set</span>'}</div></div>`).join('') +
+        `<div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+           <button class="btn ghost" id="closeViewOnly">Close</button>
+           <button class="btn" id="editStudentBtn">Edit</button>
+         </div>`;
+      return html;
+    }
+
   // Courses & Subjects client-side logic
   let coursesCache = [];
 
@@ -471,149 +614,6 @@
   if ((location.hash||'').replace('#','') === 'courses') {
     setTimeout(() => loadCoursesAndSubjects({}), 40);
   }
-</script>
-
-        <section id="exams" class="section tab-section" style="display:none">
-          <h2>Exams</h2>
-          <div id="examsList"></div>
-        </section>
-
-        <section id="assignments" class="section tab-section" style="display:none">
-          <h2>Assignments</h2>
-          <div id="assignmentsList"></div>
-        </section>
-
-        <section id="messages" class="section tab-section" style="display:none">
-          <h2>Messages</h2>
-          <div id="messagesList"></div>
-        </section>
-
-        <!-- Logs -->
-        <section id="logs" class="section tab-section" style="display:none">
-          <h2>Logs & Reports</h2>
-          <div class="controls" style="margin-top:8px">
-            <input type="text" id="logsQuery" placeholder="Search logs">
-            <button class="btn" id="loadLogsBtn">Load logs</button>
-            <button class="btn ghost" id="downloadLogsBtn">Download</button>
-          </div>
-          <pre id="logsOutput" style="margin-top:12px;max-height:360px;overflow:auto;background:#0f172a;color:#fff;padding:12px;border-radius:8px"></pre>
-        </section>
-
-        <!-- Settings -->
-        <section id="settings" class="section tab-section" style="display:none">
-          <h2>Settings & Maintenance</h2>
-          <div style="margin-top:8px" class="controls">
-            <button class="btn" id="runBackupBtn">Run backup</button>
-            <button class="btn ghost" id="clearCacheBtn">Clear cache</button>
-            <button class="btn ghost" id="viewHealthBtn">Check health</button>
-          </div>
-          <div style="margin-top:12px" id="settingsOutput"></div>
-        </section>
-      </div>
-    </main>
-
-    <!-- Generic item modal (used for viewing & editing details) -->
-    <div class="modal" id="itemModal" role="dialog" aria-modal="true" aria-hidden="true">
-      <div class="panel">
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;border-bottom:1px solid #eef3ff">
-          <div id="itemModalTitle" style="font-weight:800">Details</div>
-          <div>
-            <button class="btn ghost" id="itemEditBtn" style="margin-right:8px;display:none">Edit</button>
-            <button class="btn ghost" id="closeItemModal">Close</button>
-          </div>
-        </div>
-        <div class="body" id="itemModalBody" style="padding:12px;max-height:70vh;overflow:auto"></div>
-      </div>
-    </div>
-
-    <!-- Create/Edit modal (form) reused earlier createModal -->
-    <div class="modal" id="createModal" role="dialog" aria-modal="true" aria-hidden="true">
-      <div class="panel">
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;border-bottom:1px solid #eef3ff">
-          <div id="createModalTitle" style="font-weight:800">Create</div>
-          <div><button class="btn ghost" id="closeCreateModal">Close</button></div>
-        </div>
-        <div class="body" id="createModalBody" style="padding:12px;max-height:70vh;overflow:auto"></div>
-      </div>
-    </div>
-
-  </div>
-
-  <script>
-  (function(){
-    const API_BASE = 'https://examguard-mzok.onrender.com/api';
-    const TOKEN = localStorage.getItem('eg_token') || null;
-    const adminNameEl = document.getElementById('adminName');
-    const serverStatusEl = document.getElementById('serverStatus');
-
-    // small helpers
-    function headers(content='application/json'){ const h = {}; if(content) h['Content-Type']=content; if(TOKEN) h['Authorization']='Bearer '+TOKEN; return h; }
-    async function safeFetch(url, opts={}) {
-      try {
-        const res = await fetch(url, opts);
-        const text = await res.text();
-        try { return { ok: res.ok, status: res.status, data: JSON.parse(text) }; } catch { return { ok: res.ok, status: res.status, data: text }; }
-      } catch (err){ return { ok:false, error:err }; }
-    }
-
-    // onboarding: show admin name from local cache / token payload
-    try {
-      const app = JSON.parse(localStorage.getItem('eg_application')||'null') || null;
-      if(app) adminNameEl.textContent = (app.firstName || app.name || app.username || 'Admin');
-    } catch(e){}
-
-    // Tab system
-    const tabs = Array.from(document.querySelectorAll('.sidebar-tab'));
-    const sections = Array.from(document.querySelectorAll('.tab-section'));
-    function setActiveTab(name) {
-      tabs.forEach(t => { const on = t.dataset.tab === name; t.classList.toggle('active', on); });
-      sections.forEach(s => s.id === name ? s.style.display = '' : s.style.display = 'none');
-      location.hash = '#'+name;
-    }
-    tabs.forEach(t => t.addEventListener('click', (e)=> { e.preventDefault(); setActiveTab(t.dataset.tab); }));
-    setActiveTab((location.hash||'#dashboard').replace('#','') || 'dashboard');
-
-    // Modal helpers
-    const itemModal = document.getElementById('itemModal');
-    const itemModalBody = document.getElementById('itemModalBody');
-    const itemModalTitle = document.getElementById('itemModalTitle');
-    const itemEditBtn = document.getElementById('itemEditBtn');
-    document.getElementById('closeItemModal').addEventListener('click', ()=> { itemModal.classList.remove('active'); itemModal.setAttribute('aria-hidden','true'); itemModalBody.innerHTML=''; itemEditBtn.style.display='none'; });
-
-    function openItemModal(title, html, canEdit=false) {
-      itemModalTitle.textContent = title || 'Details';
-      itemModalBody.innerHTML = html || '';
-      itemModal.classList.add('active'); itemModal.setAttribute('aria-hidden','false');
-      itemEditBtn.style.display = canEdit ? '' : 'none';
-    }
-
-    // state to hold current viewed item in modal (for edit)
-    let modalState = { type: null, id: null, data: null };
-
-    // Render a details view for student
-    function renderStudentDetailsView(doc) {
-      const rows = [
-        ['Username', doc.username || doc.username || ''],
-        ['Name', (doc.firstName || '') + (doc.lastName ? (' ' + doc.lastName) : '')],
-        ['Email', doc.email || ''],
-        ['Phone', doc.phone || ''],
-        ['DOB', doc.dob ? (new Date(doc.dob).toLocaleDateString()) : ''],
-        ['Program', doc.program || ''],
-        ['Class / Cohort', doc.className || doc.cohort || ''],
-        ['Status', doc.status || ''],
-        ['Nationality', doc.nationality || ''],
-        ['Address', doc.address || ''],
-        ['Intake term', doc.intakeTerm || ''],
-        ['Created', doc.createdAt ? new Date(doc.createdAt).toLocaleString() : ''],
-        ['Updated', doc.updatedAt ? new Date(doc.updatedAt).toLocaleString() : '']
-      ];
-      const html = rows.map(r => `<div class="detail-row"><div class="detail-key">${r[0]}</div><div class="detail-val">${r[1] || '<span class="muted-small">Not set</span>'}</div></div>`).join('') +
-        `<div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
-           <button class="btn ghost" id="closeViewOnly">Close</button>
-           <button class="btn" id="editStudentBtn">Edit</button>
-         </div>`;
-      return html;
-    }
 
     // Student edit form (returns HTML)
     function renderStudentEditForm(doc) {
