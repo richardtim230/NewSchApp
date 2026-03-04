@@ -420,6 +420,357 @@
 
 (function () {
 
+  // small helper
+  function escapeHtml(s) {
+    if (s === undefined || s === null) return '';
+    return String(s).replace(/[&<>"']/g, function (m) { return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;' }[m]); });
+  }
+
+  // Load results from API
+  async function loadResults(opts = {}) {
+    const q = (opts.q || document.getElementById('resultQuery')?.value || '').trim();
+    // keep original fetch style
+    const url = API_BASE + '/results' + (q ? ('?q=' + encodeURIComponent(q)) : '');
+    const r = await safeFetch(url, { headers: headers() });
+    const container = document.getElementById('assignmentsList'); // using assignmentsList DOM area
+    if (!container) return;
+    if (!r || !r.ok) {
+      container.innerHTML = '<div class="empty">Failed to load results</div>';
+      return;
+    }
+    const items = Array.isArray(r.data) ? r.data : (Array.isArray(r.data?.data) ? r.data.data : []);
+    renderResultsList(items || []);
+  }
+
+  // Render table / toolbar
+  function renderResultsList(items) {
+    const container = document.getElementById('assignmentsList'); // assignmentsList reused for results
+    if (!container) return;
+
+    const toolbar = `
+      <div class="controls" style="margin-bottom:12px">
+        <input type="text" id="resultQuery" placeholder="Search results by student, exam or class" style="min-width:220px">
+        <button class="btn" id="searchResultsBtn">Search</button>
+        <button class="btn ghost" id="exportResultsBtn">Export</button>
+        <button class="btn" id="newResultBtn">+ New Result</button>
+      </div>
+    `;
+
+    if (!items || !items.length) {
+      container.innerHTML = toolbar + '<div class="empty">No results found</div>';
+      wireToolbar();
+      return;
+    }
+
+    const rows = items.map((r, i) => {
+      const idv = r._id || r.id || '';
+      const studentLabel = (r.student && (r.student.firstName || r.student.username)) ? ( (r.student.firstName || '') + (r.student.lastName ? (' ' + r.student.lastName) : '') + (r.student.username ? (' @' + r.student.username) : '') ).trim() : (r.studentName || r.student || '—');
+      const examLabel = (r.exam && (r.exam.title || r.exam.name)) ? (r.exam.title || r.exam.name) : (r.examName || r.exam || '—');
+      const classLabel = r.className || (r.class && (r.class.name || r.class.title)) || '—';
+      const score = (r.score !== undefined && r.score !== null) ? String(r.score) : '—';
+      const maxScore = (r.maxScore !== undefined && r.maxScore !== null) ? String(r.maxScore) : '—';
+      const grade = r.grade || '—';
+      const released = r.released ? '<span class="badge">released</span>' : '<span class="muted-small">private</span>';
+
+      return `<tr>
+        <td style="width:36px">${i+1}</td>
+        <td>
+          <strong>${escapeHtml(studentLabel)}</strong>
+          <div class="muted-small">${escapeHtml(classLabel)}</div>
+        </td>
+        <td style="min-width:220px">
+          <strong>${escapeHtml(examLabel)}</strong>
+          <div class="muted-small">${escapeHtml(r.exam?.code || r.examCode || '')}</div>
+        </td>
+        <td style="width:120px">${escapeHtml(score)} / ${escapeHtml(maxScore)}</td>
+        <td style="width:100px">${escapeHtml(grade)}</td>
+        <td style="width:110px">${released}</td>
+        <td style="white-space:nowrap;width:180px">
+          <button class="small-btn" data-action="view-result" data-id="${idv}">View</button>
+          <button class="small-btn" data-action="edit-result" data-id="${idv}">Edit</button>
+          <button class="small-btn" data-action="delete-result" data-id="${idv}">Delete</button>
+        </td>
+      </tr>`;
+    }).join('');
+
+    container.innerHTML = toolbar + `
+      <div style="margin-top:8px">
+        <table style="width:100%">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Student</th>
+              <th>Exam</th>
+              <th>Score</th>
+              <th>Grade</th>
+              <th>State</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+
+    wireToolbar();
+  }
+
+  // toolbar wiring
+  function wireToolbar() {
+    document.getElementById('searchResultsBtn')?.addEventListener('click', () => loadResults({}));
+    document.getElementById('resultQuery')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') loadResults({}); });
+    document.getElementById('newResultBtn')?.addEventListener('click', () => openCreateResultForm({}));
+    document.getElementById('exportResultsBtn')?.addEventListener('click', () => {
+      // simple export - open CSV endpoint if provided by API
+      const url = API_BASE + '/results?format=csv';
+      window.open(url, '_blank');
+    });
+  }
+
+  // open create/edit result form
+  async function openCreateResultForm(prefill = {}) {
+    // try to ensure related caches loaded
+    try { await fetchClassesAndSubjects(); } catch (e) { /* ignore */ }
+
+    // also fetch exams and students list to populate selects
+    let exams = [];
+    let students = [];
+    try {
+      const re = await safeFetch(API_BASE + '/exams', { headers: headers() });
+      exams = (re && re.ok && Array.isArray(re.data)) ? re.data : ((re && re.data && Array.isArray(re.data.data)) ? re.data.data : []);
+    } catch (e) { exams = []; }
+    try {
+      // prefer admin students list to get merged application entries as in admin router
+      const rs = await safeFetch(API_BASE + '/admin/students', { headers: headers() });
+      students = (rs && rs.ok && Array.isArray(rs.data)) ? rs.data : ((rs && rs.data && Array.isArray(rs.data.data)) ? rs.data.data : []);
+      // fallback to public students
+      if (!students || !students.length) {
+        const rs2 = await safeFetch(API_BASE + '/students', { headers: headers() });
+        students = (rs2 && rs2.ok && Array.isArray(rs2.data)) ? rs2.data : ((rs2 && rs2.data && Array.isArray(rs2.data.data)) ? rs2.data.data : []);
+      }
+    } catch (e) { students = []; }
+
+    createModalTitle.textContent = prefill._id ? 'Edit Result' : 'Create Result';
+
+    const examOptions = exams.map(x => `<option value="${escapeHtml(x._id || x.id || x.title)}">${escapeHtml(x.title || x.name || x.code || x._id)}</option>`).join('');
+    const studentOptions = students.map(s => {
+      const label = ((s.firstName || '') + (s.lastName ? (' ' + s.lastName) : '') + (s.username ? (' @' + s.username) : '')).trim() || s.email || s.username || (s._id || '');
+      return `<option value="${escapeHtml(s._id || s.id || s.username)}">${escapeHtml(label)}</option>`;
+    }).join('');
+
+    const html = `
+      <form id="createResultForm" novalidate>
+        <input type="hidden" id="res_id" value="${escapeHtml(prefill._id || prefill.id || '')}">
+        <div class="form-row">
+          <div>
+            <label>Student
+              <select id="res_student" style="width:100%">
+                <option value="">-- select student --</option>
+                ${studentOptions}
+              </select>
+            </label>
+          </div>
+          <div>
+            <label>Exam
+              <select id="res_exam" style="width:100%">
+                <option value="">-- select exam --</option>
+                ${examOptions}
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div>
+            <label>Score
+              <input id="res_score" type="number" min="0" value="${escapeHtml(prefill.score ?? '')}">
+            </label>
+          </div>
+          <div>
+            <label>Max score
+              <input id="res_maxScore" type="number" min="0" value="${escapeHtml(prefill.maxScore ?? '')}">
+            </label>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div>
+            <label>Grade
+              <input id="res_grade" type="text" value="${escapeHtml(prefill.grade || '')}">
+            </label>
+          </div>
+          <div>
+            <label>Released
+              <select id="res_released">
+                <option value="false" ${!prefill.released ? 'selected' : ''}>No</option>
+                <option value="true" ${prefill.released ? 'selected' : ''}>Yes</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-row-single">
+          <label>Remarks
+            <textarea id="res_remarks" rows="3">${escapeHtml(prefill.remarks || '')}</textarea>
+          </label>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+          <button type="button" class="btn ghost" id="res_cancel">Cancel</button>
+          <button type="submit" class="btn" id="res_save">${prefill._id ? 'Save changes' : 'Create result'}</button>
+        </div>
+      </form>
+    `;
+    createModalBody.innerHTML = html;
+
+    // set selected if prefill
+    try {
+      if (prefill.student) document.getElementById('res_student').value = (prefill.student._id || prefill.student.id || prefill.student);
+      if (prefill.exam) document.getElementById('res_exam').value = (prefill.exam._id || prefill.exam.id || prefill.exam);
+    } catch (e) {}
+
+    document.getElementById('res_cancel').addEventListener('click', () => {
+      createModal.classList.remove('active'); createModal.setAttribute('aria-hidden', 'true'); createModalBody.innerHTML = '';
+    });
+
+    const form = document.getElementById('createResultForm');
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const id = document.getElementById('res_id').value;
+      const payload = {
+        student: document.getElementById('res_student').value || null,
+        exam: document.getElementById('res_exam').value || null,
+        score: document.getElementById('res_score').value ? Number(document.getElementById('res_score').value) : null,
+        maxScore: document.getElementById('res_maxScore').value ? Number(document.getElementById('res_maxScore').value) : null,
+        grade: document.getElementById('res_grade').value.trim() || null,
+        remarks: document.getElementById('res_remarks').value.trim() || null,
+        released: String(document.getElementById('res_released').value) === 'true'
+      };
+
+      try {
+        let res;
+        if (id) {
+          res = await safeFetch(API_BASE + '/results/' + encodeURIComponent(id), { method: 'PUT', headers: headers('application/json'), body: JSON.stringify(payload) });
+        } else {
+          res = await safeFetch(API_BASE + '/results', { method: 'POST', headers: headers('application/json'), body: JSON.stringify(payload) });
+        }
+        if (res && res.ok) {
+          alert('Saved');
+          createModal.classList.remove('active'); createModal.setAttribute('aria-hidden', 'true'); createModalBody.innerHTML = '';
+          loadResults({});
+        } else {
+          alert('Save failed: ' + (res && res.data && res.data.message ? res.data.message : JSON.stringify(res && res.data)));
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Save failed');
+      }
+    });
+
+    createModal.classList.add('active'); createModal.setAttribute('aria-hidden', 'false');
+  }
+
+  // view result details
+  async function viewResult(id) {
+    const r = await safeFetch(API_BASE + '/results/' + encodeURIComponent(id), { headers: headers() });
+    if (!r || !r.ok) {
+      openItemModal('Error', '<div class="muted-small">Failed to load result</div>');
+      return;
+    }
+    const doc = (r.data && r.data.data) ? r.data.data : (r.data || {});
+    const student = doc.student && (doc.student.firstName || doc.student.username) ? ((doc.student.firstName||'') + (doc.student.lastName ? (' ' + doc.student.lastName) : '') + (doc.student.username ? (' @' + doc.student.username) : '')).trim() : (doc.studentName || doc.student || '—');
+    const exam = (doc.exam && (doc.exam.title || doc.exam.name)) ? (doc.exam.title || doc.exam.name) : (doc.examName || doc.exam || '—');
+    const className = doc.className || (doc.class && (doc.class.name || doc.class.title)) || '—';
+    const score = (doc.score !== undefined && doc.score !== null) ? String(doc.score) : '—';
+    const maxScore = (doc.maxScore !== undefined && doc.maxScore !== null) ? String(doc.maxScore) : '—';
+    const grade = doc.grade || '—';
+    const remarks = doc.remarks || '';
+    const released = doc.released ? '<span class="badge">released</span>' : '<span class="muted-small">private</span>';
+
+    const html = `
+      <div class="detail-row"><div class="detail-key">Student</div><div class="detail-val">${escapeHtml(student)}</div></div>
+      <div class="detail-row"><div class="detail-key">Exam</div><div class="detail-val">${escapeHtml(exam)}</div></div>
+      <div class="detail-row"><div class="detail-key">Class</div><div class="detail-val">${escapeHtml(className)}</div></div>
+      <div class="detail-row"><div class="detail-key">Score</div><div class="detail-val">${escapeHtml(score)} / ${escapeHtml(maxScore)}</div></div>
+      <div class="detail-row"><div class="detail-key">Grade</div><div class="detail-val">${escapeHtml(grade)}</div></div>
+      <div class="detail-row"><div class="detail-key">Remarks</div><div class="detail-val">${escapeHtml(remarks) || '<span class="muted-small">None</span>'}</div></div>
+      <div class="detail-row"><div class="detail-key">State</div><div class="detail-val">${released}</div></div>
+      <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn ghost" id="closeResultView">Close</button>
+        <button class="btn" id="editResultBtn">Edit</button>
+      </div>
+    `;
+    modalState = { type: 'result', id, data: doc };
+    openItemModal('Result', html, true);
+    setTimeout(() => {
+      document.getElementById('closeResultView')?.addEventListener('click', () => {
+        itemModal.classList.remove('active'); itemModal.setAttribute('aria-hidden', 'true');
+      });
+      document.getElementById('editResultBtn')?.addEventListener('click', () => {
+        itemModal.classList.remove('active'); itemModal.setAttribute('aria-hidden', 'true');
+        openCreateResultForm(doc);
+      });
+    }, 40);
+  }
+
+  // delete result
+  async function deleteResult(id) {
+    if (!confirm('Delete this result? This cannot be undone.')) return;
+    const r = await safeFetch(API_BASE + '/results/' + encodeURIComponent(id), { method: 'DELETE', headers: headers() });
+    if (r && r.ok) {
+      alert('Deleted');
+      loadResults({});
+    } else {
+      alert('Delete failed');
+    }
+  }
+
+  // delegation
+  document.body.addEventListener('click', async (e) => {
+    const t = e.target;
+    const action = t.dataset.action;
+    if (!action) return;
+    const id = t.dataset.id;
+    if (action === 'view-result') { await viewResult(id); return; }
+    if (action === 'edit-result') {
+      const r = await safeFetch(API_BASE + '/results/' + encodeURIComponent(id), { headers: headers() });
+      if (r && r.ok) {
+        const doc = (r.data && r.data.data) ? r.data.data : (r.data || {});
+        openCreateResultForm(doc);
+      } else {
+        alert('Failed to load result for edit');
+      }
+      return;
+    }
+    if (action === 'delete-result') { await deleteResult(id); return; }
+  });
+
+  // init when Assignments tab (we repurpose it) is activated
+  async function initResultsTab() {
+    try { await fetchClassesAndSubjects(); } catch (e) { /* ignore */ }
+    await loadResults({});
+  }
+
+  (function hookTabWatcher() {
+    // repurpose the assignments sidebar tab
+    const assignTab = document.querySelector('.sidebar-tab[data-tab="assignments"]');
+    if (assignTab) {
+      assignTab.addEventListener('click', () => { setTimeout(() => initResultsTab(), 80); });
+    }
+    if ((location.hash || '').replace('#', '') === 'assignments') { setTimeout(() => initResultsTab(), 120); }
+  })();
+
+  // expose loader
+  window.loadResults = loadResults;
+
+  // If assignments tab is active on load, initialize
+  if ((location.hash || '').replace('#', '') === 'assignments') {
+    setTimeout(() => initResultsTab(), 120);
+  }
+
+})();
+(function () {
+
   // Small HTML escape helper
   function escapeHtml(s) {
     if (s === undefined || s === null) return '';
