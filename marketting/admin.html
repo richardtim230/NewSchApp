@@ -188,10 +188,336 @@
         </section>
 
         <!-- Classes / Courses / Exams / Assignments / Messages (simplified views) -->
-        <section id="classes" class="section tab-section" style="display:none">
-          <h2>Classes</h2>
-          <div id="classesList"></div>
-        </section>
+        <!-- Updated Classes section: add rich UI + modals for create/edit/assign teacher -->
+<section id="classes" class="section tab-section" style="display:none">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <h2>Classes</h2>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="classSearch" type="text" placeholder="Search classes" style="padding:8px;border-radius:8px;border:1px solid #e6e9ef">
+      <button class="btn" id="newClassBtn">+ New class</button>
+    </div>
+  </div>
+
+  <div style="margin-top:12px" id="classesControls" class="controls">
+    <label class="muted-small">Filter term:
+      <select id="classTermFilter"><option value="">All</option><option>Term 1</option><option>Term 2</option></select>
+    </label>
+    <label class="muted-small">Teacher:
+      <select id="classTeacherFilter"><option value="">All</option></select>
+    </label>
+    <button class="btn ghost" id="refreshClassesBtn">Refresh</button>
+  </div>
+
+  <div style="margin-top:12px">
+    <table id="classesTable"><thead><tr><th>#</th><th>Class</th><th>Term</th><th>Teacher</th><th>Students</th><th>Actions</th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <!-- Inline small modal for assign teacher (re-uses createModal or itemModal if present) -->
+  <div id="assignTeacherInline" style="display:none;margin-top:12px"></div>
+
+  <script>
+  (function(){
+    // Assumes admin.html defines: API_BASE, safeFetch, headers, createModal, createModalBody, openCreateStaffForm
+    // Fallback minimal definitions if not present (safeFetch must exist in the main file; if not, admin UI already has it)
+    if (typeof API_BASE === 'undefined') window.API_BASE = 'https://examguard-mzok.onrender.com/api';
+    const classesTableBody = document.querySelector('#classesTable tbody');
+    const classSearch = document.getElementById('classSearch');
+    const newClassBtn = document.getElementById('newClassBtn');
+    const refreshBtn = document.getElementById('refreshClassesBtn');
+    const teacherFilter = document.getElementById('classTeacherFilter');
+    const termFilter = document.getElementById('classTermFilter');
+
+    let classesCache = [];
+    let teachersCache = [];
+
+    // Load teachers for filter & assign lists
+    async function loadTeachers() {
+      // prefer admin endpoint
+      let r = await safeFetch(API_BASE + '/admin/staffs?role=teacher', { headers: headers() });
+      if (!r.ok) r = await safeFetch(API_BASE + '/staffs?role=teacher', { headers: headers() });
+      const list = (r.ok && Array.isArray(r.data)) ? r.data : (r.data && Array.isArray(r.data.data) ? r.data.data : []);
+      teachersCache = list || [];
+      // populate teacherFilter
+      teacherFilter.innerHTML = '<option value="">All</option>';
+      teachersCache.forEach(t => {
+        const name = (t.firstName || t.name || '') + (t.lastName ? (' ' + t.lastName) : '');
+        const opt = document.createElement('option');
+        opt.value = t._id || t.id || (t.username || name);
+        opt.textContent = name || t.username || (t.email || opt.value);
+        teacherFilter.appendChild(opt);
+      });
+    }
+
+    async function loadClasses() {
+      classesTableBody.innerHTML = '<tr><td colspan="6" class="empty">Loading…</td></tr>';
+      const q = classSearch.value.trim();
+      const term = termFilter.value;
+      const teacher = teacherFilter.value;
+      const params = new URLSearchParams();
+      if (q) params.set('q', q);
+      if (term) params.set('term', term);
+      if (teacher) params.set('teacherId', teacher);
+      // prefer admin path then public
+      let r = await safeFetch(API_BASE + '/classes' + (params.toString() ? '?' + params.toString() : ''), { headers: headers() });
+      if (!r.ok) r = await safeFetch(API_BASE + '/admin/classes' + (params.toString() ? '?' + params.toString() : ''), { headers: headers() });
+      if (!r.ok) {
+        classesCache = [];
+        classesTableBody.innerHTML = '<tr><td colspan="6" class="empty">Failed to load classes</td></tr>';
+        return;
+      }
+      classesCache = Array.isArray(r.data) ? r.data : (r.data.data || r.data.items || []);
+      renderClasses();
+    }
+
+    function renderClasses() {
+      if (!classesCache || !classesCache.length) {
+        classesTableBody.innerHTML = '<tr><td colspan="6" class="empty">No classes</td></tr>';
+        return;
+      }
+      classesTableBody.innerHTML = '';
+      classesCache.forEach((c, i) => {
+        const id = c._id || c.id || '';
+        const teacher = c.teacherId || c.teacher || c.teacherInfo || null;
+        const teacherLabel = (teacher && (teacher.firstName || teacher.name)) ? ((teacher.firstName || teacher.name) + (teacher.lastName ? (' ' + teacher.lastName) : '')) : (c.teacherName || (typeof teacher === 'string' ? teacher : 'Unassigned'));
+        const studentsCount = Array.isArray(c.students) ? c.students.length : (c.studentCount || (c.studentsCount || 0));
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${i+1}</td>
+          <td>${c.name || c.title || '—'}</td>
+          <td>${c.term || '—'}</td>
+          <td>${teacherLabel || '—'}</td>
+          <td>${studentsCount}</td>
+          <td>
+            <button class="btn ghost" data-action="edit-class" data-id="${id}">Edit</button>
+            <button class="btn ghost" data-action="assign-teacher" data-id="${id}">Assign teacher</button>
+            <button class="btn" data-action="delete-class" data-id="${id}">Delete</button>
+          </td>`;
+        classesTableBody.appendChild(tr);
+      });
+    }
+
+    // Create class form (uses createModal if present)
+    async function openCreateClassModal(prefill = {}) {
+      if (typeof createModal !== 'undefined' && createModal) {
+        createModalTitle.textContent = 'Create class';
+        createModalBody.innerHTML = `
+          <form id="createClassForm">
+            <div class="form-row">
+              <div><label>Class name<input id="cl_name" type="text" required></label></div>
+              <div><label>Term<input id="cl_term" type="text"></label></div>
+            </div>
+            <div class="form-row">
+              <div><label>Teacher<select id="cl_teacher"><option value="">-- none --</option></select></label></div>
+              <div><label>Students (comma separated IDs)<input id="cl_students" type="text" placeholder="id1,id2"></label></div>
+            </div>
+            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+              <button type="button" class="btn ghost" id="cl_cancel">Cancel</button>
+              <button type="submit" class="btn">Create</button>
+            </div>
+          </form>
+        `;
+        // populate teachers
+        const sel = document.getElementById('cl_teacher');
+        sel.innerHTML = '<option value="">-- none --</option>';
+        teachersCache.forEach(t => {
+          const name = (t.firstName || t.name || '') + (t.lastName ? (' ' + t.lastName) : '');
+          const opt = document.createElement('option'); opt.value = t._id || t.id || t.username; opt.textContent = name || t.username;
+          sel.appendChild(opt);
+        });
+        // wire cancel
+        document.getElementById('cl_cancel').addEventListener('click', ()=> { createModal.classList.remove('active'); createModal.setAttribute('aria-hidden','true'); createModalBody.innerHTML=''; });
+        document.getElementById('createClassForm').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const payload = { name: document.getElementById('cl_name').value.trim(), term: document.getElementById('cl_term').value.trim() };
+          const tId = document.getElementById('cl_teacher').value;
+          if (tId) payload.teacherId = tId;
+          const studs = document.getElementById('cl_students').value.trim();
+          if (studs) payload.students = studs.split(',').map(s => s.trim()).filter(Boolean);
+          if (!payload.name) return alert('Name required');
+          const res = await safeFetch(API_BASE + '/classes', { method: 'POST', headers: headers('application/json'), body: JSON.stringify(payload) });
+          if (res.ok) {
+            alert('Class created');
+            createModal.classList.remove('active'); createModal.setAttribute('aria-hidden','true'); createModalBody.innerHTML='';
+            await loadClasses();
+          } else {
+            alert('Create failed: ' + (res.data && res.data.message ? res.data.message : JSON.stringify(res.data)));
+          }
+        });
+        createModal.classList.add('active'); createModal.setAttribute('aria-hidden','false');
+        return;
+      }
+      // fallback prompt
+      const name = prompt('Class name');
+      if (!name) return;
+      const term = prompt('Term (optional)');
+      const res = await safeFetch(API_BASE + '/classes', { method: 'POST', headers: headers('application/json'), body: JSON.stringify({ name, term }) });
+      if (res.ok) { alert('Class created'); loadClasses(); } else alert('Create failed');
+    }
+
+    // Edit class
+    async function openEditClassModal(classId) {
+      const r = await safeFetch(API_BASE + '/classes/' + encodeURIComponent(classId), { headers: headers() });
+      if (!r.ok) return alert('Failed to load class');
+      const c = (r.data && r.data.data) ? r.data.data : (r.data || {});
+      if (typeof createModal !== 'undefined' && createModal) {
+        createModalTitle.textContent = 'Edit class';
+        createModalBody.innerHTML = `
+          <form id="editClassForm">
+            <input type="hidden" id="ec_id" value="${classId}">
+            <div class="form-row">
+              <div><label>Class name<input id="ec_name" type="text" value="${(c.name||'').replace(/"/g,'&quot;')}" required></label></div>
+              <div><label>Term<input id="ec_term" type="text" value="${(c.term||'').replace(/"/g,'&quot;')}"></label></div>
+            </div>
+            <div class="form-row">
+              <div><label>Teacher<select id="ec_teacher"><option value="">-- none --</option></select></label></div>
+              <div><label>Students (comma separated IDs)<input id="ec_students" type="text" value="${(Array.isArray(c.students) ? c.students.join(',') : (c.students || '')).toString().replace(/"/g,'&quot;') }"></label></div>
+            </div>
+            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+              <button type="button" class="btn ghost" id="ec_cancel">Cancel</button>
+              <button type="submit" class="btn">Save</button>
+            </div>
+          </form>
+        `;
+        const sel = document.getElementById('ec_teacher');
+        sel.innerHTML = '<option value="">-- none --</option>';
+        teachersCache.forEach(t => { const name = (t.firstName||t.name||'') + (t.lastName ? (' '+t.lastName) : ''); const opt = document.createElement('option'); opt.value = t._id||t.id||t.username; opt.textContent = name || t.username; if ((c.teacherId && String(c.teacherId) === String(opt.value)) || (c.teacher && (c.teacher._id === opt.value || c.teacher.id === opt.value))) opt.selected = true; sel.appendChild(opt); });
+        document.getElementById('ec_cancel').addEventListener('click', ()=> { createModal.classList.remove('active'); createModal.setAttribute('aria-hidden','true'); createModalBody.innerHTML=''; });
+        document.getElementById('editClassForm').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const id = document.getElementById('ec_id').value;
+          const payload = { name: document.getElementById('ec_name').value.trim(), term: document.getElementById('ec_term').value.trim() };
+          const tId = document.getElementById('ec_teacher').value; if (tId) payload.teacherId = tId; else payload.teacherId = null;
+          const studs = document.getElementById('ec_students').value.trim();
+          if (studs) payload.students = studs.split(',').map(s => s.trim()).filter(Boolean); else payload.students = [];
+          const res = await safeFetch(API_BASE + '/classes/' + encodeURIComponent(id), { method: 'PUT', headers: headers('application/json'), body: JSON.stringify(payload) });
+          if (res.ok) {
+            alert('Class updated');
+            createModal.classList.remove('active'); createModal.setAttribute('aria-hidden','true'); createModalBody.innerHTML='';
+            await loadClasses();
+          } else {
+            alert('Update failed: ' + (res.data && res.data.message ? res.data.message : JSON.stringify(res.data)));
+          }
+        });
+        createModal.classList.add('active'); createModal.setAttribute('aria-hidden','false');
+        return;
+      }
+      // fallback prompt
+      const name = prompt('Class name', c.name || '');
+      if (!name) return;
+      const term = prompt('Term', c.term || '');
+      const res = await safeFetch(API_BASE + '/classes/' + encodeURIComponent(classId), { method: 'PUT', headers: headers('application/json'), body: JSON.stringify({ name, term }) });
+      if (res.ok) { alert('Class updated'); loadClasses(); } else alert('Update failed');
+    }
+
+    // Assign teacher workflow
+    async function openAssignTeacherModal(classId) {
+      // Ensure teachers list present
+      if (!teachersCache || !teachersCache.length) await loadTeachers();
+      // If no teachers, prompt to create one
+      if (!teachersCache.length) {
+        if (typeof openCreateStaffForm === 'function') {
+          if (!confirm('No teacher accounts found. Create a teacher now?')) return;
+          // call existing function to show create staff UI (teacher)
+          openCreateStaffForm({ role: 'teacher' });
+          return;
+        } else {
+          if (!confirm('No teacher accounts found. Would you like to open staff creation page?')) {
+            return;
+          }
+          window.location.href = '/marketting/admin.html#staffs';
+          return;
+        }
+      }
+
+      // Build assign UI (uses createModal)
+      if (typeof createModal !== 'undefined' && createModal) {
+        createModalTitle.textContent = 'Assign teacher';
+        createModalBody.innerHTML = `
+          <div style="margin-bottom:8px">Select a teacher to assign to this class</div>
+          <div style="margin-bottom:8px">
+            <select id="assign_teacher_select" style="width:100%;padding:8px;border-radius:8px;border:1px solid #e6e9ef">
+              <option value="">-- none (unassign) --</option>
+              ${teachersCache.map(t => {
+                const name = (t.firstName||t.name||'') + (t.lastName ? (' ' + t.lastName) : '');
+                return `<option value="${t._id||t.id||t.username}">${(name||t.username||t.email)}</option>`;
+              }).join('')}
+            </select>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:8px">
+            <button class="btn ghost" id="assign_cancel">Cancel</button>
+            <button class="btn" id="assign_save">Assign</button>
+          </div>
+        `;
+        document.getElementById('assign_cancel').addEventListener('click', ()=> { createModal.classList.remove('active'); createModal.setAttribute('aria-hidden','true'); createModalBody.innerHTML=''; });
+        document.getElementById('assign_save').addEventListener('click', async () => {
+          const teacherId = document.getElementById('assign_teacher_select').value || null;
+          const payload = { teacherId };
+          const res = await safeFetch(API_BASE + '/classes/' + encodeURIComponent(classId) + '/assign-teacher', { method: 'PUT', headers: headers('application/json'), body: JSON.stringify(payload) });
+          // If backend doesn't expose assign endpoint, fallback to general update
+          if (!res.ok) {
+            const res2 = await safeFetch(API_BASE + '/classes/' + encodeURIComponent(classId), { method: 'PUT', headers: headers('application/json'), body: JSON.stringify({ teacherId }) });
+            if (!res2.ok) {
+              alert('Assign failed');
+              return;
+            }
+          }
+          alert('Teacher assigned');
+          createModal.classList.remove('active'); createModal.setAttribute('aria-hidden','true'); createModalBody.innerHTML='';
+          await loadClasses();
+        });
+        createModal.classList.add('active'); createModal.setAttribute('aria-hidden','false');
+        return;
+      }
+      // fallback simple prompt if createModal isn't available
+      const tid = prompt('Enter teacher id (or blank to unassign)');
+      if (tid === null) return;
+      const res = await safeFetch(API_BASE + '/classes/' + encodeURIComponent(classId), { method: 'PUT', headers: headers('application/json'), body: JSON.stringify({ teacherId: tid || null }) });
+      if (res.ok) { alert('Teacher assigned'); loadClasses(); } else alert('Assign failed');
+    }
+
+    // Delete class
+    async function deleteClass(classId) {
+      if (!confirm('Delete this class? This action cannot be undone')) return;
+      const res = await safeFetch(API_BASE + '/classes/' + encodeURIComponent(classId), { method: 'DELETE', headers: headers() });
+      if (res.ok) { alert('Deleted'); loadClasses(); } else alert('Delete failed');
+    }
+
+    // Delegated click handlers inside the classes table
+    document.querySelector('#classesTable').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      const id = btn.dataset.id;
+      if (action === 'edit-class') openEditClassModal(id);
+      else if (action === 'assign-teacher') openAssignTeacherModal(id);
+      else if (action === 'delete-class') deleteClass(id);
+    });
+
+    // Wire main controls
+    newClassBtn.addEventListener('click', async () => {
+      await loadTeachers();
+      openCreateClassModal();
+    });
+    refreshBtn.addEventListener('click', async () => { await loadTeachers(); await loadClasses(); });
+    teacherFilter.addEventListener('change', loadClasses);
+    termFilter.addEventListener('change', loadClasses);
+    classSearch.addEventListener('keyup', (e) => { if (e.key === 'Enter') loadClasses(); });
+
+    // initialize on section show
+    async function initClassesSection() {
+      await loadTeachers();
+      await loadClasses();
+    }
+
+    // If the main admin init already called loadSimpleList('/classes'...), replace that with initClassesSection.
+    // Call now to ensure classes load on page load:
+    initClassesSection();
+
+    // Expose for other scripts if needed
+    window.adminClasses = { loadClasses, loadTeachers, openCreateClassModal, openEditClassModal, openAssignTeacherModal };
+
+  })();
+  </script>
+</section>
 
         <section id="courses" class="section tab-section" style="display:none">
           <h2>Courses</h2>
