@@ -418,6 +418,400 @@
       return html;
     }
 
+(function () {
+
+  // Small HTML escape helper
+  function escapeHtml(s) {
+    if (s === undefined || s === null) return '';
+    return String(s).replace(/[&<>"']/g, function (m) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]);
+    });
+  }
+
+  // Load list of exams from API and render
+  async function loadExams(opts = {}) {
+    const q = (opts.q || '').trim();
+    const url = API_BASE + '/exams' + (q ? ('?q=' + encodeURIComponent(q)) : '');
+    const r = await safeFetch(url, { headers: headers() });
+    const container = document.getElementById('examsList');
+    if (!container) return;
+    if (!r || !r.ok) {
+      container.innerHTML = '<div class="empty">Failed to load exams</div>';
+      return;
+    }
+    const items = Array.isArray(r.data) ? r.data : (Array.isArray(r.data?.data) ? r.data.data : []);
+    renderExamsList(items || []);
+  }
+
+  // Render toolbar + table for exams
+  function renderExamsList(items) {
+    const container = document.getElementById('examsList');
+    if (!container) return;
+
+    // toolbar
+    const toolbarHtml = `
+      <div class="controls" style="margin-bottom:12px">
+        <input type="text" id="examQuery" placeholder="Search exams by title, code or class" style="min-width:220px">
+        <button class="btn" id="searchExamsBtn">Search</button>
+        <button class="btn ghost" id="exportExamsBtn">Export</button>
+        <button class="btn" id="newExamBtn">+ New Exam</button>
+      </div>
+    `;
+
+    if (!items || !items.length) {
+      container.innerHTML = toolbarHtml + '<div class="empty">No exams found</div>';
+      // wire toolbar events
+      wireToolbar();
+      return;
+    }
+
+    const rows = items.map((e, i) => {
+      const idv = e._id || e.id || '';
+      const title = escapeHtml(e.title || e.name || '');
+      const code = escapeHtml(e.code || '');
+      const course = (e.course && (e.course.title || e.course.name)) ? escapeHtml(e.course.title || e.course.name) : (e.courseName ? escapeHtml(e.courseName) : '—');
+      const classes = Array.isArray(e.classes) ? e.classes.map(c => (typeof c === 'object' ? (c.name || c.title || c._id) : c)).join(', ') : (e.className || '—');
+      const dateLabel = e.startAt ? new Date(e.startAt).toLocaleString() : (e.date ? new Date(e.date).toLocaleString() : '—');
+      const duration = e.durationMinutes ? `${Number(e.durationMinutes)}m` : (e.duration ? String(e.duration) : '—');
+      const maxScore = e.maxScore !== undefined ? String(e.maxScore) : '—';
+      const status = e.published ? '<span class="badge">published</span>' : (e.status || 'draft');
+
+      return `<tr>
+        <td style="width:36px">${i+1}</td>
+        <td>
+          <strong>${title}</strong>
+          <div class="muted-small">${code}</div>
+          <div class="muted-small">${escapeHtml(e.desc || '').slice(0,140)}${(e.desc && e.desc.length>140)?'…':''}</div>
+        </td>
+        <td style="min-width:140px">${course}</td>
+        <td style="min-width:160px">${escapeHtml(classes)}</td>
+        <td style="min-width:140px">${dateLabel}<div class="muted-small">${escapeHtml(duration)}</div></td>
+        <td style="width:90px">${escapeHtml(maxScore)}</td>
+        <td style="width:110px">${status}</td>
+        <td style="white-space:nowrap;width:180px">
+          <button class="small-btn" data-action="view-exam" data-id="${idv}">View</button>
+          <button class="small-btn" data-action="edit-exam" data-id="${idv}">Edit</button>
+          <button class="small-btn" data-action="delete-exam" data-id="${idv}">Delete</button>
+        </td>
+      </tr>`;
+    }).join('');
+
+    container.innerHTML = toolbarHtml + `
+      <div style="margin-top:8px">
+        <table style="width:100%">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Exam</th>
+              <th>Course</th>
+              <th>Classes</th>
+              <th>Schedule</th>
+              <th>Max</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+
+    wireToolbar();
+  }
+
+  // Wire controls in toolbar (search/new/export)
+  function wireToolbar() {
+    document.getElementById('searchExamsBtn')?.addEventListener('click', () => {
+      const q = (document.getElementById('examQuery')?.value || '').trim();
+      loadExams({ q });
+    });
+    document.getElementById('examQuery')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') loadExams({ q: (e.target.value || '').trim() }); });
+    document.getElementById('newExamBtn')?.addEventListener('click', () => openCreateExamForm({}));
+    document.getElementById('exportExamsBtn')?.addEventListener('click', () => {
+      // simple export - open CSV in new tab from admin export endpoint if available
+      const url = API_BASE + '/exams?format=csv';
+      window.open(url, '_blank');
+    });
+  }
+
+  // Open create/edit exam form (uses createModal)
+  async function openCreateExamForm(prefill = {}) {
+    // ensure classes/subjects/teachers are loaded
+    try { await fetchClassesAndSubjects(); } catch (e) { /* ignore */ }
+
+    createModalTitle.textContent = prefill._id ? 'Edit Exam' : 'Create Exam';
+
+    const classes = classesCache || [];
+    const courses = subjectsCache || []; // subjectsCache previously populated by fetchClassesAndSubjects (courses/subjects)
+    const teachers = teachersCache || [];
+
+    const classOptions = classes.map(c => `<option value="${escapeHtml(c._id || c.id || c.name)}">${escapeHtml(c.name || c.title || c._id)}</option>`).join('');
+    const courseOptions = courses.map(c => `<option value="${escapeHtml(c._id || c.id || c.title || c.name)}">${escapeHtml(c.title || c.name || c.code || c._id)}</option>`).join('');
+    const teacherOptions = teachers.map(t => `<option value="${escapeHtml(t._id || t.id || t.username)}">${escapeHtml(((t.firstName||'') + (t.lastName ? (' ' + t.lastName) : '') + (t.username ? (' @' + t.username) : '')).trim() || t.email || t.username || t._id)}</option>`).join('');
+
+    // selected prefill arrays/values
+    const selClasses = (prefill.classes && Array.isArray(prefill.classes)) ? prefill.classes.map(String) : (prefill.classIds && Array.isArray(prefill.classIds) ? prefill.classIds.map(String) : []);
+    const selTeachers = (prefill.invigilators && Array.isArray(prefill.invigilators)) ? prefill.invigilators.map(String) : (prefill.teachers && Array.isArray(prefill.teachers) ? prefill.teachers.map(String) : []);
+    const selCourse = prefill.course || prefill.courseId || prefill.courseIdStr || (prefill.course && (prefill.course._id || prefill.course.id)) || '';
+
+    // convert timestamps to input-friendly formats
+    function toDateTimeLocal(val) {
+      if (!val) return '';
+      const d = new Date(val);
+      if (Number.isNaN(d.getTime())) return '';
+      // returns "YYYY-MM-DDThh:mm"
+      const pad = (n) => n.toString().padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    const html = `
+      <form id="createExamForm" novalidate>
+        <input type="hidden" id="ex_id" value="${escapeHtml(prefill._id || prefill.id || '')}">
+        <div class="form-row">
+          <div>
+            <label>Title
+              <input id="ex_title" type="text" value="${escapeHtml(prefill.title || prefill.name || '')}" required>
+            </label>
+          </div>
+          <div>
+            <label>Code
+              <input id="ex_code" type="text" value="${escapeHtml(prefill.code || '')}">
+            </label>
+          </div>
+        </div>
+
+        <div class="form-row-single">
+          <label>Description
+            <textarea id="ex_desc" rows="3">${escapeHtml(prefill.desc || prefill.description || '')}</textarea>
+          </label>
+        </div>
+
+        <div class="form-row">
+          <div>
+            <label>Course / Subject
+              <select id="ex_course">
+                <option value="">-- select course --</option>
+                ${courseOptions}
+              </select>
+            </label>
+          </div>
+          <div>
+            <label>Classes (multi)
+              <select id="ex_classes" multiple size="6" style="width:100%">
+                ${classOptions}
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div>
+            <label>Start (local)
+              <input id="ex_start" type="datetime-local" value="${escapeHtml(toDateTimeLocal(prefill.startAt || prefill.start || prefill.date))}">
+            </label>
+          </div>
+          <div>
+            <label>Duration (minutes)
+              <input id="ex_duration" type="number" min="1" value="${escapeHtml(prefill.durationMinutes || prefill.duration || 60)}">
+            </label>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div>
+            <label>Maximum score
+              <input id="ex_maxScore" type="number" min="0" value="${escapeHtml(prefill.maxScore || 100)}">
+            </label>
+          </div>
+          <div>
+            <label>Pass mark
+              <input id="ex_passMark" type="number" min="0" value="${escapeHtml(prefill.passMark || '')}">
+            </label>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div>
+            <label>Invigilators (multi)
+              <select id="ex_invigilators" multiple size="6" style="width:100%">
+                ${teacherOptions}
+              </select>
+            </label>
+          </div>
+          <div>
+            <label>Published
+              <select id="ex_published">
+                <option value="false" ${!prefill.published ? 'selected' : ''}>Draft</option>
+                <option value="true" ${prefill.published ? 'selected' : ''}>Published</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+          <button type="button" class="btn ghost" id="ex_cancel">Cancel</button>
+          <button type="submit" class="btn" id="ex_save">${prefill._id ? 'Save changes' : 'Create exam'}</button>
+        </div>
+      </form>
+    `;
+    createModalBody.innerHTML = html;
+
+    // set selected options for classes and invigilators and course
+    try {
+      const cs = document.getElementById('ex_classes');
+      if (cs && selClasses.length) {
+        Array.from(cs.options).forEach(o => { if (selClasses.includes(o.value)) o.selected = true; });
+      }
+      const ts = document.getElementById('ex_invigilators');
+      if (ts && selTeachers.length) {
+        Array.from(ts.options).forEach(o => { if (selTeachers.includes(o.value)) o.selected = true; });
+      }
+      const courseEl = document.getElementById('ex_course');
+      if (courseEl && selCourse) courseEl.value = selCourse;
+    } catch (e) { /* ignore */ }
+
+    document.getElementById('ex_cancel').addEventListener('click', () => {
+      createModal.classList.remove('active'); createModal.setAttribute('aria-hidden', 'true'); createModalBody.innerHTML = '';
+    });
+
+    // submit handler
+    const form = document.getElementById('createExamForm');
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const id = document.getElementById('ex_id').value;
+      const payload = {
+        title: document.getElementById('ex_title').value.trim(),
+        code: document.getElementById('ex_code').value.trim(),
+        desc: document.getElementById('ex_desc').value.trim(),
+        course: document.getElementById('ex_course').value || null,
+        classes: Array.from(document.getElementById('ex_classes').selectedOptions || []).map(o => o.value),
+        startAt: document.getElementById('ex_start').value ? new Date(document.getElementById('ex_start').value).toISOString() : null,
+        durationMinutes: Number(document.getElementById('ex_duration').value) || null,
+        maxScore: Number(document.getElementById('ex_maxScore').value) || null,
+        passMark: document.getElementById('ex_passMark').value ? Number(document.getElementById('ex_passMark').value) : null,
+        invigilators: Array.from(document.getElementById('ex_invigilators').selectedOptions || []).map(o => o.value),
+        published: String(document.getElementById('ex_published').value) === 'true'
+      };
+
+      try {
+        let res;
+        if (id) {
+          res = await safeFetch(API_BASE + '/exams/' + encodeURIComponent(id), { method: 'PUT', headers: headers('application/json'), body: JSON.stringify(payload) });
+        } else {
+          res = await safeFetch(API_BASE + '/exams', { method: 'POST', headers: headers('application/json'), body: JSON.stringify(payload) });
+        }
+        if (res && res.ok) {
+          alert('Saved');
+          createModal.classList.remove('active'); createModal.setAttribute('aria-hidden', 'true'); createModalBody.innerHTML = '';
+          loadExams({});
+        } else {
+          alert('Save failed: ' + (res && res.data && res.data.message ? res.data.message : JSON.stringify(res && res.data)));
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Save failed');
+      }
+    });
+
+    createModal.classList.add('active'); createModal.setAttribute('aria-hidden', 'false');
+  }
+
+  // View exam details in item modal
+  async function viewExam(id) {
+    const r = await safeFetch(API_BASE + '/exams/' + encodeURIComponent(id), { headers: headers() });
+    if (!r || !r.ok) {
+      openItemModal('Error', '<div class="muted-small">Failed to load exam</div>');
+      return;
+    }
+    const doc = (r.data && r.data.data) ? r.data.data : (r.data || {});
+    const classesArr = Array.isArray(doc.classes) ? doc.classes : (doc.className ? [doc.className] : []);
+    const invigilatorsArr = Array.isArray(doc.invigilators) ? doc.invigilators : (doc.teachers ? doc.teachers : []);
+    const courseLabel = (doc.course && (doc.course.title || doc.course.name)) ? (doc.course.title || doc.course.name) : (doc.courseName || doc.course || '');
+    const schedule = doc.startAt ? new Date(doc.startAt).toLocaleString() : (doc.date ? new Date(doc.date).toLocaleString() : '—');
+    const duration = doc.durationMinutes ? `${doc.durationMinutes} minutes` : (doc.duration ? `${doc.duration} minutes` : '—');
+    const html = `
+      <div class="detail-row"><div class="detail-key">Title</div><div class="detail-val">${escapeHtml(doc.title || doc.name || '')}</div></div>
+      <div class="detail-row"><div class="detail-key">Code</div><div class="detail-val">${escapeHtml(doc.code || '')}</div></div>
+      <div class="detail-row"><div class="detail-key">Course</div><div class="detail-val">${escapeHtml(courseLabel)}</div></div>
+      <div class="detail-row"><div class="detail-key">Description</div><div class="detail-val">${escapeHtml(doc.desc || doc.description || '')}</div></div>
+      <div class="detail-row"><div class="detail-key">Schedule</div><div class="detail-val">${escapeHtml(schedule)}<div class="muted-small">${escapeHtml(duration)}</div></div></div>
+      <div class="detail-row"><div class="detail-key">Classes</div><div class="detail-val">${classesArr.length ? classesArr.map(c => `<span class="chip">${escapeHtml(typeof c==='object' ? (c.name||c.title||c._id) : String(c))}</span>`).join(' ') : '<span class="muted-small">None</span>'}</div></div>
+      <div class="detail-row"><div class="detail-key">Invigilators</div><div class="detail-val">${invigilatorsArr.length ? invigilatorsArr.map(t => `<span class="chip">${escapeHtml(typeof t==='object' ? (((t.firstName||'') + ' ' + (t.lastName||'')).trim() || t.username) : String(t))}</span>`).join(' ') : '<span class="muted-small">None</span>'}</div></div>
+      <div class="detail-row"><div class="detail-key">Max score</div><div class="detail-val">${escapeHtml(doc.maxScore !== undefined ? doc.maxScore : '')}</div></div>
+      <div class="detail-row"><div class="detail-key">Pass mark</div><div class="detail-val">${escapeHtml(doc.passMark !== undefined ? doc.passMark : '')}</div></div>
+      <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn ghost" id="closeExamView">Close</button>
+        <button class="btn" id="editExamBtn">Edit</button>
+      </div>
+    `;
+    modalState = { type: 'exam', id, data: doc };
+    openItemModal('Exam', html, true);
+    setTimeout(() => {
+      const closeBtn = document.getElementById('closeExamView');
+      if (closeBtn) closeBtn.addEventListener('click', () => { itemModal.classList.remove('active'); itemModal.setAttribute('aria-hidden', 'true'); });
+      const editBtn = document.getElementById('editExamBtn');
+      if (editBtn) editBtn.addEventListener('click', () => {
+        itemModal.classList.remove('active'); itemModal.setAttribute('aria-hidden', 'true');
+        openCreateExamForm(doc);
+      });
+    }, 30);
+  }
+
+  // Delete exam
+  async function deleteExam(id) {
+    if (!confirm('Delete this exam? This cannot be undone.')) return;
+    const r = await safeFetch(API_BASE + '/exams/' + encodeURIComponent(id), { method: 'DELETE', headers: headers() });
+    if (r && r.ok) {
+      alert('Deleted');
+      loadExams({});
+    } else {
+      alert('Delete failed');
+    }
+  }
+
+  // Delegated actions
+  document.body.addEventListener('click', async (e) => {
+    const t = e.target;
+    const action = t.dataset.action;
+    if (!action) return;
+    const id = t.dataset.id;
+    if (action === 'view-exam') { await viewExam(id); return; }
+    if (action === 'edit-exam') {
+      const r = await safeFetch(API_BASE + '/exams/' + encodeURIComponent(id), { headers: headers() });
+      if (r && r.ok) {
+        const doc = (r.data && r.data.data) ? r.data.data : (r.data || {});
+        openCreateExamForm(doc);
+      } else {
+        alert('Failed to load exam for edit');
+      }
+      return;
+    }
+    if (action === 'delete-exam') { await deleteExam(id); return; }
+  });
+
+  // Initialize when exams tab activated
+  async function initExamsTab() {
+    try { await fetchClassesAndSubjects(); } catch (e) { /* ignore */ }
+    await loadExams({});
+  }
+
+  (function hookTabWatcher() {
+    const examsTab = document.querySelector('.sidebar-tab[data-tab="exams"]');
+    if (examsTab) {
+      examsTab.addEventListener('click', () => { setTimeout(() => initExamsTab(), 80); });
+    }
+    if ((location.hash || '').replace('#', '') === 'exams') { setTimeout(() => initExamsTab(), 120); }
+  })();
+
+  // expose loader
+  window.loadExams = loadExams;
+
+  // If exams tab is already active on page load, initialize
+  if ((location.hash || '').replace('#', '') === 'exams') {
+    setTimeout(() => initExamsTab(), 120);
+  }
+
+})();
 (function(){
   async function loadSubjects(opts = {}) {
     const q = (opts.q || document.getElementById('subjectQuery')?.value || '').trim();
