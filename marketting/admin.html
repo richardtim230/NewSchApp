@@ -220,21 +220,9 @@
 </section>
 
 <script>
-/*
-  Classes UI helpers.
-  Relies on existing variables & helpers in the page:
-    - API_BASE, headers(), safeFetch(), createModal, createModalBody, fetchClassesAndSubjects,
-      openCreateStaffForm(prefill) (existing in page), loadStudents/loadStaffs etc.
-  This script attaches to the new controls and implements:
-    - loadClasses, renderClassesTable
-    - create / edit class forms (createModal)
-    - assign teacher workflow (prompts to create teacher if none exist)
-*/
 
-let classesCache = classesCache || [];
-let teachersCache = teachersCache || [];
-
-// Load classes and teachers (teachers via admin staff endpoint to include role)
+ let classesCache = [];
+  let teachersCache = [];
 async function loadClasses({ q = '', term = '' } = {}) {
   const tbody = document.querySelector('#classesTable tbody');
   tbody.innerHTML = '<tr><td colspan="6" class="empty">Loading…</td></tr>';
@@ -1047,18 +1035,31 @@ initClassesTab();
       });
     }
 
-    // Create Student form
-    async function fetchClassesAndSubjects() {
-      try {
-        const c = await safeFetch(API_BASE + '/classes', { headers: headers() });
-        classesCache = (c.ok && Array.isArray(c.data)) ? c.data : [];
-      } catch(e){ classesCache = []; }
-      try {
-        let s = await safeFetch(API_BASE + '/courses', { headers: headers() });
-        if (!s.ok) s = await safeFetch(API_BASE + '/subjects', { headers: headers() });
-        subjectsCache = (s.ok && Array.isArray(s.data)) ? s.data : [];
-      } catch(e){ subjectsCache = []; }
+  
+  // Single canonical implementation - place this once
+  async function fetchClassesAndSubjects() {
+    try {
+      const c = await safeFetch(API_BASE + '/classes', { headers: headers() });
+      classesCache = (c.ok && Array.isArray(c.data)) ? c.data : (c.data && Array.isArray(c.data.data) ? c.data.data : []);
+    } catch (e) {
+      classesCache = [];
     }
+    try {
+      let s = await safeFetch(API_BASE + '/courses', { headers: headers() });
+      if (!s.ok) s = await safeFetch(API_BASE + '/subjects', { headers: headers() });
+      subjectsCache = (s.ok && Array.isArray(s.data)) ? s.data : (s.data && Array.isArray(s.data.data) ? s.data.data : []);
+    } catch (e) {
+      subjectsCache = [];
+    }
+    // Optionally refresh teachersCache from admin endpoint:
+    try {
+      const rt = await safeFetch(API_BASE + '/admin/staffs?role=teacher', { headers: headers() });
+      teachersCache = (rt.ok && Array.isArray(rt.data)) ? rt.data : (rt.data && Array.isArray(rt.data.data) ? rt.data.data : []);
+    } catch (e) {
+      teachersCache = teachersCache || [];
+    }
+  }
+
 
     function genPassword(len=12){
       const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%*';
