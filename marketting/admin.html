@@ -1548,16 +1548,40 @@ function initClassesTab() {
 // If the tab system triggers immediately, ensure we load classes once now:
 initClassesTab();
 
-    async function loadSimpleList(path, containerId){
-      const wrap = document.getElementById(containerId); wrap.innerHTML = '<div class="empty">Loading…</div>';
-      const r = await safeFetch(API_BASE + path, { headers: headers() });
-      if(!r.ok) { wrap.innerHTML = '<div class="empty">Failed to load</div>'; return; }
-      const items = Array.isArray(r.data) ? r.data : (r.data.items||r.data.data||[]);
-      if(!items.length) { wrap.innerHTML = '<div class="empty">No items</div>'; return; }
-      const ul = document.createElement('ul');
-      items.forEach(it => { const li = document.createElement('li'); li.textContent = (it.name || it.title || it._id || it.id); ul.appendChild(li); });
-      wrap.innerHTML = ''; wrap.appendChild(ul);
+   
+async function loadSimpleList(path, opts = {}) {
+  const targetId = opts.targetId || `${path}List`;
+  const targetEl = document.getElementById(targetId);
+  if (!targetEl) {
+    // Helpful debugging message instead of throwing
+    console.warn(`loadSimpleList: target element not found for path="${path}", expected id="${targetId}". Skipping render.`);
+    return { ok: false, reason: 'missing-target', targetId, path };
+  }
+
+  targetEl.innerHTML = '<div class="empty">Loading…</div>';
+
+  try {
+    const url = API_BASE + '/' + path;
+    const r = await safeFetch(url, { headers: headers() });
+    if (!r.ok) {
+      targetEl.innerHTML = `<div class="empty muted-small">Failed to load ${path}</div>`;
+      return { ok: false, status: r.status, data: r.data };
     }
+
+    const items = Array.isArray(r.data) ? r.data : (r.data && Array.isArray(r.data.data) ? r.data.data : []);
+    // Allow caller to provide a custom renderer
+    const html = typeof opts.render === 'function'
+      ? opts.render(items)
+      : (items.length ? items.map(it => `<div class="card">${(it.name||it.title||it._id||'Item')}</div>`).join('') : '<div class="empty">No items</div>');
+
+    targetEl.innerHTML = html;
+    return { ok: true, items };
+  } catch (err) {
+    console.error('loadSimpleList error', err);
+    targetEl.innerHTML = `<div class="empty muted-small">Error loading ${path}</div>`;
+    return { ok: false, error: err };
+  }
+}
 
     // other wiring (search buttons, load logs, health, backup)
     document.getElementById('searchAppsBtn').addEventListener('click', ()=> loadApplications(document.getElementById('appQuery').value, document.getElementById('appStatus').value));
