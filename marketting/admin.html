@@ -715,100 +715,134 @@
       return `${username}@${domain}`;
     }
 
-    function openCreateStudentForm(prefill={}) {
-      createModalTitle.textContent = 'Create new student';
-      const html = `
-        <form id="createStudentForm" novalidate>
-          <div class="form-row">
-            <div><label>First name<input id="cs_firstName" type="text" required></label></div>
-            <div><label>Last name<input id="cs_lastName" type="text" required></label></div>
-          </div>
-          <div class="form-row">
-            <div><label>Username<input id="cs_username" type="text" required></label></div>
-            <div><label>Email<input id="cs_email" type="email"></label></div>
-          </div>
-          <div class="form-row">
-            <div>
-              <label>Password<input id="cs_password" type="text" autocomplete="new-password"></label>
-            </div>
-            <div style="display:flex;gap:8px;align-items:center">
-              <button type="button" id="cs_gen_email" class="small-btn">Auto-generate Email</button>
-              <button type="button" id="cs_gen_pwd" class="small-btn">Auto-generate Password</button>
-              <button type="button" id="cs_copy_creds" class="small-btn">Copy creds</button>
-            </div>
-          </div>
-          <div class="form-row">
-            <div><label>Program<input id="cs_program" type="text"></label></div>
-            <div><label>Class / Cohort<input id="cs_className" type="text"></label></div>
-          </div>
-          <div class="form-row-single">
-            <label>Status
-              <select id="cs_status"><option value="active">active</option><option value="pending">pending</option><option value="disabled">disabled</option></select>
-            </label>
-          </div>
-          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
-            <button type="button" class="btn ghost" id="cs_cancel">Cancel</button>
-            <button type="submit" class="btn" id="cs_submit">Create student</button>
-          </div>
-        </form>
-      `;
-      createModalBody.innerHTML = html;
-      if (prefill.firstName) document.getElementById('cs_firstName').value = prefill.firstName;
-      if (prefill.lastName) document.getElementById('cs_lastName').value = prefill.lastName;
-      if (prefill.username) document.getElementById('cs_username').value = prefill.username;
-      if (prefill.email) document.getElementById('cs_email').value = prefill.email;
+async function openCreateStudentForm(prefill={}) {
+  // ensure classes & subjects are loaded so we can populate the class select
+  try { await fetchClassesAndSubjects(); } catch (e) { /* ignore */ }
 
-      document.getElementById('cs_gen_email').addEventListener('click', ()=> {
-        const username = document.getElementById('cs_username').value.trim();
-        document.getElementById('cs_email').value = username ? `${username}@school.example` : genEmailFromUsername(username);
-      });
-      document.getElementById('cs_gen_pwd').addEventListener('click', ()=> {
-        document.getElementById('cs_password').value = genPassword(12);
-      });
-      document.getElementById('cs_copy_creds').addEventListener('click', ()=> {
-        const u = document.getElementById('cs_username').value;
-        const e = document.getElementById('cs_email').value;
-        const p = document.getElementById('cs_password').value;
-        const txt = `username: ${u}\nemail: ${e}\npassword: ${p}`;
-        navigator.clipboard?.writeText(txt).then(()=> alert('Credentials copied to clipboard')).catch(()=> alert('Copy failed'));
-      });
-      document.getElementById('cs_cancel').addEventListener('click', ()=> { createModal.classList.remove('active'); createModal.setAttribute('aria-hidden','true'); createModalBody.innerHTML=''; });
+  createModalTitle.textContent = 'Create new student';
+  const classOptions = (classesCache || [])
+    .map(c => {
+      const val = (c.name || c.title || c._id || '').toString().replace(/"/g,'&quot;');
+      const label = (c.name || c.title || c._id || '').toString();
+      return `<option value="${val}">${label}</option>`;
+    }).join('');
 
-      document.getElementById('createStudentForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const payload = {
-          username: document.getElementById('cs_username').value.trim(),
-          password: document.getElementById('cs_password').value,
-          firstName: document.getElementById('cs_firstName').value.trim(),
-          lastName: document.getElementById('cs_lastName').value.trim(),
-          email: document.getElementById('cs_email').value.trim(),
-          program: document.getElementById('cs_program').value.trim(),
-          className: document.getElementById('cs_className').value.trim(),
-          status: document.getElementById('cs_status').value
-        };
-        if (!payload.username || !payload.password || !payload.firstName || !payload.lastName || !payload.email) {
-          return alert('Please fill all required fields (username, password, first and last name, email).');
-        }
-        try {
-          const res = await fetch(API_BASE + '/admin/students', { method: 'POST', headers: headers('application/json'), body: JSON.stringify(payload) });
-          const text = await res.text();
-          let data;
-          try { data = JSON.parse(text); } catch { data = { message: text }; }
-          if (res.status === 201 || res.ok) {
-            alert('Student created');
-            createModal.classList.remove('active'); createModal.setAttribute('aria-hidden','true'); createModalBody.innerHTML='';
-            loadStudents({});
-          } else {
-            alert('Create failed: ' + (data.message || JSON.stringify(data)));
-          }
-        } catch (err) {
-          console.error(err);
-          alert('Create failed');
-        }
-      });
+  const html = `
+    <form id="createStudentForm" novalidate>
+      <div class="form-row">
+        <div><label>First name<input id="cs_firstName" type="text" required></label></div>
+        <div><label>Last name<input id="cs_lastName" type="text" required></label></div>
+      </div>
+      <div class="form-row">
+        <div><label>Username<input id="cs_username" type="text" required></label></div>
+        <div><label>Email<input id="cs_email" type="email"></label></div>
+      </div>
+      <div class="form-row">
+        <div>
+          <label>Password<input id="cs_password" type="text" autocomplete="new-password"></label>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button type="button" id="cs_gen_email" class="small-btn">Auto-generate Email</button>
+          <button type="button" id="cs_gen_pwd" class="small-btn">Auto-generate Password</button>
+          <button type="button" id="cs_copy_creds" class="small-btn">Copy creds</button>
+        </div>
+      </div>
+      <div class="form-row">
+        <div><label>Program<input id="cs_program" type="text"></label></div>
+        <div>
+          <label>Class / Cohort
+            <select id="cs_classSelect">
+              <option value="">-- select class --</option>
+              ${classOptions}
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="form-row-single">
+        <label>Status
+          <select id="cs_status"><option value="active">active</option><option value="pending">pending</option><option value="disabled">disabled</option></select>
+        </label>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+        <button type="button" class="btn ghost" id="cs_cancel">Cancel</button>
+        <button type="submit" class="btn" id="cs_submit">Create student</button>
+      </div>
+    </form>
+  `;
+  createModalBody.innerHTML = html;
 
-      createModal.classList.add('active'); createModal.setAttribute('aria-hidden','false');
+  // apply prefill values
+  if (prefill.firstName) document.getElementById('cs_firstName').value = prefill.firstName;
+  if (prefill.lastName) document.getElementById('cs_lastName').value = prefill.lastName;
+  if (prefill.username) document.getElementById('cs_username').value = prefill.username;
+  if (prefill.email) document.getElementById('cs_email').value = prefill.email;
+  if (prefill.program) document.getElementById('cs_program').value = prefill.program;
+
+  // if prefill includes className (string) or classAssigned (id), select the matching option
+  try {
+    let selectedVal = '';
+    if (prefill.className) selectedVal = prefill.className;
+    else if (prefill.classAssigned) {
+      const match = (classesCache || []).find(c => String(c._id) === String(prefill.classAssigned) || String(c.id) === String(prefill.classAssigned));
+      if (match) selectedVal = match.name || match.title || String(match._id);
     }
+    if (selectedVal) {
+      const sel = document.getElementById('cs_classSelect');
+      if (sel) sel.value = selectedVal;
+    }
+  } catch (e) {}
+
+  document.getElementById('cs_gen_email').addEventListener('click', ()=> {
+    const username = document.getElementById('cs_username').value.trim();
+    document.getElementById('cs_email').value = username ? `${username}@school.example` : genEmailFromUsername(username);
+  });
+  document.getElementById('cs_gen_pwd').addEventListener('click', ()=> {
+    document.getElementById('cs_password').value = genPassword(12);
+  });
+  document.getElementById('cs_copy_creds').addEventListener('click', ()=> {
+    const u = document.getElementById('cs_username').value;
+    const e = document.getElementById('cs_email').value;
+    const p = document.getElementById('cs_password').value;
+    const txt = `username: ${u}\nemail: ${e}\npassword: ${p}`;
+    navigator.clipboard?.writeText(txt).then(()=> alert('Credentials copied to clipboard')).catch(()=> alert('Copy failed'));
+  });
+  document.getElementById('cs_cancel').addEventListener('click', ()=> { createModal.classList.remove('active'); createModal.setAttribute('aria-hidden','true'); createModalBody.innerHTML=''; });
+
+  document.getElementById('createStudentForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const payload = {
+      username: document.getElementById('cs_username').value.trim(),
+      password: document.getElementById('cs_password').value,
+      firstName: document.getElementById('cs_firstName').value.trim(),
+      lastName: document.getElementById('cs_lastName').value.trim(),
+      email: document.getElementById('cs_email').value.trim(),
+      program: document.getElementById('cs_program').value.trim(),
+      className: document.getElementById('cs_classSelect').value.trim(),
+      status: document.getElementById('cs_status').value
+    };
+    if (!payload.username || !payload.password || !payload.firstName || !payload.lastName || !payload.email) {
+      return alert('Please fill all required fields (username, password, first and last name, email).');
+    }
+    try {
+      const res = await fetch(API_BASE + '/admin/students', { method: 'POST', headers: headers('application/json'), body: JSON.stringify(payload) });
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch { data = { message: text }; }
+      if (res.status === 201 || res.ok) {
+        alert('Student created');
+        createModal.classList.remove('active'); createModal.setAttribute('aria-hidden','true'); createModalBody.innerHTML='';
+        loadStudents({});
+      } else {
+        alert('Create failed: ' + (data.message || JSON.stringify(data)));
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Create failed');
+    }
+  });
+
+  createModal.classList.add('active'); createModal.setAttribute('aria-hidden','false');
+}
 
     function openCreateStaffForm(prefill={}) {
       createModalTitle.textContent = 'Create new staff';
