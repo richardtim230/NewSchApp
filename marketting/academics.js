@@ -1,670 +1,731 @@
 const API_BASE_URL = "https://goldlincschools.onrender.com";
 
-// Get elements
+// DOM Elements
 const sidebar = document.getElementById('academicsSidebar');
+const mainContent = document.getElementById('mainContent');
+const menuToggleBtn = document.getElementById('menuToggleBtn');
 const pushCBTModal = document.getElementById('pushCBTModal');
-const pushCBTModalForm = document.getElementById('pushCBTModalForm');
-const pushCBTModalFeedback = document.getElementById('pushCBTModalFeedback');
 const pushCBTResultsBtn = document.getElementById('pushCBTResultsBtn');
 const cancelPushCBTModal = document.getElementById('cancelPushCBTModal');
+const pushCBTModalForm = document.getElementById('pushCBTModalForm');
+const pushCBTModalFeedback = document.getElementById('pushCBTModalFeedback');
 
-// Tab Navigation
+// ===== TAB NAVIGATION =====
 function showTab(tab) {
-  // Hide all sections
+  // Hide all tab sections
   document.querySelectorAll('[data-section]').forEach(sec => {
     sec.classList.add('hidden');
   });
-  // Show active section
+  // Show selected tab section
   const activeSection = document.querySelector(`[data-section="${tab}"]`);
   if (activeSection) {
     activeSection.classList.remove('hidden');
+    // Load data when tab is shown
+    if (tab === 'sessions') loadSessions();
+    else if (tab === 'terms') loadTerms();
+    else if (tab === 'classes') loadClasses();
+    else if (tab === 'subjects') loadUploadedSubjects();
+    else if (tab === 'exams') loadExamSchedules();
+    else if (tab === 'cbt') loadCBTs();
+    else if (tab === 'results') loadResults();
   }
-
-  // Update button styles
-  document.querySelectorAll('.tablist button').forEach(btn => {
+  // Update active button
+  document.querySelectorAll('#academicsTabs button').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tab === tab);
   });
-
-  // Load data for specific tab
-  if (tab === 'sessions') {
-    loadSessions();
-  } else if (tab === 'terms') {
-    loadTerms();
-    fillDropdown('/sessions', 'termSessionSelect');
-  } else if (tab === 'classes') {
-    loadClasses();
-    fillTeacherDropdown();
-    fillTeacherCheckboxes();
-  } else if (tab === 'subjects') {
-    loadUploadedSubjects();
-    fillClassDropdown();
-    fillTeacherDropdown2();
-  } else if (tab === 'exams') {
-    loadExamSchedules();
-    fillTermDropdownForExam();
-    fillClassDropdownForExam();
-    fillExamDropdown();
-  } else if (tab === 'cbt') {
-    loadCBTs();
-    fillClassDropdownForCBT();
-  } else if (tab === 'results') {
-    fillPushCBTSessionDropdown();
-    fillResultsSessionDropdown();
-    fillResultsClassDropdown();
-    loadResults();
-  }
+  // Update active sidebar link
+  document.querySelectorAll('.nav a').forEach(link => {
+    link.classList.toggle('active', link.dataset.tab === tab);
+  });
 }
 
-// Tab click handlers
-document.querySelectorAll('.tablist button').forEach(btn => {
+document.querySelectorAll('#academicsTabs button').forEach(btn => {
   btn.onclick = () => showTab(btn.dataset.tab);
 });
 
-// Exam subtabs
+document.querySelectorAll('.nav a').forEach(link => {
+  link.onclick = (e) => { e.preventDefault(); showTab(link.dataset.tab); };
+});
+
+// ===== EXAM TAB NAVIGATION =====
 function showExamTab(tab) {
   document.querySelectorAll('#examTabs button').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.examtab === tab);
   });
-  document.querySelectorAll('#examTabContent > div').forEach(sec => {
+  document.querySelectorAll('[data-examsection]').forEach(sec => {
     sec.classList.toggle('hidden', sec.dataset.examsection !== tab);
   });
 }
 
-document.querySelectorAll('#examTabs button').forEach(btn => {
-  btn.onclick = () => showExamTab(btn.dataset.examtab);
-});
+const examTabsContainer = document.getElementById('examTabs');
+if (examTabsContainer) {
+  examTabsContainer.addEventListener('click', (e) => {
+    if (e.target.dataset.examtab) {
+      showExamTab(e.target.dataset.examtab);
+    }
+  });
+}
 
-// Initialize first tab
-showTab('sessions');
+// ===== UTILITY FUNCTIONS =====
+function showMessage(elementId, text, type = 'success') {
+  const el = document.getElementById(elementId);
+  if (el) {
+    el.innerHTML = `<div class="message ${type}">${text}</div>`;
+  }
+}
 
-// ==================== HELPER FUNCTIONS ====================
-
-async function fetchAPI(endpoint, method = 'GET', body = null) {
-  const opts = {
-    method,
-    headers: { 'Content-Type': 'application/json' }
-  };
-  if (body) opts.body = JSON.stringify(body);
+async function safeFetch(url, options = {}) {
   try {
-    const res = await fetch(API_BASE_URL + endpoint, opts);
+    const res = await fetch(url, options);
     const data = await res.json();
     return { ok: res.ok, status: res.status, data };
   } catch (err) {
+    console.error('Fetch error:', err);
     return { ok: false, error: err.message };
   }
 }
 
-function showMessage(elementId, message, isSuccess = true) {
-  const el = document.getElementById(elementId);
-  if (!el) return;
-  el.innerHTML = `<div class="message ${isSuccess ? 'success' : 'error'}">${message}</div>`;
-}
-
-async function fillDropdown(endpoint, selectId, labelKey = 'name', valueKey = '_id') {
+async function fillDropdown(endpoint, selectId, displayKey = 'name', valueKey = '_id') {
   const select = document.getElementById(selectId);
   if (!select) return;
-  try {
-    const res = await fetchAPI(endpoint);
-    if (!res.ok) {
-      select.innerHTML = '<option>Error loading</option>';
-      return;
-    }
-    const items = Array.isArray(res.data) ? res.data : (res.data?.data || []);
-    select.innerHTML = items.map(item => 
-      `<option value="${item[valueKey] || item.id}">${item[labelKey] || item.name}</option>`
+  const result = await safeFetch(`${API_BASE_URL}${endpoint}`);
+  if (result.ok && Array.isArray(result.data)) {
+    const items = result.data.data || result.data;
+    select.innerHTML = '<option value="">-- Select --</option>' + items.map(item => 
+      `<option value="${item[valueKey]}">${item[displayKey]}</option>`
     ).join('');
-  } catch (e) {
-    select.innerHTML = '<option>Error loading</option>';
   }
 }
 
-// ==================== SESSIONS ====================
-
+// ===== SESSIONS =====
 async function loadSessions() {
-  const res = await fetchAPI('/sessions');
+  const result = await safeFetch(`${API_BASE_URL}/api/session`);
   const tbody = document.getElementById('sessionsTableBody');
-  if (!res.ok) {
-    tbody.innerHTML = '<tr><td colspan="4">Error loading sessions</td></tr>';
-    return;
+  if (!tbody) return;
+  
+  if (result.ok && Array.isArray(result.data)) {
+    const sessions = result.data.data || result.data;
+    tbody.innerHTML = sessions.map(s => `
+      <tr>
+        <td>${s.name || ''}</td>
+        <td>${s.startDate ? new Date(s.startDate).toLocaleDateString() : ''}</td>
+        <td>${s.endDate ? new Date(s.endDate).toLocaleDateString() : ''}</td>
+        <td>
+          <div class="table-actions">
+            <button class="btn-small btn-edit" onclick="editSession('${s._id || s.id}')"><i class="fa fa-edit"></i></button>
+            <button class="btn-small btn-delete" onclick="deleteSession('${s._id || s.id}', this)"><i class="fa fa-trash"></i></button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  } else {
+    tbody.innerHTML = '<tr><td colspan="4">No sessions found</td></tr>';
   }
-  const sessions = Array.isArray(res.data) ? res.data : (res.data?.data || []);
-  tbody.innerHTML = sessions.map(s => `
-    <tr>
-      <td>${s.name || ''}</td>
-      <td>${s.startDate ? new Date(s.startDate).toLocaleDateString() : ''}</td>
-      <td>${s.endDate ? new Date(s.endDate).toLocaleDateString() : ''}</td>
-      <td>
-        <div class="table-actions">
-          <button class="btn-small btn-edit" onclick="editSession('${s._id || s.id}')"><i class="fa fa-edit"></i> Edit</button>
-          <button class="btn-small btn-delete" onclick="deleteSession('${s._id || s.id}', this)"><i class="fa fa-trash"></i> Delete</button>
-        </div>
-      </td>
-    </tr>
-  `).join('');
+  await fillDropdown('/api/session', 'termSessionSelect', 'name', '_id');
+  await fillDropdown('/api/session', 'pushCBTSessionSelect', 'name', '_id');
+  await fillDropdown('/api/session', 'resultsSessionSelect', 'name', '_id');
 }
 
 window.deleteSession = async function(id, btn) {
   if (!confirm('Delete this session?')) return;
-  const res = await fetchAPI(`/sessions/${id}`, 'DELETE');
-  if (res.ok) {
-    btn.closest('tr').remove();
-    showMessage('sessionMessage', 'Session deleted', true);
+  const result = await safeFetch(`${API_BASE_URL}/api/session/${id}`, { method: 'DELETE' });
+  if (result.ok) {
+    showMessage('sessionMessage', '✓ Session deleted', 'success');
+    loadSessions();
   } else {
-    showMessage('sessionMessage', 'Failed to delete session', false);
+    showMessage('sessionMessage', '✗ Failed to delete session', 'error');
   }
 };
 
-window.editSession = function(id) {
-  // Find and populate form with session data
-  const sessionForm = document.getElementById('sessionForm');
-  // You can implement modal or inline edit
-};
+function editSession(id) {
+  // Fetch session data and populate form
+  safeFetch(`${API_BASE_URL}/api/session/${id}`).then(result => {
+    if (result.ok) {
+      const s = result.data.data || result.data;
+      document.getElementById('sessionForm').elements['name'].value = s.name || '';
+      document.getElementById('sessionForm').elements['startDate'].value = s.startDate ? s.startDate.split('T')[0] : '';
+      document.getElementById('sessionForm').elements['endDate'].value = s.endDate ? s.endDate.split('T')[0] : '';
+      document.getElementById('sessionForm').dataset.id = id;
+    }
+  });
+}
 
 document.getElementById('sessionForm').onsubmit = async function(e) {
   e.preventDefault();
-  const data = {
-    name: this.name.value,
-    startDate: this.startDate.value,
-    endDate: this.endDate.value
+  const id = this.dataset.id;
+  const payload = {
+    name: this.elements['name'].value,
+    startDate: this.elements['startDate'].value,
+    endDate: this.elements['endDate'].value
   };
-  const res = await fetchAPI('/sessions', 'POST', data);
-  if (res.ok) {
-    showMessage('sessionMessage', 'Session saved successfully', true);
+  
+  const result = id 
+    ? await safeFetch(`${API_BASE_URL}/api/session/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    : await safeFetch(`${API_BASE_URL}/api/session`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  
+  if (result.ok) {
+    showMessage('sessionMessage', id ? '✓ Session updated' : '✓ Session created', 'success');
     this.reset();
+    delete this.dataset.id;
     loadSessions();
   } else {
-    showMessage('sessionMessage', res.data?.message || 'Failed to save session', false);
+    showMessage('sessionMessage', '✗ Failed to save session', 'error');
   }
 };
 
-loadSessions();
-
-// ==================== TERMS ====================
-
+// ===== TERMS =====
 async function loadTerms() {
-  const res = await fetchAPI('/terms');
+  const result = await safeFetch(`${API_BASE_URL}/api/term`);
   const tbody = document.getElementById('termsTableBody');
-  if (!res.ok) {
-    tbody.innerHTML = '<tr><td colspan="5">Error loading terms</td></tr>';
-    return;
+  if (!tbody) return;
+  
+  if (result.ok && Array.isArray(result.data)) {
+    const terms = result.data.data || result.data;
+    tbody.innerHTML = terms.map(t => `
+      <tr>
+        <td>${t.name || ''}</td>
+        <td>${t.sessionId?.name || t.session || ''}</td>
+        <td>${t.startDate ? new Date(t.startDate).toLocaleDateString() : ''}</td>
+        <td>${t.endDate ? new Date(t.endDate).toLocaleDateString() : ''}</td>
+        <td>
+          <div class="table-actions">
+            <button class="btn-small btn-edit" onclick="editTerm('${t._id || t.id}')"><i class="fa fa-edit"></i></button>
+            <button class="btn-small btn-delete" onclick="deleteTerm('${t._id || t.id}', this)"><i class="fa fa-trash"></i></button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  } else {
+    tbody.innerHTML = '<tr><td colspan="5">No terms found</td></tr>';
   }
-  const terms = Array.isArray(res.data) ? res.data : (res.data?.data || []);
-  tbody.innerHTML = terms.map(t => `
-    <tr>
-      <td>${t.name || ''}</td>
-      <td>${t.session?.name || t.sessionName || ''}</td>
-      <td>${t.startDate ? new Date(t.startDate).toLocaleDateString() : ''}</td>
-      <td>${t.endDate ? new Date(t.endDate).toLocaleDateString() : ''}</td>
-      <td>
-        <div class="table-actions">
-          <button class="btn-small btn-edit" onclick="editTerm('${t._id || t.id}')"><i class="fa fa-edit"></i> Edit</button>
-          <button class="btn-small btn-delete" onclick="deleteTerm('${t._id || t.id}', this)"><i class="fa fa-trash"></i> Delete</button>
-        </div>
-      </td>
-    </tr>
-  `).join('');
+  await fillDropdown('/api/term', 'pushCBTTermSelect', 'name', '_id');
 }
 
 window.deleteTerm = async function(id, btn) {
   if (!confirm('Delete this term?')) return;
-  const res = await fetchAPI(`/terms/${id}`, 'DELETE');
-  if (res.ok) {
-    btn.closest('tr').remove();
-    showMessage('termMessage', 'Term deleted', true);
+  const result = await safeFetch(`${API_BASE_URL}/api/term/${id}`, { method: 'DELETE' });
+  if (result.ok) {
+    showMessage('termMessage', '✓ Term deleted', 'success');
+    loadTerms();
   } else {
-    showMessage('termMessage', 'Failed to delete term', false);
+    showMessage('termMessage', '✗ Failed to delete term', 'error');
   }
 };
 
-window.editTerm = function(id) {
-  // Implement edit logic
-};
+function editTerm(id) {
+  safeFetch(`${API_BASE_URL}/api/term/${id}`).then(result => {
+    if (result.ok) {
+      const t = result.data.data || result.data;
+      document.getElementById('termForm').elements['name'].value = t.name || '';
+      document.getElementById('termForm').elements['sessionId'].value = t.sessionId?._id || t.sessionId || '';
+      document.getElementById('termForm').elements['startDate'].value = t.startDate ? t.startDate.split('T')[0] : '';
+      document.getElementById('termForm').elements['endDate'].value = t.endDate ? t.endDate.split('T')[0] : '';
+      document.getElementById('termForm').dataset.id = id;
+    }
+  });
+}
 
 document.getElementById('termForm').onsubmit = async function(e) {
   e.preventDefault();
-  const data = {
-    name: this.name.value,
-    sessionId: this.sessionId.value,
-    startDate: this.startDate.value,
-    endDate: this.endDate.value
+  const id = this.dataset.id;
+  const payload = {
+    name: this.elements['name'].value,
+    sessionId: this.elements['sessionId'].value,
+    startDate: this.elements['startDate'].value,
+    endDate: this.elements['endDate'].value
   };
-  const res = await fetchAPI('/terms', 'POST', data);
-  if (res.ok) {
-    showMessage('termMessage', 'Term saved successfully', true);
+  
+  const result = id 
+    ? await safeFetch(`${API_BASE_URL}/api/term/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    : await safeFetch(`${API_BASE_URL}/api/term`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  
+  if (result.ok) {
+    showMessage('termMessage', id ? '✓ Term updated' : '✓ Term created', 'success');
     this.reset();
+    delete this.dataset.id;
     loadTerms();
   } else {
-    showMessage('termMessage', res.data?.message || 'Failed to save term', false);
+    showMessage('termMessage', '✗ Failed to save term', 'error');
   }
 };
 
-// ==================== CLASSES ====================
-
-async function fillClassDropdown() {
-  await fillDropdown('/classes', 'assignClassSelect', 'name');
-}
-
-async function fillClassDropdownForExam() {
-  await fillDropdown('/classes', 'examClassSelect', 'name');
-}
-
-async function fillClassDropdownForCBT() {
-  await fillDropdown('/classes', 'cbtClassSelect', 'name');
-}
-
+// ===== CLASSES =====
 async function loadClasses() {
-  const res = await fetchAPI('/classes');
+  const result = await safeFetch(`${API_BASE_URL}/api/classes`);
   const tbody = document.getElementById('classesTableBody');
-  if (!res.ok) {
-    tbody.innerHTML = '<tr><td colspan="3">Error loading classes</td></tr>';
-    return;
+  if (!tbody) return;
+  
+  if (result.ok && Array.isArray(result.data)) {
+    const classes = result.data.data || result.data;
+    tbody.innerHTML = classes.map(c => `
+      <tr>
+        <td>${c.name || ''}</td>
+        <td>${c.arms?.join(', ') || ''}</td>
+        <td>
+          <div class="table-actions">
+            <button class="btn-small btn-edit" onclick="editClass('${c._id || c.id}')"><i class="fa fa-edit"></i></button>
+            <button class="btn-small btn-delete" onclick="deleteClass('${c._id || c.id}', this)"><i class="fa fa-trash"></i></button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  } else {
+    tbody.innerHTML = '<tr><td colspan="3">No classes found</td></tr>';
   }
-  const classes = Array.isArray(res.data) ? res.data : (res.data?.data || []);
-  tbody.innerHTML = classes.map(c => `
-    <tr>
-      <td>${c.name || ''}</td>
-      <td>${c.arms ? c.arms.join(', ') : ''}</td>
-      <td>
-        <div class="table-actions">
-          <button class="btn-small btn-edit" onclick="editClass('${c._id || c.id}')"><i class="fa fa-edit"></i> Edit</button>
-          <button class="btn-small btn-delete" onclick="deleteClass('${c._id || c.id}', this)"><i class="fa fa-trash"></i> Delete</button>
-        </div>
-      </td>
-    </tr>
-  `).join('');
+  await fillDropdown('/api/classes', 'assignClassSelect', 'name', '_id');
+  await fillDropdown('/api/classes', 'examClassSelect', 'name', '_id');
+  await fillDropdown('/api/classes', 'cbtClassSelect', 'name', '_id');
+  await fillDropdown('/api/classes', 'resultsClassSelect', 'name', '_id');
 }
 
 window.deleteClass = async function(id, btn) {
   if (!confirm('Delete this class?')) return;
-  const res = await fetchAPI(`/classes/${id}`, 'DELETE');
-  if (res.ok) {
-    btn.closest('tr').remove();
-    showMessage('classMessage', 'Class deleted', true);
+  const result = await safeFetch(`${API_BASE_URL}/api/classes/${id}`, { method: 'DELETE' });
+  if (result.ok) {
+    showMessage('classMessage', '✓ Class deleted', 'success');
+    loadClasses();
   } else {
-    showMessage('classMessage', 'Failed to delete class', false);
+    showMessage('classMessage', '✗ Failed to delete class', 'error');
   }
 };
 
-window.editClass = function(id) {
-  // Implement edit logic
-};
+function editClass(id) {
+  safeFetch(`${API_BASE_URL}/api/classes/${id}`).then(result => {
+    if (result.ok) {
+      const c = result.data.data || result.data;
+      document.getElementById('classForm').elements['name'].value = c.name || '';
+      document.getElementById('classForm').elements['arms'].value = c.arms?.join(',') || '';
+      document.getElementById('classForm').dataset.id = id;
+    }
+  });
+}
 
 document.getElementById('classForm').onsubmit = async function(e) {
   e.preventDefault();
-  const arms = this.arms.value ? this.arms.value.split(',').map(a => a.trim()) : [];
-  const data = {
-    name: this.name.value,
-    arms
+  const id = this.dataset.id;
+  const payload = {
+    name: this.elements['name'].value,
+    arms: this.elements['arms'].value.split(',').map(a => a.trim()).filter(Boolean)
   };
-  const res = await fetchAPI('/classes', 'POST', data);
-  if (res.ok) {
-    showMessage('classMessage', 'Class added successfully', true);
+  
+  const result = id 
+    ? await safeFetch(`${API_BASE_URL}/api/classes/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    : await safeFetch(`${API_BASE_URL}/api/classes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  
+  if (result.ok) {
+    showMessage('classMessage', id ? '✓ Class updated' : '✓ Class created', 'success');
     this.reset();
+    delete this.dataset.id;
     loadClasses();
   } else {
-    showMessage('classMessage', res.data?.message || 'Failed to add class', false);
+    showMessage('classMessage', '✗ Failed to save class', 'error');
   }
 };
 
-// ==================== TEACHERS ====================
-
+// ===== SUBJECTS =====
 async function fillTeacherDropdown() {
-  await fillDropdown('/admin/staffs?role=teacher', 'assignSubjectTeacherSelect', 'firstName');
+  await fillDropdown('/api/staff', 'assignSubjectTeacherSelect', 'firstName', '_id');
 }
-
-async function fillTeacherDropdown2() {
-  await fillDropdown('/admin/staffs?role=teacher', 'assignSubjectTeacherSelect', 'firstName');
-}
-
-async function fillTeacherCheckboxes() {
-  const res = await fetchAPI('/admin/staffs?role=teacher');
-  const menu = document.getElementById('teacherDropdownMenu');
-  if (!menu || !res.ok) return;
-  const teachers = Array.isArray(res.data) ? res.data : (res.data?.data || []);
-  menu.innerHTML = teachers.map(t => `
-    <label style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer;">
-      <input type="checkbox" value="${t._id || t.id}" class="teacher-checkbox">
-      ${(t.firstName || '') + ' ' + (t.lastName || '')}
-    </label>
-  `).join('');
-}
-
-function toggleTeacherDropdown() {
-  const menu = document.getElementById('teacherDropdownMenu');
-  menu.classList.toggle('hidden');
-}
-
-// ==================== SUBJECTS ====================
-
-async function fillTeacherDropdown2() {
-  await fillDropdown('/admin/staffs?role=teacher', 'assignSubjectTeacherSelect', 'firstName');
-}
-
-document.getElementById('assignSubjectForm').onsubmit = async function(e) {
-  e.preventDefault();
-  const data = {
-    classId: this.classId.value,
-    subjectName: this.subjectName.value,
-    teacherId: this.teacherId.value
-  };
-  const res = await fetchAPI('/subjects', 'POST', data);
-  if (res.ok) {
-    showMessage('assignSubjectMessage', 'Subject assigned successfully', true);
-    this.reset();
-    loadUploadedSubjects();
-  } else {
-    showMessage('assignSubjectMessage', res.data?.message || 'Failed to assign subject', false);
-  }
-};
 
 async function loadUploadedSubjects() {
-  const res = await fetchAPI('/subjects');
+  const result = await safeFetch(`${API_BASE_URL}/api/subjects`);
   const tbody = document.getElementById('uploadedSubjectsTableBody');
-  if (!res.ok) {
-    tbody.innerHTML = '<tr><td colspan="5">Error loading subjects</td></tr>';
-    return;
+  if (!tbody) return;
+  
+  if (result.ok && Array.isArray(result.data)) {
+    const subjects = result.data.data || result.data;
+    tbody.innerHTML = subjects.map(s => `
+      <tr>
+        <td>${s.title || s.name || ''}</td>
+        <td>${s.meta?.class || s.classId?.name || ''}</td>
+        <td>${s.meta?.teacher || s.teacherId?.firstName || ''}</td>
+        <td>${s.createdAt ? new Date(s.createdAt).toLocaleDateString() : ''}</td>
+        <td>
+          <div class="table-actions">
+            <button class="btn-small btn-view" onclick="viewSubject('${s._id || s.id}')"><i class="fa fa-eye"></i></button>
+            <button class="btn-small btn-delete" onclick="deleteSubjectFromClass('${s.meta?.class || ''}', '${s._id || s.id}', this)"><i class="fa fa-trash"></i></button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  } else {
+    tbody.innerHTML = '<tr><td colspan="5">No subjects found</td></tr>';
   }
-  const subjects = Array.isArray(res.data) ? res.data : (res.data?.data || []);
-  tbody.innerHTML = subjects.map(s => `
-    <tr>
-      <td>${s.title || s.name || ''}</td>
-      <td>${s.meta?.class || s.classId || ''}</td>
-      <td>${s.meta?.teacher || s.teacherId || ''}</td>
-      <td>${s.createdAt ? new Date(s.createdAt).toLocaleDateString() : ''}</td>
-      <td>
-        <div class="table-actions">
-          <button class="btn-small btn-view" onclick="viewSubject('${s._id || s.id}')"><i class="fa fa-eye"></i> View</button>
-          <button class="btn-small btn-delete" onclick="deleteSubjectFromClass('${s._id || s.id}', this)"><i class="fa fa-trash"></i> Delete</button>
-        </div>
-      </td>
-    </tr>
-  `).join('');
+  fillTeacherDropdown();
 }
 
 window.viewSubject = function(id) {
-  alert('Subject details for ' + id);
+  safeFetch(`${API_BASE_URL}/api/subjects/${id}`).then(result => {
+    if (result.ok) {
+      const s = result.data.data || result.data;
+      alert(`Subject: ${s.title || s.name}\nCode: ${s.code || 'N/A'}\nClass: ${s.meta?.class || ''}`);
+    }
+  });
 };
 
-window.deleteSubjectFromClass = async function(subjectId, btn) {
-  if (!confirm('Delete this subject?')) return;
-  const res = await fetchAPI(`/subjects/${subjectId}`, 'DELETE');
-  if (res.ok) {
-    btn.closest('tr').remove();
-    showMessage('assignSubjectMessage', 'Subject deleted', true);
+window.deleteSubjectFromClass = async function(classId, subjectId, btn) {
+  if (!confirm('Remove this subject from class?')) return;
+  const result = await safeFetch(`${API_BASE_URL}/api/subjects/${subjectId}`, { method: 'DELETE' });
+  if (result.ok) {
+    showMessage('assignSubjectMessage', '✓ Subject removed', 'success');
+    loadUploadedSubjects();
   } else {
-    showMessage('assignSubjectMessage', 'Failed to delete subject', false);
+    showMessage('assignSubjectMessage', '✗ Failed to remove subject', 'error');
   }
 };
 
-// ==================== EXAM SCHEDULES ====================
-
-async function fillTermDropdownForExam() {
-  await fillDropdown('/terms', 'examTermSelect', 'name');
-}
-
-async function loadExamSchedules() {
-  const res = await fetchAPI('/exams');
-  const tbody = document.getElementById('examScheduleTableBody');
-  if (!res.ok) {
-    tbody.innerHTML = '<tr><td colspan="5">Error loading exams</td></tr>';
-    return;
+document.getElementById('assignSubjectForm').onsubmit = async function(e) {
+  e.preventDefault();
+  const payload = {
+    title: this.elements['subjectName'].value,
+    meta: {
+      class: this.elements['classId'].value,
+      teacher: this.elements['teacherId'].value
+    }
+  };
+  
+  const result = await safeFetch(`${API_BASE_URL}/api/subjects`, { 
+    method: 'POST', 
+    headers: { 'Content-Type': 'application/json' }, 
+    body: JSON.stringify(payload) 
+  });
+  
+  if (result.ok) {
+    showMessage('assignSubjectMessage', '✓ Subject assigned', 'success');
+    this.reset();
+    loadUploadedSubjects();
+  } else {
+    showMessage('assignSubjectMessage', '✗ Failed to assign subject', 'error');
   }
-  const exams = Array.isArray(res.data) ? res.data : (res.data?.data || []);
-  tbody.innerHTML = exams.map(e => `
-    <tr>
-      <td>${e.title || e.name || ''}</td>
-      <td>${e.term?.name || e.termName || ''}</td>
-      <td>${e.class?.name || e.className || ''}</td>
-      <td>${e.date ? new Date(e.date).toLocaleDateString() : ''}</td>
-      <td>
-        <div class="table-actions">
-          <button class="btn-small btn-edit" onclick="editExamSchedule('${e._id || e.id}')"><i class="fa fa-edit"></i> Edit</button>
-          <button class="btn-small btn-delete" onclick="deleteExamSchedule('${e._id || e.id}', this)"><i class="fa fa-trash"></i> Delete</button>
-        </div>
-      </td>
-    </tr>
-  `).join('');
+};
+
+// ===== EXAMINATIONS =====
+async function loadExamSchedules() {
+  const result = await safeFetch(`${API_BASE_URL}/api/exams`);
+  const tbody = document.getElementById('examScheduleTableBody');
+  if (!tbody) return;
+  
+  if (result.ok && Array.isArray(result.data)) {
+    const exams = result.data.data || result.data;
+    tbody.innerHTML = exams.map(e => `
+      <tr>
+        <td>${e.title || e.name || ''}</td>
+        <td>${e.termId?.name || e.term || ''}</td>
+        <td>${e.classId?.name || e.class || ''}</td>
+        <td>${e.startAt ? new Date(e.startAt).toLocaleDateString() : ''}</td>
+        <td>
+          <div class="table-actions">
+            <button class="btn-small btn-edit" onclick="editExamSchedule('${e._id || e.id}')"><i class="fa fa-edit"></i></button>
+            <button class="btn-small btn-delete" onclick="deleteExamSchedule('${e._id || e.id}', this)"><i class="fa fa-trash"></i></button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  } else {
+    tbody.innerHTML = '<tr><td colspan="5">No exams scheduled</td></tr>';
+  }
+  await fillDropdown('/api/term', 'examTermSelect', 'name', '_id');
+  await fillDropdown('/api/exams', 'modeExamSelect', 'title', '_id');
+  loadExamModes();
 }
 
 window.deleteExamSchedule = async function(id, btn) {
   if (!confirm('Delete this exam?')) return;
-  const res = await fetchAPI(`/exams/${id}`, 'DELETE');
-  if (res.ok) {
-    btn.closest('tr').remove();
-    showMessage('examScheduleMessage', 'Exam deleted', true);
+  const result = await safeFetch(`${API_BASE_URL}/api/exams/${id}`, { method: 'DELETE' });
+  if (result.ok) {
+    showMessage('examScheduleMessage', '✓ Exam deleted', 'success');
+    loadExamSchedules();
   } else {
-    showMessage('examScheduleMessage', 'Failed to delete exam', false);
+    showMessage('examScheduleMessage', '✗ Failed to delete exam', 'error');
   }
 };
 
-window.editExamSchedule = function(id) {
-  // Implement edit logic
-};
+function editExamSchedule(id) {
+  safeFetch(`${API_BASE_URL}/api/exams/${id}`).then(result => {
+    if (result.ok) {
+      const e = result.data.data || result.data;
+      document.getElementById('examScheduleForm').elements['title'].value = e.title || e.name || '';
+      document.getElementById('examScheduleForm').elements['termId'].value = e.termId?._id || e.termId || '';
+      document.getElementById('examScheduleForm').elements['classId'].value = e.classId?._id || e.classId || '';
+      document.getElementById('examScheduleForm').elements['date'].value = e.startAt ? e.startAt.split('T')[0] : '';
+      document.getElementById('examScheduleForm').dataset.id = id;
+    }
+  });
+}
 
 document.getElementById('examScheduleForm').onsubmit = async function(e) {
   e.preventDefault();
-  const data = {
-    title: this.title.value,
-    termId: this.termId.value,
-    classId: this.classId.value,
-    date: this.date.value
+  const id = this.dataset.id;
+  const payload = {
+    title: this.elements['title'].value,
+    termId: this.elements['termId'].value,
+    classId: this.elements['classId'].value,
+    startAt: this.elements['date'].value
   };
-  const res = await fetchAPI('/exams', 'POST', data);
-  if (res.ok) {
-    showMessage('examScheduleMessage', 'Exam scheduled successfully', true);
+  
+  const result = id 
+    ? await safeFetch(`${API_BASE_URL}/api/exams/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    : await safeFetch(`${API_BASE_URL}/api/exams`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  
+  if (result.ok) {
+    showMessage('examScheduleMessage', id ? '✓ Exam updated' : '✓ Exam created', 'success');
     this.reset();
+    delete this.dataset.id;
     loadExamSchedules();
   } else {
-    showMessage('examScheduleMessage', res.data?.message || 'Failed to schedule exam', false);
+    showMessage('examScheduleMessage', '✗ Failed to save exam', 'error');
   }
 };
 
-// ==================== EXAM MODES ====================
-
-async function fillExamDropdown() {
-  await fillDropdown('/exams', 'modeExamSelect', 'title');
-}
-
+// ===== EXAM MODES =====
 async function loadExamModes() {
-  const res = await fetchAPI('/exams');
+  const result = await safeFetch(`${API_BASE_URL}/api/exams`);
   const tbody = document.getElementById('examModeTableBody');
-  if (!res.ok) {
-    tbody.innerHTML = '<tr><td colspan="4">Error loading exam modes</td></tr>';
-    return;
+  if (!tbody) return;
+  
+  if (result.ok && Array.isArray(result.data)) {
+    const exams = result.data.data || result.data;
+    tbody.innerHTML = exams.map(e => `
+      <tr>
+        <td>${e.title || e.name || ''}</td>
+        <td>${e.mode || 'Paper'}</td>
+        <td>${e.durationMinutes || e.duration || '-'}</td>
+        <td>
+          <div class="table-actions">
+            <button class="btn-small btn-edit" onclick="editExamMode('${e._id || e.id}')"><i class="fa fa-edit"></i></button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  } else {
+    tbody.innerHTML = '<tr><td colspan="4">No exams found</td></tr>';
   }
-  const exams = Array.isArray(res.data) ? res.data : (res.data?.data || []);
-  tbody.innerHTML = exams.map(e => `
-    <tr>
-      <td>${e.title || e.name || ''}</td>
-      <td>${e.mode || 'Paper'}</td>
-      <td>${e.duration || 60} min</td>
-      <td>
-        <div class="table-actions">
-          <button class="btn-small btn-edit" onclick="editExamMode('${e._id || e.id}')"><i class="fa fa-edit"></i> Edit</button>
-        </div>
-      </td>
-    </tr>
-  `).join('');
 }
 
-window.editExamMode = function(id) {
-  // Implement edit logic
-};
+function editExamMode(id) {
+  safeFetch(`${API_BASE_URL}/api/exams/${id}`).then(result => {
+    if (result.ok) {
+      const e = result.data.data || result.data;
+      document.getElementById('examModeForm').elements['examId'].value = e._id || e.id;
+      document.getElementById('examModeForm').elements['mode'].value = e.mode || 'Paper';
+      document.getElementById('examModeForm').elements['duration'].value = e.durationMinutes || e.duration || '';
+      document.getElementById('examModeForm').dataset.id = id;
+    }
+  });
+}
 
 document.getElementById('examModeForm').onsubmit = async function(e) {
   e.preventDefault();
-  const data = {
-    mode: this.mode.value,
-    duration: this.duration.value
+  const id = this.dataset.id;
+  const payload = {
+    mode: this.elements['mode'].value,
+    durationMinutes: parseInt(this.elements['duration'].value)
   };
-  const res = await fetchAPI(`/exams/${this.examId.value}`, 'PUT', data);
-  if (res.ok) {
-    showMessage('examModeMessage', 'Exam mode updated successfully', true);
+  
+  const result = await safeFetch(`${API_BASE_URL}/api/exams/${id}`, { 
+    method: 'PUT', 
+    headers: { 'Content-Type': 'application/json' }, 
+    body: JSON.stringify(payload) 
+  });
+  
+  if (result.ok) {
+    showMessage('examModeMessage', '✓ Exam mode updated', 'success');
     this.reset();
+    delete this.dataset.id;
     loadExamModes();
   } else {
-    showMessage('examModeMessage', res.data?.message || 'Failed to update exam mode', false);
+    showMessage('examModeMessage', '✗ Failed to update exam mode', 'error');
   }
 };
 
-loadExamModes();
-
-// ==================== CBT & MOCKS ====================
-
+// ===== CBT & MOCKS =====
 async function loadCBTs() {
-  const res = await fetchAPI('/cbt');
+  const result = await safeFetch(`${API_BASE_URL}/api/cbt`);
   const tbody = document.getElementById('cbtTableBody');
-  if (!res.ok) {
-    tbody.innerHTML = '<tr><td colspan="5">Error loading CBT/Mocks</td></tr>';
-    return;
+  if (!tbody) return;
+  
+  if (result.ok && Array.isArray(result.data)) {
+    const cbts = result.data.data || result.data;
+    tbody.innerHTML = cbts.map(c => `
+      <tr>
+        <td>${c.title || c.name || ''}</td>
+        <td>${c.classId?.name || c.class || ''}</td>
+        <td>${c.mode || 'Mixed'}</td>
+        <td>${c.date ? new Date(c.date).toLocaleDateString() : ''}</td>
+        <td>
+          <div class="table-actions">
+            <button class="btn-small btn-edit" onclick="editCBT('${c._id || c.id}')"><i class="fa fa-edit"></i></button>
+            <button class="btn-small btn-delete" onclick="deleteCBT('${c._id || c.id}', this)"><i class="fa fa-trash"></i></button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  } else {
+    tbody.innerHTML = '<tr><td colspan="5">No CBTs/Mocks found</td></tr>';
   }
-  const cbts = Array.isArray(res.data) ? res.data : (res.data?.data || []);
-  tbody.innerHTML = cbts.map(c => `
-    <tr>
-      <td>${c.title || c.name || ''}</td>
-      <td>${c.class?.name || c.className || ''}</td>
-      <td>${c.mode || 'Multiple Choice'}</td>
-      <td>${c.date ? new Date(c.date).toLocaleDateString() : ''}</td>
-      <td>
-        <div class="table-actions">
-          <button class="btn-small btn-edit" onclick="editCBT('${c._id || c.id}')"><i class="fa fa-edit"></i> Edit</button>
-          <button class="btn-small btn-delete" onclick="deleteCBT('${c._id || c.id}', this)"><i class="fa fa-trash"></i> Delete</button>
-        </div>
-      </td>
-    </tr>
-  `).join('');
 }
 
 window.deleteCBT = async function(id, btn) {
   if (!confirm('Delete this CBT/Mock?')) return;
-  const res = await fetchAPI(`/cbt/${id}`, 'DELETE');
-  if (res.ok) {
-    btn.closest('tr').remove();
-    showMessage('cbtMessage', 'CBT/Mock deleted', true);
+  const result = await safeFetch(`${API_BASE_URL}/api/cbt/${id}`, { method: 'DELETE' });
+  if (result.ok) {
+    showMessage('cbtMessage', '✓ CBT/Mock deleted', 'success');
+    loadCBTs();
   } else {
-    showMessage('cbtMessage', 'Failed to delete CBT/Mock', false);
+    showMessage('cbtMessage', '✗ Failed to delete CBT/Mock', 'error');
   }
 };
 
-window.editCBT = function(id) {
-  // Implement edit logic
-};
+function editCBT(id) {
+  safeFetch(`${API_BASE_URL}/api/cbt/${id}`).then(result => {
+    if (result.ok) {
+      const c = result.data.data || result.data;
+      document.getElementById('cbtForm').elements['title'].value = c.title || c.name || '';
+      document.getElementById('cbtForm').elements['classId'].value = c.classId?._id || c.classId || '';
+      document.getElementById('cbtForm').elements['mode'].value = c.mode || 'Mixed';
+      document.getElementById('cbtForm').elements['date'].value = c.date ? c.date.split('T')[0] : '';
+      document.getElementById('cbtForm').dataset.id = id;
+    }
+  });
+}
 
 document.getElementById('cbtForm').onsubmit = async function(e) {
   e.preventDefault();
-  const data = {
-    title: this.title.value,
-    classId: this.classId.value,
-    mode: this.mode.value,
-    date: this.date.value
+  const id = this.dataset.id;
+  const payload = {
+    title: this.elements['title'].value,
+    classId: this.elements['classId'].value,
+    mode: this.elements['mode'].value,
+    date: this.elements['date'].value
   };
-  const res = await fetchAPI('/cbt', 'POST', data);
-  if (res.ok) {
-    showMessage('cbtMessage', 'CBT/Mock setup successfully', true);
+  
+  const result = id 
+    ? await safeFetch(`${API_BASE_URL}/api/cbt/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    : await safeFetch(`${API_BASE_URL}/api/cbt`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  
+  if (result.ok) {
+    showMessage('cbtMessage', id ? '✓ CBT/Mock updated' : '✓ CBT/Mock created', 'success');
     this.reset();
+    delete this.dataset.id;
     loadCBTs();
   } else {
-    showMessage('cbtMessage', res.data?.message || 'Failed to setup CBT/Mock', false);
+    showMessage('cbtMessage', '✗ Failed to save CBT/Mock', 'error');
   }
 };
 
-loadCBTs();
+// ===== RESULTS =====
+async function loadResults(filter = {}) {
+  let url = `${API_BASE_URL}/api/results`;
+  const params = new URLSearchParams();
+  if (filter.sessionId) params.append('sessionId', filter.sessionId);
+  if (filter.classId) params.append('classId', filter.classId);
+  if (filter.type) params.append('type', filter.type);
+  if (params.toString()) url += '?' + params.toString();
+  
+  const result = await safeFetch(url);
+  const tbody = document.getElementById('resultsTableBody');
+  if (!tbody) return;
+  
+  if (result.ok && Array.isArray(result.data)) {
+    const results = result.data.data || result.data;
+    tbody.innerHTML = results.map(r => `
+      <tr>
+        <td>${r.student?.firstName || r.studentName || ''}</td>
+        <td>${r.class?.name || r.className || ''}</td>
+        <td>${r.type || 'CBT'}</td>
+        <td>${r.exam?.title || r.examName || ''}</td>
+        <td>${r.score || '-'}</td>
+        <td>${r.date ? new Date(r.date).toLocaleDateString() : ''}</td>
+        <td>
+          <div class="table-actions">
+            <button class="btn-small btn-view" onclick="viewResult('${r._id || r.id}')"><i class="fa fa-eye"></i></button>
+            <button class="btn-small btn-delete" onclick="deleteCBTResult('${r._id || r.id}', this)"><i class="fa fa-trash"></i></button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  } else {
+    tbody.innerHTML = '<tr><td colspan="7">No results found</td></tr>';
+  }
+}
 
-// ==================== RESULTS ====================
+document.getElementById('resultsFilterForm').onsubmit = async function(e) {
+  e.preventDefault();
+  const filter = {
+    sessionId: this.elements['sessionId'].value,
+    classId: this.elements['classId'].value,
+    type: this.elements['type'].value
+  };
+  await loadResults(filter);
+};
 
 async function fillPushCBTSessionDropdown() {
-  await fillDropdown('/sessions', 'pushCBTSessionSelect', 'name');
+  await fillDropdown('/api/session', 'pushCBTSessionSelect', 'name', '_id');
 }
 
 async function fillPushCBTTermDropdown() {
-  await fillDropdown('/terms', 'pushCBTTermSelect', 'name');
-}
-
-async function fillResultsSessionDropdown() {
-  await fillDropdown('/sessions', 'resultsSessionSelect', 'name');
-}
-
-async function fillResultsClassDropdown() {
-  await fillDropdown('/classes', 'resultsClassSelect', 'name');
-}
-
-async function loadResults(filter = {}) {
-  let endpoint = '/results';
-  if (filter.sessionId) endpoint += `?sessionId=${filter.sessionId}`;
-  const res = await fetchAPI(endpoint);
-  const tbody = document.getElementById('resultsTableBody');
-  if (!res.ok) {
-    tbody.innerHTML = '<tr><td colspan="7">Error loading results</td></tr>';
-    return;
+  const sessionId = document.getElementById('pushCBTSessionSelect').value;
+  if (sessionId) {
+    await fillDropdown(`/api/term?sessionId=${sessionId}`, 'pushCBTTermSelect', 'name', '_id');
   }
-  const results = Array.isArray(res.data) ? res.data : (res.data?.data || []);
-  tbody.innerHTML = results.map(r => `
-    <tr>
-      <td>${(r.student?.firstName || '') + ' ' + (r.student?.lastName || '')}</td>
-      <td>${r.student?.className || ''}</td>
-      <td>${r.type || 'CBT'}</td>
-      <td>${r.exam?.title || r.examName || ''}</td>
-      <td>${r.score || 0}</td>
-      <td>${r.date ? new Date(r.date).toLocaleDateString() : ''}</td>
-      <td>
-        <div class="table-actions">
-          <button class="btn-small btn-delete" onclick="deleteCBTResult('${r._id || r.id}', this)"><i class="fa fa-trash"></i> Delete</button>
-        </div>
-      </td>
-    </tr>
-  `).join('');
 }
 
-document.getElementById('resultsFilterForm').onsubmit = function(e) {
-  e.preventDefault();
-  const filter = {
-    sessionId: this.sessionId.value,
-    classId: this.classId.value,
-    type: this.type.value
-  };
-  loadResults(filter);
-};
+document.getElementById('pushCBTSessionSelect')?.addEventListener('change', fillPushCBTTermDropdown);
 
 pushCBTResultsBtn.onclick = () => {
   fillPushCBTSessionDropdown();
-  fillPushCBTTermDropdown();
-  pushCBTModal.classList.add('active');
+  pushCBTModal.classList.remove('hidden');
 };
 
 cancelPushCBTModal.onclick = () => {
-  pushCBTModal.classList.remove('active');
+  pushCBTModal.classList.add('hidden');
   pushCBTModalFeedback.textContent = '';
 };
 
 pushCBTModalForm.onsubmit = async function(e) {
   e.preventDefault();
-  const data = {
-    scoreField: this.scoreField.value,
-    sessionId: this.sessionId.value,
-    termId: this.termId.value
-  };
-  pushCBTModalFeedback.textContent = 'Pushing results...';
-  const res = await fetchAPI('/results/push-cbt', 'POST', data);
-  if (res.ok) {
-    pushCBTModalFeedback.innerHTML = '<div class="message success">Results pushed successfully!</div>';
+  const scoreField = this.elements['scoreField'].value;
+  const sessionId = this.elements['sessionId'].value;
+  const termId = this.elements['termId'].value;
+  
+  pushCBTModalFeedback.innerHTML = '<div class="message">Processing...</div>';
+  
+  const result = await safeFetch(`${API_BASE_URL}/api/results/push-to-universal`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scoreField, sessionId, termId })
+  });
+  
+  if (result.ok) {
+    pushCBTModalFeedback.innerHTML = '<div class="message success">✓ Results pushed successfully</div>';
     setTimeout(() => {
-      pushCBTModal.classList.remove('active');
+      pushCBTModal.classList.add('hidden');
       loadResults();
     }, 1500);
   } else {
-    pushCBTModalFeedback.innerHTML = `<div class="message error">Failed: ${res.data?.message || 'Unknown error'}</div>`;
+    pushCBTModalFeedback.innerHTML = '<div class="message error">✗ Failed to push results</div>';
   }
+};
+
+window.viewResult = function(id) {
+  safeFetch(`${API_BASE_URL}/api/results/${id}`).then(result => {
+    if (result.ok) {
+      const r = result.data.data || result.data;
+      alert(`Student: ${r.student?.firstName || ''}\nExam: ${r.exam?.title || ''}\nScore: ${r.score}\nGrade: ${r.grade || 'N/A'}`);
+    }
+  });
 };
 
 window.deleteCBTResult = async function(id, btn) {
   if (!confirm('Delete this result?')) return;
-  const res = await fetchAPI(`/results/${id}`, 'DELETE');
-  if (res.ok) {
-    btn.closest('tr').remove();
-    showMessage('resultsMessage', 'Result deleted', true);
+  const result = await safeFetch(`${API_BASE_URL}/api/results/${id}`, { method: 'DELETE' });
+  if (result.ok) {
+    showMessage('resultsMessage', '✓ Result deleted', 'success');
+    loadResults();
   } else {
-    showMessage('resultsMessage', 'Failed to delete result', false);
+    showMessage('resultsMessage', '✗ Failed to delete result', 'error');
   }
 };
 
-loadResults();
+// ===== INITIALIZATION =====
+loadClasses();
