@@ -1,797 +1,670 @@
-// Sidebar toggle for mobile
-const sidebar = document.getElementById('academicsSidebar');
-const menuToggleBtn = document.getElementById('menuToggleBtn');
-menuToggleBtn.onclick = function(){ sidebar.classList.toggle('show'); };
-document.addEventListener('click', function(e){
-  if(window.innerWidth <= 900 && sidebar.classList.contains('show')){
-    if (!sidebar.contains(e.target) && e.target !== menuToggleBtn) sidebar.classList.remove('show');
-  }
-});
-window.addEventListener('resize', function(){
-  if(window.innerWidth > 900) sidebar.classList.remove('show');
-});
+const API_BASE_URL = "https://goldlincschools.onrender.com";
 
-// Tab logic
+// Get elements
+const sidebar = document.getElementById('academicsSidebar');
+const pushCBTModal = document.getElementById('pushCBTModal');
+const pushCBTModalForm = document.getElementById('pushCBTModalForm');
+const pushCBTModalFeedback = document.getElementById('pushCBTModalFeedback');
+const pushCBTResultsBtn = document.getElementById('pushCBTResultsBtn');
+const cancelPushCBTModal = document.getElementById('cancelPushCBTModal');
+
+// Tab Navigation
 function showTab(tab) {
-  document.querySelectorAll('.tablist button').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
-  document.querySelectorAll('.section-card').forEach(sec => sec.classList.toggle('hidden', sec.dataset.section !== tab));
-  // Sidebar nav as well (desktop)
-  document.querySelectorAll('.sidebar nav a').forEach(nav => nav.classList.toggle('active', nav.dataset.tab === tab));
+  // Hide all sections
+  document.querySelectorAll('[data-section]').forEach(sec => {
+    sec.classList.add('hidden');
+  });
+  // Show active section
+  const activeSection = document.querySelector(`[data-section="${tab}"]`);
+  if (activeSection) {
+    activeSection.classList.remove('hidden');
+  }
+
+  // Update button styles
+  document.querySelectorAll('.tablist button').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+
+  // Load data for specific tab
+  if (tab === 'sessions') {
+    loadSessions();
+  } else if (tab === 'terms') {
+    loadTerms();
+    fillDropdown('/sessions', 'termSessionSelect');
+  } else if (tab === 'classes') {
+    loadClasses();
+    fillTeacherDropdown();
+    fillTeacherCheckboxes();
+  } else if (tab === 'subjects') {
+    loadUploadedSubjects();
+    fillClassDropdown();
+    fillTeacherDropdown2();
+  } else if (tab === 'exams') {
+    loadExamSchedules();
+    fillTermDropdownForExam();
+    fillClassDropdownForExam();
+    fillExamDropdown();
+  } else if (tab === 'cbt') {
+    loadCBTs();
+    fillClassDropdownForCBT();
+  } else if (tab === 'results') {
+    fillPushCBTSessionDropdown();
+    fillResultsSessionDropdown();
+    fillResultsClassDropdown();
+    loadResults();
+  }
 }
+
+// Tab click handlers
 document.querySelectorAll('.tablist button').forEach(btn => {
   btn.onclick = () => showTab(btn.dataset.tab);
 });
-document.querySelectorAll('.sidebar nav a').forEach(nav => {
-  nav.onclick = (e) => { e.preventDefault(); showTab(nav.dataset.tab); };
-});
 
-// Exam section tabs
-function showExamTab(tab){
-  document.querySelectorAll('#examTabs button').forEach(btn => btn.classList.toggle('active', btn.dataset.examtab === tab));
-  document.querySelectorAll('#examTabContent > div').forEach(sec => sec.classList.toggle('hidden', sec.dataset.examsection !== tab));
+// Exam subtabs
+function showExamTab(tab) {
+  document.querySelectorAll('#examTabs button').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.examtab === tab);
+  });
+  document.querySelectorAll('#examTabContent > div').forEach(sec => {
+    sec.classList.toggle('hidden', sec.dataset.examsection !== tab);
+  });
 }
+
 document.querySelectorAll('#examTabs button').forEach(btn => {
   btn.onclick = () => showExamTab(btn.dataset.examtab);
 });
 
-// API base
-const API_BASE = "https://goldlincschools.onrender.com/api/academics";
-const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
+// Initialize first tab
+showTab('sessions');
 
-// Utility: Fill dropdowns
-async function fillDropdown(endpoint, selectId, valueKey='name') {
+// ==================== HELPER FUNCTIONS ====================
+
+async function fetchAPI(endpoint, method = 'GET', body = null) {
+  const opts = {
+    method,
+    headers: { 'Content-Type': 'application/json' }
+  };
+  if (body) opts.body = JSON.stringify(body);
   try {
-    const res = await fetch(API_BASE + endpoint, { headers: { Authorization: "Bearer " + token }});
+    const res = await fetch(API_BASE_URL + endpoint, opts);
     const data = await res.json();
-    document.getElementById(selectId).innerHTML = data.map(d => `<option value="${d._id}">${d[valueKey]}</option>`).join('');
-  } catch{ }
+    return { ok: res.ok, status: res.status, data };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 }
-// Fill teacher select for Classes tab
-async function fillTeacherDropdown() {
+
+function showMessage(elementId, message, isSuccess = true) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  el.innerHTML = `<div class="message ${isSuccess ? 'success' : 'error'}">${message}</div>`;
+}
+
+async function fillDropdown(endpoint, selectId, labelKey = 'name', valueKey = '_id') {
+  const select = document.getElementById(selectId);
+  if (!select) return;
   try {
-    const res = await fetch("https://goldlincschools.onrender.com/api/teachers", { headers: { Authorization: "Bearer " + token }});
-    const data = await res.json();
-    document.getElementById('classTeacherSelect').innerHTML = data.map(t =>
-      `<option value="${t.id}">${t.name} (${t.email})</option>`
+    const res = await fetchAPI(endpoint);
+    if (!res.ok) {
+      select.innerHTML = '<option>Error loading</option>';
+      return;
+    }
+    const items = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+    select.innerHTML = items.map(item => 
+      `<option value="${item[valueKey] || item.id}">${item[labelKey] || item.name}</option>`
     ).join('');
-  } catch{}
+  } catch (e) {
+    select.innerHTML = '<option>Error loading</option>';
+  }
 }
-fillTeacherDropdown();
+
+// ==================== SESSIONS ====================
+
+async function loadSessions() {
+  const res = await fetchAPI('/sessions');
+  const tbody = document.getElementById('sessionsTableBody');
+  if (!res.ok) {
+    tbody.innerHTML = '<tr><td colspan="4">Error loading sessions</td></tr>';
+    return;
+  }
+  const sessions = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+  tbody.innerHTML = sessions.map(s => `
+    <tr>
+      <td>${s.name || ''}</td>
+      <td>${s.startDate ? new Date(s.startDate).toLocaleDateString() : ''}</td>
+      <td>${s.endDate ? new Date(s.endDate).toLocaleDateString() : ''}</td>
+      <td>
+        <div class="table-actions">
+          <button class="btn-small btn-edit" onclick="editSession('${s._id || s.id}')"><i class="fa fa-edit"></i> Edit</button>
+          <button class="btn-small btn-delete" onclick="deleteSession('${s._id || s.id}', this)"><i class="fa fa-trash"></i> Delete</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+window.deleteSession = async function(id, btn) {
+  if (!confirm('Delete this session?')) return;
+  const res = await fetchAPI(`/sessions/${id}`, 'DELETE');
+  if (res.ok) {
+    btn.closest('tr').remove();
+    showMessage('sessionMessage', 'Session deleted', true);
+  } else {
+    showMessage('sessionMessage', 'Failed to delete session', false);
+  }
+};
+
+window.editSession = function(id) {
+  // Find and populate form with session data
+  const sessionForm = document.getElementById('sessionForm');
+  // You can implement modal or inline edit
+};
+
+document.getElementById('sessionForm').onsubmit = async function(e) {
+  e.preventDefault();
+  const data = {
+    name: this.name.value,
+    startDate: this.startDate.value,
+    endDate: this.endDate.value
+  };
+  const res = await fetchAPI('/sessions', 'POST', data);
+  if (res.ok) {
+    showMessage('sessionMessage', 'Session saved successfully', true);
+    this.reset();
+    loadSessions();
+  } else {
+    showMessage('sessionMessage', res.data?.message || 'Failed to save session', false);
+  }
+};
+
+loadSessions();
+
+// ==================== TERMS ====================
+
+async function loadTerms() {
+  const res = await fetchAPI('/terms');
+  const tbody = document.getElementById('termsTableBody');
+  if (!res.ok) {
+    tbody.innerHTML = '<tr><td colspan="5">Error loading terms</td></tr>';
+    return;
+  }
+  const terms = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+  tbody.innerHTML = terms.map(t => `
+    <tr>
+      <td>${t.name || ''}</td>
+      <td>${t.session?.name || t.sessionName || ''}</td>
+      <td>${t.startDate ? new Date(t.startDate).toLocaleDateString() : ''}</td>
+      <td>${t.endDate ? new Date(t.endDate).toLocaleDateString() : ''}</td>
+      <td>
+        <div class="table-actions">
+          <button class="btn-small btn-edit" onclick="editTerm('${t._id || t.id}')"><i class="fa fa-edit"></i> Edit</button>
+          <button class="btn-small btn-delete" onclick="deleteTerm('${t._id || t.id}', this)"><i class="fa fa-trash"></i> Delete</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+window.deleteTerm = async function(id, btn) {
+  if (!confirm('Delete this term?')) return;
+  const res = await fetchAPI(`/terms/${id}`, 'DELETE');
+  if (res.ok) {
+    btn.closest('tr').remove();
+    showMessage('termMessage', 'Term deleted', true);
+  } else {
+    showMessage('termMessage', 'Failed to delete term', false);
+  }
+};
+
+window.editTerm = function(id) {
+  // Implement edit logic
+};
+
+document.getElementById('termForm').onsubmit = async function(e) {
+  e.preventDefault();
+  const data = {
+    name: this.name.value,
+    sessionId: this.sessionId.value,
+    startDate: this.startDate.value,
+    endDate: this.endDate.value
+  };
+  const res = await fetchAPI('/terms', 'POST', data);
+  if (res.ok) {
+    showMessage('termMessage', 'Term saved successfully', true);
+    this.reset();
+    loadTerms();
+  } else {
+    showMessage('termMessage', res.data?.message || 'Failed to save term', false);
+  }
+};
+
+// ==================== CLASSES ====================
 
 async function fillClassDropdown() {
-  const res = await fetch(API_BASE + "/classes", { headers: { Authorization: "Bearer " + token }});
-  const data = await res.json();
-  document.getElementById('assignClassSelect').innerHTML = data.map(c =>
-    `<option value="${c._id}">${c.name}</option>`
-  ).join('');
+  await fillDropdown('/classes', 'assignClassSelect', 'name');
 }
+
+async function fillClassDropdownForExam() {
+  await fillDropdown('/classes', 'examClassSelect', 'name');
+}
+
+async function fillClassDropdownForCBT() {
+  await fillDropdown('/classes', 'cbtClassSelect', 'name');
+}
+
+async function loadClasses() {
+  const res = await fetchAPI('/classes');
+  const tbody = document.getElementById('classesTableBody');
+  if (!res.ok) {
+    tbody.innerHTML = '<tr><td colspan="3">Error loading classes</td></tr>';
+    return;
+  }
+  const classes = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+  tbody.innerHTML = classes.map(c => `
+    <tr>
+      <td>${c.name || ''}</td>
+      <td>${c.arms ? c.arms.join(', ') : ''}</td>
+      <td>
+        <div class="table-actions">
+          <button class="btn-small btn-edit" onclick="editClass('${c._id || c.id}')"><i class="fa fa-edit"></i> Edit</button>
+          <button class="btn-small btn-delete" onclick="deleteClass('${c._id || c.id}', this)"><i class="fa fa-trash"></i> Delete</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+window.deleteClass = async function(id, btn) {
+  if (!confirm('Delete this class?')) return;
+  const res = await fetchAPI(`/classes/${id}`, 'DELETE');
+  if (res.ok) {
+    btn.closest('tr').remove();
+    showMessage('classMessage', 'Class deleted', true);
+  } else {
+    showMessage('classMessage', 'Failed to delete class', false);
+  }
+};
+
+window.editClass = function(id) {
+  // Implement edit logic
+};
+
+document.getElementById('classForm').onsubmit = async function(e) {
+  e.preventDefault();
+  const arms = this.arms.value ? this.arms.value.split(',').map(a => a.trim()) : [];
+  const data = {
+    name: this.name.value,
+    arms
+  };
+  const res = await fetchAPI('/classes', 'POST', data);
+  if (res.ok) {
+    showMessage('classMessage', 'Class added successfully', true);
+    this.reset();
+    loadClasses();
+  } else {
+    showMessage('classMessage', res.data?.message || 'Failed to add class', false);
+  }
+};
+
+// ==================== TEACHERS ====================
+
+async function fillTeacherDropdown() {
+  await fillDropdown('/admin/staffs?role=teacher', 'assignSubjectTeacherSelect', 'firstName');
+}
+
 async function fillTeacherDropdown2() {
-  const res = await fetch(API_BASE.replace('/academics','') + "/teachers", { headers: { Authorization: "Bearer " + token }});
-  const data = await res.json();
-  document.getElementById('assignSubjectTeacherSelect').innerHTML = data.map(t =>
-    `<option value="${t.id}">${t.name} (${t.email})</option>`
-  ).join('');
-}
-fillClassDropdown();
-fillTeacherDropdown2();
-
-
-
-// ============ CLASSES ============
-
-// Fill teacher checkboxes for Classes tab
-function toggleTeacherDropdown() {
-  document.getElementById('teacherDropdownMenu').classList.toggle('hidden');
-  // Optionally, close on click outside
-  document.addEventListener('click', function handler(e) {
-    if (!document.getElementById('teacherDropdownMenu').contains(e.target) &&
-        e.target.id !== "teacherDropdownBtn") {
-      document.getElementById('teacherDropdownMenu').classList.add('hidden');
-      document.removeEventListener('click', handler);
-    }
-  });
+  await fillDropdown('/admin/staffs?role=teacher', 'assignSubjectTeacherSelect', 'firstName');
 }
 
 async function fillTeacherCheckboxes() {
-  try {
-    const res = await fetch("https://goldlincschools.onrender.com/api/teachers", { headers: { Authorization: "Bearer " + token }});
-    const data = await res.json();
-    const container = document.getElementById('teacherDropdownMenu');
-    container.innerHTML = data.map(t =>
-      `<label class="flex items-center px-3 py-2 hover:bg-[#f1f6fb]">
-        <input type="checkbox" name="teacherIds" value="${t.id}" class="mr-2"> ${t.name} (${t.email})
-      </label>`
-    ).join('');
-  } catch{}
+  const res = await fetchAPI('/admin/staffs?role=teacher');
+  const menu = document.getElementById('teacherDropdownMenu');
+  if (!menu || !res.ok) return;
+  const teachers = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+  menu.innerHTML = teachers.map(t => `
+    <label style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer;">
+      <input type="checkbox" value="${t._id || t.id}" class="teacher-checkbox">
+      ${(t.firstName || '') + ' ' + (t.lastName || '')}
+    </label>
+  `).join('');
 }
-fillTeacherCheckboxes();
 
-// ============ CLASSES ============
-
-async function loadClasses() {
-  const tbody = document.getElementById('classesTableBody');
-  try {
-    const res = await fetch(API_BASE + "/classes", { headers: { Authorization: "Bearer " + token }});
-    const classes = await res.json();
-    if (!classes.length) { tbody.innerHTML = '<tr><td class="py-2 px-3" colspan="4">No classes found.</td></tr>'; return;}
-    tbody.innerHTML = classes.map(c =>
-  `<tr>
-    <td class="py-2 px-3">${c.name}</td>
-    <td class="py-2 px-3">${c.arms && c.arms.length ? c.arms.join(', ') : '-'}</td>
-    <td class="py-2 px-3">${
-      c.teachers && c.teachers.length ? c.teachers.map(t => `${t.first_name ?? t.name ?? ''} ${t.last_name ?? ''}`).join(', ') : '-'
-    }</td>
-    <td class="py-2 px-3">
-      <button class="px-2 py-1 rounded bg-[#2647a6] text-white text-xs" onclick="editClass('${c._id}')"><i class="fa fa-edit"></i></button>
-      <button class="px-2 py-1 rounded bg-red-600 text-white text-xs" onclick="deleteClass('${c._id}', this)"><i class="fa fa-trash"></i></button>
-    </td>
-  </tr>`
-).join('');
-  } catch { tbody.innerHTML = '<tr><td class="py-2 px-3" colspan="4">Error loading classes.</td></tr>'; }
+function toggleTeacherDropdown() {
+  const menu = document.getElementById('teacherDropdownMenu');
+  menu.classList.toggle('hidden');
 }
-loadClasses();
-window.deleteClass = async function(id, btn) {
-  // No confirmation, delete immediately
-  btn.disabled = true; btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i>';
-  try {
-    const res = await fetch(`${API_BASE}/classes/${id}`, { method: "DELETE", headers: { Authorization: "Bearer " + token } });
-    if (res.ok) loadClasses();
-    else alert("Failed to delete.");
-  } finally { btn.disabled = false; btn.innerHTML = '<i class="fa fa-trash"></i>'; }
-};
 
+// ==================== SUBJECTS ====================
 
-// Add Class
-document.getElementById('classForm').onsubmit = async function(e){
-  e.preventDefault();
-  const form = this;
-  const data = Object.fromEntries(new FormData(form));
-  data.arms = data.arms ? data.arms.split(',').map(a => a.trim()).filter(a => a) : [];
-  // Get checked teachers
-  const teacherCheckboxes = form.querySelectorAll('input[name="teacherIds"]:checked');
-  data.teacherIds = Array.from(teacherCheckboxes).map(cb => cb.value);
-  const editId = form.getAttribute('data-edit-id');
-  document.getElementById('classMessage').textContent = "Saving...";
-  try{
-    const method = editId ? "PUT" : "POST";
-    const url = API_BASE + "/classes" + (editId ? "/" + editId : "");
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
-      body: JSON.stringify(data)
-    });
-    document.getElementById('classMessage').textContent = res.ok ? "Saved!" : "Failed!";
-    form.removeAttribute('data-edit-id');
-    form.reset();
-    loadClasses();
-    // Uncheck all teacher checkboxes after reset
-    Array.from(document.querySelectorAll('#classTeacherCheckboxes input[type="checkbox"]')).forEach(cb => cb.checked = false);
-  }catch{ document.getElementById('classMessage').textContent = "Network error."; }
-};
-
-function editClass(id) {
-  fetch(`${API_BASE}/classes/${id}`, { headers: { Authorization: "Bearer " + token }})
-    .then(res => res.json())
-    .then(cls => {
-      const form = document.getElementById('classForm');
-      form.name.value = cls.name || "";
-      form.arms.value = cls.arms && cls.arms.length ? cls.arms.join(', ') : "";
-      // Preselect teachers (checkboxes)
-      const teacherCheckboxes = form.querySelectorAll('input[name="teacherIds"]');
-      teacherCheckboxes.forEach(cb => {
-        cb.checked = cls.teachers?.some(t => t._id === cb.value || t.id === cb.value);
-      });
-      form.setAttribute('data-edit-id', id);
-      document.getElementById('classMessage').textContent = "Editing class. Save to update.";
-    });
+async function fillTeacherDropdown2() {
+  await fillDropdown('/admin/staffs?role=teacher', 'assignSubjectTeacherSelect', 'firstName');
 }
-// Assign Subject to Class & Teacher
+
 document.getElementById('assignSubjectForm').onsubmit = async function(e) {
   e.preventDefault();
-  const form = e.target;
-  const data = Object.fromEntries(new FormData(form));
-  document.getElementById('assignSubjectMessage').textContent = "Saving...";
-  try {
-    const res = await fetch(API_BASE + `/classes/${data.classId}/subjects`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
-      body: JSON.stringify({ subjectName: data.subjectName, teacherId: data.teacherId })
-    });
-    const resp = await res.json();
-    document.getElementById('assignSubjectMessage').textContent = res.ok ? "Assigned!" : ("Error: " + (resp.error || "Unknown"));
-    if (res.ok) form.reset();
-  } catch (err) {
-    document.getElementById('assignSubjectMessage').textContent = "Network error.";
+  const data = {
+    classId: this.classId.value,
+    subjectName: this.subjectName.value,
+    teacherId: this.teacherId.value
+  };
+  const res = await fetchAPI('/subjects', 'POST', data);
+  if (res.ok) {
+    showMessage('assignSubjectMessage', 'Subject assigned successfully', true);
+    this.reset();
+    loadUploadedSubjects();
+  } else {
+    showMessage('assignSubjectMessage', res.data?.message || 'Failed to assign subject', false);
   }
 };
-// Update sessions table render to include delete button
-async function loadSessions() {
-  await fillDropdown("/sessions", "termSessionSelect");
-  await fillDropdown("/sessions", "resultsSessionSelect");
-  const tbody = document.getElementById('sessionsTableBody');
-  try {
-    const res = await fetch(API_BASE + "/sessions", { headers: { Authorization: "Bearer " + token }});
-    const sessions = await res.json();
-    if (!sessions.length) { tbody.innerHTML = '<tr><td class="py-2 px-3" colspan="4">No sessions found.</td></tr>'; return;}
-    tbody.innerHTML = sessions.map(s =>
-      `<tr>
-        <td class="py-2 px-3">${s.name}</td>
-        <td class="py-2 px-3">${s.startDate ? s.startDate.slice(0,10) : ''}</td>
-        <td class="py-2 px-3">${s.endDate ? s.endDate.slice(0,10) : ''}</td>
-        <td class="py-2 px-3">
-          <button class="px-2 py-1 rounded bg-[#2647a6] text-white text-xs" onclick="editSession('${s._id}')"><i class="fa fa-edit"></i></button>
-          <button class="px-2 py-1 rounded bg-red-600 text-white text-xs" onclick="deleteSession('${s._id}', this)"><i class="fa fa-trash"></i></button>
-        </td>
-      </tr>`).join('');
-  } catch { tbody.innerHTML = '<tr><td class="py-2 px-3" colspan="4">Error loading sessions.</td></tr>'; }
+
+async function loadUploadedSubjects() {
+  const res = await fetchAPI('/subjects');
+  const tbody = document.getElementById('uploadedSubjectsTableBody');
+  if (!res.ok) {
+    tbody.innerHTML = '<tr><td colspan="5">Error loading subjects</td></tr>';
+    return;
+  }
+  const subjects = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+  tbody.innerHTML = subjects.map(s => `
+    <tr>
+      <td>${s.title || s.name || ''}</td>
+      <td>${s.meta?.class || s.classId || ''}</td>
+      <td>${s.meta?.teacher || s.teacherId || ''}</td>
+      <td>${s.createdAt ? new Date(s.createdAt).toLocaleDateString() : ''}</td>
+      <td>
+        <div class="table-actions">
+          <button class="btn-small btn-view" onclick="viewSubject('${s._id || s.id}')"><i class="fa fa-eye"></i> View</button>
+          <button class="btn-small btn-delete" onclick="deleteSubjectFromClass('${s._id || s.id}', this)"><i class="fa fa-trash"></i> Delete</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
 }
-  loadSessions();
-window.deleteSession = async function(id, btn) {
-  // No confirmation, delete immediately
-  btn.disabled = true; btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i>';
-  try {
-    const res = await fetch(`${API_BASE}/sessions/${id}`, { method: "DELETE", headers: { Authorization: "Bearer " + token } });
-    if (res.ok) loadSessions();
-    else alert("Failed to delete.");
-  } finally { btn.disabled = false; btn.innerHTML = '<i class="fa fa-trash"></i>'; }
+
+window.viewSubject = function(id) {
+  alert('Subject details for ' + id);
 };
 
-
-
-// Edit Session
-function editSession(id) {
-  fetch(`${API_BASE}/sessions/${id}`, { headers: { Authorization: "Bearer " + token }})
-    .then(res => res.json())
-    .then(session => {
-      const form = document.getElementById('sessionForm');
-      form.name.value = session.name || "";
-      form.startDate.value = session.startDate ? session.startDate.slice(0,10) : "";
-      form.endDate.value = session.endDate ? session.endDate.slice(0,10) : "";
-      form.setAttribute('data-edit-id', id);
-      document.getElementById('sessionMessage').textContent = "Editing session. Save to update.";
-    });
-}
-// Save Session (add/edit)
-document.getElementById('sessionForm').onsubmit = async function(e){
-  e.preventDefault();
-  const form = this;
-  const data = Object.fromEntries(new FormData(form));
-  const editId = form.getAttribute('data-edit-id');
-  document.getElementById('sessionMessage').textContent = "Saving...";
-  try{
-    const method = editId ? "PUT" : "POST";
-    const url = API_BASE + "/sessions" + (editId ? "/" + editId : "");
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
-      body: JSON.stringify(data)
-    });
-    document.getElementById('sessionMessage').textContent = res.ok ? "Saved!" : "Failed!";
-    form.removeAttribute('data-edit-id');
-    form.reset();
-    loadSessions();
-  }catch{ document.getElementById('sessionMessage').textContent = "Network error."; }
+window.deleteSubjectFromClass = async function(subjectId, btn) {
+  if (!confirm('Delete this subject?')) return;
+  const res = await fetchAPI(`/subjects/${subjectId}`, 'DELETE');
+  if (res.ok) {
+    btn.closest('tr').remove();
+    showMessage('assignSubjectMessage', 'Subject deleted', true);
+  } else {
+    showMessage('assignSubjectMessage', 'Failed to delete subject', false);
+  }
 };
 
-// Terms Table
+// ==================== EXAM SCHEDULES ====================
 
-
-async function loadTerms() {
-  const tbody = document.getElementById('termsTableBody');
-  try {
-    const res = await fetch(API_BASE + "/terms", { headers: { Authorization: "Bearer " + token }});
-    const terms = await res.json();
-    if (!terms.length) { tbody.innerHTML = '<tr><td class="py-2 px-3" colspan="5">No terms found.</td></tr>'; return;}
-    tbody.innerHTML = terms.map(t =>
-      `<tr>
-        <td class="py-2 px-3">${t.name}</td>
-        <td class="py-2 px-3">${t.session?.name || '-'}</td>
-        <td class="py-2 px-3">${t.startDate ? t.startDate.slice(0,10) : ''}</td>
-        <td class="py-2 px-3">${t.endDate ? t.endDate.slice(0,10) : ''}</td>
-        <td class="py-2 px-3">
-          <button class="px-2 py-1 rounded bg-[#2647a6] text-white text-xs" onclick="editTerm('${t._id}')"><i class="fa fa-edit"></i></button>
-          <button class="px-2 py-1 rounded bg-red-600 text-white text-xs" onclick="deleteTerm('${t._id}', this)"><i class="fa fa-trash"></i></button>
-        </td>
-      </tr>`).join('');
-  } catch { tbody.innerHTML = '<tr><td class="py-2 px-3" colspan="5">Error loading terms.</td></tr>'; }
+async function fillTermDropdownForExam() {
+  await fillDropdown('/terms', 'examTermSelect', 'name');
 }
-loadTerms();
-window.deleteTerm = async function(id, btn) {
-  // No confirmation, delete immediately
-  btn.disabled = true; btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i>';
-  try {
-    const res = await fetch(`${API_BASE}/terms/${id}`, { method: "DELETE", headers: { Authorization: "Bearer " + token } });
-    if (res.ok) loadTerms();
-    else alert("Failed to delete.");
-  } finally { btn.disabled = false; btn.innerHTML = '<i class="fa fa-trash"></i>'; }
-};
-
-
-// Edit Term
-function editTerm(id) {
-  fetch(`${API_BASE}/terms/${id}`, { headers: { Authorization: "Bearer " + token }})
-    .then(res => res.json())
-    .then(term => {
-      const form = document.getElementById('termForm');
-      form.name.value = term.name || "";
-      form.sessionId.value = term.sessionId || "";
-      form.startDate.value = term.startDate ? term.startDate.slice(0,10) : "";
-      form.endDate.value = term.endDate ? term.endDate.slice(0,10) : "";
-      form.setAttribute('data-edit-id', id);
-      document.getElementById('termMessage').textContent = "Editing term. Save to update.";
-    });
-}
-// Save Term (add/edit)
-document.getElementById('termForm').onsubmit = async function(e){
-  e.preventDefault();
-  const form = this;
-  const data = Object.fromEntries(new FormData(form));
-  const editId = form.getAttribute('data-edit-id');
-  document.getElementById('termMessage').textContent = "Saving...";
-  try{
-    const method = editId ? "PUT" : "POST";
-    const url = API_BASE + "/terms" + (editId ? "/" + editId : "");
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
-      body: JSON.stringify(data)
-    });
-    document.getElementById('termMessage').textContent = res.ok ? "Saved!" : "Failed!";
-    form.removeAttribute('data-edit-id');
-    form.reset();
-    loadTerms();
-  }catch{ document.getElementById('termMessage').textContent = "Network error."; }
-};
-
-// Exams: fill dropdowns
-fillDropdown("/terms", "examTermSelect");
-fillDropdown("/classes", "examClassSelect");
-fillDropdown("/classes", "cbtClassSelect");
-fillDropdown("/classes", "resultsClassSelect");
-
-// Exams Schedule Table
-
-
-// ============ EXAMS SCHEDULE ============
 
 async function loadExamSchedules() {
+  const res = await fetchAPI('/exams');
   const tbody = document.getElementById('examScheduleTableBody');
-  try {
-    const res = await fetch(API_BASE + "/exams/schedules", { headers: { Authorization: "Bearer " + token }});
-    const exams = await res.json();
-    if (!exams.length) { tbody.innerHTML = '<tr><td class="py-2 px-3" colspan="5">No exams scheduled.</td></tr>'; return;}
-    tbody.innerHTML = exams.map(ex =>
-      `<tr>
-        <td class="py-2 px-3">${ex.title}</td>
-        <td class="py-2 px-3">${ex.term?.name || '-'}</td>
-        <td class="py-2 px-3">${ex.class?.name || '-'}</td>
-        <td class="py-2 px-3">${ex.date ? ex.date.slice(0,10) : ''}</td>
-        <td class="py-2 px-3">
-          <button class="px-2 py-1 rounded bg-[#2647a6] text-white text-xs" onclick="editExamSchedule('${ex._id}')"><i class="fa fa-edit"></i></button>
-          <button class="px-2 py-1 rounded bg-red-600 text-white text-xs" onclick="deleteExamSchedule('${ex._id}', this)"><i class="fa fa-trash"></i></button>
-        </td>
-      </tr>`).join('');
-  } catch { tbody.innerHTML = '<tr><td class="py-2 px-3" colspan="5">Error loading schedules.</td></tr>'; }
+  if (!res.ok) {
+    tbody.innerHTML = '<tr><td colspan="5">Error loading exams</td></tr>';
+    return;
+  }
+  const exams = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+  tbody.innerHTML = exams.map(e => `
+    <tr>
+      <td>${e.title || e.name || ''}</td>
+      <td>${e.term?.name || e.termName || ''}</td>
+      <td>${e.class?.name || e.className || ''}</td>
+      <td>${e.date ? new Date(e.date).toLocaleDateString() : ''}</td>
+      <td>
+        <div class="table-actions">
+          <button class="btn-small btn-edit" onclick="editExamSchedule('${e._id || e.id}')"><i class="fa fa-edit"></i> Edit</button>
+          <button class="btn-small btn-delete" onclick="deleteExamSchedule('${e._id || e.id}', this)"><i class="fa fa-trash"></i> Delete</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
 }
-loadExamSchedules();
+
 window.deleteExamSchedule = async function(id, btn) {
-  // No confirmation, delete immediately
-  btn.disabled = true; btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i>';
-  try {
-    const res = await fetch(`${API_BASE}/exams/schedules/${id}`, { method: "DELETE", headers: { Authorization: "Bearer " + token } });
-    if (res.ok) loadExamSchedules();
-    else alert("Failed to delete.");
-  } finally { btn.disabled = false; btn.innerHTML = '<i class="fa fa-trash"></i>'; }
+  if (!confirm('Delete this exam?')) return;
+  const res = await fetchAPI(`/exams/${id}`, 'DELETE');
+  if (res.ok) {
+    btn.closest('tr').remove();
+    showMessage('examScheduleMessage', 'Exam deleted', true);
+  } else {
+    showMessage('examScheduleMessage', 'Failed to delete exam', false);
+  }
 };
 
+window.editExamSchedule = function(id) {
+  // Implement edit logic
+};
 
-// Edit Exam Schedule
-function editExamSchedule(id) {
-  fetch(`${API_BASE}/exams/schedules/${id}`, { headers: { Authorization: "Bearer " + token }})
-    .then(res => res.json())
-    .then(exam => {
-      const form = document.getElementById('examScheduleForm');
-      form.title.value = exam.title || "";
-      form.termId.value = exam.termId || "";
-      form.classId.value = exam.classId || "";
-      form.date.value = exam.date ? exam.date.slice(0,10) : "";
-      form.setAttribute('data-edit-id', id);
-      document.getElementById('examScheduleMessage').textContent = "Editing exam schedule. Save to update.";
-    });
-}
-// Save Exam Schedule (add/edit)
-document.getElementById('examScheduleForm').onsubmit = async function(e){
+document.getElementById('examScheduleForm').onsubmit = async function(e) {
   e.preventDefault();
-  const form = this;
-  const data = Object.fromEntries(new FormData(form));
-  const editId = form.getAttribute('data-edit-id');
-  document.getElementById('examScheduleMessage').textContent = "Saving...";
-  try{
-    const method = editId ? "PUT" : "POST";
-    const url = API_BASE + "/exams/schedules" + (editId ? "/" + editId : "");
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
-      body: JSON.stringify(data)
-    });
-    document.getElementById('examScheduleMessage').textContent = res.ok ? "Saved!" : "Failed!";
-    form.removeAttribute('data-edit-id');
-    form.reset();
+  const data = {
+    title: this.title.value,
+    termId: this.termId.value,
+    classId: this.classId.value,
+    date: this.date.value
+  };
+  const res = await fetchAPI('/exams', 'POST', data);
+  if (res.ok) {
+    showMessage('examScheduleMessage', 'Exam scheduled successfully', true);
+    this.reset();
     loadExamSchedules();
-  }catch{ document.getElementById('examScheduleMessage').textContent = "Network error."; }
+  } else {
+    showMessage('examScheduleMessage', res.data?.message || 'Failed to schedule exam', false);
+  }
 };
 
-// Mode: fill exams dropdown
-async function fillExamDropdown() {
-  try {
-    const res = await fetch(API_BASE + "/exams/schedules", { headers: { Authorization: "Bearer " + token }});
-    const exams = await res.json();
-    document.getElementById('modeExamSelect').innerHTML = exams.map(ex => `<option value="${ex._id}">${ex.title}</option>`).join('');
-  } catch {}
-}
-fillExamDropdown();
+// ==================== EXAM MODES ====================
 
-// Exam Mode Table
-async function loadExamModes() {
-  const tbody = document.getElementById('examModeTableBody');
-  try {
-    const res = await fetch(API_BASE + "/exams/modes", { headers: { Authorization: "Bearer " + token }});
-    const modes = await res.json();
-    if (!modes.length) { tbody.innerHTML = '<tr><td class="py-2 px-3" colspan="4">No exam modes set.</td></tr>'; return;}
-    tbody.innerHTML = modes.map(m =>
-      `<tr>
-        <td class="py-2 px-3">${m.exam?.title || '-'}</td>
-        <td class="py-2 px-3">${m.mode}</td>
-        <td class="py-2 px-3">${m.duration || '-'}</td>
-        <td class="py-2 px-3"><button class="px-2 py-1 rounded bg-[#2647a6] text-white text-xs" onclick="editExamMode('${m._id}')"><i class="fa fa-edit"></i></button></td>
-      </tr>`).join('');
-  } catch { tbody.innerHTML = '<tr><td class="py-2 px-3" colspan="4">Error loading modes.</td></tr>'; }
+async function fillExamDropdown() {
+  await fillDropdown('/exams', 'modeExamSelect', 'title');
 }
+
+async function loadExamModes() {
+  const res = await fetchAPI('/exams');
+  const tbody = document.getElementById('examModeTableBody');
+  if (!res.ok) {
+    tbody.innerHTML = '<tr><td colspan="4">Error loading exam modes</td></tr>';
+    return;
+  }
+  const exams = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+  tbody.innerHTML = exams.map(e => `
+    <tr>
+      <td>${e.title || e.name || ''}</td>
+      <td>${e.mode || 'Paper'}</td>
+      <td>${e.duration || 60} min</td>
+      <td>
+        <div class="table-actions">
+          <button class="btn-small btn-edit" onclick="editExamMode('${e._id || e.id}')"><i class="fa fa-edit"></i> Edit</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+window.editExamMode = function(id) {
+  // Implement edit logic
+};
+
+document.getElementById('examModeForm').onsubmit = async function(e) {
+  e.preventDefault();
+  const data = {
+    mode: this.mode.value,
+    duration: this.duration.value
+  };
+  const res = await fetchAPI(`/exams/${this.examId.value}`, 'PUT', data);
+  if (res.ok) {
+    showMessage('examModeMessage', 'Exam mode updated successfully', true);
+    this.reset();
+    loadExamModes();
+  } else {
+    showMessage('examModeMessage', res.data?.message || 'Failed to update exam mode', false);
+  }
+};
+
 loadExamModes();
 
-// Edit Exam Mode
-function editExamMode(id) {
-  fetch(`${API_BASE}/exams/modes/${id}`, { headers: { Authorization: "Bearer " + token }})
-    .then(res => res.json())
-    .then(mode => {
-      const form = document.getElementById('examModeForm');
-      form.examId.value = mode.examId || "";
-      form.mode.value = mode.mode || "";
-      form.duration.value = mode.duration || "";
-      form.setAttribute('data-edit-id', id);
-      document.getElementById('examModeMessage').textContent = "Editing exam mode. Save to update.";
-    });
-}
-// Save Exam Mode (add/edit)
-document.getElementById('examModeForm').onsubmit = async function(e){
-  e.preventDefault();
-  const form = this;
-  const data = Object.fromEntries(new FormData(form));
-  const editId = form.getAttribute('data-edit-id');
-  document.getElementById('examModeMessage').textContent = "Saving...";
-  try{
-    const method = editId ? "PUT" : "POST";
-    const url = API_BASE + "/exams/modes" + (editId ? "/" + editId : "");
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
-      body: JSON.stringify(data)
-    });
-    document.getElementById('examModeMessage').textContent = res.ok ? "Saved!" : "Failed!";
-    form.removeAttribute('data-edit-id');
-    form.reset();
-    loadExamModes();
-  }catch{ document.getElementById('examModeMessage').textContent = "Network error."; }
-};
-
-
-
-// ============ CBT & MOCKS ============
+// ==================== CBT & MOCKS ====================
 
 async function loadCBTs() {
+  const res = await fetchAPI('/cbt');
   const tbody = document.getElementById('cbtTableBody');
-  try {
-    const res = await fetch(API_BASE + "/cbt/mocks", { headers: { Authorization: "Bearer " + token }});
-    const cbts = await res.json();
-    if (!cbts.length) { tbody.innerHTML = '<tr><td class="py-2 px-3" colspan="5">No CBT/mocks found.</td></tr>'; return;}
-    tbody.innerHTML = cbts.map(c =>
-      `<tr>
-        <td class="py-2 px-3">${c.title}</td>
-        <td class="py-2 px-3">${c.class?.name || '-'}</td>
-        <td class="py-2 px-3">${c.mode}</td>
-        <td class="py-2 px-3">${c.date ? c.date.slice(0,10) : ''}</td>
-        <td class="py-2 px-3">
-          <button class="px-2 py-1 rounded bg-[#2647a6] text-white text-xs" onclick="editCBT('${c._id}')"><i class="fa fa-edit"></i></button>
-          <button class="px-2 py-1 rounded bg-red-600 text-white text-xs" onclick="deleteCBT('${c._id}', this)"><i class="fa fa-trash"></i></button>
-        </td>
-      </tr>`).join('');
-  } catch { tbody.innerHTML = '<tr><td class="py-2 px-3" colspan="5">Error loading CBT/mocks.</td></tr>'; }
+  if (!res.ok) {
+    tbody.innerHTML = '<tr><td colspan="5">Error loading CBT/Mocks</td></tr>';
+    return;
+  }
+  const cbts = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+  tbody.innerHTML = cbts.map(c => `
+    <tr>
+      <td>${c.title || c.name || ''}</td>
+      <td>${c.class?.name || c.className || ''}</td>
+      <td>${c.mode || 'Multiple Choice'}</td>
+      <td>${c.date ? new Date(c.date).toLocaleDateString() : ''}</td>
+      <td>
+        <div class="table-actions">
+          <button class="btn-small btn-edit" onclick="editCBT('${c._id || c.id}')"><i class="fa fa-edit"></i> Edit</button>
+          <button class="btn-small btn-delete" onclick="deleteCBT('${c._id || c.id}', this)"><i class="fa fa-trash"></i> Delete</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
 }
-loadCBTs();
+
 window.deleteCBT = async function(id, btn) {
-  // No confirmation, delete immediately
-  btn.disabled = true; btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i>';
-  try {
-    const res = await fetch(`${API_BASE}/cbt/mocks/${id}`, { method: "DELETE", headers: { Authorization: "Bearer " + token } });
-    if (res.ok) loadCBTs();
-    else alert("Failed to delete.");
-  } finally { btn.disabled = false; btn.innerHTML = '<i class="fa fa-trash"></i>'; }
+  if (!confirm('Delete this CBT/Mock?')) return;
+  const res = await fetchAPI(`/cbt/${id}`, 'DELETE');
+  if (res.ok) {
+    btn.closest('tr').remove();
+    showMessage('cbtMessage', 'CBT/Mock deleted', true);
+  } else {
+    showMessage('cbtMessage', 'Failed to delete CBT/Mock', false);
+  }
 };
 
+window.editCBT = function(id) {
+  // Implement edit logic
+};
 
-// Edit CBT/Mock
-function editCBT(id) {
-  fetch(`${API_BASE}/cbt/mocks/${id}`, { headers: { Authorization: "Bearer " + token }})
-    .then(res => res.json())
-    .then(cbt => {
-      const form = document.getElementById('cbtForm');
-      form.title.value = cbt.title || "";
-      form.classId.value = cbt.classId || "";
-      form.mode.value = cbt.mode || "";
-      form.date.value = cbt.date ? cbt.date.slice(0,10) : "";
-      form.setAttribute('data-edit-id', id);
-      document.getElementById('cbtMessage').textContent = "Editing CBT/mock. Save to update.";
-    });
-}
-// Save CBT/Mock (add/edit)
-document.getElementById('cbtForm').onsubmit = async function(e){
+document.getElementById('cbtForm').onsubmit = async function(e) {
   e.preventDefault();
-  const form = this;
-  const data = Object.fromEntries(new FormData(form));
-  const editId = form.getAttribute('data-edit-id');
-  document.getElementById('cbtMessage').textContent = "Saving...";
-  try{
-    const method = editId ? "PUT" : "POST";
-    const url = API_BASE + "/cbt/mocks" + (editId ? "/" + editId : "");
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
-      body: JSON.stringify(data)
-    });
-    document.getElementById('cbtMessage').textContent = res.ok ? "Saved!" : "Failed!";
-    form.removeAttribute('data-edit-id');
-    form.reset();
+  const data = {
+    title: this.title.value,
+    classId: this.classId.value,
+    mode: this.mode.value,
+    date: this.date.value
+  };
+  const res = await fetchAPI('/cbt', 'POST', data);
+  if (res.ok) {
+    showMessage('cbtMessage', 'CBT/Mock setup successfully', true);
+    this.reset();
     loadCBTs();
-  }catch{ document.getElementById('cbtMessage').textContent = "Network error."; }
+  } else {
+    showMessage('cbtMessage', res.data?.message || 'Failed to setup CBT/Mock', false);
+  }
 };
+
+loadCBTs();
+
+// ==================== RESULTS ====================
+
 async function fillPushCBTSessionDropdown() {
-  try {
-    const res = await fetch("https://goldlincschools.onrender.com/api/academics/sessions", { headers: { Authorization: "Bearer " + token } });
-    const data = await res.json();
-    document.getElementById('pushCBTSessionSelect').innerHTML = data.map(s => `<option value="${s._id}">${s.name}</option>`).join('');
-  } catch {}
+  await fillDropdown('/sessions', 'pushCBTSessionSelect', 'name');
 }
+
 async function fillPushCBTTermDropdown() {
-  try {
-    const res = await fetch("https://goldlincschools.onrender.com/api/academics/terms", { headers: { Authorization: "Bearer " + token } });
-    const data = await res.json();
-    document.getElementById('pushCBTTermSelect').innerHTML = data.map(t => `<option value="${t._id}">${t.name} (${t.session?.name || "-"})</option>`).join('');
-  } catch {}
+  await fillDropdown('/terms', 'pushCBTTermSelect', 'name');
+}
+
+async function fillResultsSessionDropdown() {
+  await fillDropdown('/sessions', 'resultsSessionSelect', 'name');
+}
+
+async function fillResultsClassDropdown() {
+  await fillDropdown('/classes', 'resultsClassSelect', 'name');
 }
 
 async function loadResults(filter = {}) {
+  let endpoint = '/results';
+  if (filter.sessionId) endpoint += `?sessionId=${filter.sessionId}`;
+  const res = await fetchAPI(endpoint);
   const tbody = document.getElementById('resultsTableBody');
-  tbody.innerHTML = '<tr><td class="py-2 px-3" colspan="7">Loading...</td></tr>';
-  try {
-    let results = [];
-    // If "CBT" is selected, use the dedicated CBT results API
-    if (filter.type === "CBT") {
-      let url = "https://goldlincschools.onrender.com/api/result";
-      const res = await fetch(url, { headers: { Authorization: "Bearer " + token } });
-      results = await res.json();
-      if (!results.length) {
-        tbody.innerHTML = '<tr><td class="py-2 px-3" colspan="7">No CBT results found.</td></tr>';
-        return;
-      }
-      tbody.innerHTML = results.map(r =>
-        `<tr>
-          <td class="py-2 px-3">${r.studentName || '-'}</td>
-          <td class="py-2 px-3">${r.className || '-'}</td>
-          <td class="py-2 px-3">CBT</td>
-          <td class="py-2 px-3">${r.examTitle || '-'}</td>
-          <td class="py-2 px-3">${r.score}/${r.total}</td>
-          <td class="py-2 px-3">${r.finishedAt ? r.finishedAt.slice(0, 10) : ''}</td>
-          <td class="py-2 px-3">
-            <button class="px-2 py-1 rounded bg-red-600 text-white text-xs" onclick="deleteCBTResult('${r._id}', this)">
-              <i class="fa fa-trash"></i>
-            </button>
-          </td>
-        </tr>`
-      ).join('');
-      return;
-    }
-    // Otherwise, use default endpoint for mocks or other types
-    let url = API_BASE + "/results/cbt-mocks";
-    if (filter.sessionId || filter.classId || filter.type) {
-      url += '?' + new URLSearchParams(filter).toString();
-    }
-    const res = await fetch(url, { headers: { Authorization: "Bearer " + token } });
-    results = await res.json();
-    if (!results.length) {
-      tbody.innerHTML = '<tr><td class="py-2 px-3" colspan="7">No results found.</td></tr>';
-      return;
-    }
-    tbody.innerHTML = results.map(r =>
-      `<tr>
-        <td class="py-2 px-3">${r.student?.name || '-'}</td>
-        <td class="py-2 px-3">${r.class?.name || '-'}</td>
-        <td class="py-2 px-3">${r.type || '-'}</td>
-        <td class="py-2 px-3">${r.exam?.title || r.mock?.title || '-'}</td>
-        <td class="py-2 px-3">${r.score}</td>
-        <td class="py-2 px-3">${r.date ? r.date.slice(0, 10) : ''}</td>
-        <td class="py-2 px-3">
-          <button class="px-2 py-1 rounded bg-red-600 text-white text-xs" onclick="deleteCBTResult('${r._id}', this)">
-            <i class="fa fa-trash"></i>
-          </button>
-        </td>
-      </tr>`
-    ).join('');
-  } catch {
-    tbody.innerHTML = '<tr><td class="py-2 px-3" colspan="7">Error loading results.</td></tr>';
+  if (!res.ok) {
+    tbody.innerHTML = '<tr><td colspan="7">Error loading results</td></tr>';
+    return;
   }
+  const results = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+  tbody.innerHTML = results.map(r => `
+    <tr>
+      <td>${(r.student?.firstName || '') + ' ' + (r.student?.lastName || '')}</td>
+      <td>${r.student?.className || ''}</td>
+      <td>${r.type || 'CBT'}</td>
+      <td>${r.exam?.title || r.examName || ''}</td>
+      <td>${r.score || 0}</td>
+      <td>${r.date ? new Date(r.date).toLocaleDateString() : ''}</td>
+      <td>
+        <div class="table-actions">
+          <button class="btn-small btn-delete" onclick="deleteCBTResult('${r._id || r.id}', this)"><i class="fa fa-trash"></i> Delete</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
 }
 
-document.getElementById('resultsFilterForm').onsubmit = function (e) {
+document.getElementById('resultsFilterForm').onsubmit = function(e) {
   e.preventDefault();
-  const data = Object.fromEntries(new FormData(this));
-  loadResults(data);
+  const filter = {
+    sessionId: this.sessionId.value,
+    classId: this.classId.value,
+    type: this.type.value
+  };
+  loadResults(filter);
 };
-
-const pushCBTResultsBtn = document.getElementById('pushCBTResultsBtn');
-const pushCBTModal = document.getElementById('pushCBTModal');
-const pushCBTModalForm = document.getElementById('pushCBTModalForm');
-const pushCBTResultsMessage = document.getElementById('pushCBTResultsMessage');
-const pushCBTModalFeedback = document.getElementById('pushCBTModalFeedback');
-const cancelPushCBTModal = document.getElementById('cancelPushCBTModal');
 
 pushCBTResultsBtn.onclick = () => {
   fillPushCBTSessionDropdown();
   fillPushCBTTermDropdown();
-  pushCBTModal.classList.remove('hidden');
-  pushCBTModalFeedback.textContent = "";
+  pushCBTModal.classList.add('active');
 };
-// Close modal on cancel
+
 cancelPushCBTModal.onclick = () => {
-  pushCBTModal.classList.add('hidden');
-  pushCBTModalFeedback.textContent = "";
+  pushCBTModal.classList.remove('active');
+  pushCBTModalFeedback.textContent = '';
 };
 
 pushCBTModalForm.onsubmit = async function(e) {
   e.preventDefault();
-  const formData = new FormData(pushCBTModalForm);
-  const scoreField = formData.get('scoreField');
-  const sessionId = formData.get('sessionId');
-  const termId = formData.get('termId');
-  pushCBTModalFeedback.textContent = "Pushing CBT results...";
-  try {
-    const res = await fetch("https://goldlincschools.onrender.com/api/results/push-cbt", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + token
-      },
-      body: JSON.stringify({ scoreField, sessionId, termId })
-    });
-    const data = await res.json();
-    if (data.success) {
-      pushCBTModalFeedback.textContent = `Done! Inserted: ${data.inserted}, Skipped: ${data.skipped}`;
-      pushCBTResultsMessage.textContent = `Last push: Inserted ${data.inserted}, Skipped ${data.skipped}`;
-    } else {
-      pushCBTModalFeedback.textContent = "Error: " + (data.error || "Unknown error");
-    }
-  } catch (err) {
-    pushCBTModalFeedback.textContent = "Network error";
-  } finally {
+  const data = {
+    scoreField: this.scoreField.value,
+    sessionId: this.sessionId.value,
+    termId: this.termId.value
+  };
+  pushCBTModalFeedback.textContent = 'Pushing results...';
+  const res = await fetchAPI('/results/push-cbt', 'POST', data);
+  if (res.ok) {
+    pushCBTModalFeedback.innerHTML = '<div class="message success">Results pushed successfully!</div>';
     setTimeout(() => {
-      pushCBTModal.classList.add('hidden');
-    }, 2000);
+      pushCBTModal.classList.remove('active');
+      loadResults();
+    }, 1500);
+  } else {
+    pushCBTModalFeedback.innerHTML = `<div class="message error">Failed: ${res.data?.message || 'Unknown error'}</div>`;
   }
 };
+
 window.deleteCBTResult = async function(id, btn) {
-  // No confirmation, delete immediately
-  btn.disabled = true; btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i>';
-  try {
-    // For CBT results - adjust the endpoint if your API differs
-    let url;
-    if (window.location.href.includes("/academics.html")) {
-      // Try both endpoints if needed
-      url = `https://goldlincschools.onrender.com/api/result/${id}`;
-      let res = await fetch(url, { method: "DELETE", headers: { Authorization: "Bearer " + token } });
-      if (!res.ok) {
-        // Try alternate endpoint if needed
-        url = API_BASE + `/results/cbt-mocks/${id}`;
-        res = await fetch(url, { method: "DELETE", headers: { Authorization: "Bearer " + token } });
-      }
-      if (res.ok) {
-        loadResults(); // reload table
-      } else {
-        alert("Failed to delete.");
-      }
-    }
-  } catch {
-    alert("Network error.");
-  } finally {
-    btn.disabled = false; btn.innerHTML = '<i class="fa fa-trash"></i>';
-  }
-};
-// --- Render Uploaded Subjects ---
-async function loadUploadedSubjects() {
-  const tbody = document.getElementById('uploadedSubjectsTableBody');
-  if (!tbody) return;
-  tbody.innerHTML = '<tr><td class="py-2 px-3" colspan="5">Loading...</td></tr>';
-  try {
-    // Adjust endpoint if needed for your API
-    const res = await fetch("https://goldlincschools.onrender.com/api/academics/classes", { headers: { Authorization: "Bearer " + token } });
-    const classes = await res.json();
-    let rows = [];
-    classes.forEach(cls => {
-      if (Array.isArray(cls.subjects)) {
-        cls.subjects.forEach(subj => {
-          // Use subj.subject as the subject's ObjectId reference if available, otherwise subj._id
-          const subjectId = subj.subject || subj._id;
-          rows.push(`
-            <tr>
-      <td class="py-2 px-3">${subj.subject?.name || '-'}</td>
-      <td class="py-2 px-3">${cls.name || '-'}</td>
-      <td class="py-2 px-3">${subj.teacher ? (subj.teacher.name || `${subj.teacher.first_name || ''} ${subj.teacher.last_name || ''}`) : '-'}</td>
-      <td class="py-2 px-3">${subj.uploadedAt ? new Date(subj.uploadedAt).toLocaleDateString() : '-'}</td>
-      <td class="py-2 px-3">
-                <button class="px-2 py-1 rounded bg-[#2647a6] text-white text-xs" title="View" onclick="viewSubject('${subjectId}')"><i class="fa fa-eye"></i></button>
-                <button class="px-2 py-1 rounded bg-red-600 text-white text-xs" title="Delete" onclick="deleteSubjectFromClass('${cls._id}', '${subj.subject?._id || subj.subject}', this)"><i class="fa fa-trash"></i></button>
-              </td>
-            </tr>
-          `);
-        });
-      }
-    });
-    if (rows.length === 0) {
-      tbody.innerHTML = '<tr><td class="py-2 px-3" colspan="5">No subjects uploaded.</td></tr>';
-    } else {
-      tbody.innerHTML = rows.join('');
-    }
-  } catch {
-    tbody.innerHTML = '<tr><td class="py-2 px-3" colspan="5">Error loading uploaded subjects.</td></tr>';
-  }
-}
-
-// Optional: Subject view handler
-window.viewSubject = function(id) {
-  alert("Subject details for " + id);
-  // Implement modal or details view if needed
-};
-
-// Updated: Subject delete handler for class subjects
-window.deleteSubjectFromClass = async function(classId, subjectId, btn) {
-  // No confirmation, delete immediately
-  btn.disabled = true; btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i>';
-  try {
-    const res = await fetch(`https://goldlincschools.onrender.com/api/academics/classes/${classId}/subjects/${subjectId}`, {
-      method: "DELETE",
-      headers: { Authorization: "Bearer " + token }
-    });
-    if (res.ok) loadUploadedSubjects();
-    else {
-      const data = await res.json();
-      alert("Failed to delete: " + (data.error || "Unknown error"));
-    }
-  } catch {
-    alert("Network error.");
-  } finally {
-    btn.disabled = false; btn.innerHTML = '<i class="fa fa-trash"></i>';
+  if (!confirm('Delete this result?')) return;
+  const res = await fetchAPI(`/results/${id}`, 'DELETE');
+  if (res.ok) {
+    btn.closest('tr').remove();
+    showMessage('resultsMessage', 'Result deleted', true);
+  } else {
+    showMessage('resultsMessage', 'Failed to delete result', false);
   }
 };
 
-// Show tab logic (add loadUploadedSubjects when showing "subjects" tab)
-function showTab(tab) {
-  document.querySelectorAll('.tablist button').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
-  document.querySelectorAll('.section-card').forEach(sec => sec.classList.toggle('hidden', sec.dataset.section !== tab));
-  document.querySelectorAll('.sidebar nav a').forEach(nav => nav.classList.toggle('active', nav.dataset.tab === tab));
-  // Load uploaded subjects when entering the subjects tab
-  if (tab === "subjects") loadUploadedSubjects();
-}
-window.editSession = editSession;
-window.editTerm = editTerm;
-window.editExamSchedule = editExamSchedule;
-window.editExamMode = editExamMode;
-window.editCBT = editCBT;
-window.editClass = editClass;
+loadResults();
