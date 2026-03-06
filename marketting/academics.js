@@ -1,731 +1,796 @@
 const API_BASE_URL = "https://goldlincschools.onrender.com";
 
-// DOM Elements
-const sidebar = document.getElementById('academicsSidebar');
-const mainContent = document.getElementById('mainContent');
-const menuToggleBtn = document.getElementById('menuToggleBtn');
-const pushCBTModal = document.getElementById('pushCBTModal');
-const pushCBTResultsBtn = document.getElementById('pushCBTResultsBtn');
-const cancelPushCBTModal = document.getElementById('cancelPushCBTModal');
-const pushCBTModalForm = document.getElementById('pushCBTModalForm');
-const pushCBTModalFeedback = document.getElementById('pushCBTModalFeedback');
-
-// ===== TAB NAVIGATION =====
+// ===== Tab Navigation =====
 function showTab(tab) {
-  // Hide all tab sections
   document.querySelectorAll('[data-section]').forEach(sec => {
-    sec.classList.add('hidden');
+    sec.classList.toggle('hidden', sec.dataset.section !== tab);
   });
-  // Show selected tab section
-  const activeSection = document.querySelector(`[data-section="${tab}"]`);
-  if (activeSection) {
-    activeSection.classList.remove('hidden');
-    // Load data when tab is shown
-    if (tab === 'sessions') loadSessions();
-    else if (tab === 'terms') loadTerms();
-    else if (tab === 'classes') loadClasses();
-    else if (tab === 'subjects') loadUploadedSubjects();
-    else if (tab === 'exams') loadExamSchedules();
-    else if (tab === 'cbt') loadCBTs();
-    else if (tab === 'results') loadResults();
-  }
-  // Update active button
-  document.querySelectorAll('#academicsTabs button').forEach(btn => {
+  document.querySelectorAll('.tablist button').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tab === tab);
   });
-  // Update active sidebar link
-  document.querySelectorAll('.nav a').forEach(link => {
-    link.classList.toggle('active', link.dataset.tab === tab);
-  });
+  
+  // Load data when tab is shown
+  if (tab === 'sessions') loadSessions();
+  else if (tab === 'terms') { fillDropdown(`${API_BASE_URL}/api/sessions`, 'termSessionSelect'); loadTerms(); }
+  else if (tab === 'classes') { loadClasses(); }
+  else if (tab === 'subjects') { fillClassDropdown(); fillTeacherDropdown2(); loadUploadedSubjects(); }
+  else if (tab === 'exams') { fillDropdown(`${API_BASE_URL}/api/sessions`, 'examTermSelect'); fillDropdown(`${API_BASE_URL}/api/classes`, 'examClassSelect'); loadExamSchedules(); }
+  else if (tab === 'cbt') { fillDropdown(`${API_BASE_URL}/api/classes`, 'cbtClassSelect'); loadCBTs(); }
+  else if (tab === 'results') { fillDropdown(`${API_BASE_URL}/api/sessions`, 'resultsSessionSelect'); fillDropdown(`${API_BASE_URL}/api/classes`, 'resultsClassSelect'); loadResults(); }
 }
 
-document.querySelectorAll('#academicsTabs button').forEach(btn => {
-  btn.onclick = () => showTab(btn.dataset.tab);
+document.querySelectorAll('.tablist button').forEach(btn => {
+  btn.addEventListener('click', () => showTab(btn.dataset.tab));
 });
 
-document.querySelectorAll('.nav a').forEach(link => {
-  link.onclick = (e) => { e.preventDefault(); showTab(link.dataset.tab); };
-});
-
-// ===== EXAM TAB NAVIGATION =====
+// ===== Exam Sub-Tab Navigation =====
 function showExamTab(tab) {
-  document.querySelectorAll('#examTabs button').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.examtab === tab);
-  });
-  document.querySelectorAll('[data-examsection]').forEach(sec => {
-    sec.classList.toggle('hidden', sec.dataset.examsection !== tab);
-  });
+  document.querySelectorAll('#examTabs button').forEach(btn => btn.classList.toggle('active', btn.dataset.examtab === tab));
+  document.querySelectorAll('#examTabContent > div').forEach(sec => sec.classList.toggle('hidden', sec.dataset.examsection !== tab));
+  
+  if (tab === 'schedule') loadExamSchedules();
+  else if (tab === 'mode') { fillExamDropdown(); loadExamModes(); }
 }
 
-const examTabsContainer = document.getElementById('examTabs');
-if (examTabsContainer) {
-  examTabsContainer.addEventListener('click', (e) => {
-    if (e.target.dataset.examtab) {
-      showExamTab(e.target.dataset.examtab);
-    }
-  });
-}
+document.querySelectorAll('#examTabs button').forEach(btn => {
+  btn.addEventListener('click', () => showExamTab(btn.dataset.examtab));
+});
 
-// ===== UTILITY FUNCTIONS =====
-function showMessage(elementId, text, type = 'success') {
-  const el = document.getElementById(elementId);
-  if (el) {
-    el.innerHTML = `<div class="message ${type}">${text}</div>`;
-  }
-}
-
-async function safeFetch(url, options = {}) {
+// ===== Helper Functions =====
+async function safeFetch(url, opts = {}) {
   try {
-    const res = await fetch(url, options);
-    const data = await res.json();
-    return { ok: res.ok, status: res.status, data };
-  } catch (err) {
-    console.error('Fetch error:', err);
-    return { ok: false, error: err.message };
+    const res = await fetch(url, opts);
+    const text = await res.text();
+    try { return { ok: res.ok, status: res.status, data: JSON.parse(text) }; } 
+    catch { return { ok: res.ok, status: res.status, data: text }; }
+  } catch (err) { 
+    return { ok: false, error: err }; 
   }
 }
 
-async function fillDropdown(endpoint, selectId, displayKey = 'name', valueKey = '_id') {
+function showMessage(elementId, message, isSuccess = true) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  el.innerHTML = `<div class="message ${isSuccess ? 'success' : 'error'}">${message}</div>`;
+  setTimeout(() => { el.innerHTML = ''; }, 5000);
+}
+
+async function fillDropdown(endpoint, selectId, valueKey = '_id', labelKey = 'name') {
   const select = document.getElementById(selectId);
   if (!select) return;
-  const result = await safeFetch(`${API_BASE_URL}${endpoint}`);
-  if (result.ok && Array.isArray(result.data)) {
-    const items = result.data.data || result.data;
-    select.innerHTML = '<option value="">-- Select --</option>' + items.map(item => 
-      `<option value="${item[valueKey]}">${item[displayKey]}</option>`
-    ).join('');
+  try {
+    const r = await safeFetch(endpoint);
+    if (r.ok && Array.isArray(r.data)) {
+      const data = r.data;
+      select.innerHTML = '<option value="">-- Select --</option>';
+      data.forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item[valueKey] || '';
+        opt.textContent = item[labelKey] || item.name || item.title || '';
+        select.appendChild(opt);
+      });
+    }
+  } catch (err) {
+    console.error('Error filling dropdown:', err);
   }
 }
 
 // ===== SESSIONS =====
 async function loadSessions() {
-  const result = await safeFetch(`${API_BASE_URL}/api/session`);
-  const tbody = document.getElementById('sessionsTableBody');
-  if (!tbody) return;
-  
-  if (result.ok && Array.isArray(result.data)) {
-    const sessions = result.data.data || result.data;
-    tbody.innerHTML = sessions.map(s => `
-      <tr>
-        <td>${s.name || ''}</td>
-        <td>${s.startDate ? new Date(s.startDate).toLocaleDateString() : ''}</td>
-        <td>${s.endDate ? new Date(s.endDate).toLocaleDateString() : ''}</td>
-        <td>
-          <div class="table-actions">
-            <button class="btn-small btn-edit" onclick="editSession('${s._id || s.id}')"><i class="fa fa-edit"></i></button>
-            <button class="btn-small btn-delete" onclick="deleteSession('${s._id || s.id}', this)"><i class="fa fa-trash"></i></button>
-          </div>
-        </td>
-      </tr>
-    `).join('');
-  } else {
-    tbody.innerHTML = '<tr><td colspan="4">No sessions found</td></tr>';
+  try {
+    const r = await safeFetch(`${API_BASE_URL}/api/sessions`);
+    const tbody = document.getElementById('sessionsTableBody');
+    if (!tbody) return;
+    
+    if (r.ok && Array.isArray(r.data)) {
+      tbody.innerHTML = r.data.map(s => `
+        <tr>
+          <td>${s.name || ''}</td>
+          <td>${s.startDate ? new Date(s.startDate).toLocaleDateString() : ''}</td>
+          <td>${s.endDate ? new Date(s.endDate).toLocaleDateString() : ''}</td>
+          <td>
+            <div class="table-actions">
+              <button class="btn-small btn-edit" onclick="editSession('${s._id}')">Edit</button>
+              <button class="btn-small btn-delete" onclick="deleteSession('${s._id}', this)">Delete</button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+    } else {
+      tbody.innerHTML = '<tr><td colspan="4">No sessions found</td></tr>';
+    }
+  } catch (err) {
+    console.error('Error loading sessions:', err);
   }
-  await fillDropdown('/api/session', 'termSessionSelect', 'name', '_id');
-  await fillDropdown('/api/session', 'pushCBTSessionSelect', 'name', '_id');
-  await fillDropdown('/api/session', 'resultsSessionSelect', 'name', '_id');
 }
 
-window.deleteSession = async function(id, btn) {
+window.deleteSession = async function(id) {
   if (!confirm('Delete this session?')) return;
-  const result = await safeFetch(`${API_BASE_URL}/api/session/${id}`, { method: 'DELETE' });
-  if (result.ok) {
-    showMessage('sessionMessage', '✓ Session deleted', 'success');
-    loadSessions();
-  } else {
-    showMessage('sessionMessage', '✗ Failed to delete session', 'error');
+  try {
+    const r = await safeFetch(`${API_BASE_URL}/api/sessions/${id}`, { method: 'DELETE' });
+    if (r.ok) {
+      showMessage('sessionMessage', 'Session deleted successfully!', true);
+      loadSessions();
+    } else {
+      showMessage('sessionMessage', 'Failed to delete session', false);
+    }
+  } catch (err) {
+    showMessage('sessionMessage', 'Error: ' + err.message, false);
   }
 };
 
 function editSession(id) {
-  // Fetch session data and populate form
-  safeFetch(`${API_BASE_URL}/api/session/${id}`).then(result => {
-    if (result.ok) {
-      const s = result.data.data || result.data;
-      document.getElementById('sessionForm').elements['name'].value = s.name || '';
-      document.getElementById('sessionForm').elements['startDate'].value = s.startDate ? s.startDate.split('T')[0] : '';
-      document.getElementById('sessionForm').elements['endDate'].value = s.endDate ? s.endDate.split('T')[0] : '';
-      document.getElementById('sessionForm').dataset.id = id;
-    }
-  });
+  const session = null; // Fetch session data if needed
+  document.getElementById('sessionForm').dataset.editId = id;
+  // Populate form with session data
 }
 
 document.getElementById('sessionForm').onsubmit = async function(e) {
   e.preventDefault();
-  const id = this.dataset.id;
+  const formData = new FormData(this);
+  const editId = this.dataset.editId;
+  
   const payload = {
-    name: this.elements['name'].value,
-    startDate: this.elements['startDate'].value,
-    endDate: this.elements['endDate'].value
+    name: formData.get('name'),
+    startDate: formData.get('startDate'),
+    endDate: formData.get('endDate')
   };
   
-  const result = id 
-    ? await safeFetch(`${API_BASE_URL}/api/session/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-    : await safeFetch(`${API_BASE_URL}/api/session`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-  
-  if (result.ok) {
-    showMessage('sessionMessage', id ? '✓ Session updated' : '✓ Session created', 'success');
-    this.reset();
-    delete this.dataset.id;
-    loadSessions();
-  } else {
-    showMessage('sessionMessage', '✗ Failed to save session', 'error');
+  try {
+    const url = editId ? `${API_BASE_URL}/api/sessions/${editId}` : `${API_BASE_URL}/api/sessions`;
+    const method = editId ? 'PUT' : 'POST';
+    
+    const r = await safeFetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    
+    if (r.ok) {
+      showMessage('sessionMessage', editId ? 'Session updated!' : 'Session created!', true);
+      this.reset();
+      delete this.dataset.editId;
+      loadSessions();
+    } else {
+      showMessage('sessionMessage', 'Failed to save session', false);
+    }
+  } catch (err) {
+    showMessage('sessionMessage', 'Error: ' + err.message, false);
   }
 };
 
 // ===== TERMS =====
 async function loadTerms() {
-  const result = await safeFetch(`${API_BASE_URL}/api/term`);
-  const tbody = document.getElementById('termsTableBody');
-  if (!tbody) return;
-  
-  if (result.ok && Array.isArray(result.data)) {
-    const terms = result.data.data || result.data;
-    tbody.innerHTML = terms.map(t => `
-      <tr>
-        <td>${t.name || ''}</td>
-        <td>${t.sessionId?.name || t.session || ''}</td>
-        <td>${t.startDate ? new Date(t.startDate).toLocaleDateString() : ''}</td>
-        <td>${t.endDate ? new Date(t.endDate).toLocaleDateString() : ''}</td>
-        <td>
-          <div class="table-actions">
-            <button class="btn-small btn-edit" onclick="editTerm('${t._id || t.id}')"><i class="fa fa-edit"></i></button>
-            <button class="btn-small btn-delete" onclick="deleteTerm('${t._id || t.id}', this)"><i class="fa fa-trash"></i></button>
-          </div>
-        </td>
-      </tr>
-    `).join('');
-  } else {
-    tbody.innerHTML = '<tr><td colspan="5">No terms found</td></tr>';
+  try {
+    const r = await safeFetch(`${API_BASE_URL}/api/terms`);
+    const tbody = document.getElementById('termsTableBody');
+    if (!tbody) return;
+    
+    if (r.ok && Array.isArray(r.data)) {
+      tbody.innerHTML = r.data.map(t => `
+        <tr>
+          <td>${t.name || ''}</td>
+          <td>${t.sessionId && t.sessionId.name ? t.sessionId.name : t.sessionName || ''}</td>
+          <td>${t.startDate ? new Date(t.startDate).toLocaleDateString() : ''}</td>
+          <td>${t.endDate ? new Date(t.endDate).toLocaleDateString() : ''}</td>
+          <td>
+            <div class="table-actions">
+              <button class="btn-small btn-edit" onclick="editTerm('${t._id}')">Edit</button>
+              <button class="btn-small btn-delete" onclick="deleteTerm('${t._id}', this)">Delete</button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+    } else {
+      tbody.innerHTML = '<tr><td colspan="5">No terms found</td></tr>';
+    }
+  } catch (err) {
+    console.error('Error loading terms:', err);
   }
-  await fillDropdown('/api/term', 'pushCBTTermSelect', 'name', '_id');
 }
 
-window.deleteTerm = async function(id, btn) {
+window.deleteTerm = async function(id) {
   if (!confirm('Delete this term?')) return;
-  const result = await safeFetch(`${API_BASE_URL}/api/term/${id}`, { method: 'DELETE' });
-  if (result.ok) {
-    showMessage('termMessage', '✓ Term deleted', 'success');
-    loadTerms();
-  } else {
-    showMessage('termMessage', '✗ Failed to delete term', 'error');
+  try {
+    const r = await safeFetch(`${API_BASE_URL}/api/terms/${id}`, { method: 'DELETE' });
+    if (r.ok) {
+      showMessage('termMessage', 'Term deleted successfully!', true);
+      loadTerms();
+    } else {
+      showMessage('termMessage', 'Failed to delete term', false);
+    }
+  } catch (err) {
+    showMessage('termMessage', 'Error: ' + err.message, false);
   }
 };
 
 function editTerm(id) {
-  safeFetch(`${API_BASE_URL}/api/term/${id}`).then(result => {
-    if (result.ok) {
-      const t = result.data.data || result.data;
-      document.getElementById('termForm').elements['name'].value = t.name || '';
-      document.getElementById('termForm').elements['sessionId'].value = t.sessionId?._id || t.sessionId || '';
-      document.getElementById('termForm').elements['startDate'].value = t.startDate ? t.startDate.split('T')[0] : '';
-      document.getElementById('termForm').elements['endDate'].value = t.endDate ? t.endDate.split('T')[0] : '';
-      document.getElementById('termForm').dataset.id = id;
-    }
-  });
+  document.getElementById('termForm').dataset.editId = id;
 }
 
 document.getElementById('termForm').onsubmit = async function(e) {
   e.preventDefault();
-  const id = this.dataset.id;
+  const formData = new FormData(this);
+  const editId = this.dataset.editId;
+  
   const payload = {
-    name: this.elements['name'].value,
-    sessionId: this.elements['sessionId'].value,
-    startDate: this.elements['startDate'].value,
-    endDate: this.elements['endDate'].value
+    name: formData.get('name'),
+    sessionId: formData.get('sessionId'),
+    startDate: formData.get('startDate'),
+    endDate: formData.get('endDate')
   };
   
-  const result = id 
-    ? await safeFetch(`${API_BASE_URL}/api/term/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-    : await safeFetch(`${API_BASE_URL}/api/term`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-  
-  if (result.ok) {
-    showMessage('termMessage', id ? '✓ Term updated' : '✓ Term created', 'success');
-    this.reset();
-    delete this.dataset.id;
-    loadTerms();
-  } else {
-    showMessage('termMessage', '✗ Failed to save term', 'error');
+  try {
+    const url = editId ? `${API_BASE_URL}/api/terms/${editId}` : `${API_BASE_URL}/api/terms`;
+    const method = editId ? 'PUT' : 'POST';
+    
+    const r = await safeFetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    
+    if (r.ok) {
+      showMessage('termMessage', editId ? 'Term updated!' : 'Term created!', true);
+      this.reset();
+      delete this.dataset.editId;
+      loadTerms();
+    } else {
+      showMessage('termMessage', 'Failed to save term', false);
+    }
+  } catch (err) {
+    showMessage('termMessage', 'Error: ' + err.message, false);
   }
 };
 
 // ===== CLASSES =====
 async function loadClasses() {
-  const result = await safeFetch(`${API_BASE_URL}/api/classes`);
-  const tbody = document.getElementById('classesTableBody');
-  if (!tbody) return;
-  
-  if (result.ok && Array.isArray(result.data)) {
-    const classes = result.data.data || result.data;
-    tbody.innerHTML = classes.map(c => `
-      <tr>
-        <td>${c.name || ''}</td>
-        <td>${c.arms?.join(', ') || ''}</td>
-        <td>
-          <div class="table-actions">
-            <button class="btn-small btn-edit" onclick="editClass('${c._id || c.id}')"><i class="fa fa-edit"></i></button>
-            <button class="btn-small btn-delete" onclick="deleteClass('${c._id || c.id}', this)"><i class="fa fa-trash"></i></button>
-          </div>
-        </td>
-      </tr>
-    `).join('');
-  } else {
-    tbody.innerHTML = '<tr><td colspan="3">No classes found</td></tr>';
+  try {
+    const r = await safeFetch(`${API_BASE_URL}/api/classes`);
+    const tbody = document.getElementById('classesTableBody');
+    if (!tbody) return;
+    
+    if (r.ok && Array.isArray(r.data)) {
+      tbody.innerHTML = r.data.map(c => `
+        <tr>
+          <td>${c.name || ''}</td>
+          <td>${c.arms ? (Array.isArray(c.arms) ? c.arms.join(', ') : c.arms) : ''}</td>
+          <td>
+            <div class="table-actions">
+              <button class="btn-small btn-edit" onclick="editClass('${c._id}')">Edit</button>
+              <button class="btn-small btn-delete" onclick="deleteClass('${c._id}', this)">Delete</button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+    } else {
+      tbody.innerHTML = '<tr><td colspan="3">No classes found</td></tr>';
+    }
+  } catch (err) {
+    console.error('Error loading classes:', err);
   }
-  await fillDropdown('/api/classes', 'assignClassSelect', 'name', '_id');
-  await fillDropdown('/api/classes', 'examClassSelect', 'name', '_id');
-  await fillDropdown('/api/classes', 'cbtClassSelect', 'name', '_id');
-  await fillDropdown('/api/classes', 'resultsClassSelect', 'name', '_id');
 }
 
-window.deleteClass = async function(id, btn) {
+window.deleteClass = async function(id) {
   if (!confirm('Delete this class?')) return;
-  const result = await safeFetch(`${API_BASE_URL}/api/classes/${id}`, { method: 'DELETE' });
-  if (result.ok) {
-    showMessage('classMessage', '✓ Class deleted', 'success');
-    loadClasses();
-  } else {
-    showMessage('classMessage', '✗ Failed to delete class', 'error');
+  try {
+    const r = await safeFetch(`${API_BASE_URL}/api/classes/${id}`, { method: 'DELETE' });
+    if (r.ok) {
+      showMessage('classMessage', 'Class deleted successfully!', true);
+      loadClasses();
+    } else {
+      showMessage('classMessage', 'Failed to delete class', false);
+    }
+  } catch (err) {
+    showMessage('classMessage', 'Error: ' + err.message, false);
   }
 };
 
 function editClass(id) {
-  safeFetch(`${API_BASE_URL}/api/classes/${id}`).then(result => {
-    if (result.ok) {
-      const c = result.data.data || result.data;
-      document.getElementById('classForm').elements['name'].value = c.name || '';
-      document.getElementById('classForm').elements['arms'].value = c.arms?.join(',') || '';
-      document.getElementById('classForm').dataset.id = id;
-    }
-  });
+  document.getElementById('classForm').dataset.editId = id;
 }
 
 document.getElementById('classForm').onsubmit = async function(e) {
   e.preventDefault();
-  const id = this.dataset.id;
+  const formData = new FormData(this);
+  const editId = this.dataset.editId;
+  
+  const arms = formData.get('arms') ? formData.get('arms').split(',').map(a => a.trim()) : [];
+  
   const payload = {
-    name: this.elements['name'].value,
-    arms: this.elements['arms'].value.split(',').map(a => a.trim()).filter(Boolean)
+    name: formData.get('name'),
+    arms: arms
   };
   
-  const result = id 
-    ? await safeFetch(`${API_BASE_URL}/api/classes/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-    : await safeFetch(`${API_BASE_URL}/api/classes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-  
-  if (result.ok) {
-    showMessage('classMessage', id ? '✓ Class updated' : '✓ Class created', 'success');
-    this.reset();
-    delete this.dataset.id;
-    loadClasses();
-  } else {
-    showMessage('classMessage', '✗ Failed to save class', 'error');
+  try {
+    const url = editId ? `${API_BASE_URL}/api/classes/${editId}` : `${API_BASE_URL}/api/classes`;
+    const method = editId ? 'PUT' : 'POST';
+    
+    const r = await safeFetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    
+    if (r.ok) {
+      showMessage('classMessage', editId ? 'Class updated!' : 'Class created!', true);
+      this.reset();
+      delete this.dataset.editId;
+      loadClasses();
+    } else {
+      showMessage('classMessage', 'Failed to save class', false);
+    }
+  } catch (err) {
+    showMessage('classMessage', 'Error: ' + err.message, false);
   }
 };
 
-// ===== SUBJECTS =====
-async function fillTeacherDropdown() {
-  await fillDropdown('/api/staff', 'assignSubjectTeacherSelect', 'firstName', '_id');
+// ===== CLASS DROPDOWNS =====
+async function fillClassDropdown() {
+  await fillDropdown(`${API_BASE_URL}/api/classes`, 'assignClassSelect', '_id', 'name');
 }
 
-async function loadUploadedSubjects() {
-  const result = await safeFetch(`${API_BASE_URL}/api/subjects`);
-  const tbody = document.getElementById('uploadedSubjectsTableBody');
-  if (!tbody) return;
+async function fillTeacherDropdown2() {
+  await fillDropdown(`${API_BASE_URL}/api/teachers`, 'assignSubjectTeacherSelect', '_id', 'firstName');
+}
+
+// ===== SUBJECTS =====
+document.getElementById('assignSubjectForm').onsubmit = async function(e) {
+  e.preventDefault();
+  const formData = new FormData(this);
   
-  if (result.ok && Array.isArray(result.data)) {
-    const subjects = result.data.data || result.data;
-    tbody.innerHTML = subjects.map(s => `
-      <tr>
-        <td>${s.title || s.name || ''}</td>
-        <td>${s.meta?.class || s.classId?.name || ''}</td>
-        <td>${s.meta?.teacher || s.teacherId?.firstName || ''}</td>
-        <td>${s.createdAt ? new Date(s.createdAt).toLocaleDateString() : ''}</td>
-        <td>
-          <div class="table-actions">
-            <button class="btn-small btn-view" onclick="viewSubject('${s._id || s.id}')"><i class="fa fa-eye"></i></button>
-            <button class="btn-small btn-delete" onclick="deleteSubjectFromClass('${s.meta?.class || ''}', '${s._id || s.id}', this)"><i class="fa fa-trash"></i></button>
-          </div>
-        </td>
-      </tr>
-    `).join('');
-  } else {
-    tbody.innerHTML = '<tr><td colspan="5">No subjects found</td></tr>';
+  const payload = {
+    classId: formData.get('classId'),
+    subjectName: formData.get('subjectName'),
+    teacherId: formData.get('teacherId')
+  };
+  
+  try {
+    const r = await safeFetch(`${API_BASE_URL}/api/subjects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    
+    if (r.ok) {
+      showMessage('assignSubjectMessage', 'Subject assigned successfully!', true);
+      this.reset();
+      loadUploadedSubjects();
+    } else {
+      showMessage('assignSubjectMessage', 'Failed to assign subject', false);
+    }
+  } catch (err) {
+    showMessage('assignSubjectMessage', 'Error: ' + err.message, false);
   }
-  fillTeacherDropdown();
+};
+
+async function loadUploadedSubjects() {
+  try {
+    const r = await safeFetch(`${API_BASE_URL}/api/subjects`);
+    const tbody = document.getElementById('uploadedSubjectsTableBody');
+    if (!tbody) return;
+    
+    if (r.ok && Array.isArray(r.data)) {
+      tbody.innerHTML = r.data.map(s => `
+        <tr>
+          <td>${s.title || s.name || ''}</td>
+          <td>${s.class && s.class.name ? s.class.name : (s.className || '')}</td>
+          <td>${s.teacher && (s.teacher.firstName || s.teacher.username) ? (s.teacher.firstName || '') + ' ' + (s.teacher.lastName || '') : (s.teacherName || '')}</td>
+          <td>${s.createdAt ? new Date(s.createdAt).toLocaleDateString() : ''}</td>
+          <td>
+            <div class="table-actions">
+              <button class="btn-small btn-view" onclick="viewSubject('${s._id}')">View</button>
+              <button class="btn-small btn-delete" onclick="deleteSubjectFromClass('${s._id}', this)">Delete</button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+    } else {
+      tbody.innerHTML = '<tr><td colspan="5">No subjects found</td></tr>';
+    }
+  } catch (err) {
+    console.error('Error loading subjects:', err);
+  }
 }
 
 window.viewSubject = function(id) {
-  safeFetch(`${API_BASE_URL}/api/subjects/${id}`).then(result => {
-    if (result.ok) {
-      const s = result.data.data || result.data;
-      alert(`Subject: ${s.title || s.name}\nCode: ${s.code || 'N/A'}\nClass: ${s.meta?.class || ''}`);
-    }
-  });
+  alert('Subject details for ID: ' + id);
 };
 
-window.deleteSubjectFromClass = async function(classId, subjectId, btn) {
-  if (!confirm('Remove this subject from class?')) return;
-  const result = await safeFetch(`${API_BASE_URL}/api/subjects/${subjectId}`, { method: 'DELETE' });
-  if (result.ok) {
-    showMessage('assignSubjectMessage', '✓ Subject removed', 'success');
-    loadUploadedSubjects();
-  } else {
-    showMessage('assignSubjectMessage', '✗ Failed to remove subject', 'error');
+window.deleteSubjectFromClass = async function(id) {
+  if (!confirm('Delete this subject?')) return;
+  try {
+    const r = await safeFetch(`${API_BASE_URL}/api/subjects/${id}`, { method: 'DELETE' });
+    if (r.ok) {
+      showMessage('assignSubjectMessage', 'Subject deleted!', true);
+      loadUploadedSubjects();
+    } else {
+      showMessage('assignSubjectMessage', 'Failed to delete', false);
+    }
+  } catch (err) {
+    showMessage('assignSubjectMessage', 'Error: ' + err.message, false);
   }
 };
 
-document.getElementById('assignSubjectForm').onsubmit = async function(e) {
-  e.preventDefault();
-  const payload = {
-    title: this.elements['subjectName'].value,
-    meta: {
-      class: this.elements['classId'].value,
-      teacher: this.elements['teacherId'].value
-    }
-  };
-  
-  const result = await safeFetch(`${API_BASE_URL}/api/subjects`, { 
-    method: 'POST', 
-    headers: { 'Content-Type': 'application/json' }, 
-    body: JSON.stringify(payload) 
-  });
-  
-  if (result.ok) {
-    showMessage('assignSubjectMessage', '✓ Subject assigned', 'success');
-    this.reset();
-    loadUploadedSubjects();
-  } else {
-    showMessage('assignSubjectMessage', '✗ Failed to assign subject', 'error');
-  }
-};
-
-// ===== EXAMINATIONS =====
+// ===== EXAM SCHEDULES =====
 async function loadExamSchedules() {
-  const result = await safeFetch(`${API_BASE_URL}/api/exams`);
-  const tbody = document.getElementById('examScheduleTableBody');
-  if (!tbody) return;
-  
-  if (result.ok && Array.isArray(result.data)) {
-    const exams = result.data.data || result.data;
-    tbody.innerHTML = exams.map(e => `
-      <tr>
-        <td>${e.title || e.name || ''}</td>
-        <td>${e.termId?.name || e.term || ''}</td>
-        <td>${e.classId?.name || e.class || ''}</td>
-        <td>${e.startAt ? new Date(e.startAt).toLocaleDateString() : ''}</td>
-        <td>
-          <div class="table-actions">
-            <button class="btn-small btn-edit" onclick="editExamSchedule('${e._id || e.id}')"><i class="fa fa-edit"></i></button>
-            <button class="btn-small btn-delete" onclick="deleteExamSchedule('${e._id || e.id}', this)"><i class="fa fa-trash"></i></button>
-          </div>
-        </td>
-      </tr>
-    `).join('');
-  } else {
-    tbody.innerHTML = '<tr><td colspan="5">No exams scheduled</td></tr>';
+  try {
+    const r = await safeFetch(`${API_BASE_URL}/api/exams`);
+    const tbody = document.getElementById('examScheduleTableBody');
+    if (!tbody) return;
+    
+    if (r.ok && Array.isArray(r.data)) {
+      tbody.innerHTML = r.data.map(e => `
+        <tr>
+          <td>${e.title || ''}</td>
+          <td>${e.term && e.term.name ? e.term.name : (e.termName || '')}</td>
+          <td>${e.class && e.class.name ? e.class.name : (e.className || '')}</td>
+          <td>${e.date ? new Date(e.date).toLocaleDateString() : ''}</td>
+          <td>
+            <div class="table-actions">
+              <button class="btn-small btn-edit" onclick="editExamSchedule('${e._id}')">Edit</button>
+              <button class="btn-small btn-delete" onclick="deleteExamSchedule('${e._id}', this)">Delete</button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+    } else {
+      tbody.innerHTML = '<tr><td colspan="5">No exams found</td></tr>';
+    }
+  } catch (err) {
+    console.error('Error loading exam schedules:', err);
   }
-  await fillDropdown('/api/term', 'examTermSelect', 'name', '_id');
-  await fillDropdown('/api/exams', 'modeExamSelect', 'title', '_id');
-  loadExamModes();
 }
 
-window.deleteExamSchedule = async function(id, btn) {
-  if (!confirm('Delete this exam?')) return;
-  const result = await safeFetch(`${API_BASE_URL}/api/exams/${id}`, { method: 'DELETE' });
-  if (result.ok) {
-    showMessage('examScheduleMessage', '✓ Exam deleted', 'success');
-    loadExamSchedules();
-  } else {
-    showMessage('examScheduleMessage', '✗ Failed to delete exam', 'error');
+window.deleteExamSchedule = async function(id) {
+  if (!confirm('Delete this exam schedule?')) return;
+  try {
+    const r = await safeFetch(`${API_BASE_URL}/api/exams/${id}`, { method: 'DELETE' });
+    if (r.ok) {
+      showMessage('examScheduleMessage', 'Exam schedule deleted!', true);
+      loadExamSchedules();
+    } else {
+      showMessage('examScheduleMessage', 'Failed to delete', false);
+    }
+  } catch (err) {
+    showMessage('examScheduleMessage', 'Error: ' + err.message, false);
   }
 };
 
 function editExamSchedule(id) {
-  safeFetch(`${API_BASE_URL}/api/exams/${id}`).then(result => {
-    if (result.ok) {
-      const e = result.data.data || result.data;
-      document.getElementById('examScheduleForm').elements['title'].value = e.title || e.name || '';
-      document.getElementById('examScheduleForm').elements['termId'].value = e.termId?._id || e.termId || '';
-      document.getElementById('examScheduleForm').elements['classId'].value = e.classId?._id || e.classId || '';
-      document.getElementById('examScheduleForm').elements['date'].value = e.startAt ? e.startAt.split('T')[0] : '';
-      document.getElementById('examScheduleForm').dataset.id = id;
-    }
-  });
+  document.getElementById('examScheduleForm').dataset.editId = id;
 }
 
 document.getElementById('examScheduleForm').onsubmit = async function(e) {
   e.preventDefault();
-  const id = this.dataset.id;
+  const formData = new FormData(this);
+  const editId = this.dataset.editId;
+  
   const payload = {
-    title: this.elements['title'].value,
-    termId: this.elements['termId'].value,
-    classId: this.elements['classId'].value,
-    startAt: this.elements['date'].value
+    title: formData.get('title'),
+    termId: formData.get('termId'),
+    classId: formData.get('classId'),
+    date: formData.get('date')
   };
   
-  const result = id 
-    ? await safeFetch(`${API_BASE_URL}/api/exams/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-    : await safeFetch(`${API_BASE_URL}/api/exams`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-  
-  if (result.ok) {
-    showMessage('examScheduleMessage', id ? '✓ Exam updated' : '✓ Exam created', 'success');
-    this.reset();
-    delete this.dataset.id;
-    loadExamSchedules();
-  } else {
-    showMessage('examScheduleMessage', '✗ Failed to save exam', 'error');
+  try {
+    const url = editId ? `${API_BASE_URL}/api/exams/${editId}` : `${API_BASE_URL}/api/exams`;
+    const method = editId ? 'PUT' : 'POST';
+    
+    const r = await safeFetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    
+    if (r.ok) {
+      showMessage('examScheduleMessage', editId ? 'Exam updated!' : 'Exam created!', true);
+      this.reset();
+      delete this.dataset.editId;
+      loadExamSchedules();
+    } else {
+      showMessage('examScheduleMessage', 'Failed to save exam', false);
+    }
+  } catch (err) {
+    showMessage('examScheduleMessage', 'Error: ' + err.message, false);
   }
 };
 
 // ===== EXAM MODES =====
+async function fillExamDropdown() {
+  await fillDropdown(`${API_BASE_URL}/api/exams`, 'modeExamSelect', '_id', 'title');
+}
+
 async function loadExamModes() {
-  const result = await safeFetch(`${API_BASE_URL}/api/exams`);
-  const tbody = document.getElementById('examModeTableBody');
-  if (!tbody) return;
-  
-  if (result.ok && Array.isArray(result.data)) {
-    const exams = result.data.data || result.data;
-    tbody.innerHTML = exams.map(e => `
-      <tr>
-        <td>${e.title || e.name || ''}</td>
-        <td>${e.mode || 'Paper'}</td>
-        <td>${e.durationMinutes || e.duration || '-'}</td>
-        <td>
-          <div class="table-actions">
-            <button class="btn-small btn-edit" onclick="editExamMode('${e._id || e.id}')"><i class="fa fa-edit"></i></button>
-          </div>
-        </td>
-      </tr>
-    `).join('');
-  } else {
-    tbody.innerHTML = '<tr><td colspan="4">No exams found</td></tr>';
+  try {
+    const r = await safeFetch(`${API_BASE_URL}/api/exams/modes`);
+    const tbody = document.getElementById('examModeTableBody');
+    if (!tbody) return;
+    
+    if (r.ok && Array.isArray(r.data)) {
+      tbody.innerHTML = r.data.map(m => `
+        <tr>
+          <td>${m.examId && m.examId.title ? m.examId.title : (m.examTitle || '')}</td>
+          <td>${m.mode || ''}</td>
+          <td>${m.duration || ''}</td>
+          <td>
+            <div class="table-actions">
+              <button class="btn-small btn-edit" onclick="editExamMode('${m._id}')">Edit</button>
+              <button class="btn-small btn-delete" onclick="deleteExamMode('${m._id}', this)">Delete</button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+    } else {
+      tbody.innerHTML = '<tr><td colspan="4">No modes found</td></tr>';
+    }
+  } catch (err) {
+    console.error('Error loading exam modes:', err);
   }
 }
 
-function editExamMode(id) {
-  safeFetch(`${API_BASE_URL}/api/exams/${id}`).then(result => {
-    if (result.ok) {
-      const e = result.data.data || result.data;
-      document.getElementById('examModeForm').elements['examId'].value = e._id || e.id;
-      document.getElementById('examModeForm').elements['mode'].value = e.mode || 'Paper';
-      document.getElementById('examModeForm').elements['duration'].value = e.durationMinutes || e.duration || '';
-      document.getElementById('examModeForm').dataset.id = id;
+window.deleteExamMode = async function(id) {
+  if (!confirm('Delete this exam mode?')) return;
+  try {
+    const r = await safeFetch(`${API_BASE_URL}/api/exams/modes/${id}`, { method: 'DELETE' });
+    if (r.ok) {
+      showMessage('examModeMessage', 'Exam mode deleted!', true);
+      loadExamModes();
+    } else {
+      showMessage('examModeMessage', 'Failed to delete', false);
     }
-  });
+  } catch (err) {
+    showMessage('examModeMessage', 'Error: ' + err.message, false);
+  }
+};
+
+function editExamMode(id) {
+  document.getElementById('examModeForm').dataset.editId = id;
 }
 
 document.getElementById('examModeForm').onsubmit = async function(e) {
   e.preventDefault();
-  const id = this.dataset.id;
+  const formData = new FormData(this);
+  const editId = this.dataset.editId;
+  
   const payload = {
-    mode: this.elements['mode'].value,
-    durationMinutes: parseInt(this.elements['duration'].value)
+    examId: formData.get('examId'),
+    mode: formData.get('mode'),
+    duration: Number(formData.get('duration'))
   };
   
-  const result = await safeFetch(`${API_BASE_URL}/api/exams/${id}`, { 
-    method: 'PUT', 
-    headers: { 'Content-Type': 'application/json' }, 
-    body: JSON.stringify(payload) 
-  });
-  
-  if (result.ok) {
-    showMessage('examModeMessage', '✓ Exam mode updated', 'success');
-    this.reset();
-    delete this.dataset.id;
-    loadExamModes();
-  } else {
-    showMessage('examModeMessage', '✗ Failed to update exam mode', 'error');
+  try {
+    const url = editId ? `${API_BASE_URL}/api/exams/modes/${editId}` : `${API_BASE_URL}/api/exams/modes`;
+    const method = editId ? 'PUT' : 'POST';
+    
+    const r = await safeFetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    
+    if (r.ok) {
+      showMessage('examModeMessage', editId ? 'Mode updated!' : 'Mode created!', true);
+      this.reset();
+      delete this.dataset.editId;
+      loadExamModes();
+    } else {
+      showMessage('examModeMessage', 'Failed to save mode', false);
+    }
+  } catch (err) {
+    showMessage('examModeMessage', 'Error: ' + err.message, false);
   }
 };
 
 // ===== CBT & MOCKS =====
 async function loadCBTs() {
-  const result = await safeFetch(`${API_BASE_URL}/api/cbt`);
-  const tbody = document.getElementById('cbtTableBody');
-  if (!tbody) return;
-  
-  if (result.ok && Array.isArray(result.data)) {
-    const cbts = result.data.data || result.data;
-    tbody.innerHTML = cbts.map(c => `
-      <tr>
-        <td>${c.title || c.name || ''}</td>
-        <td>${c.classId?.name || c.class || ''}</td>
-        <td>${c.mode || 'Mixed'}</td>
-        <td>${c.date ? new Date(c.date).toLocaleDateString() : ''}</td>
-        <td>
-          <div class="table-actions">
-            <button class="btn-small btn-edit" onclick="editCBT('${c._id || c.id}')"><i class="fa fa-edit"></i></button>
-            <button class="btn-small btn-delete" onclick="deleteCBT('${c._id || c.id}', this)"><i class="fa fa-trash"></i></button>
-          </div>
-        </td>
-      </tr>
-    `).join('');
-  } else {
-    tbody.innerHTML = '<tr><td colspan="5">No CBTs/Mocks found</td></tr>';
+  try {
+    const r = await safeFetch(`${API_BASE_URL}/api/cbt`);
+    const tbody = document.getElementById('cbtTableBody');
+    if (!tbody) return;
+    
+    if (r.ok && Array.isArray(r.data)) {
+      tbody.innerHTML = r.data.map(c => `
+        <tr>
+          <td>${c.title || ''}</td>
+          <td>${c.class && c.class.name ? c.class.name : (c.className || '')}</td>
+          <td>${c.mode || ''}</td>
+          <td>${c.date ? new Date(c.date).toLocaleDateString() : ''}</td>
+          <td>
+            <div class="table-actions">
+              <button class="btn-small btn-edit" onclick="editCBT('${c._id}')">Edit</button>
+              <button class="btn-small btn-delete" onclick="deleteCBT('${c._id}', this)">Delete</button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+    } else {
+      tbody.innerHTML = '<tr><td colspan="5">No CBT/Mocks found</td></tr>';
+    }
+  } catch (err) {
+    console.error('Error loading CBTs:', err);
   }
 }
 
-window.deleteCBT = async function(id, btn) {
+window.deleteCBT = async function(id) {
   if (!confirm('Delete this CBT/Mock?')) return;
-  const result = await safeFetch(`${API_BASE_URL}/api/cbt/${id}`, { method: 'DELETE' });
-  if (result.ok) {
-    showMessage('cbtMessage', '✓ CBT/Mock deleted', 'success');
-    loadCBTs();
-  } else {
-    showMessage('cbtMessage', '✗ Failed to delete CBT/Mock', 'error');
+  try {
+    const r = await safeFetch(`${API_BASE_URL}/api/cbt/${id}`, { method: 'DELETE' });
+    if (r.ok) {
+      showMessage('cbtMessage', 'CBT/Mock deleted!', true);
+      loadCBTs();
+    } else {
+      showMessage('cbtMessage', 'Failed to delete', false);
+    }
+  } catch (err) {
+    showMessage('cbtMessage', 'Error: ' + err.message, false);
   }
 };
 
 function editCBT(id) {
-  safeFetch(`${API_BASE_URL}/api/cbt/${id}`).then(result => {
-    if (result.ok) {
-      const c = result.data.data || result.data;
-      document.getElementById('cbtForm').elements['title'].value = c.title || c.name || '';
-      document.getElementById('cbtForm').elements['classId'].value = c.classId?._id || c.classId || '';
-      document.getElementById('cbtForm').elements['mode'].value = c.mode || 'Mixed';
-      document.getElementById('cbtForm').elements['date'].value = c.date ? c.date.split('T')[0] : '';
-      document.getElementById('cbtForm').dataset.id = id;
-    }
-  });
+  document.getElementById('cbtForm').dataset.editId = id;
 }
 
 document.getElementById('cbtForm').onsubmit = async function(e) {
   e.preventDefault();
-  const id = this.dataset.id;
+  const formData = new FormData(this);
+  const editId = this.dataset.editId;
+  
   const payload = {
-    title: this.elements['title'].value,
-    classId: this.elements['classId'].value,
-    mode: this.elements['mode'].value,
-    date: this.elements['date'].value
+    title: formData.get('title'),
+    classId: formData.get('classId'),
+    mode: formData.get('mode'),
+    date: formData.get('date')
   };
   
-  const result = id 
-    ? await safeFetch(`${API_BASE_URL}/api/cbt/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-    : await safeFetch(`${API_BASE_URL}/api/cbt`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-  
-  if (result.ok) {
-    showMessage('cbtMessage', id ? '✓ CBT/Mock updated' : '✓ CBT/Mock created', 'success');
-    this.reset();
-    delete this.dataset.id;
-    loadCBTs();
-  } else {
-    showMessage('cbtMessage', '✗ Failed to save CBT/Mock', 'error');
+  try {
+    const url = editId ? `${API_BASE_URL}/api/cbt/${editId}` : `${API_BASE_URL}/api/cbt`;
+    const method = editId ? 'PUT' : 'POST';
+    
+    const r = await safeFetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    
+    if (r.ok) {
+      showMessage('cbtMessage', editId ? 'CBT updated!' : 'CBT created!', true);
+      this.reset();
+      delete this.dataset.editId;
+      loadCBTs();
+    } else {
+      showMessage('cbtMessage', 'Failed to save CBT', false);
+    }
+  } catch (err) {
+    showMessage('cbtMessage', 'Error: ' + err.message, false);
   }
 };
 
 // ===== RESULTS =====
 async function loadResults(filter = {}) {
-  let url = `${API_BASE_URL}/api/results`;
-  const params = new URLSearchParams();
-  if (filter.sessionId) params.append('sessionId', filter.sessionId);
-  if (filter.classId) params.append('classId', filter.classId);
-  if (filter.type) params.append('type', filter.type);
-  if (params.toString()) url += '?' + params.toString();
-  
-  const result = await safeFetch(url);
-  const tbody = document.getElementById('resultsTableBody');
-  if (!tbody) return;
-  
-  if (result.ok && Array.isArray(result.data)) {
-    const results = result.data.data || result.data;
-    tbody.innerHTML = results.map(r => `
-      <tr>
-        <td>${r.student?.firstName || r.studentName || ''}</td>
-        <td>${r.class?.name || r.className || ''}</td>
-        <td>${r.type || 'CBT'}</td>
-        <td>${r.exam?.title || r.examName || ''}</td>
-        <td>${r.score || '-'}</td>
-        <td>${r.date ? new Date(r.date).toLocaleDateString() : ''}</td>
-        <td>
-          <div class="table-actions">
-            <button class="btn-small btn-view" onclick="viewResult('${r._id || r.id}')"><i class="fa fa-eye"></i></button>
-            <button class="btn-small btn-delete" onclick="deleteCBTResult('${r._id || r.id}', this)"><i class="fa fa-trash"></i></button>
-          </div>
-        </td>
-      </tr>
-    `).join('');
-  } else {
-    tbody.innerHTML = '<tr><td colspan="7">No results found</td></tr>';
+  try {
+    let url = `${API_BASE_URL}/api/results`;
+    if (filter.sessionId) url += `?sessionId=${filter.sessionId}`;
+    if (filter.classId) url += `${url.includes('?') ? '&' : '?'}classId=${filter.classId}`;
+    if (filter.type) url += `${url.includes('?') ? '&' : '?'}type=${filter.type}`;
+    
+    const r = await safeFetch(url);
+    const tbody = document.getElementById('resultsTableBody');
+    if (!tbody) return;
+    
+    if (r.ok && Array.isArray(r.data)) {
+      tbody.innerHTML = r.data.map(res => `
+        <tr>
+          <td>${res.student && res.student.firstname ? res.student.firstname + ' ' + (res.student.surname || '') : (res.studentName || '')}</td>
+          <td>${res.class && res.class.name ? res.class.name : (res.className || '')}</td>
+          <td>${res.type || ''}</td>
+          <td>${res.exam && res.exam.title ? res.exam.title : (res.examName || '')}</td>
+          <td>${res.score || ''}</td>
+          <td>${res.date ? new Date(res.date).toLocaleDateString() : ''}</td>
+          <td>
+            <div class="table-actions">
+              <button class="btn-small btn-view" onclick="viewResult('${res._id}')">View</button>
+              <button class="btn-small btn-delete" onclick="deleteCBTResult('${res._id}', this)">Delete</button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+    } else {
+      tbody.innerHTML = '<tr><td colspan="7">No results found</td></tr>';
+    }
+  } catch (err) {
+    console.error('Error loading results:', err);
   }
 }
 
-document.getElementById('resultsFilterForm').onsubmit = async function(e) {
+document.getElementById('resultsFilterForm').onsubmit = function(e) {
   e.preventDefault();
+  const formData = new FormData(this);
   const filter = {
-    sessionId: this.elements['sessionId'].value,
-    classId: this.elements['classId'].value,
-    type: this.elements['type'].value
+    sessionId: formData.get('sessionId'),
+    classId: formData.get('classId'),
+    type: formData.get('type')
   };
-  await loadResults(filter);
-};
-
-async function fillPushCBTSessionDropdown() {
-  await fillDropdown('/api/session', 'pushCBTSessionSelect', 'name', '_id');
-}
-
-async function fillPushCBTTermDropdown() {
-  const sessionId = document.getElementById('pushCBTSessionSelect').value;
-  if (sessionId) {
-    await fillDropdown(`/api/term?sessionId=${sessionId}`, 'pushCBTTermSelect', 'name', '_id');
-  }
-}
-
-document.getElementById('pushCBTSessionSelect')?.addEventListener('change', fillPushCBTTermDropdown);
-
-pushCBTResultsBtn.onclick = () => {
-  fillPushCBTSessionDropdown();
-  pushCBTModal.classList.remove('hidden');
-};
-
-cancelPushCBTModal.onclick = () => {
-  pushCBTModal.classList.add('hidden');
-  pushCBTModalFeedback.textContent = '';
-};
-
-pushCBTModalForm.onsubmit = async function(e) {
-  e.preventDefault();
-  const scoreField = this.elements['scoreField'].value;
-  const sessionId = this.elements['sessionId'].value;
-  const termId = this.elements['termId'].value;
-  
-  pushCBTModalFeedback.innerHTML = '<div class="message">Processing...</div>';
-  
-  const result = await safeFetch(`${API_BASE_URL}/api/results/push-to-universal`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ scoreField, sessionId, termId })
-  });
-  
-  if (result.ok) {
-    pushCBTModalFeedback.innerHTML = '<div class="message success">✓ Results pushed successfully</div>';
-    setTimeout(() => {
-      pushCBTModal.classList.add('hidden');
-      loadResults();
-    }, 1500);
-  } else {
-    pushCBTModalFeedback.innerHTML = '<div class="message error">✗ Failed to push results</div>';
-  }
+  loadResults(filter);
 };
 
 window.viewResult = function(id) {
-  safeFetch(`${API_BASE_URL}/api/results/${id}`).then(result => {
-    if (result.ok) {
-      const r = result.data.data || result.data;
-      alert(`Student: ${r.student?.firstName || ''}\nExam: ${r.exam?.title || ''}\nScore: ${r.score}\nGrade: ${r.grade || 'N/A'}`);
-    }
-  });
+  alert('Result details for ID: ' + id);
 };
 
-window.deleteCBTResult = async function(id, btn) {
+window.deleteCBTResult = async function(id) {
   if (!confirm('Delete this result?')) return;
-  const result = await safeFetch(`${API_BASE_URL}/api/results/${id}`, { method: 'DELETE' });
-  if (result.ok) {
-    showMessage('resultsMessage', '✓ Result deleted', 'success');
-    loadResults();
-  } else {
-    showMessage('resultsMessage', '✗ Failed to delete result', 'error');
+  try {
+    const r = await safeFetch(`${API_BASE_URL}/api/results/${id}`, { method: 'DELETE' });
+    if (r.ok) {
+      showMessage('resultsMessage', 'Result deleted!', true);
+      loadResults();
+    } else {
+      showMessage('resultsMessage', 'Failed to delete', false);
+    }
+  } catch (err) {
+    showMessage('resultsMessage', 'Error: ' + err.message, false);
   }
 };
 
-// ===== INITIALIZATION =====
-loadClasses();
+// ===== PUSH CBT RESULTS =====
+const pushCBTResultsBtn = document.getElementById('pushCBTResultsBtn');
+const pushCBTModal = document.getElementById('pushCBTModal');
+const cancelPushCBTModal = document.getElementById('cancelPushCBTModal');
+const pushCBTModalForm = document.getElementById('pushCBTModalForm');
+
+if (pushCBTResultsBtn) {
+  pushCBTResultsBtn.addEventListener('click', () => {
+    fillDropdown(`${API_BASE_URL}/api/sessions`, 'pushCBTSessionSelect');
+    pushCBTModal.classList.remove('hidden');
+  });
+}
+
+if (cancelPushCBTModal) {
+  cancelPushCBTModal.addEventListener('click', () => {
+    pushCBTModal.classList.add('hidden');
+  });
+}
+
+document.getElementById('pushCBTSessionSelect')?.addEventListener('change', async (e) => {
+  const sessionId = e.target.value;
+  if (sessionId) {
+    await fillDropdown(`${API_BASE_URL}/api/sessions/${sessionId}/terms`, 'pushCBTTermSelect', '_id', 'name');
+  }
+});
+
+if (pushCBTModalForm) {
+  pushCBTModalForm.onsubmit = async function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    
+    const payload = {
+      scoreField: formData.get('scoreField'),
+      sessionId: formData.get('sessionId'),
+      termId: formData.get('termId')
+    };
+    
+    try {
+      const r = await safeFetch(`${API_BASE_URL}/api/results/push-cbt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      
+      if (r.ok) {
+        document.getElementById('pushCBTResultsMessage').innerHTML = '<div class="message success">✔ CBT results pushed successfully!</div>';
+        pushCBTModal.classList.add('hidden');
+        loadResults();
+      } else {
+        document.getElementById('pushCBTResultsMessage').innerHTML = '<div class="message error">✗ Failed to push results</div>';
+      }
+    } catch (err) {
+      document.getElementById('pushCBTResultsMessage').innerHTML = '<div class="message error">✗ Error: ' + err.message + '</div>';
+    }
+  };
+}
+
+// ===== Initialize =====
+document.addEventListener('DOMContentLoaded', () => {
+  loadSessions();
+});
