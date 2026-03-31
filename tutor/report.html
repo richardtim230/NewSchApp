@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=0.8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>OAU ExamGuard CBT | Exam Report</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Add jsPDF & html2canvas for PDF generation -->
@@ -10,7 +10,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
 
-  <!-- MathJax v3: render LaTeX inside questions, options and explanations -->
+  <!-- MathJax v3: render LaTeX -->
   <script>
     window.MathJax = {
       tex: {
@@ -27,44 +27,716 @@
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" id="MathJax-script" async></script>
 
   <style>
-    .answer-pill { display:inline-block; border-radius:9999px; padding:0.25em 0.8em; font-weight:700;}
-    .answer-user    { background: #dbeafe; color: #1e3a8a;}
-    .answer-correct { background: #bbf7d0; color: #166534;}
-    .answer-wrong   { background: #fee2e2; color: #991b1b;}
-    .explanation { background: #f9fafb; border-left: 4px solid #38bdf8; padding: 1em 1.3em; border-radius:0.5em; font-size: 1.02rem;}
-    .qcard { background: #fff; border-radius: 1.2em; box-shadow: 0 3px 18px #039be514; margin-bottom: 2.5rem; padding: 2rem 1.5rem;}
-    .qcard.correct { border: 2px solid #16a34a; }
-    .qcard.incorrect { border: 2px solid #dc2626; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+    }
+
+    body {
+      background: #f0f4f8;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+      overflow-x: hidden;
+    }
+
+    .report-wrapper {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    /* ===== NAVBAR ===== */
+    .navbar {
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #fbbf24 100%);
+      color: white;
+      padding: 1rem 1.5rem;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+      z-index: 50;
+      flex-shrink: 0;
+    }
+
+    .navbar-inner {
+      max-width: 100%;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 2rem;
+      flex-wrap: wrap;
+    }
+
+    .navbar-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-weight: 800;
+      font-size: 1.25rem;
+    }
+
+    .navbar-brand img {
+      height: 2.5rem;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+    }
+
+    .brand-oau {
+      color: white;
+    }
+
+    .brand-exam {
+      background: linear-gradient(135deg, #fbbf24, #fcd34d);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* ===== MAIN LAYOUT ===== */
+    .main-layout {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+      gap: 0;
+    }
+
+    /* ===== LEFT SIDEBAR ===== */
+    .sidebar-left {
+      width: 280px;
+      background: white;
+      border-right: 1px solid #e5e7eb;
+      padding: 1.5rem;
+      overflow-y: auto;
+      box-shadow: 2px 0 8px rgba(0,0,0,0.05);
+      flex-shrink: 0;
+    }
+
+    .sidebar-left::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .sidebar-left::-webkit-scrollbar-track {
+      background: #f3f4f6;
+    }
+
+    .sidebar-left::-webkit-scrollbar-thumb {
+      background: #d1d5db;
+      border-radius: 3px;
+    }
+
+    .sidebar-left::-webkit-scrollbar-thumb:hover {
+      background: #9ca3af;
+    }
+
+    .sidebar-title {
+      font-size: 0.85rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #1f2937;
+      margin-bottom: 1.5rem;
+    }
+
+    .score-card {
+      background: linear-gradient(135deg, #fbbf24 0%, #fcd34d 100%);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      text-align: center;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 4px 12px rgba(251, 191, 36, 0.2);
+    }
+
+    .score-card-number {
+      font-size: 2.5rem;
+      font-weight: 900;
+      color: #1f2937;
+      line-height: 1;
+    }
+
+    .score-card-label {
+      font-size: 0.75rem;
+      color: #78350f;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-top: 0.5rem;
+      font-weight: 700;
+    }
+
+    .score-card-percent {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: #1f2937;
+      margin-top: 0.75rem;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .stat-item {
+      background: #f9fafb;
+      border: 2px solid #f3f4f6;
+      border-radius: 0.9rem;
+      padding: 1rem;
+      text-align: center;
+    }
+
+    .stat-number {
+      font-size: 1.75rem;
+      font-weight: 900;
+      color: #fbbf24;
+    }
+
+    .stat-label {
+      font-size: 0.75rem;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-top: 0.4rem;
+      font-weight: 600;
+    }
+
+    .sidebar-divider {
+      height: 1px;
+      background: #f3f4f6;
+      margin: 1.5rem 0;
+    }
+
+    .student-info {
+      background: #f9fafb;
+      border-radius: 0.9rem;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .info-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+      font-size: 0.9rem;
+    }
+
+    .info-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .info-icon {
+      width: 1.75rem;
+      height: 1.75rem;
+      background: #fbbf24;
+      border-radius: 0.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #1f2937;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .info-text {
+      flex: 1;
+      color: #4b5563;
+      word-break: break-word;
+    }
+
+    .feedback-box {
+      background: #fffbeb;
+      border: 2px solid #fbbf24;
+      border-radius: 0.9rem;
+      padding: 1rem;
+      text-align: center;
+    }
+
+    .feedback-icon {
+      font-size: 1.5rem;
+      color: #fbbf24;
+      margin-bottom: 0.5rem;
+    }
+
+    .feedback-text {
+      font-size: 0.9rem;
+      color: #78350f;
+      font-weight: 600;
+    }
+
+    .action-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      margin-top: 1.5rem;
+    }
+
+    .btn-sidebar {
+      padding: 0.75rem 1rem;
+      border: none;
+      border-radius: 0.75rem;
+      font-weight: 700;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    .btn-retake {
+      background: #e0e7ff;
+      color: #3730a3;
+    }
+
+    .btn-retake:hover {
+      background: #c7d2fe;
+    }
+
+    .btn-download {
+      background: #fbbf24;
+      color: #1f2937;
+    }
+
+    .btn-download:hover {
+      background: #fcd34d;
+      box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3);
+    }
+
+    /* ===== CENTER CONTENT ===== */
+    .content-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 2rem;
+      background: white;
+    }
+
+    .content-area::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .content-area::-webkit-scrollbar-track {
+      background: #f3f4f6;
+    }
+
+    .content-area::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+
+    .content-area::-webkit-scrollbar-thumb:hover {
+      background: #9ca3af;
+    }
+
+    .content-header {
+      margin-bottom: 2rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 2px solid #f3f4f6;
+    }
+
+    .content-title {
+      font-size: 1.75rem;
+      font-weight: 900;
+      color: #1f2937;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .content-subject {
+      font-size: 1rem;
+      color: #6b7280;
+      font-weight: 600;
+    }
+
+    .question-card {
+      background: white;
+      border: 2px solid #e5e7eb;
+      border-radius: 1rem;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      transition: all 0.2s ease;
+    }
+
+    .question-card.correct {
+      border-color: #10b981;
+      background: #f0fdf4;
+    }
+
+    .question-card.incorrect {
+      border-color: #ef4444;
+      background: #fef2f2;
+    }
+
+    .question-card:hover {
+      box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+    }
+
+    .question-number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 2rem;
+      height: 2rem;
+      background: #fbbf24;
+      color: #1f2937;
+      border-radius: 50%;
+      font-weight: 900;
+      margin-right: 1rem;
+      flex-shrink: 0;
+    }
+
+    .question-text {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: #1f2937;
+      margin-bottom: 1.25rem;
+      line-height: 1.6;
+      display: flex;
+      align-items: flex-start;
+    }
+
+    .answer-section {
+      margin-bottom: 1rem;
+    }
+
+    .answer-label {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: #4b5563;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.5rem;
+    }
+
+    .answer-content {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      align-items: center;
+    }
+
+    .answer-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      border-radius: 9999px;
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+
+    .answer-user {
+      background: #dbeafe;
+      color: #1e3a8a;
+    }
+
+    .answer-correct {
+      background: #bbf7d0;
+      color: #166534;
+    }
+
+    .answer-wrong {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .answer-na {
+      background: #f1f5f9;
+      color: #64748b;
+    }
+
+    .explanation-box {
+      background: #f9fafb;
+      border-left: 4px solid #fbbf24;
+      border-radius: 0.75rem;
+      padding: 1rem 1.25rem;
+      margin-top: 1rem;
+    }
+
+    .explanation-summary {
+      font-weight: 700;
+      color: #1f2937;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      user-select: none;
+    }
+
+    .explanation-summary:hover {
+      color: #fbbf24;
+    }
+
+    .explanation-content {
+      margin-top: 0.75rem;
+      color: #4b5563;
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+
+    .loading-spinner {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 1rem;
+      color: #6b7280;
+      padding: 3rem;
+    }
+
+    .loading-spinner i {
+      font-size: 2.5rem;
+      color: #fbbf24;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 1024px) {
+      .sidebar-left {
+        width: 240px;
+        padding: 1rem;
+      }
+
+      .content-area {
+        padding: 1.5rem;
+      }
+
+      .question-card {
+        padding: 1.25rem;
+      }
+
+      .question-text {
+        font-size: 1rem;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .main-layout {
+        flex-direction: column;
+      }
+
+      .sidebar-left {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid #e5e7eb;
+        max-height: 300px;
+      }
+
+      .content-area {
+        padding: 1.25rem;
+      }
+
+      .navbar-inner {
+        flex-direction: column;
+        gap: 1rem;
+      }
+
+      .navbar-brand {
+        font-size: 1.1rem;
+      }
+
+      .navbar-brand img {
+        height: 2rem;
+      }
+
+      .content-title {
+        font-size: 1.5rem;
+      }
+
+      .question-card {
+        padding: 1rem;
+        margin-bottom: 1rem;
+      }
+
+      .question-text {
+        font-size: 0.95rem;
+      }
+
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .action-buttons {
+        flex-direction: row;
+        gap: 0.5rem;
+      }
+
+      .btn-sidebar {
+        flex: 1;
+        font-size: 0.85rem;
+        padding: 0.65rem;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .navbar {
+        padding: 0.75rem 1rem;
+      }
+
+      .navbar-brand {
+        font-size: 0.95rem;
+      }
+
+      .navbar-brand img {
+        height: 1.75rem;
+      }
+
+      .sidebar-left {
+        padding: 1rem;
+        max-height: 250px;
+      }
+
+      .content-area {
+        padding: 1rem;
+      }
+
+      .content-title {
+        font-size: 1.25rem;
+      }
+
+      .content-subject {
+        font-size: 0.9rem;
+      }
+
+      .question-card {
+        padding: 0.85rem;
+      }
+
+      .question-number {
+        width: 1.75rem;
+        height: 1.75rem;
+        font-size: 0.85rem;
+        margin-right: 0.75rem;
+      }
+
+      .question-text {
+        font-size: 0.9rem;
+      }
+
+      .answer-label {
+        font-size: 0.8rem;
+      }
+
+      .answer-pill {
+        font-size: 0.85rem;
+        padding: 0.4rem 0.8rem;
+      }
+
+      .score-card-number {
+        font-size: 2rem;
+      }
+
+      .score-card-percent {
+        font-size: 1.25rem;
+      }
+
+      .info-row {
+        font-size: 0.85rem;
+      }
+
+      .action-buttons {
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .btn-sidebar {
+        font-size: 0.8rem;
+        padding: 0.6rem;
+      }
+    }
   </style>
 </head>
-<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen py-10 px-2">
-  <div class="max-w-3xl mx-auto bg-white rounded-3xl shadow-xl p-8" id="report-main">
-    <div class="flex flex-col sm:flex-row items-center sm:justify-between">
-      <div>
-        <h1 class="text-3xl font-black text-blue-800 flex items-center mb-1">
-          <i class="fa fa-award text-yellow-400 mr-2"></i> Exam Report
-        </h1>
-        <div class="text-base text-blue-600 font-semibold mb-3" id="subject"></div>
+<body>
+  <div class="report-wrapper">
+    <!-- NAVBAR -->
+    <nav class="navbar">
+      <div class="navbar-inner">
+        <div class="navbar-brand">
+          <img src="../logo.png" alt="OAU ExamGuard">
+          <span><span class="brand-oau">OAU</span> <span class="brand-exam">ExamGuard</span></span>
+        </div>
       </div>
-      <div>
-        <button onclick="location.href='exam-in-session'" class="py-1 px-4 rounded text-xs bg-blue-200 text-blue-800 font-bold hover:bg-blue-300 mb-2 sm:mb-0">Retake Exam</button>
-        <button id="download-pdf-btn" class="py-1 px-4 rounded text-xs bg-green-200 text-green-800 font-bold hover:bg-green-300 mb-2 sm:mb-0 ml-2">
-          <i class="fa fa-download mr-1"></i>Download PDF
-        </button>
+    </nav>
+
+    <!-- MAIN LAYOUT -->
+    <div class="main-layout">
+      <!-- LEFT SIDEBAR -->
+      <div class="sidebar-left">
+        <div class="sidebar-title">Score Summary</div>
+
+        <div class="score-card" id="score-card-main">
+          <div class="score-card-number" id="score-number">-</div>
+          <div class="score-card-label">Total Score</div>
+          <div class="score-card-percent" id="score-percent">-</div>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-item">
+            <div class="stat-number" id="correct-count">0</div>
+            <div class="stat-label">Correct</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-number" id="wrong-count">0</div>
+            <div class="stat-label">Wrong</div>
+          </div>
+        </div>
+
+        <div class="sidebar-divider"></div>
+
+        <div class="sidebar-title">Student Information</div>
+
+        <div class="student-info">
+          <div class="info-row">
+            <div class="info-icon"><i class="fas fa-user"></i></div>
+            <div class="info-text" id="student-name">-</div>
+          </div>
+          <div class="info-row">
+            <div class="info-icon"><i class="fas fa-id-card"></i></div>
+            <div class="info-text" id="student-regnum">-</div>
+          </div>
+          <div class="info-row">
+            <div class="info-icon"><i class="fas fa-clock"></i></div>
+            <div class="info-text" id="exam-time">-</div>
+          </div>
+        </div>
+
+        <div class="sidebar-divider"></div>
+
+        <div class="feedback-box">
+          <div class="feedback-icon"><i class="fas fa-star"></i></div>
+          <div class="feedback-text" id="score-feedback">-</div>
+        </div>
+
+        <div class="action-buttons">
+          <button class="btn-sidebar btn-retake" onclick="location.href='mock.html'">
+            <i class="fas fa-redo-alt"></i> Retake Exam
+          </button>
+          <button class="btn-sidebar btn-download" id="download-pdf-btn">
+            <i class="fas fa-download"></i> Download PDF
+          </button>
+        </div>
+      </div>
+
+      <!-- CENTER CONTENT -->
+      <div class="content-area" id="results-list">
+        <div class="loading-spinner">
+          <i class="fas fa-spinner"></i>
+          <p style="font-weight: 600;">Loading results...</p>
+        </div>
       </div>
     </div>
-    <div class="border-b border-gray-200 mb-6 pb-4">
-      <span class="mr-6 font-bold"><i class="fa fa-user text-blue-700 mr-1"></i> <span id="name"></span></span>
-      <span class="mr-6 font-bold"><i class="fa fa-id-card mr-1"></i> <span id="regnum"></span></span>
-      <span class="font-bold"><i class="fa fa-clock mr-1"></i> <span id="time"></span></span>
-    </div>
-    <div class="text-xl font-semibold mb-1 text-gray-700" id="score-area"></div>
-    <div class="text-gray-500 mb-8" id="score-feedback"></div>
-    <div id="results-list"></div>
   </div>
 
   <script>
-    // Load previous answers and exam info
     let examInfo = {}, answers = {};
     try {
       examInfo = JSON.parse(sessionStorage.getItem('cbt_exam_info') || '{}') || {};
@@ -73,15 +745,14 @@
       examInfo = {}; answers = {};
     }
 
-    // Fetch questions from server (original source)
     async function fetchQuestions() {
       const accessCode = localStorage.getItem("exam_access_code");
       if (!accessCode) return { questions: [], subject: "" };
       try {
-        const res = await fetch("https://examguide.onrender.com/api/exam-set/by-access?accessCode="+encodeURIComponent(accessCode));
-        if(!res.ok) return {questions:[],subject:""};
+        const res = await fetch("https://examguide.onrender.com/api/exam-set/by-access?accessCode=" + encodeURIComponent(accessCode));
+        if (!res.ok) return { questions: [], subject: "" };
         const js = await res.json();
-        return { questions: js.questions||[], subject: js.examSet?.subject||"" };
+        return { questions: js.questions || [], subject: js.examSet?.subject || "" };
       } catch {
         return { questions: [], subject: "" };
       }
@@ -90,7 +761,7 @@
     function getTimeString(iso) {
       if (!iso) return "";
       const d = new Date(iso);
-      return d.toLocaleString(undefined, {dateStyle:"medium", timeStyle:"short"});
+      return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
     }
 
     function getScoreTally(results) {
@@ -100,49 +771,43 @@
     }
 
     function feedbackRemark(pct) {
-      if(pct === 100) return "Excellent! You aced it!";
-      if(pct>=80) return "Great work! Almost perfect.";
-      if(pct>=60) return "Good. Room for more study.";
-      if(pct>=40) return "Keep practicing and revisit the topic.";
-      return "Don't give up! Review the material and try again.";
+      if (pct === 100) return "🎉 Excellent! You aced it!";
+      if (pct >= 80) return "👏 Great work! Almost perfect.";
+      if (pct >= 60) return "📚 Good. Keep studying!";
+      if (pct >= 40) return "💪 Keep practicing!";
+      return "🔄 Review & try again!";
     }
 
-    // --- Normalize LaTeX within HTML strings so MathJax will typeset them ---
     function normalizeQuestionMath(html) {
       if (!html || typeof html !== 'string') return html;
-
-      // Unescape double backslashes that may have been introduced by JSON/string escaping
       let s = html.replace(/\\\\/g, '\\');
-
-      // If the string already contains explicit math delimiters, assume it's fine.
       if (/\\\(|\\\[|\$\$?/.test(s)) return s;
-
-      // Wrap common LaTeX command patterns with inline delimiters.
       const cmdRegex = /\\(?:frac|sqrt|sum|int|lim|left|right|cdot|times|pi|alpha|beta|gamma|theta|log|ln|Delta|delta)(?:\{[^}]*\}|\^[^{\s]+|\_[^{\s]+)*/g;
       s = s.replace(cmdRegex, function(m) { return `\\(${m}\\)`; });
-
-      // Wrap simple superscript/subscript patterns like x^2, x^{2}, x_1, x_{10}
       const expRegex = /([A-Za-z0-9])\^(?:\{[^}]+\}|\d+)/g;
       s = s.replace(expRegex, function(m) { return `\\(${m}\\)`; });
-
       const subRegex = /([A-Za-z0-9])_(?:\{[^}]+\}|\d+)/g;
       s = s.replace(subRegex, function(m) { return `\\(${m}\\)`; });
-
       return s;
     }
 
-    // Main render
     async function main() {
-      document.getElementById('name').textContent = examInfo.student || "No info";
-      document.getElementById('regnum').textContent = examInfo.matric || "";
-      document.getElementById('time').textContent = getTimeString(examInfo.timeCompleted);
+      document.getElementById('student-name').textContent = examInfo.student || "-";
+      document.getElementById('student-regnum').textContent = examInfo.matric || "-";
+      document.getElementById('exam-time').textContent = getTimeString(examInfo.timeCompleted) || "-";
 
-      const {questions,subject} = await fetchQuestions();
-      document.getElementById('subject').textContent = subject || "CBT Report";
+      const { questions, subject } = await fetchQuestions();
 
       let results = [];
       const resultsList = document.getElementById('results-list');
-      resultsList.innerHTML = "";
+      resultsList.innerHTML = `
+        <div class="content-header">
+          <div class="content-title">
+            <i class="fas fa-chart-pie" style="color: #fbbf24;"></i> Exam Results
+          </div>
+          <div class="content-subject">${subject || "CBT Report"}</div>
+        </div>
+      `;
 
       for (let i = 0; i < questions.length; i++) {
         const q = questions[i];
@@ -152,108 +817,114 @@
         const isCorrect = (userAns === correctAns);
         results.push({ isCorrect });
 
-        // Find option texts (if any) and normalize
         const opt = q.options || [];
         const userOpt = opt.find(o => o.key === userAns);
         const correctOpt = opt.find(o => o.key === correctAns);
 
-        // Normalize question, option texts and explanation so MathJax can render them
         const questionHtml = normalizeQuestionMath(q.question || '');
         const userOptText = userOpt ? normalizeQuestionMath(userOpt.text || '') : '';
         const correctOptText = correctOpt ? normalizeQuestionMath(correctOpt.text || '') : '';
         const explanationHtml = normalizeQuestionMath(q.explanation || '');
 
-        resultsList.innerHTML += `
-          <div class="qcard mt-2 ${isCorrect ? "correct" : "incorrect"}">
-            <div class="text-base font-bold mb-2 text-gray-800 flex items-center">
-              <span class="inline-block w-8 h-8 mr-3 bg-blue-100 text-blue-800 text-center rounded-full font-extrabold">${i+1}</span>
+        const cardHtml = `
+          <div class="question-card ${isCorrect ? "correct" : "incorrect"}">
+            <div class="question-text">
+              <div class="question-number">${i + 1}</div>
               <span>${questionHtml}</span>
             </div>
-            <div class="mb-2">
-              <div class="flex flex-wrap items-center gap-3 mb-1">
-                <span class="font-semibold text-gray-700">Your Answer: </span>
-                <span class="answer-pill answer-user">${userAns ? `${userAns}${userOptText ? `. ${userOptText}` : ""}` : "N/A"}</span>
-                ${userAns ?
-                  (userAns === correctAns
-                    ? `<span class="ml-2 answer-pill answer-correct"><i class="fa fa-check mr-1"></i> Correct</span>`
-                    : `<span class="ml-2 answer-pill answer-wrong"><i class="fa fa-times mr-1"></i> Wrong</span>`)
-                  : `<span class="ml-2 answer-pill" style="background:#f1f5f9;color:#64748b;"><i class="fa fa-minus mr-1"></i> Not Answered</span>`
-                }
-              </div>
-              <div class="flex flex-wrap items-center gap-3">
-                <span class="font-semibold text-gray-700">Correct Answer:</span>
-                <span class="answer-pill answer-correct">${correctAns}${correctOptText ? `. ${correctOptText}` : ""}</span>
+
+            <div class="answer-section">
+              <div class="answer-label">Your Answer</div>
+              <div class="answer-content">
+                <span class="answer-pill answer-user">
+                  <i class="fas ${userAns ? (userAns === correctAns ? 'fa-check' : 'fa-times') : 'fa-minus'}"></i>
+                  ${userAns ? `${userAns}${userOptText ? `. ${userOptText}` : ""}` : "Not Answered"}
+                </span>
               </div>
             </div>
-            <details class="mt-2 explanation">
-              <summary class="font-bold text-blue-900 cursor-pointer">Explanation</summary>
-              <div class="pt-2">${explanationHtml ? explanationHtml : "<em>No explanation for this question.</em>"}</div>
-            </details>
+
+            <div class="answer-section">
+              <div class="answer-label">Correct Answer</div>
+              <div class="answer-content">
+                <span class="answer-pill answer-correct">
+                  <i class="fas fa-check-circle"></i>
+                  ${correctAns}${correctOptText ? `. ${correctOptText}` : ""}
+                </span>
+              </div>
+            </div>
+
+            <div class="explanation-box">
+              <details>
+                <summary class="explanation-summary">
+                  <i class="fas fa-lightbulb"></i> Explanation
+                </summary>
+                <div class="explanation-content">
+                  ${explanationHtml ? explanationHtml : "<em>No explanation available for this question.</em>"}
+                </div>
+              </details>
+            </div>
           </div>
         `;
+
+        resultsList.innerHTML += cardHtml;
       }
 
-      // Request MathJax to typeset the newly inserted HTML so LaTeX renders
-      // Wait for MathJax if available
       if (window.MathJax && MathJax.typesetPromise) {
         try {
           await MathJax.typesetPromise([resultsList]);
         } catch (err) {
-          console.warn("MathJax typeset error:", err && err.message);
+          console.warn("MathJax error:", err && err.message);
         }
       }
 
-      // Score and feedback
       const [correct, total] = getScoreTally(results);
-      const percent = total ? Math.round(correct/total*100) : 0;
-      document.getElementById('score-area').innerHTML = `
-        <span class="text-3xl font-black text-blue-700">${correct} / ${total}</span>
-        <span class="text-lg text-gray-700 ml-3">(${percent}%)</span>
-      `;
+      const percent = total ? Math.round(correct / total * 100) : 0;
+
+      document.getElementById('score-number').textContent = `${correct}/${total}`;
+      document.getElementById('score-percent').textContent = `${percent}%`;
+      document.getElementById('correct-count').textContent = correct;
+      document.getElementById('wrong-count').textContent = total - correct;
       document.getElementById('score-feedback').textContent = feedbackRemark(percent);
     }
 
     window.addEventListener('DOMContentLoaded', main);
 
-    // PDF Download button: ensure MathJax rendering is complete before capture
     document.addEventListener('DOMContentLoaded', function() {
       const btn = document.getElementById('download-pdf-btn');
       if (!btn) return;
       btn.onclick = async function() {
-        const reportMain = document.getElementById('report-main');
-        // Ensure MathJax completed typesetting any SVGs
+        const reportMain = document.querySelector('.report-wrapper');
+        
         if (window.MathJax && MathJax.typesetPromise) {
           try {
             await MathJax.typesetPromise();
-            // give browsers a tick to finish layout
-            await new Promise(r => setTimeout(r, 50));
+            await new Promise(r => setTimeout(r, 100));
           } catch (err) {
-            console.warn("MathJax typeset before PDF error:", err && err.message);
+            console.warn("MathJax error:", err && err.message);
           }
         }
 
-        // Temporarily set a white background for better PDF result
-        const prevBg = reportMain.style.background;
-        reportMain.style.background = "#fff";
+        const canvas = await html2canvas(reportMain, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#fff",
+          logging: false
+        });
 
-        // Use html2canvas to rasterize the node
-        const canvas = await html2canvas(reportMain, { scale: 2, useCORS: true, backgroundColor: "#fff" });
-        reportMain.style.background = prevBg;
         const imgData = canvas.toDataURL("image/png");
-
-        // Create PDF
         const pdf = new jspdf.jsPDF({
           orientation: 'portrait',
           unit: 'pt',
           format: 'a4'
         });
+
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();
         const margin = 24;
         const imgWidth = pageWidth - margin * 2;
         const imgHeight = canvas.height * (imgWidth / canvas.width);
 
-        if (imgHeight < pageHeight - margin*2) {
+        if (imgHeight < pageHeight - margin * 2) {
           pdf.addImage(imgData, 'PNG', margin, margin, imgWidth, imgHeight, '', 'FAST');
         } else {
           let renderedHeight = 0;
@@ -268,7 +939,7 @@
               '',
               'FAST'
             );
-            renderedHeight += pageHeight - margin*2;
+            renderedHeight += pageHeight - margin * 2;
             if (renderedHeight < imgHeight) pdf.addPage();
           }
         }
