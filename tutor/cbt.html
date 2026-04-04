@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=0.82">
+    <meta name="viewport" content="width=device-width, initial-scale=0.92">
     <title>OAU ExamGuard | Exam Session</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -15,33 +15,6 @@
     <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
     <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
     <!-- OneSignal Notifications -->
-    <script>
-    // Detect device type and redirect if on desktop
-    function detectDeviceAndRedirect() {
-        const isDesktop = window.innerWidth >= 1024; // Tailwind's lg breakpoint
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        
-        // If desktop (not mobile), redirect to desktop version
-        if (isDesktop && !isMobile) {
-            // Check if we're not already on the desktop page
-            if (!window.location.pathname.includes('desktop') && !window.location.pathname.includes('cbt-desktop')) {
-                window.location.href = 'exam-in-sessions'; // or your desktop page URL
-            }
-        }
-        // If mobile, stay on current page (cbt.html)
-    }
-    
-    // Run on page load
-    window.addEventListener('DOMContentLoaded', function() {
-        detectDeviceAndRedirect();
-    });
-    
-    // Also check on resize (in case user rotates device or resizes window)
-    window.addEventListener('resize', function() {
-        // Optional: only redirect once to avoid annoying redirects
-        // Remove this if you want it to redirect on every resize
-    });
-</script>
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
     <script>
         window.OneSignalDeferred = window.OneSignalDeferred || [];
@@ -330,9 +303,21 @@
         "use strict";
 
         const API_BASE = "https://examguide.onrender.com";
-        const DEVICE_CHECK_INTERVAL = 5000; // Check every 5 seconds
+        const DEVICE_CHECK_INTERVAL = 5000;
         let deviceCheckTimer = null;
         let hasRedirected = false;
+
+        // ============ LOCAL STORAGE KEYS ============
+        const LS_KEYS = {
+            ANSWERS: 'cbt_user_answers',
+            SHUFFLED_QUESTIONS: 'cbt_shuffled_questions',
+            EXAM_INFO: 'cbt_exam_info',
+            ATTEMPT_ID: 'cbt_attempt_id',
+            EXAM_DATA: 'cbt_exam_data',
+            CURRENT_QUESTION: 'cbt_current_question',
+            START_TIME: 'cbt_start_time',
+            IMAGE_ANSWERS: 'cbt_image_answers'
+        };
 
         // ============ DEVICE DETECTION & REDIRECT ============
         function detectDeviceType() {
@@ -347,14 +332,13 @@
         }
 
         function performDeviceRedirect() {
-            if (hasRedirected) return; // Prevent multiple redirects
+            if (hasRedirected) return;
 
             const device = detectDeviceType();
             const currentPath = window.location.pathname;
             const isCBTMobilePage = currentPath.includes('cbt.html');
             const isDesktopPage = currentPath.includes('desktop') || currentPath.includes('cbt-desktop');
 
-            // If this is mobile CBT page and device is desktop, redirect to desktop
             if (isCBTMobilePage && device.isDesktopSize && !device.isMobile && !isDesktopPage) {
                 hasRedirected = true;
                 console.log("Redirecting to desktop exam page...");
@@ -362,7 +346,6 @@
                 return;
             }
 
-            // If this is desktop page and device is mobile, redirect to mobile
             if (isDesktopPage && (device.isMobile || !device.isDesktopSize)) {
                 hasRedirected = true;
                 console.log("Redirecting to mobile exam page...");
@@ -371,17 +354,13 @@
             }
         }
 
-        // Check on load
         window.addEventListener('load', performDeviceRedirect);
-
-        // Check on resize (debounced)
         let resizeTimeout;
         window.addEventListener('resize', () => {
             clearTimeout(resizeTimeout);
             resizeTimeout = setTimeout(performDeviceRedirect, 500);
         });
 
-        // Periodic check for device changes
         function startDeviceCheckInterval() {
             deviceCheckTimer = setInterval(performDeviceRedirect, DEVICE_CHECK_INTERVAL);
         }
@@ -393,10 +372,42 @@
             }
         }
 
+        // ============ LOCAL STORAGE UTILITIES ============
+        function saveToLS(key, data) {
+            try {
+                localStorage.setItem(key, typeof data === 'string' ? data : JSON.stringify(data));
+                console.log(`✓ Saved to LS: ${key}`);
+            } catch (err) {
+                console.warn(`Failed to save ${key}:`, err);
+            }
+        }
+
+        function getFromLS(key) {
+            try {
+                const data = localStorage.getItem(key);
+                return data ? JSON.parse(data) : null;
+            } catch (err) {
+                console.warn(`Failed to parse ${key}:`, err);
+                return null;
+            }
+        }
+
+        function removeFromLS(key) {
+            try {
+                localStorage.removeItem(key);
+            } catch (err) {
+                console.warn(`Failed to remove ${key}:`, err);
+            }
+        }
+
+        function clearExamLS() {
+            Object.values(LS_KEYS).forEach(key => removeFromLS(key));
+        }
+
         // ============ KEEP-ALIVE: Refresh backend every 4 minutes =====
         let keepAliveTimer = null;
         function startKeepAliveInterval() {
-            stopKeepAliveInterval(); // Clear any existing timers
+            stopKeepAliveInterval();
             keepAliveTimer = setInterval(async () => {
                 try {
                     const token = getToken();
@@ -434,10 +445,7 @@
 
         // Reset session after reload guard
         if (performance.navigation && performance.navigation.type === 1) {
-            sessionStorage.removeItem('exam_user_answers');
-            sessionStorage.removeItem('exam_shuffled_questions');
-            sessionStorage.removeItem('exam_info');
-            sessionStorage.removeItem('exam_attempt_id');
+            clearExamLS();
             location.replace(location.pathname + location.search);
         }
 
@@ -585,11 +593,12 @@
         let timer = null;
         let duration = 0;
         let courseCode = "";
-        let examType = "cbt"; // "cbt", "theory", or "hybrid"
+        let examType = "cbt";
         let attemptId = null;
         let theoryEditors = {};
-        let imageAnswers = {}; // Store image data URLs
+        let imageAnswers = {};
         let isSubmitting = false;
+        let examStartTime = null;
 
         // ============ MODAL DIALOG ============
         function showModal(message, opts = {}) {
@@ -638,12 +647,36 @@
             }
         }
 
-        function persistUserAnswers() {
-            try {
-                sessionStorage.setItem('exam_user_answers', JSON.stringify(userAnswers));
-            } catch (err) {
-                console.warn("Storage error:", err);
+        // ============ PERSIST ANSWERS ============
+        function persistAllExamData() {
+            // Save answers
+            saveToLS(LS_KEYS.ANSWERS, userAnswers);
+            
+            // Save current question index
+            saveToLS(LS_KEYS.CURRENT_QUESTION, currentQ);
+            
+            // Save image answers
+            saveToLS(LS_KEYS.IMAGE_ANSWERS, imageAnswers);
+            
+            // Save exam start time
+            if (!examStartTime) {
+                examStartTime = Date.now();
             }
+            saveToLS(LS_KEYS.START_TIME, examStartTime);
+
+            console.log("✓ All exam data persisted to localStorage");
+        }
+
+        // ============ RESTORE FROM LS ============
+        function restoreExamData() {
+            userAnswers = getFromLS(LS_KEYS.ANSWERS) || {};
+            currentQ = getFromLS(LS_KEYS.CURRENT_QUESTION) || 0;
+            imageAnswers = getFromLS(LS_KEYS.IMAGE_ANSWERS) || {};
+            examStartTime = getFromLS(LS_KEYS.START_TIME) || Date.now();
+
+            console.log("✓ Exam data restored from localStorage");
+            console.log("Answers:", userAnswers);
+            console.log("Current Q:", currentQ);
         }
 
         // ============ RENDER QUESTION ============
@@ -668,6 +701,9 @@
             } else {
                 renderCBTQuestion(idx, q, qa, total);
             }
+
+            // Save current position
+            persistAllExamData();
         }
 
         function renderCBTQuestion(idx, q, qa, total) {
@@ -743,7 +779,7 @@
             document.querySelectorAll('input[name="qSelect"]').forEach(input => {
                 input.onchange = function() {
                     userAnswers[q.id] = this.value;
-                    persistUserAnswers();
+                    persistAllExamData();
                     renderQuestion(idx);
                 };
             });
@@ -921,7 +957,7 @@
             document.getElementById('theory-photo-input').addEventListener('change', (e) => {
                 const file = e.target.files[0];
                 if (file) {
-                    if (file.size > 10 * 1024 * 1024) { // 10MB limit
+                    if (file.size > 10 * 1024 * 1024) {
                         alert('File is too large. Maximum size is 10MB.');
                         return;
                     }
@@ -930,6 +966,7 @@
                         document.getElementById('preview-img').src = ev.target.result;
                         document.getElementById('photo-preview').classList.remove('hidden');
                         imageAnswers[q._id] = ev.target.result;
+                        persistAllExamData();
                     };
                     reader.readAsDataURL(file);
                 }
@@ -951,7 +988,7 @@
 
                 if (result) {
                     userAnswers[q._id] = { type: 'text', text };
-                    persistUserAnswers();
+                    persistAllExamData();
                     const statusDiv = document.getElementById('theory-answer-status');
                     statusDiv.innerHTML = `
                         <div class="answer-status-badge saved">
@@ -977,14 +1014,13 @@
                 document.getElementById('save-image-answer').disabled = true;
                 document.getElementById('save-image-answer').innerHTML = '<span class="loading-spinner mr-2"></span>Uploading...';
 
-                // In production, upload to Cloudinary here
                 const result = await submitTheoryAnswer(q._id, 'image', imageAnswers[q._id]);
                 document.getElementById('save-image-answer').disabled = false;
                 document.getElementById('save-image-answer').innerHTML = '✓ Save Photo Answer';
 
                 if (result) {
                     userAnswers[q._id] = { type: 'image' };
-                    persistUserAnswers();
+                    persistAllExamData();
                     const statusDiv = document.getElementById('theory-answer-status');
                     statusDiv.innerHTML = `
                         <div class="answer-status-badge pending">
@@ -1048,19 +1084,30 @@
             isSubmitting = true;
 
             try {
-                persistUserAnswers();
-                sessionStorage.setItem('exam_user_answers', JSON.stringify(userAnswers));
-                sessionStorage.setItem('exam_info', JSON.stringify({
+                persistAllExamData();
+                
+                // Save exam info
+                saveToLS(LS_KEYS.EXAM_INFO, {
                     subject: examData.subject,
                     matric: document.getElementById('student-regnum').innerText,
                     student: (studentData.user.fullName || studentData.user.fullname || studentData.user.name || ''),
                     course: courseCode,
                     timeCompleted: new Date().toISOString(),
-                    type: examType
-                }));
-                sessionStorage.removeItem('exam_shuffled_questions');
+                    type: examType,
+                    answers: userAnswers,
+                    totalQuestions: examData.questions.length,
+                    duration: duration
+                });
 
-                // Redirect with slight delay for safety
+                // Save shuffled questions for results
+                saveToLS(LS_KEYS.SHUFFLED_QUESTIONS, examData);
+
+                // Clear attempt ID if any
+                removeFromLS(LS_KEYS.ATTEMPT_ID);
+
+                console.log("✓ Exam data saved to localStorage");
+                console.log("Saved exam info:", getFromLS(LS_KEYS.EXAM_INFO));
+
                 setTimeout(() => {
                     window.location.href = "results-summary";
                 }, 500);
@@ -1081,17 +1128,20 @@
             });
 
             try {
-                persistUserAnswers();
-                sessionStorage.setItem('exam_user_answers', JSON.stringify(userAnswers));
-                sessionStorage.setItem('exam_info', JSON.stringify({
+                persistAllExamData();
+
+                saveToLS(LS_KEYS.EXAM_INFO, {
                     subject: examData.subject,
                     matric: document.getElementById('student-regnum').innerText,
                     student: (studentData.user.fullName || studentData.user.fullname || studentData.user.name || ''),
                     course: courseCode,
                     timeCompleted: new Date().toISOString(),
                     type: examType,
-                    attemptId: attemptId
-                }));
+                    attemptId: attemptId,
+                    answers: userAnswers,
+                    totalQuestions: examData.questions.length,
+                    duration: duration
+                });
 
                 const result = await submitTheoryExam();
                 if (result) {
@@ -1136,13 +1186,11 @@
                 if (remaining <= 0) {
                     clearInterval(timer);
                     timerElem.textContent = "00:00:00";
+                    persistAllExamData();
                     showModal("⏰ Time's up! Your exam has been automatically submitted.", {
                         title: "Time Expired",
                         actionText: "See Results",
                         onAction: () => {
-                            persistUserAnswers();
-                            sessionStorage.setItem('exam_user_answers', JSON.stringify(userAnswers));
-                            sessionStorage.removeItem('exam_shuffled_questions');
                             window.location.href = "results-summary";
                         }
                     });
@@ -1241,7 +1289,7 @@
                     }
 
                     attemptId = attemptData.attemptId;
-                    sessionStorage.setItem('exam_attempt_id', attemptId);
+                    saveToLS(LS_KEYS.ATTEMPT_ID, attemptId);
 
                     examData = {
                         subject: examSet.subject,
@@ -1250,7 +1298,6 @@
                         type: "theory"
                     };
                 } else if (examType === "hybrid") {
-                    // For hybrid exams, combine both CBT and theory questions
                     const theoryQuestions = await fetchTheoryQuestions(examSet._id);
                     const cbtQuestions = result.questions || [];
 
@@ -1265,9 +1312,9 @@
                         return;
                     }
 
-                    let shuffleSession = sessionStorage.getItem('exam_shuffled_questions');
+                    let shuffleSession = getFromLS(LS_KEYS.SHUFFLED_QUESTIONS);
                     if (shuffleSession) {
-                        examData = JSON.parse(shuffleSession);
+                        examData = shuffleSession;
                     } else {
                         const allQuestions = [
                             ...cbtQuestions.map(q => ({ ...q, type: "cbt", id: q._id || Math.random().toString(36).slice(2, 12) })),
@@ -1288,7 +1335,7 @@
                             questions: shuffledQuestions,
                             type: "hybrid"
                         };
-                        sessionStorage.setItem('exam_shuffled_questions', JSON.stringify(examData));
+                        saveToLS(LS_KEYS.SHUFFLED_QUESTIONS, examData);
                     }
                 } else {
                     // Standard CBT
@@ -1303,9 +1350,9 @@
                         return;
                     }
 
-                    let shuffleSession = sessionStorage.getItem('exam_shuffled_questions');
+                    let shuffleSession = getFromLS(LS_KEYS.SHUFFLED_QUESTIONS);
                     if (shuffleSession) {
-                        examData = JSON.parse(shuffleSession);
+                        examData = shuffleSession;
                     } else {
                         let shuffledQuestions = shuffleArray(result.questions).map((q) => ({
                             ...q,
@@ -1318,19 +1365,12 @@
                             questions: shuffledQuestions,
                             type: "cbt"
                         };
-                        sessionStorage.setItem('exam_shuffled_questions', JSON.stringify(examData));
+                        saveToLS(LS_KEYS.SHUFFLED_QUESTIONS, examData);
                     }
                 }
 
-                // Load persisted answers
-                const storedAnswers = sessionStorage.getItem('exam_user_answers');
-                if (storedAnswers) {
-                    try {
-                        userAnswers = JSON.parse(storedAnswers);
-                    } catch (err) {
-                        console.warn("Failed to parse stored answers:", err);
-                    }
-                }
+                // Restore exam data from localStorage
+                restoreExamData();
 
                 // Start services
                 startKeepAliveInterval();
@@ -1364,8 +1404,8 @@
             stopDeviceCheckInterval();
             if (timer) clearInterval(timer);
             
-            // Persist answers before unload
-            persistUserAnswers();
+            // Final persist before unload
+            persistAllExamData();
         });
 
         // Prevent accidental navigation away
