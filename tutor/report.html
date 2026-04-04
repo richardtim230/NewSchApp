@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=0.80">
-  <title>OAU ExamGuard CBT | Exam Report</title>
+  <title>OAU ExamGuard | Exam Report</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Add jsPDF & html2canvas for PDF generation -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -92,6 +92,26 @@
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
+    }
+
+    .exam-type-badge {
+      display: inline-block;
+      padding: 0.4rem 0.9rem;
+      border-radius: 0.5rem;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .exam-type-badge.cbt {
+      background: rgba(30, 144, 255, 0.2);
+      color: #1e90ff;
+    }
+
+    .exam-type-badge.theory {
+      background: rgba(34, 197, 94, 0.2);
+      color: #22c55e;
     }
 
     /* ===== MAIN LAYOUT ===== */
@@ -237,6 +257,7 @@
       color: #1f2937;
       font-weight: 700;
       flex-shrink: 0;
+      font-size: 0.9rem;
     }
 
     .info-text {
@@ -371,6 +392,11 @@
       background: #fef2f2;
     }
 
+    .question-card.theory {
+      border-color: #3b82f6;
+      background: #f0f9ff;
+    }
+
     .question-card:hover {
       box-shadow: 0 6px 16px rgba(0,0,0,0.08);
     }
@@ -449,6 +475,11 @@
       color: #64748b;
     }
 
+    .answer-pending {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+
     .explanation-box {
       background: #f9fafb;
       border-left: 4px solid #fbbf24;
@@ -478,6 +509,22 @@
       line-height: 1.6;
     }
 
+    .theory-answer-display {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 0.75rem;
+      padding: 1rem;
+      margin-top: 0.5rem;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .theory-answer-display img {
+      max-width: 100%;
+      max-height: 250px;
+      border-radius: 0.5rem;
+    }
+
     .loading-spinner {
       display: flex;
       flex-direction: column;
@@ -497,6 +544,16 @@
     @keyframes spin {
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
+    }
+
+    .error-message {
+      background: #fee2e2;
+      border: 2px solid #ef4444;
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      color: #991b1b;
+      text-align: center;
+      font-weight: 600;
     }
 
     /* ===== RESPONSIVE ===== */
@@ -528,7 +585,7 @@
         width: 100%;
         border-right: none;
         border-bottom: 1px solid #e5e7eb;
-        max-height: 300px;
+        max-height: 350px;
       }
 
       .content-area {
@@ -592,7 +649,7 @@
 
       .sidebar-left {
         padding: 1rem;
-        max-height: 250px;
+        max-height: 300px;
       }
 
       .content-area {
@@ -664,6 +721,7 @@
           <img src="../logo.png" alt="OAU ExamGuard">
           <span><span class="brand-oau">OAU</span> <span class="brand-exam">ExamGuard</span></span>
         </div>
+        <span id="exam-type-display" class="exam-type-badge cbt">📝 CBT</span>
       </div>
     </nav>
 
@@ -688,6 +746,14 @@
             <div class="stat-number" id="wrong-count">0</div>
             <div class="stat-label">Wrong</div>
           </div>
+          <div class="stat-item">
+            <div class="stat-number" id="pending-count">0</div>
+            <div class="stat-label">Pending</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-number" id="unanswered-count">0</div>
+            <div class="stat-label">Unanswered</div>
+          </div>
         </div>
 
         <div class="sidebar-divider"></div>
@@ -702,6 +768,10 @@
           <div class="info-row">
             <div class="info-icon"><i class="fas fa-id-card"></i></div>
             <div class="info-text" id="student-regnum">-</div>
+          </div>
+          <div class="info-row">
+            <div class="info-icon"><i class="fas fa-book"></i></div>
+            <div class="info-text" id="exam-subject">-</div>
           </div>
           <div class="info-row">
             <div class="info-icon"><i class="fas fa-clock"></i></div>
@@ -737,45 +807,86 @@
   </div>
 
   <script>
-    let examInfo = {}, answers = {};
-    try {
-      examInfo = JSON.parse(sessionStorage.getItem('cbt_exam_info') || '{}') || {};
-      answers = JSON.parse(sessionStorage.getItem('cbt_user_answers') || '{}') || {};
-    } catch (e) {
-      examInfo = {}; answers = {};
+    "use strict";
+
+    const API_BASE = "https://examguide.onrender.com";
+    
+    // ============ LOCAL STORAGE KEYS ============
+    const LS_KEYS = {
+      ANSWERS: 'cbt_user_answers',
+      EXAM_INFO: 'cbt_exam_info',
+      SHUFFLED_QUESTIONS: 'cbt_shuffled_questions',
+      IMAGE_ANSWERS: 'cbt_image_answers'
+    };
+
+    // ============ DATA RETRIEVAL ============
+    function getFromLS(key) {
+      try {
+        const data = localStorage.getItem(key) || sessionStorage.getItem(key);
+        return data ? JSON.parse(data) : null;
+      } catch (err) {
+        console.warn(`Failed to parse ${key}:`, err);
+        return null;
+      }
     }
 
+    let examInfo = getFromLS(LS_KEYS.EXAM_INFO) || {};
+    let answers = getFromLS(LS_KEYS.ANSWERS) || {};
+    let shuffledQuestions = getFromLS(LS_KEYS.SHUFFLED_QUESTIONS) || {};
+    let imageAnswers = getFromLS(LS_KEYS.IMAGE_ANSWERS) || {};
+
+    console.log("Loaded exam info:", examInfo);
+    console.log("Loaded answers:", answers);
+
+    // ============ API CALLS ============
     async function fetchQuestions() {
       const accessCode = localStorage.getItem("exam_access_code");
       if (!accessCode) return { questions: [], subject: "" };
       try {
-        const res = await fetch("https://examguide.onrender.com/api/exam-set/by-access?accessCode=" + encodeURIComponent(accessCode));
+        const res = await fetch(`${API_BASE}/api/exam-set/by-access?accessCode=${encodeURIComponent(accessCode)}`);
         if (!res.ok) return { questions: [], subject: "" };
         const js = await res.json();
-        return { questions: js.questions || [], subject: js.examSet?.subject || "" };
-      } catch {
-        return { questions: [], subject: "" };
+        return { 
+          questions: js.questions || [], 
+          subject: js.examSet?.subject || "",
+          examType: js.examSet?.examType || "cbt"
+        };
+      } catch (err) {
+        console.error("Fetch questions error:", err);
+        return { questions: [], subject: "", examType: "cbt" };
       }
     }
 
+    async function fetchTheoryAttempt(attemptId) {
+      try {
+        if (!attemptId) return null;
+        const token = localStorage.getItem("student_jwt_token");
+        const res = await fetch(`${API_BASE}/api/theory-attempts/${attemptId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return null;
+        return await res.json();
+      } catch (err) {
+        console.error("Fetch theory attempt error:", err);
+        return null;
+      }
+    }
+
+    // ============ UTILITY FUNCTIONS ============
     function getTimeString(iso) {
       if (!iso) return "";
-      const d = new Date(iso);
-      return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+      try {
+        const d = new Date(iso);
+        return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+      } catch (err) {
+        return iso;
+      }
     }
 
-    function getScoreTally(results) {
-      let correct = 0;
-      results.forEach(r => { if (r.isCorrect) correct++; });
-      return [correct, results.length];
-    }
-
-    function feedbackRemark(pct) {
-      if (pct === 100) return "🎉 Excellent! You aced it!";
-      if (pct >= 80) return "👏 Great work! Almost perfect.";
-      if (pct >= 60) return "📚 Good. Keep studying!";
-      if (pct >= 40) return "💪 Keep practicing!";
-      return "🔄 Review & try again!";
+    function stripHtml(html) {
+      const tmp = document.createElement("DIV");
+      tmp.innerHTML = html || "";
+      return tmp.textContent || tmp.innerText || "";
     }
 
     function normalizeQuestionMath(html) {
@@ -791,21 +902,35 @@
       return s;
     }
 
-    async function main() {
-      document.getElementById('student-name').textContent = examInfo.student || "-";
-      document.getElementById('student-regnum').textContent = examInfo.matric || "-";
-      document.getElementById('exam-time').textContent = getTimeString(examInfo.timeCompleted) || "-";
+    function getScoreTally(results) {
+      let correct = 0, pending = 0, unanswered = 0;
+      results.forEach(r => {
+        if (r.status === "correct") correct++;
+        else if (r.status === "pending") pending++;
+        else if (r.status === "unanswered") unanswered++;
+      });
+      return [correct, results.length - correct - pending - unanswered, pending, unanswered];
+    }
 
-      const { questions, subject } = await fetchQuestions();
+    function feedbackRemark(pct) {
+      if (pct === 100) return "🎉 Excellent! You aced it!";
+      if (pct >= 80) return "👏 Great work! Almost perfect.";
+      if (pct >= 60) return "📚 Good. Keep studying!";
+      if (pct >= 40) return "💪 Keep practicing!";
+      return "🔄 Review & try again!";
+    }
 
+    // ============ RENDER CBT RESULTS ============
+    async function renderCBTResults(questions) {
       let results = [];
       const resultsList = document.getElementById('results-list');
+      
       resultsList.innerHTML = `
         <div class="content-header">
           <div class="content-title">
             <i class="fas fa-chart-pie" style="color: #fbbf24;"></i> Exam Results
           </div>
-          <div class="content-subject">${subject || "CBT Report"}</div>
+          <div class="content-subject">${examInfo.subject || examInfo.course || "CBT Report"}</div>
         </div>
       `;
 
@@ -815,7 +940,9 @@
         const userAns = answers[qid] || answers[q._id] || answers[q.id] || "";
         const correctAns = q.answer;
         const isCorrect = (userAns === correctAns);
-        results.push({ isCorrect });
+
+        const status = isCorrect ? "correct" : (userAns ? "incorrect" : "unanswered");
+        results.push({ isCorrect, status });
 
         const opt = q.options || [];
         const userOpt = opt.find(o => o.key === userAns);
@@ -853,16 +980,18 @@
               </div>
             </div>
 
-            <div class="explanation-box">
-              <details>
-                <summary class="explanation-summary">
-                  <i class="fas fa-lightbulb"></i> Explanation
-                </summary>
-                <div class="explanation-content">
-                  ${explanationHtml ? explanationHtml : "<em>No explanation available for this question.</em>"}
-                </div>
-              </details>
-            </div>
+            ${explanationHtml ? `
+              <div class="explanation-box">
+                <details>
+                  <summary class="explanation-summary">
+                    <i class="fas fa-lightbulb"></i> Explanation
+                  </summary>
+                  <div class="explanation-content">
+                    ${explanationHtml}
+                  </div>
+                </details>
+              </div>
+            ` : ""}
           </div>
         `;
 
@@ -877,22 +1006,230 @@
         }
       }
 
-      const [correct, total] = getScoreTally(results);
+      const [correct, wrong, pending, unanswered] = getScoreTally(results);
+      const total = correct + wrong;
       const percent = total ? Math.round(correct / total * 100) : 0;
 
-      document.getElementById('score-number').textContent = `${correct}/${total}`;
-      document.getElementById('score-percent').textContent = `${percent}%`;
-      document.getElementById('correct-count').textContent = correct;
-      document.getElementById('wrong-count').textContent = total - correct;
-      document.getElementById('score-feedback').textContent = feedbackRemark(percent);
+      return { correct, wrong, pending, unanswered, percent, total };
+    }
+
+    // ============ RENDER THEORY RESULTS ============
+    async function renderTheoryResults(attempt) {
+      let results = [];
+      const resultsList = document.getElementById('results-list');
+
+      resultsList.innerHTML = `
+        <div class="content-header">
+          <div class="content-title">
+            <i class="fas fa-chart-pie" style="color: #fbbf24;"></i> Theory Exam Results
+          </div>
+          <div class="content-subject">${examInfo.subject || "Theory Report"}</div>
+        </div>
+      `;
+
+      if (!attempt || !attempt.answers || attempt.answers.length === 0) {
+        resultsList.innerHTML += `
+          <div class="error-message">
+            <i class="fas fa-exclamation-circle mr-2"></i>
+            No theory answers found. Please try again.
+          </div>
+        `;
+        return { correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0 };
+      }
+
+      const token = localStorage.getItem("student_jwt_token");
+
+      for (let i = 0; i < attempt.answers.length; i++) {
+        const answerRef = attempt.answers[i];
+        const questionId = answerRef.question;
+        const answerId = answerRef.answer;
+
+        // Fetch answer details
+        let answerDetail = null;
+        try {
+          const res = await fetch(`${API_BASE}/api/theory-answers/${answerId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (res.ok) {
+            answerDetail = await res.json();
+          }
+        } catch (err) {
+          console.warn("Failed to fetch answer:", err);
+        }
+
+        if (!answerDetail) continue;
+
+        const isGraded = answerDetail.isGraded;
+        const status = isGraded ? "graded" : "pending";
+        const score = answerDetail.finalScore || answerDetail.autoScore || 0;
+        const maxMarks = answerDetail.question?.maxMarks || 10;
+
+        results.push({ 
+          isGraded, 
+          status, 
+          score,
+          maxMarks
+        });
+
+        const questionText = answerDetail.question?.question || "";
+        const questionHtml = normalizeQuestionMath(questionText);
+
+        let answerDisplay = "";
+        if (answerDetail.answerType === "text") {
+          answerDisplay = normalizeQuestionMath(answerDetail.answerText || answerDetail.ocrExtractedText || "");
+        } else if (answerDetail.answerType === "image") {
+          answerDisplay = `<img src="${answerDetail.answerImageUrl}" alt="Student answer" />`;
+        }
+
+        const statusColor = isGraded ? "correct" : "pending";
+
+        const cardHtml = `
+          <div class="question-card theory ${statusColor}">
+            <div class="question-text">
+              <div class="question-number">${i + 1}</div>
+              <span>${questionHtml}</span>
+            </div>
+
+            <div class="answer-section">
+              <div class="answer-label">Your Answer</div>
+              <div class="theory-answer-display">
+                ${answerDisplay || "<em>No answer provided</em>"}
+              </div>
+            </div>
+
+            <div class="answer-section">
+              <div class="answer-label">Grading Status</div>
+              <div class="answer-content">
+                <span class="answer-pill ${isGraded ? 'answer-correct' : 'answer-pending'}">
+                  <i class="fas ${isGraded ? 'fa-check-circle' : 'fa-hourglass-half'}"></i>
+                  ${isGraded ? `Graded: ${score}/${maxMarks}` : "Pending Review"}
+                </span>
+              </div>
+            </div>
+
+            ${answerDetail.matchedKeywords && answerDetail.matchedKeywords.length > 0 ? `
+              <div class="explanation-box">
+                <details>
+                  <summary class="explanation-summary">
+                    <i class="fas fa-key"></i> Matched Keywords
+                  </summary>
+                  <div class="explanation-content">
+                    ${answerDetail.matchedKeywords.map(kw => `<span style="background: #dcfce7; color: #166534; padding: 0.25rem 0.5rem; border-radius: 0.25rem; display: inline-block; margin: 0.25rem; font-size: 0.85rem;">${kw}</span>`).join("")}
+                  </div>
+                </details>
+              </div>
+            ` : ""}
+
+            ${answerDetail.manualFeedback ? `
+              <div class="explanation-box">
+                <details open>
+                  <summary class="explanation-summary">
+                    <i class="fas fa-comment-dots"></i> Feedback
+                  </summary>
+                  <div class="explanation-content">
+                    ${normalizeQuestionMath(answerDetail.manualFeedback)}
+                  </div>
+                </details>
+              </div>
+            ` : ""}
+          </div>
+        `;
+
+        resultsList.innerHTML += cardHtml;
+      }
+
+      if (window.MathJax && MathJax.typesetPromise) {
+        try {
+          await MathJax.typesetPromise([resultsList]);
+        } catch (err) {
+          console.warn("MathJax error:", err && err.message);
+        }
+      }
+
+      const totalScore = results.reduce((sum, r) => sum + (r.score || 0), 0);
+      const totalMarks = results.reduce((sum, r) => sum + (r.maxMarks || 0), 0);
+      const graded = results.filter(r => r.isGraded).length;
+      const pending = results.filter(r => !r.isGraded).length;
+      const percent = totalMarks ? Math.round(totalScore / totalMarks * 100) : 0;
+
+      return { 
+        correct: graded, 
+        wrong: 0, 
+        pending: pending, 
+        unanswered: 0, 
+        percent: percent, 
+        total: results.length,
+        totalScore: totalScore,
+        totalMarks: totalMarks
+      };
+    }
+
+    // ============ MAIN ============
+    async function main() {
+      // Display student info
+      document.getElementById('student-name').textContent = examInfo.student || "-";
+      document.getElementById('student-regnum').textContent = examInfo.matric || "-";
+      document.getElementById('exam-subject').textContent = examInfo.subject || examInfo.course || "-";
+      document.getElementById('exam-time').textContent = getTimeString(examInfo.timeCompleted) || "-";
+
+      const examType = examInfo.type || "cbt";
+      
+      // Update exam type badge
+      const badge = document.getElementById('exam-type-display');
+      if (examType === "theory") {
+        badge.textContent = "📄 Theory";
+        badge.classList.remove('cbt');
+        badge.classList.add('theory');
+      } else if (examType === "hybrid") {
+        badge.textContent = "🔀 Hybrid";
+        badge.classList.remove('cbt');
+        badge.classList.add('theory');
+      }
+
+      let scores;
+
+      if (examType === "theory") {
+        // Render theory results
+        const attemptId = examInfo.attemptId;
+        const attempt = await fetchTheoryAttempt(attemptId);
+        scores = await renderTheoryResults(attempt);
+      } else {
+        // Render CBT results
+        const { questions, subject } = await fetchQuestions();
+        if (subject) {
+          document.getElementById('exam-subject').textContent = subject;
+        }
+        scores = await renderCBTResults(questions);
+      }
+
+      // Update scores
+      if (examType === "theory") {
+        document.getElementById('score-number').textContent = `${scores.totalScore}/${scores.totalMarks}`;
+        document.getElementById('correct-count').textContent = scores.correct;
+        document.getElementById('wrong-count').textContent = scores.wrong;
+        document.getElementById('pending-count').textContent = scores.pending;
+      } else {
+        document.getElementById('score-number').textContent = `${scores.correct}/${scores.total}`;
+        document.getElementById('correct-count').textContent = scores.correct;
+        document.getElementById('wrong-count').textContent = scores.wrong;
+        document.getElementById('pending-count').textContent = scores.pending;
+        document.getElementById('unanswered-count').textContent = scores.unanswered;
+      }
+
+      document.getElementById('score-percent').textContent = `${scores.percent}%`;
+      document.getElementById('score-feedback').textContent = feedbackRemark(scores.percent);
     }
 
     window.addEventListener('DOMContentLoaded', main);
 
+    // ============ PDF DOWNLOAD ============
     document.addEventListener('DOMContentLoaded', function() {
       const btn = document.getElementById('download-pdf-btn');
       if (!btn) return;
       btn.onclick = async function() {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="loading-spinner" style="display: inline-block; width: 1rem; height: 1rem; border: 2px solid #1f2937; border-top: 2px solid #fbbf24; border-radius: 50%; animation: spin 1s linear infinite;"></span> Generating...';
+
         const reportMain = document.querySelector('.report-wrapper');
         
         if (window.MathJax && MathJax.typesetPromise) {
@@ -904,46 +1241,59 @@
           }
         }
 
-        const canvas = await html2canvas(reportMain, {
-          scale: 2,
-          useCORS: true,
-          backgroundColor: "#fff",
-          logging: false
-        });
+        try {
+          const canvas = await html2canvas(reportMain, {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: "#fff",
+            logging: false,
+            allowTaint: true
+          });
 
-        const imgData = canvas.toDataURL("image/png");
-        const pdf = new jspdf.jsPDF({
-          orientation: 'portrait',
-          unit: 'pt',
-          format: 'a4'
-        });
+          const imgData = canvas.toDataURL("image/png");
+          const pdf = new jspdf.jsPDF({
+            orientation: 'portrait',
+            unit: 'pt',
+            format: 'a4'
+          });
 
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = pdf.internal.pageSize.getHeight();
-        const margin = 24;
-        const imgWidth = pageWidth - margin * 2;
-        const imgHeight = canvas.height * (imgWidth / canvas.width);
+          const pageWidth = pdf.internal.pageSize.getWidth();
+          const pageHeight = pdf.internal.pageSize.getHeight();
+          const margin = 24;
+          const imgWidth = pageWidth - margin * 2;
+          const imgHeight = canvas.height * (imgWidth / canvas.width);
 
-        if (imgHeight < pageHeight - margin * 2) {
-          pdf.addImage(imgData, 'PNG', margin, margin, imgWidth, imgHeight, '', 'FAST');
-        } else {
-          let renderedHeight = 0;
-          while (renderedHeight < imgHeight) {
-            pdf.addImage(
-              imgData,
-              'PNG',
-              margin,
-              margin - renderedHeight,
-              imgWidth,
-              imgHeight,
-              '',
-              'FAST'
-            );
-            renderedHeight += pageHeight - margin * 2;
-            if (renderedHeight < imgHeight) pdf.addPage();
+          if (imgHeight < pageHeight - margin * 2) {
+            pdf.addImage(imgData, 'PNG', margin, margin, imgWidth, imgHeight, '', 'FAST');
+          } else {
+            let renderedHeight = 0;
+            while (renderedHeight < imgHeight) {
+              pdf.addImage(
+                imgData,
+                'PNG',
+                margin,
+                margin - renderedHeight,
+                imgWidth,
+                imgHeight,
+                '',
+                'FAST'
+              );
+              renderedHeight += pageHeight - margin * 2;
+              if (renderedHeight < imgHeight) pdf.addPage();
+            }
           }
+          
+          const filename = `exam-report-${new Date().toISOString().slice(0, 10)}.pdf`;
+          pdf.save(filename);
+
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-download"></i> Download PDF';
+        } catch (err) {
+          console.error("PDF generation error:", err);
+          alert("Failed to generate PDF. Please try again.");
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-download"></i> Download PDF';
         }
-        pdf.save("exam-report.pdf");
       };
     });
   </script>
