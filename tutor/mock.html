@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OAU ExamGuard | Mock Exam Access</title>
-        <meta name="description" content="OAU ExamGuard offers authentic OAU mock tests, past questions, a trusted student marketplace, and a vibrant blogging community. Prepare, connect, and earn on OAU's leading academic platform."/>
-<meta name="keywords" content="School News, download examguide, examking, examguide app, examguide, ExamGuide, ssce, SSCE, ExamGuide ssce, Post Utme, OAU News, OAU earnings, examguard, oau, OAU, Post Utme, News Update, OAU news update, post utme news update, school, university, finance, earning, earnings, smart contracts, examguard nigeria, online test, mock exams, study materials, nigeria, past questions, blockchain technology, students, contracts, online examination conducting system, blog, questions, technology, questions, platforms, learning, Write and Earn, Students Earning platform, OAU, ExamGuard Nigeria, OAU ExamGuard, Obafemi Awolowo University, School News, Best Online Marketing Platform, Blog, Marketplace, Mock Tests"/>
+        <meta name="description" content="OAU ExamGuard offers authentic OAU mock tests, past questions, a trusted student marketplace, and a vibrant blogging community. Prepare, connect, and earn on [...]
+<meta name="keywords" content="School News, download examguide, examking, examguide app, examguide, ExamGuide, ssce, SSCE, ExamGuide ssce, Post Utme, OAU News, OAU earnings, examguard, oau, OAU, Post [...]
   <meta name="robots" content="index,follow" />
   <link rel="canonical" href="https://oau.examguard.com.ng/" />
   <!-- Open Graph -->
@@ -125,9 +125,52 @@
             border-top:3px solid #232946;animation:spin 0.85s linear infinite;vertical-align:-0.25em;
         }
         @keyframes spin{to{transform:rotate(360deg);}}
+        /* Loading overlay styles */
+        .loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(255,255,255,0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+            backdrop-filter: blur(4px);
+        }
+        .loading-spinner {
+            display: inline-block;
+            width: 3.5em;
+            height: 3.5em;
+            border: 4px solid #e5e7eb;
+            border-radius: 50%;
+            border-top: 4px solid #ffd500;
+            animation: spin 1s linear infinite;
+            margin-bottom: 1.5em;
+        }
+        .loading-text {
+            color: #232946;
+            font-size: 1em;
+            font-weight: 600;
+            text-align: center;
+        }
+        .secondary-btn {
+            background: #e5e7eb;
+            color: #232946;
+            transition: all 0.3s ease;
+        }
+        .secondary-btn:hover {
+            background: #d1d5db;
+            color: #232946;
+        }
     </style>
 </head>
 <body class="min-h-screen flex flex-col items-center justify-center p-4">
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="loading-spinner"></div>
+        <p class="loading-text">Checking authentication...<br><span class="text-xs text-gray-600 mt-2">Please wait</span></p>
+    </div>
+
     <!-- Navbar minimal user context -->
     <nav class="fixed w-full z-30 top-0 left-0 glass shadow-sm border-b border-blue-900/25 bg-white/90 backdrop-blur">
         <div class="max-w-3xl mx-auto px-4 flex justify-between items-center h-16">
@@ -175,6 +218,13 @@
                     </button>
                 </div>
                 <div id="login-error-message" class="text-red-500 text-center font-medium text-sm hidden"></div>
+                <div class="pt-2 border-t border-gray-200">
+                    <p class="text-gray-600 text-xs mb-3">Don't have an account?</p>
+                    <button type="button" id="register-btn"
+                        class="w-full py-3 px-6 rounded-xl secondary-btn font-bold text-lg shadow hover:scale-105 transition relative flex items-center justify-center gap-2">
+                        <i class="fas fa-user-plus"></i> <span>Create Account</span>
+                    </button>
+                </div>
             </form>
             <!-- Access code form -->
             <form id="access-form" autocomplete="off" class="space-y-7 hidden">
@@ -219,11 +269,21 @@
     <script>
     // ==== CONFIG ====
     const API_BASE = "https://examguide.onrender.com";
+    const REGISTRATION_URL = "https://oau.examguard.com.ng/register"; // Update this to your actual registration page
 
     // ==== UTILITIES ====
     function setToken(token) { localStorage.setItem("student_jwt_token", token); }
     function getToken() { return localStorage.getItem("student_jwt_token"); }
     function clearToken() { localStorage.removeItem("student_jwt_token"); localStorage.removeItem('token'); }
+
+    function showLoadingOverlay(show = true) {
+        const overlay = document.getElementById('loading-overlay');
+        if (show) {
+            overlay.classList.remove('hidden');
+        } else {
+            overlay.classList.add('hidden');
+        }
+    }
 
     function setBtnSpinner(btn, show, text = "") {
         if (show) {
@@ -296,7 +356,15 @@
     const introDesc = document.getElementById('intro-desc');
     const loginBtn = document.getElementById('login-btn');
     const accessBtn = document.getElementById('access-btn');
+    const registerBtn = document.getElementById('register-btn');
     let currentUser = null;
+
+    // Register button click handler
+    registerBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        window.location.href = REGISTRATION_URL;
+    });
+
     document.addEventListener("DOMContentLoaded", function() {
         const courseCodeInput = document.getElementById('courseCode');
         const accessCodeInput = document.getElementById('accessCode');
@@ -350,19 +418,27 @@
     }
     window.logoutUser = logoutUser;
     (async function checkAuthOnLoad() {
-        const token = getToken() || localStorage.getItem('token');
-        if (token) {
-            const user = await fetchProfile(token);
-            if (user && user._id) {
-                setToken(token);
-                currentUser = user;
-                showAccess(user);
+        showLoadingOverlay(true);
+        try {
+            const token = getToken() || localStorage.getItem('token');
+            if (token) {
+                const user = await fetchProfile(token);
+                if (user && user._id) {
+                    setToken(token);
+                    currentUser = user;
+                    showAccess(user);
+                } else {
+                    clearToken();
+                    showLogin();
+                }
             } else {
-                clearToken();
                 showLogin();
             }
-        } else {
+        } catch (err) {
+            console.error('Error during auth check:', err);
             showLogin();
+        } finally {
+            showLoadingOverlay(false);
         }
     })();
     loginForm.addEventListener('submit', async function(e) {
