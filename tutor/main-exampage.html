@@ -1547,38 +1547,43 @@
     }
 
     // ============ FETCH EXAMS ============
-    async function fetchAllExams() {
+async function fetchAllExams() {
+  try {
+    const res = await fetch(`${API_BASE}/api/exam-set`);
+    if (!res.ok) throw new Error("Failed to fetch exams");
+    const data = await res.json();
+    
+    // Enrich with question counts
+    allExams = await Promise.all((data || []).map(async (exam) => {
       try {
-        const res = await fetch(`${API_BASE}/api/exam-set`);
-        if (!res.ok) throw new Error("Failed to fetch exams");
-        const data = await res.json();
+        const cbtRes = await fetch(`${API_BASE}/api/cbt-questions?examSet=${exam._id}`);
+        const theoryRes = await fetch(`${API_BASE}/api/theory-questions?examSet=${exam._id}`);
         
-        // Enrich with additional details
-        allExams = await Promise.all((data || []).map(async (exam) => {
-          try {
-            const questionsRes = await fetch(`${API_BASE}/api/cbt-questions?examSet=${exam._id}&limit=1`);
-            const theoryRes = await fetch(`${API_BASE}/api/theory-questions?examSet=${exam._id}`);
-            
-            const cbtQuestions = questionsRes.ok ? await questionsRes.json() : [];
-            const theoryQuestions = theoryRes.ok ? await theoryRes.json() : [];
-            
-            return {
-              ...exam,
-              cbtCount: Array.isArray(cbtQuestions) ? cbtQuestions.length : 0,
-              theoryCount: Array.isArray(theoryQuestions) ? theoryQuestions.length : 0
-            };
-          } catch (err) {
-            console.warn("Error enriching exam:", err);
-            return exam;
-          }
-        }));
-
-        console.log("Fetched exams:", allExams);
+        const cbtQuestions = cbtRes.ok ? await cbtRes.json() : [];
+        const theoryQuestions = theoryRes.ok ? await theoryRes.json() : [];
+        
+        const cbtCount = Array.isArray(cbtQuestions) ? cbtQuestions.length : 0;
+        const theoryCount = Array.isArray(theoryQuestions) ? theoryQuestions.length : 0;
+        
+        return {
+          ...exam,
+          cbtCount,
+          theoryCount,
+          type: theoryCount > 0 && cbtCount > 0 ? 'hybrid' : theoryCount > 0 ? 'theory' : 'cbt'
+        };
       } catch (err) {
-        console.error("Fetch exams error:", err);
-        showStatusMessage("Unable to load exams. Please try again later.");
+        console.warn("Error enriching exam:", err);
+        return { ...exam, cbtCount: 0, theoryCount: 0, type: 'cbt' };
       }
-    }
+    }));
+
+    console.log("Fetched exams:", allExams);
+    renderExams(allExams);
+  } catch (err) {
+    console.error("Fetch exams error:", err);
+    showStatusMessage("Unable to load exams. Please try again later.");
+  }
+}
 
     // ============ FILTERING & SEARCH ============
     function applyFilters() {
@@ -1599,67 +1604,41 @@
     }
 
     // ============ RENDER EXAMS ============
-    function renderExams() {
-      examsGrid.innerHTML = '';
-      
-      if (filteredExams.length === 0) {
-        showStatusMessage("No exams found matching your criteria. Try adjusting your filters.");
-        return;
-      }
+function renderExams(exams) {
+  const grid = document.getElementById('exams-grid');
+  
+  if (!exams || !exams.length) {
+    grid.innerHTML = '<div class="status-message"><div class="status-icon">📚</div>No exams available</div>';
+    return;
+  }
 
-      statusMessage.classList.add('hidden');
-
-      const start = (currentPage - 1) * ITEMS_PER_PAGE;
-      const end = start + ITEMS_PER_PAGE;
-      const paginatedExams = filteredExams.slice(start, end);
-
-      paginatedExams.forEach((exam, index) => {
-        const examType = exam.examType || "cbt";
-        const icon = getExamIcon(examType);
-        const examTitle = exam.title || exam.subject;
-        const examDescription = exam.tags ? exam.tags.join(", ") : "Practice exam";
-
-        const card = document.createElement('div');
-        card.className = `exam-card ${examType}`;
-        card.innerHTML = `
-          <div class="exam-header">
-            <div class="exam-icon">${icon}</div>
-            <div class="exam-subject">${exam.subject || "Unknown"}</div>
-          </div>
-          <div class="exam-body">
-            <div class="exam-type-badge ${examType}">
-              <i class="fas ${getExamTypeIcon(examType)}"></i>
-              ${getExamTypeLabel(examType)}
-            </div>
-            <div class="exam-code">
-              <i class="fas fa-barcode"></i> ${exam.accessCode || "N/A"}
-            </div>
-            <h3 class="exam-title">${examTitle}</h3>
-            <p class="exam-description">${examDescription || "Prepare for your exam with our comprehensive test suite."}</p>
-            <div class="exam-meta">
-              <div class="exam-meta-item">
-                <i class="fas fa-clock"></i>
-                <span>${exam.duration ? Math.round(exam.duration / 60) + " mins" : "Untimed"}</span>
-              </div>
-              <div class="exam-meta-item">
-                <i class="fas fa-question-circle"></i>
-                <span>${getQuestionCount(exam)} questions</span>
-              </div>
-              <div class="exam-meta-item">
-                <i class="fas fa-book"></i>
-                <span>${(exam.tags || []).slice(0, 1).join(", ") || "General"}</span>
-              </div>
-            </div>
-            <div class="exam-footer">
-              <a href="mock-access?accessCode=${encodeURIComponent(exam.accessCode)}&courseCode=${encodeURIComponent(exam.subject)}" class="practice-btn">
-                <i class="fas fa-play-circle"></i> Start Practice
-              </a>
-            </div>
-          </div>
-        `;
-        examsGrid.appendChild(card);
-      });
-    }
+  grid.innerHTML = exams.map(exam => `
+    <div class="exam-card ${exam.type}">
+      <div class="exam-header">
+        <div class="exam-icon">${exam.type === 'theory' ? '📄' : exam.type === 'hybrid' ? '📋' : '📝'}</div>
+        <div class="exam-subject">${exam.subject}</div>
+      </div>
+      <div class="exam-body">
+        <span class="exam-type-badge ${exam.type}">
+          <i class="fas fa-${exam.type === 'theory' ? 'file-alt' : exam.type === 'hybrid' ? 'list' : 'check-circle'}"></i>
+          ${exam.type.toUpperCase()}
+        </span>
+        <span class="exam-code"><i class="fas fa-lock"></i> ${exam.accessCode}</span>
+        <h3 class="exam-title">${exam.title || exam.subject}</h3>
+        <p class="exam-description">${exam.description || 'Practice exam'}</p>
+        <div class="exam-meta">
+          ${exam.cbtCount > 0 ? `<div class="exam-meta-item"><i class="fas fa-check-circle"></i> ${exam.cbtCount} MCQ</div>` : ''}
+          ${exam.theoryCount > 0 ? `<div class="exam-meta-item"><i class="fas fa-file-alt"></i> ${exam.theoryCount} Theory</div>` : ''}
+        </div>
+        <div class="exam-footer">
+          <button class="practice-btn" onclick="startExam('${exam._id}')">
+            <i class="fas fa-play"></i> Start Exam
+          </button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
 
     // ============ PAGINATION ============
     function renderPagination() {
