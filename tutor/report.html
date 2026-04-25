@@ -901,17 +901,11 @@
       try {
         if (!answerId) return null;
         const token = localStorage.getItem("student_jwt_token");
-        console.log("Fetching answer detail for:", answerId);
         const res = await fetch(`${API_BASE}/api/theory-answers/${answerId}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (!res.ok) {
-          console.error("Failed to fetch answer, status:", res.status);
-          return null;
-        }
-        const data = await res.json();
-        console.log("Answer detail:", data);
-        return data;
+        if (!res.ok) return null;
+        return await res.json();
       } catch (err) {
         console.error("Fetch answer detail error:", err);
         return null;
@@ -997,7 +991,7 @@
             <i class="fas fa-exclamation-circle"></i> No questions found.
           </div>
         `;
-        return { correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0, scoreDisplay: "0/0" };
+        return { correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0 };
       }
 
       for (let i = 0; i < questions.length; i++) {
@@ -1104,11 +1098,11 @@
       }
 
       // Check for answers in different possible locations
-      const answerIds = attempt.answers || attempt.theoryanswers || [];
+      const answers = attempt.answers || attempt.theoryanswers || [];
       
-      console.log("Theory attempt answer IDs:", answerIds);
+      console.log("Theory attempt answers:", answers);
 
-      if (!answerIds || answerIds.length === 0) {
+      if (!answers || answers.length === 0) {
         resultsList.innerHTML += `
           <div class="error-message">
             <i class="fas fa-exclamation-circle"></i>
@@ -1123,28 +1117,45 @@
       let graded = 0;
       let pending = 0;
 
-      for (let i = 0; i < answerIds.length; i++) {
-        const answerId = typeof answerIds[i] === 'string' ? answerIds[i] : answerIds[i]._id || answerIds[i].answer;
+      for (let i = 0; i < answers.length; i++) {
+        const answerRef = answers[i];
+        console.log("Processing answer:", answerRef);
+
+        let answerId = null;
+        let answerDetail = null;
+
+        // Handle different response formats
+        if (typeof answerRef === 'string') {
+          answerId = answerRef;
+        } else if (answerRef._id) {
+          answerId = answerRef._id;
+          answerDetail = answerRef; // Full answer object
+        } else if (answerRef.answer) {
+          answerId = answerRef.answer;
+        }
 
         if (!answerId) {
-          console.warn("No answer ID at index", i);
+          console.warn("No answer ID found in:", answerRef);
           continue;
         }
 
-        console.log(`Fetching answer ${i + 1}/${answerIds.length}:`, answerId);
-
-        // Fetch full answer details
-        const answerDetail = await fetchTheoryAnswerDetail(answerId);
+        // Fetch full answer details if not already loaded
+        if (!answerDetail) {
+          try {
+            answerDetail = await fetchTheoryAnswerDetail(answerId);
+          } catch (err) {
+            console.warn("Failed to fetch answer details:", err);
+            continue;
+          }
+        }
 
         if (!answerDetail) {
           console.warn("No answer detail for:", answerId);
           continue;
         }
 
-        console.log("Answer detail retrieved:", answerDetail);
-
         const isGraded = answerDetail.isGraded || false;
-        const score = answerDetail.finalScore !== undefined ? answerDetail.finalScore : (answerDetail.autoScore || 0);
+        const score = answerDetail.finalScore || answerDetail.autoScore || 0;
         const maxMarks = answerDetail.question?.maxMarks || 10;
 
         totalScore += score;
@@ -1158,27 +1169,15 @@
           results.push({ isGraded: false, status: "pending", score, maxMarks });
         }
 
-        // Extract answer content
         const questionText = answerDetail.question?.question || "";
         const questionHtml = normalizeQuestionMath(questionText);
 
         let answerDisplay = "";
-        
-        // Check for text answer
-        if (answerDetail.answerText && answerDetail.answerText.trim()) {
-          answerDisplay = normalizeQuestionMath(answerDetail.answerText);
-        }
-        // Check for OCR extracted text
-        else if (answerDetail.ocrExtractedText && answerDetail.ocrExtractedText.trim()) {
-          answerDisplay = normalizeQuestionMath(answerDetail.ocrExtractedText);
-        }
-        // Check for image answer
-        else if (answerDetail.answerImageUrl) {
-          answerDisplay = `<img src="${answerDetail.answerImageUrl}" alt="Student answer" style="max-width: 100%; max-height: 400px; border-radius: 0.5rem; border: 1px solid #e5e7eb;" />`;
-        }
-        // No answer provided
-        else {
-          answerDisplay = "<em style='color: #9ca3af;'>No answer provided</em>";
+        if (answerDetail.answerType === "text") {
+          const textContent = answerDetail.answerText || answerDetail.ocrExtractedText || "";
+          answerDisplay = normalizeQuestionMath(textContent);
+        } else if (answerDetail.answerType === "image") {
+          answerDisplay = `<img src="${answerDetail.answerImageUrl}" alt="Student answer" style="max-width: 100%; max-height: 300px; border-radius: 0.5rem;" />`;
         }
 
         const statusColor = isGraded ? "correct" : "pending";
@@ -1195,7 +1194,7 @@
             <div class="answer-section">
               <div class="answer-label">Your Answer</div>
               <div class="theory-answer-display">
-                ${answerDisplay}
+                ${answerDisplay || "<em>No answer provided</em>"}
               </div>
             </div>
 
@@ -1213,7 +1212,7 @@
               <div class="explanation-box">
                 <details>
                   <summary class="explanation-summary">
-                    <i class="fas fa-key"></i> Matched Keywords (${answerDetail.matchedKeywords.length})
+                    <i class="fas fa-key"></i> Matched Keywords
                   </summary>
                   <div class="explanation-content" style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
                     ${answerDetail.matchedKeywords.map(kw => `<span style="background: #dcfce7; color: #166534; padding: 0.35rem 0.75rem; border-radius: 0.35rem; display: inline-block; font-size: 0.85rem; font-weight: 600;">${kw}</span>`).join("")}
@@ -1261,9 +1260,7 @@
         }
       }
 
-      // Calculate final score
-      const percent = totalMarks > 0 ? Math.round(totalScore / totalMarks * 100) : 0;
-      const totalAnswered = graded + pending;
+      const percent = totalMarks ? Math.round(totalScore / totalMarks * 100) : 0;
 
       return { 
         correct: graded, 
@@ -1271,7 +1268,7 @@
         pending: pending, 
         unanswered: 0, 
         percent: percent, 
-        total: totalAnswered,
+        total: results.length,
         scoreDisplay: `${totalScore}/${totalMarks}`
       };
     }
@@ -1315,7 +1312,7 @@
                 No attempt ID found. Please retake the exam.
               </div>
             `;
-            updateScoreCard({ correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0, scoreDisplay: "0/0" });
+            updateScoreCard({ correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0 });
             return;
           }
 
@@ -1336,7 +1333,7 @@
                 No questions found.
               </div>
             `;
-            updateScoreCard({ correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0, scoreDisplay: "0/0" });
+            updateScoreCard({ correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0 });
             return;
           }
 
@@ -1354,7 +1351,7 @@
             Error loading results: ${err.message}
           </div>
         `;
-        updateScoreCard({ correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0, scoreDisplay: "0/0" });
+        updateScoreCard({ correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0 });
       }
     }
 
