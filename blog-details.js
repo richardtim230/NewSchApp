@@ -1,4 +1,4 @@
-const API_BASE = "https://examguard-jmvj.onrender.com/api";
+const API_BASE = "https://examguide.onrender.com/api";
 const POSTS_API = API_BASE + "/public/posts";
 const USERS_API = API_BASE + "/users";
 const READS_API = API_BASE + "/posts";
