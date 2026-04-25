@@ -451,501 +451,561 @@
     </footer>
 
     <script>
-        "use strict";
+"use strict";
 
-        // ============ CONFIG ============
-        const API_BASE = "https://examguide.onrender.com";
-        const REGISTRATION_URL = "https://oau.examguard.com.ng/auth/register";
-        const FORGOT_PASSWORD_URL = "https://oau.examguard.com.ng/auth/forgot-password";
-        const CREDIT_COST_PER_EXAM = 8;
-        const WHATSAPP_ADMIN = "2349056254709";
+// ============ CONFIG ============
+const API_BASE = "https://examguide.onrender.com";
+const REGISTRATION_URL = "https://oau.examguard.com.ng/auth/register";
+const FORGOT_PASSWORD_URL = "https://oau.examguard.com.ng/auth/forgot-password";
+const CREDIT_COST_PER_EXAM = 8;
+const WHATSAPP_ADMIN = "2349056254709";
 
-        // ============ UTILITIES ============
-        function setToken(token) {
-            localStorage.setItem("student_jwt_token", token);
+// ============ UTILITIES ============
+function setToken(token) {
+    localStorage.setItem("student_jwt_token", token);
+}
+
+function getToken() {
+    return localStorage.getItem("student_jwt_token") || "";
+}
+
+function clearToken() {
+    localStorage.removeItem("student_jwt_token");
+    localStorage.removeItem("token");
+    localStorage.removeItem("exam_access_code");
+    localStorage.removeItem("exam_course_code");
+    localStorage.removeItem("exam_type");
+    localStorage.removeItem("cbt_count");
+    localStorage.removeItem("theory_count");
+}
+
+function showLoadingOverlay(show = true, message = "Checking authentication...") {
+    const overlay = document.getElementById('loading-overlay');
+    const textElem = document.getElementById('loading-text-main');
+    if (show) {
+        overlay.classList.remove('hidden');
+        textElem.textContent = message;
+    } else {
+        overlay.classList.add('hidden');
+    }
+}
+
+function setBtnSpinner(btn, show, text = "") {
+    if (show) {
+        btn.disabled = true;
+        btn._realText = btn.querySelector('span')?.textContent;
+        const spinnerHTML = `<span class="spinner mr-2"></span>${text || "Processing"}`;
+        btn.querySelector('span').innerHTML = spinnerHTML;
+    } else {
+        btn.disabled = false;
+        if (btn._realText) {
+            btn.querySelector('span').textContent = btn._realText;
         }
+    }
+}
 
-        function getToken() {
-            return localStorage.getItem("student_jwt_token") || "";
-        }
+function showModal(options) {
+    const root = document.getElementById("modal-root");
+    
+    let studentName = currentUser?.fullName || currentUser?.fullname || currentUser?.name || currentUser?.username || currentUser?.email || "Student";
+    let studentEmail = currentUser?.email || currentUser?.matricNo || currentUser?.studentId || currentUser?.matricNumber || "";
+    let studentMsg = "";
 
-        function clearToken() {
-            localStorage.removeItem("student_jwt_token");
-            localStorage.removeItem("token");
-            localStorage.removeItem("exam_access_code");
-            localStorage.removeItem("exam_course_code");
-        }
+    if (options.type === "credit") {
+        let details = `Hello, I want to purchase ExamGuard credits.\n\nName: ${studentName}\nEmail/Matric: ${studentEmail}`;
+        studentMsg = encodeURIComponent(details);
+    }
 
-        function showLoadingOverlay(show = true, message = "Checking authentication...") {
-            const overlay = document.getElementById('loading-overlay');
-            const textElem = document.getElementById('loading-text-main');
-            if (show) {
-                overlay.classList.remove('hidden');
-                textElem.textContent = message;
-            } else {
-                overlay.classList.add('hidden');
-            }
-        }
-
-        function setBtnSpinner(btn, show, text = "") {
-            if (show) {
-                btn.disabled = true;
-                btn._realText = btn.querySelector('span')?.textContent;
-                const spinnerHTML = `<span class="spinner mr-2"></span>${text || "Processing"}`;
-                btn.querySelector('span').innerHTML = spinnerHTML;
-            } else {
-                btn.disabled = false;
-                if (btn._realText) {
-                    btn.querySelector('span').textContent = btn._realText;
-                }
-            }
-        }
-
-        function showModal(options) {
-            const root = document.getElementById("modal-root");
-            
-            let studentName = currentUser?.fullName || currentUser?.fullname || currentUser?.name || currentUser?.username || currentUser?.email || "Student";
-            let studentEmail = currentUser?.email || currentUser?.matricNo || currentUser?.studentId || currentUser?.matricNumber || "";
-            let studentMsg = "";
-
-            if (options.type === "credit") {
-                let details = `Hello, I want to purchase ExamGuard credits.\n\nName: ${studentName}\nEmail/Matric: ${studentEmail}`;
-                studentMsg = encodeURIComponent(details);
-            }
-
-            root.innerHTML = `
-                <div class="modal-bg" id="modal-overlay">
-                    <div class="modal-panel max-w-sm mx-4">
-                        <div class="flex flex-col items-center space-y-3">
-                            <div class="flex justify-center mb-2">
-                                <i class="fa fa-info-circle text-yellow-500 text-5xl animate-bounce"></i>
+    root.innerHTML = `
+        <div class="modal-bg" id="modal-overlay">
+            <div class="modal-panel max-w-sm mx-4">
+                <div class="flex flex-col items-center space-y-3">
+                    <div class="flex justify-center mb-2">
+                        <i class="fa fa-info-circle text-yellow-500 text-5xl animate-bounce"></i>
+                    </div>
+                    <div class="text-xl font-extrabold text-blue-800">${options.title || "Notice"}</div>
+                    <p class="text-base text-gray-700 leading-relaxed">${options.message}</p>
+                    
+                    ${
+                        options.type === "credit"
+                        ? `
+                        <div class="pay-details w-full">
+                            <div>
+                                <strong>Bank Name:</strong> Opay Microfinance Bank
                             </div>
-                            <div class="text-xl font-extrabold text-blue-800">${options.title || "Notice"}</div>
-                            <p class="text-base text-gray-700 leading-relaxed">${options.message}</p>
-                            
-                            ${
-                                options.type === "credit"
-                                ? `
-                                <div class="pay-details w-full">
-                                    <div>
-                                        <strong>Bank Name:</strong> Opay Microfinance Bank
-                                    </div>
-                                    <div>
-                                        <strong>Account Name:</strong> Ochuko Timothy Richard
-                                    </div>
-                                    <div>
-                                        <strong>Account Number:</strong>
-                                        <div class="pay-account mt-1">9070962822</div>
-                                    </div>
-                                </div>
-                                <p class="text-xs text-gray-600 mt-3">
-                                    After payment, send your receipt to admin via WhatsApp below for instant credit activation.
-                                </p>
-                                `
-                                : ""
-                            }
-
-                            <div class="flex flex-col gap-2 w-full mt-3">
-                                ${
-                                    options.cta
-                                    ? `
-                                    <a 
-                                        href="${options.type === "credit" ? ("https://wa.me/" + WHATSAPP_ADMIN + "?text=" + studentMsg) : (options.ctaHref || "#")}"
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        class="w-full flex items-center justify-center gap-2 py-3 px-5 rounded-xl font-bold text-white bg-green-600 hover:bg-green-700 shadow transition hover:scale-105"
-                                        style="text-decoration:none">
-                                        <i class="fab fa-whatsapp text-xl"></i>
-                                        ${options.cta}
-                                    </a>
-                                    `
-                                    : ""
-                                }
-
-                                <button 
-                                    id="close-modal-btn"
-                                    class="py-3 px-5 bg-blue-800 text-white font-semibold rounded-xl hover:bg-blue-900 shadow transition">
-                                    Close
-                                </button>
+                            <div>
+                                <strong>Account Name:</strong> Ochuko Timothy Richard
+                            </div>
+                            <div>
+                                <strong>Account Number:</strong>
+                                <div class="pay-account mt-1">9070962822</div>
                             </div>
                         </div>
+                        <p class="text-xs text-gray-600 mt-3">
+                            After payment, send your receipt to admin via WhatsApp below for instant credit activation.
+                        </p>
+                        `
+                        : ""
+                    }
+
+                    <div class="flex flex-col gap-2 w-full mt-3">
+                        ${
+                            options.cta
+                            ? `
+                            <a 
+                                href="${options.type === "credit" ? ("https://wa.me/" + WHATSAPP_ADMIN + "?text=" + studentMsg) : (options.ctaHref || "#")}"
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                class="w-full flex items-center justify-center gap-2 py-3 px-5 rounded-xl font-bold text-white bg-green-600 hover:bg-green-700 shadow transition hover:scale-105"
+                                style="text-decoration:none">
+                                <i class="fab fa-whatsapp text-xl"></i>
+                                ${options.cta}
+                            </a>
+                            `
+                            : ""
+                        }
+
+                        <button 
+                            id="close-modal-btn"
+                            class="py-3 px-5 bg-blue-800 text-white font-semibold rounded-xl hover:bg-blue-900 shadow transition">
+                            Close
+                        </button>
                     </div>
                 </div>
-            `;
+            </div>
+        </div>
+    `;
 
-            document.getElementById("close-modal-btn").onclick = () => {
-                root.innerHTML = "";
-            };
+    document.getElementById("close-modal-btn").onclick = () => {
+        root.innerHTML = "";
+    };
 
-            document.getElementById("modal-overlay")?.addEventListener('click', (e) => {
-                if (e.target.id === 'modal-overlay') {
-                    root.innerHTML = "";
-                }
-            });
+    document.getElementById("modal-overlay")?.addEventListener('click', (e) => {
+        if (e.target.id === 'modal-overlay') {
+            root.innerHTML = "";
         }
+    });
+}
 
-        // ============ DOM ELEMENTS ============
-        const loginForm = document.getElementById('login-form');
-        const accessForm = document.getElementById('access-form');
-        const loginSection = document.getElementById('login-section');
-        const regNumInput = document.getElementById('regNumber');
-        const passwordInput = document.getElementById('password');
-        const loginErrMsg = document.getElementById('login-error-message');
-        const errorElem = document.getElementById('error-message');
-        const introDesc = document.getElementById('intro-desc');
-        const loginBtn = document.getElementById('login-btn');
-        const accessBtn = document.getElementById('access-btn');
-        const registerBtn = document.getElementById('register-btn');
-        const logoutBtn = document.getElementById('logout-btn');
-        const studentCreditElem = document.getElementById('studentCredit');
-        const courseCodeInput = document.getElementById('courseCode');
-        const accessCodeInput = document.getElementById('accessCode');
+// ============ DOM ELEMENTS ============
+const loginForm = document.getElementById('login-form');
+const accessForm = document.getElementById('access-form');
+const loginSection = document.getElementById('login-section');
+const regNumInput = document.getElementById('regNumber');
+const passwordInput = document.getElementById('password');
+const loginErrMsg = document.getElementById('login-error-message');
+const errorElem = document.getElementById('error-message');
+const introDesc = document.getElementById('intro-desc');
+const loginBtn = document.getElementById('login-btn');
+const accessBtn = document.getElementById('access-btn');
+const registerBtn = document.getElementById('register-btn');
+const logoutBtn = document.getElementById('logout-btn');
+const studentCreditElem = document.getElementById('studentCredit');
+const courseCodeInput = document.getElementById('courseCode');
+const accessCodeInput = document.getElementById('accessCode');
 
-        let currentUser = null;
-        let currentExamInfo = null;
+let currentUser = null;
+let currentExamInfo = null;
 
-        // ============ EVENT LISTENERS ============
-        registerBtn?.addEventListener('click', function(e) {
-            e.preventDefault();
-            window.location.href = REGISTRATION_URL;
+// ============ EVENT LISTENERS ============
+registerBtn?.addEventListener('click', function(e) {
+    e.preventDefault();
+    window.location.href = REGISTRATION_URL;
+});
+
+document.getElementById('forgot-password-link')?.addEventListener('click', function(e) {
+    e.preventDefault();
+    window.location.href = FORGOT_PASSWORD_URL;
+});
+
+logoutBtn?.addEventListener('click', function(e) {
+    e.preventDefault();
+    logoutUser();
+});
+
+document.addEventListener("DOMContentLoaded", function() {
+    const params = new URLSearchParams(window.location.search);
+    const coursePrefill = params.get("examCode") || params.get("courseCode") || "";
+    const accessPrefill = params.get("accessCode") || "";
+
+    if (coursePrefill) courseCodeInput.value = coursePrefill.toUpperCase();
+    if (accessPrefill) accessCodeInput.value = accessPrefill;
+
+    courseCodeInput.addEventListener('input', function() {
+        const val = courseCodeInput.value.toUpperCase();
+        courseCodeInput.value = val;
+        
+        if (val && (!accessCodeInput.value || accessCodeInput.value.length < 4)) {
+            accessCodeInput.value = val;
+        }
+    });
+
+    document.getElementById('year').textContent = new Date().getFullYear();
+});
+
+// ============ API CALLS ============
+async function fetchProfile(token) {
+    try {
+        if (!token) throw new Error("No token");
+        const res = await fetch(API_BASE + "/api/auth/me", {
+            headers: { Authorization: "Bearer " + token }
         });
+        if (!res.ok) throw new Error("Not authenticated");
+        const json = await res.json();
+        return json.user || json;
+    } catch (err) {
+        console.error("Profile fetch error:", err);
+        return null;
+    }
+}
 
-        document.getElementById('forgot-password-link')?.addEventListener('click', function(e) {
-            e.preventDefault();
-            window.location.href = FORGOT_PASSWORD_URL;
+async function fetchExamInfo(accessCode, token) {
+    try {
+        if (!accessCode || !token) throw new Error("Missing params");
+        const res = await fetch(
+            `${API_BASE}/api/exam-set/by-access?accessCode=${encodeURIComponent(accessCode)}`,
+            {
+                headers: { Authorization: "Bearer " + token }
+            }
+        );
+        if (!res.ok) throw new Error("Exam not found");
+        return await res.json();
+    } catch (err) {
+        console.error("Exam fetch error:", err);
+        return null;
+    }
+}
+
+async function fetchCBTQuestions(examSetId, token) {
+    try {
+        if (!examSetId || !token) throw new Error("Missing params");
+        const res = await fetch(`${API_BASE}/api/cbt-questions?examSet=${encodeURIComponent(examSetId)}`, {
+            headers: { Authorization: "Bearer " + token }
         });
+        if (!res.ok) throw new Error("CBT questions not found");
+        return await res.json();
+    } catch (err) {
+        console.error("CBT questions fetch error:", err);
+        return [];
+    }
+}
 
-        logoutBtn?.addEventListener('click', function(e) {
-            e.preventDefault();
-            logoutUser();
+async function fetchTheoryQuestions(examSetId, token) {
+    try {
+        if (!examSetId || !token) throw new Error("Missing params");
+        const res = await fetch(`${API_BASE}/api/theory-questions?examSet=${encodeURIComponent(examSetId)}`, {
+            headers: { Authorization: "Bearer " + token }
         });
+        if (!res.ok) throw new Error("Theory questions not found");
+        return await res.json();
+    } catch (err) {
+        console.error("Theory questions fetch error:", err);
+        return [];
+    }
+}
 
-        document.addEventListener("DOMContentLoaded", function() {
-            const params = new URLSearchParams(window.location.search);
-            const coursePrefill = params.get("examCode") || params.get("courseCode") || "";
-            const accessPrefill = params.get("accessCode") || "";
-
-            if (coursePrefill) courseCodeInput.value = coursePrefill.toUpperCase();
-            if (accessPrefill) accessCodeInput.value = accessPrefill;
-
-            courseCodeInput.addEventListener('input', function() {
-                const val = courseCodeInput.value.toUpperCase();
-                courseCodeInput.value = val;
-                
-                if (val && (!accessCodeInput.value || accessCodeInput.value.length < 4)) {
-                    accessCodeInput.value = val;
-                }
-            });
-
-            document.getElementById('year').textContent = new Date().getFullYear();
+async function deductCredit(accessCode, token) {
+    try {
+        if (!accessCode || !token) throw new Error("Missing params");
+        const res = await fetch(`${API_BASE}/api/student/exam-set/use-credit-v2`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + token
+            },
+            body: JSON.stringify({ accessCode })
         });
+        return await res.json();
+    } catch (err) {
+        console.error("Credit deduction error:", err);
+        return null;
+    }
+}
 
-        // ============ API CALLS ============
-        async function fetchProfile(token) {
-            try {
-                if (!token) throw new Error("No token");
-                const res = await fetch(API_BASE + "/api/auth/me", {
-                    headers: { Authorization: "Bearer " + token }
-                });
-                if (!res.ok) throw new Error("Not authenticated");
-                const json = await res.json();
-                return json.user || json;
-            } catch (err) {
-                console.error("Profile fetch error:", err);
-                return null;
-            }
-        }
+function determineExamType(cbtCount, theoryCount) {
+    if (cbtCount > 0 && theoryCount > 0) return 'hybrid';
+    if (theoryCount > 0) return 'theory';
+    return 'cbt';
+}
 
-        async function fetchExamInfo(accessCode, token) {
-            try {
-                if (!accessCode || !token) throw new Error("Missing params");
-                const res = await fetch(
-                    `${API_BASE}/api/exam-set/by-access?accessCode=${encodeURIComponent(accessCode)}`,
-                    {
-                        headers: { Authorization: "Bearer " + token }
-                    }
-                );
-                if (!res.ok) throw new Error("Exam not found");
-                return await res.json();
-            } catch (err) {
-                console.error("Exam fetch error:", err);
-                return null;
-            }
-        }
+// ============ UI STATE MANAGEMENT ============
+function showLogin() {
+    loginForm.classList.remove("hidden");
+    accessForm.classList.add("hidden");
+    loginSection.innerHTML = '';
+    introDesc.textContent = "Log in and enter your course/access code to start your test.";
+    document.getElementById('navbar-status').textContent = "Login Required";
+}
 
-        async function deductCredit(accessCode, token) {
-            try {
-                if (!accessCode || !token) throw new Error("Missing params");
-                const res = await fetch(`${API_BASE}/api/student/exam-set/use-credit-v2`, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": "Bearer " + token
-                    },
-                    body: JSON.stringify({ accessCode })
-                });
-                return await res.json();
-            } catch (err) {
-                console.error("Credit deduction error:", err);
-                return null;
-            }
-        }
+function showAccess(user) {
+    loginForm.classList.add("hidden");
+    accessForm.classList.remove("hidden");
 
-        // ============ UI STATE MANAGEMENT ============
-        function showLogin() {
-            loginForm.classList.remove("hidden");
-            accessForm.classList.add("hidden");
-            loginSection.innerHTML = '';
-            introDesc.textContent = "Log in and enter your course/access code to start your test.";
-            document.getElementById('navbar-status').textContent = "Login Required";
-        }
+    const displayName = user.fullName || user.fullname || user.name || user.username || user.email || user.studentId || user.matricNumber || "Student";
+    const userIdentifier = user.email || user.matricNo || user.studentId || user.matricNumber || user.username || "—";
 
-        function showAccess(user) {
-            loginForm.classList.add("hidden");
-            accessForm.classList.remove("hidden");
+    document.getElementById('logged-in-user').textContent = `${displayName.substring(0, 20)}${displayName.length > 20 ? '...' : ''}`;
+    studentCreditElem.innerText = user.creditPoints != null ? user.creditPoints : (user.credits != null ? user.credits : "—");
 
-            const displayName = user.fullName || user.fullname || user.name || user.username || user.email || user.studentId || user.matricNumber || "Student";
-            const userIdentifier = user.email || user.matricNo || user.studentId || user.matricNumber || user.username || "—";
+    introDesc.textContent = "Enter your course/access code to proceed with your exam.";
+    document.getElementById('navbar-status').textContent = `Logged in as ${displayName.substring(0, 15)}`;
+}
 
-            document.getElementById('logged-in-user').textContent = `${displayName.substring(0, 20)}${displayName.length > 20 ? '...' : ''}`;
-            studentCreditElem.innerText = user.creditPoints != null ? user.creditPoints : (user.credits != null ? user.credits : "—");
+function logoutUser() {
+    clearToken();
+    currentUser = null;
+    currentExamInfo = null;
+    location.reload();
+}
 
-            introDesc.textContent = "Enter your course/access code to proceed with your exam.";
-            document.getElementById('navbar-status').textContent = `Logged in as ${displayName.substring(0, 15)}`;
-        }
+window.logoutUser = logoutUser;
 
-        function logoutUser() {
-            clearToken();
-            currentUser = null;
-            currentExamInfo = null;
-            location.reload();
-        }
-
-        window.logoutUser = logoutUser;
-
-        // ============ INITIALIZATION ============
-        (async function checkAuthOnLoad() {
-            showLoadingOverlay(true, "Checking authentication...");
-            try {
-                const token = getToken() || localStorage.getItem('token');
-                if (token) {
-                    const user = await fetchProfile(token);
-                    if (user && user._id) {
-                        setToken(token);
-                        currentUser = user;
-                        showAccess(user);
-                    } else {
-                        clearToken();
-                        showLogin();
-                    }
-                } else {
-                    showLogin();
-                }
-            } catch (err) {
-                console.error('Auth check error:', err);
-                showLogin();
-            } finally {
-                showLoadingOverlay(false);
-            }
-        })();
-
-        // ============ LOGIN FORM HANDLER ============
-        loginForm?.addEventListener('submit', async function(e) {
-            e.preventDefault();
-            loginErrMsg.classList.add("hidden");
-            setBtnSpinner(loginBtn, true, "Logging in...");
-
-            const username = regNumInput.value.trim();
-            const password = passwordInput.value;
-
-            if (!username || !password) {
-                loginErrMsg.textContent = "❌ All fields are required.";
-                loginErrMsg.classList.remove("hidden");
-                setBtnSpinner(loginBtn, false);
-                return;
-            }
-
-            try {
-                const response = await fetch(API_BASE + "/api/auth/login", {
-                    method: "POST",
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
-                });
-
-                const data = await response.json();
-
-                if (response.ok && data.token) {
-                    localStorage.setItem('token', data.token);
-                    setToken(data.token);
-
-                    const meResp = await fetch(API_BASE + "/api/auth/me", {
-                        headers: { 'Authorization': 'Bearer ' + data.token }
-                    });
-                    const meData = await meResp.json();
-                    const user = meData.user || meData;
-
-                    if (meResp.ok && user && user._id) {
-                        setToken(data.token);
-                        currentUser = user;
-                        setBtnSpinner(loginBtn, false);
-                        showAccess(user);
-                    } else {
-                        loginErrMsg.textContent = "❌ Login succeeded, but profile could not be loaded.";
-                        loginErrMsg.classList.remove("hidden");
-                        setBtnSpinner(loginBtn, false);
-                    }
-                } else {
-                    loginErrMsg.textContent = `❌ ${data.message || "Invalid credentials. Please try again."}`;
-                    loginErrMsg.classList.remove("hidden");
-                    setBtnSpinner(loginBtn, false);
-                }
-            } catch (err) {
-                console.error("Login error:", err);
-                loginErrMsg.textContent = "❌ Server error. Please check your connection and try again.";
-                loginErrMsg.classList.remove("hidden");
-                setBtnSpinner(loginBtn, false);
-            }
-        });
-
-        // ============ ACCESS FORM HANDLER ============
-        accessForm?.addEventListener('submit', async function(e) {
-            e.preventDefault();
-            errorElem.classList.add("hidden");
-            document.getElementById("credit-message").classList.add("hidden");
-            document.getElementById("exam-type-display").classList.add("hidden");
-            setBtnSpinner(accessBtn, true, "Verifying exam...");
-
-            if (!currentUser || !currentUser._id) {
-                errorElem.innerHTML = "❌ <strong>Session Expired:</strong> Please log in again.";
-                errorElem.classList.remove("hidden");
+// ============ INITIALIZATION ============
+(async function checkAuthOnLoad() {
+    showLoadingOverlay(true, "Checking authentication...");
+    try {
+        const token = getToken() || localStorage.getItem('token');
+        if (token) {
+            const user = await fetchProfile(token);
+            if (user && user._id) {
+                setToken(token);
+                currentUser = user;
+                showAccess(user);
+            } else {
                 clearToken();
-                setBtnSpinner(accessBtn, false);
-                setTimeout(() => location.reload(), 1500);
-                return;
+                showLogin();
             }
+        } else {
+            showLogin();
+        }
+    } catch (err) {
+        console.error('Auth check error:', err);
+        showLogin();
+    } finally {
+        showLoadingOverlay(false);
+    }
+})();
 
-            const accessCode = accessCodeInput.value.trim();
-            const courseCode = courseCodeInput.value.trim().toUpperCase();
-            const token = getToken() || localStorage.getItem('token');
+// ============ LOGIN FORM HANDLER ============
+loginForm?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    loginErrMsg.classList.add("hidden");
+    setBtnSpinner(loginBtn, true, "Logging in...");
 
-            if (accessCode.length < 3) {
-                errorElem.textContent = "❌ Access Code must be at least 3 characters.";
-                errorElem.classList.remove("hidden");
-                setBtnSpinner(accessBtn, false);
-                return;
+    const username = regNumInput.value.trim();
+    const password = passwordInput.value;
+
+    if (!username || !password) {
+        loginErrMsg.textContent = "❌ All fields are required.";
+        loginErrMsg.classList.remove("hidden");
+        setBtnSpinner(loginBtn, false);
+        return;
+    }
+
+    try {
+        const response = await fetch(API_BASE + "/api/auth/login", {
+            method: "POST",
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.token) {
+            localStorage.setItem('token', data.token);
+            setToken(data.token);
+
+            const meResp = await fetch(API_BASE + "/api/auth/me", {
+                headers: { 'Authorization': 'Bearer ' + data.token }
+            });
+            const meData = await meResp.json();
+            const user = meData.user || meData;
+
+            if (meResp.ok && user && user._id) {
+                setToken(data.token);
+                currentUser = user;
+                setBtnSpinner(loginBtn, false);
+                showAccess(user);
+            } else {
+                loginErrMsg.textContent = "❌ Login succeeded, but profile could not be loaded.";
+                loginErrMsg.classList.remove("hidden");
+                setBtnSpinner(loginBtn, false);
             }
+        } else {
+            loginErrMsg.textContent = `❌ ${data.message || "Invalid credentials. Please try again."}`;
+            loginErrMsg.classList.remove("hidden");
+            setBtnSpinner(loginBtn, false);
+        }
+    } catch (err) {
+        console.error("Login error:", err);
+        loginErrMsg.textContent = "❌ Server error. Please check your connection and try again.";
+        loginErrMsg.classList.remove("hidden");
+        setBtnSpinner(loginBtn, false);
+    }
+});
 
-            if (courseCode.length < 2) {
-                errorElem.textContent = "❌ Course Code is required.";
-                errorElem.classList.remove("hidden");
+// ============ ACCESS FORM HANDLER ============
+accessForm?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    errorElem.classList.add("hidden");
+    document.getElementById("credit-message").classList.add("hidden");
+    document.getElementById("exam-type-display").classList.add("hidden");
+    setBtnSpinner(accessBtn, true, "Verifying exam...");
+
+    if (!currentUser || !currentUser._id) {
+        errorElem.innerHTML = "❌ <strong>Session Expired:</strong> Please log in again.";
+        errorElem.classList.remove("hidden");
+        clearToken();
+        setBtnSpinner(accessBtn, false);
+        setTimeout(() => location.reload(), 1500);
+        return;
+    }
+
+    const accessCode = accessCodeInput.value.trim();
+    const courseCode = courseCodeInput.value.trim().toUpperCase();
+    const token = getToken() || localStorage.getItem('token');
+
+    if (accessCode.length < 3) {
+        errorElem.textContent = "❌ Access Code must be at least 3 characters.";
+        errorElem.classList.remove("hidden");
+        setBtnSpinner(accessBtn, false);
+        return;
+    }
+
+    if (courseCode.length < 2) {
+        errorElem.textContent = "❌ Course Code is required.";
+        errorElem.classList.remove("hidden");
+        setBtnSpinner(accessBtn, false);
+        return;
+    }
+
+    try {
+        showLoadingOverlay(true, "Fetching exam details...");
+        
+        // Fetch exam set info
+        const examInfo = await fetchExamInfo(accessCode, token);
+        if (!examInfo || !examInfo.examSet) {
+            showLoadingOverlay(false);
+            errorElem.textContent = "❌ Exam not found. Please check your access code.";
+            errorElem.classList.remove("hidden");
+            setBtnSpinner(accessBtn, false);
+            return;
+        }
+
+        const examSet = examInfo.examSet;
+        
+        // Fetch both CBT and Theory questions to determine type
+        showLoadingOverlay(true, "Loading questions...");
+        const [cbtQuestions, theoryQuestions] = await Promise.all([
+            fetchCBTQuestions(examSet._id, token),
+            fetchTheoryQuestions(examSet._id, token)
+        ]);
+
+        const cbtCount = Array.isArray(cbtQuestions) ? cbtQuestions.length : 0;
+        const theoryCount = Array.isArray(theoryQuestions) ? theoryQuestions.length : 0;
+        const examType = determineExamType(cbtCount, theoryCount);
+
+        // Display exam type badge
+        const typeBadges = document.getElementById('exam-type-badges');
+        const typeDisplay = document.getElementById('exam-type-display');
+        let badgeHTML = '';
+        
+        if (examType === 'cbt') {
+            badgeHTML = '<span class="exam-type-badge cbt">📝 Multiple Choice (CBT)</span>';
+        } else if (examType === 'theory') {
+            badgeHTML = '<span class="exam-type-badge theory">📄 Theory/Essay Questions</span>';
+        } else if (examType === 'hybrid') {
+            badgeHTML = `
+                <span class="exam-type-badge cbt">📝 ${cbtCount} Multiple Choice</span>
+                <span class="exam-type-badge theory">📄 ${theoryCount} Essay Questions</span>
+            `;
+        }
+        
+        typeBadges.innerHTML = badgeHTML;
+        typeDisplay.classList.remove('hidden');
+
+        // Show credit requirements
+        const creditBox = document.getElementById('credit-info-box');
+        const creditContent = document.getElementById('credit-info-content');
+        creditContent.innerHTML = `
+            <div>💳 <strong>${CREDIT_COST_PER_EXAM} credits</strong> required to access</div>
+            <div>⏱️ Duration: <strong>${examSet.duration ? Math.round(examSet.duration / 60) + ' minutes' : 'Not specified'}</strong></div>
+            <div>❓ Total Questions: <strong>${cbtCount + theoryCount}</strong></div>
+            ${cbtCount > 0 ? `<div>  ├─ ${cbtCount} Multiple Choice</div>` : ''}
+            ${theoryCount > 0 ? `<div>  └─ ${theoryCount} Essay Questions</div>` : ''}
+        `;
+        creditBox.classList.remove('hidden');
+
+        showLoadingOverlay(false);
+
+        // Deduct credit and proceed
+        showLoadingOverlay(true, "Processing your exam access...");
+        const creditResponse = await deductCredit(accessCode, token);
+
+        showLoadingOverlay(false);
+
+        if (!creditResponse || creditResponse.error) {
+            if ((creditResponse?.message && creditResponse.message.toLowerCase().includes("insufficient")) ||
+                (creditResponse?.creditPoints !== undefined && creditResponse.creditPoints < CREDIT_COST_PER_EXAM)) {
+                
                 setBtnSpinner(accessBtn, false);
-                return;
-            }
+                showModal({
+                    title: "❌ Insufficient Credits",
+                    message: `You need <strong>${CREDIT_COST_PER_EXAM} credits</strong> to access a mock test.<br><br>You currently have <strong>${creditResponse?.creditPoints || 0} credits</strong>.<br><br><span class='text-blue-600 font-semibold'>Get more credits below</span>`,
+                    cta: "Contact Admin for Credits",
+                    type: "credit"
+                });
 
-            try {
-                showLoadingOverlay(true, "Verifying exam details...");
-                
-                // Fetch exam info first
-                const examInfo = await fetchExamInfo(accessCode, token);
-                if (!examInfo || !examInfo.examSet) {
-                    showLoadingOverlay(false);
-                    errorElem.textContent = "❌ Exam not found. Please check your access code.";
-                    errorElem.classList.remove("hidden");
-                    setBtnSpinner(accessBtn, false);
-                    return;
-                }
-
-                currentExamInfo = examInfo;
-                const examSet = examInfo.examSet;
-                const examType = examSet.examType || "cbt";
-
-                // Display exam type
-                const typeBadges = document.getElementById('exam-type-badges');
-                const typeDisplay = document.getElementById('exam-type-display');
-                let badgeHTML = '';
-                
-                if (examType === 'cbt') {
-                    badgeHTML = '<span class="exam-type-badge cbt">📝 Multiple Choice (CBT)</span>';
-                } else if (examType === 'theory') {
-                    badgeHTML = '<span class="exam-type-badge theory">📄 Theory/Essay Questions</span>';
-                } else if (examType === 'hybrid') {
-                    badgeHTML = '<span class="exam-type-badge hybrid">🔀 Mixed (CBT + Theory)</span>';
-                }
-                
-                typeBadges.innerHTML = badgeHTML;
-                typeDisplay.classList.remove('hidden');
-
-                // Show credit requirements
-                const creditBox = document.getElementById('credit-info-box');
-                const creditContent = document.getElementById('credit-info-content');
-                creditContent.innerHTML = `
-                    <div>💳 <strong>${CREDIT_COST_PER_EXAM} credits</strong> required to access</div>
-                    <div>⏱️ Duration: <strong>${examSet.duration ? Math.round(examSet.duration / 60) + ' minutes' : 'Not specified'}</strong></div>
-                    <div>❓ Questions: <strong>${examInfo.questions?.length || 'Loading...'}</strong></div>
-                `;
-                creditBox.classList.remove('hidden');
-
-                showLoadingOverlay(false);
-
-                // Deduct credit and proceed
-                showLoadingOverlay(true, "Processing your exam access...");
-                const creditResponse = await deductCredit(accessCode, token);
-
-                showLoadingOverlay(false);
-
-                if (!creditResponse || creditResponse.error) {
-                    if ((creditResponse?.message && creditResponse.message.toLowerCase().includes("insufficient")) ||
-                        (creditResponse?.creditPoints !== undefined && creditResponse.creditPoints < CREDIT_COST_PER_EXAM)) {
-                        
-                        setBtnSpinner(accessBtn, false);
-                        showModal({
-                            title: "❌ Insufficient Credits",
-                            message: `You need <strong>${CREDIT_COST_PER_EXAM} credits</strong> to access a mock test.<br><br>You currently have <strong>${creditResponse?.creditPoints || 0} credits</strong>.<br><br><span class='text-blue-600 font-semibold'>Get more credits below</span>`,
-                            cta: "Contact Admin for Credits",
-                            type: "credit"
-                        });
-
-                        // Update credit display if available
-                        if (creditResponse?.creditPoints !== undefined) {
-                            studentCreditElem.innerText = creditResponse.creditPoints;
-                            currentUser.creditPoints = creditResponse.creditPoints;
-                        }
-                    } else {
-                        errorElem.textContent = `❌ ${creditResponse?.message || "Unable to access exam. Please try again."}`;
-                        errorElem.classList.remove("hidden");
-                        setBtnSpinner(accessBtn, false);
-                    }
-                    return;
-                }
-
-                // Success - store data and proceed
-                localStorage.setItem("exam_access_code", accessCode);
-                localStorage.setItem("exam_course_code", courseCode);
-                localStorage.setItem("exam_type", examType);
-                
-                // Update credit display
-                if (creditResponse.creditPoints !== undefined) {
+                // Update credit display if available
+                if (creditResponse?.creditPoints !== undefined) {
                     studentCreditElem.innerText = creditResponse.creditPoints;
                     currentUser.creditPoints = creditResponse.creditPoints;
                 }
-
-                setBtnSpinner(accessBtn, false);
-                const creditMsg = document.getElementById("credit-message");
-                creditMsg.textContent = `✓ ${CREDIT_COST_PER_EXAM} credits deducted. Remaining: ${creditResponse.creditPoints || 0} credits`;
-                creditMsg.classList.remove("hidden");
-
-                setTimeout(() => {
-                    window.location.href = "exam-in-session";
-                }, 1200);
-
-            } catch (err) {
-                console.error("Access error:", err);
-                showLoadingOverlay(false);
-                errorElem.textContent = "❌ Network or server error. Please try again.";
+            } else {
+                errorElem.textContent = `❌ ${creditResponse?.message || "Unable to access exam. Please try again."}`;
                 errorElem.classList.remove("hidden");
                 setBtnSpinner(accessBtn, false);
             }
-        });
+            return;
+        }
+
+        // Success - store exam data for the right page
+        localStorage.setItem("exam_access_code", accessCode);
+        localStorage.setItem("exam_course_code", courseCode);
+        localStorage.setItem("exam_type", examType);
+        localStorage.setItem("cbt_count", cbtCount);
+        localStorage.setItem("theory_count", theoryCount);
+        
+        // Update credit display
+        if (creditResponse.creditPoints !== undefined) {
+            studentCreditElem.innerText = creditResponse.creditPoints;
+            currentUser.creditPoints = creditResponse.creditPoints;
+        }
+
+        setBtnSpinner(accessBtn, false);
+        const creditMsg = document.getElementById("credit-message");
+        creditMsg.textContent = `✓ ${CREDIT_COST_PER_EXAM} credits deducted. Remaining: ${creditResponse.creditPoints || 0} credits`;
+        creditMsg.classList.remove("hidden");
+
+        // Route to appropriate exam page
+        setTimeout(() => {
+            if (examType === 'theory') {
+                window.location.href = "theory.html";
+            } else {
+                // CBT or Hybrid - both can use the same page
+                window.location.href = "exam-in-session";
+            }
+        }, 1200);
+
+    } catch (err) {
+        console.error("Access error:", err);
+        showLoadingOverlay(false);
+        errorElem.textContent = "❌ Network or server error. Please try again.";
+        errorElem.classList.remove("hidden");
+        setBtnSpinner(accessBtn, false);
+    }
+});
     </script>
 </body>
 </html>
+                    
