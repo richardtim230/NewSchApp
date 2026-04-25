@@ -1505,55 +1505,56 @@
   </footer>
 
   <script>
-    "use strict";
+"use strict";
 
-    const API_BASE = "https://examguide.onrender.com";
-    const ITEMS_PER_PAGE = 12;
+const API_BASE = "https://examguide.onrender.com";
+const ITEMS_PER_PAGE = 12;
 
-    // State
-    let allExams = [];
-    let filteredExams = [];
-    let currentPage = 1;
-    let activeFilter = "all";
-    let searchTerm = "";
+// State
+let allExams = [];
+let filteredExams = [];
+let currentPage = 1;
+let activeFilter = "all";
+let searchTerm = "";
 
-    // DOM Elements
-    const examsGrid = document.getElementById('examsGrid');
-    const pagination = document.getElementById('pagination');
-    const statusMessage = document.getElementById('statusMessage');
-    const statusText = document.getElementById('statusText');
-    const searchInput = document.getElementById('searchInput');
-    const searchBtn = document.getElementById('searchBtn');
-    const filterButtons = document.querySelectorAll('.filter-btn');
-    const filterClear = document.getElementById('filterClear');
-    const sidebarToggle = document.getElementById('sidebarToggle');
-    const sidebar = document.getElementById('sidebar');
-    const sidebarOverlay = document.getElementById('sidebarOverlay');
-    const totalExamsElem = document.getElementById('totalExams');
-    const cbtCountElem = document.getElementById('cbtCount');
-    const theoryCountElem = document.getElementById('theoryCount');
+// DOM Elements
+const examsGrid = document.getElementById('examsGrid');
+const pagination = document.getElementById('pagination');
+const statusMessage = document.getElementById('statusMessage');
+const statusText = document.getElementById('statusText');
+const searchInput = document.getElementById('searchInput');
+const searchBtn = document.getElementById('searchBtn');
+const filterButtons = document.querySelectorAll('.filter-btn');
+const filterClear = document.getElementById('filterClear');
+const sidebarToggle = document.getElementById('sidebarToggle');
+const sidebar = document.getElementById('sidebar');
+const sidebarOverlay = document.getElementById('sidebarOverlay');
+const totalExamsElem = document.getElementById('totalExams');
+const cbtCountElem = document.getElementById('cbtCount');
+const theoryCountElem = document.getElementById('theoryCount');
+const hybridCountElem = document.getElementById('hybridCount');
 
-    // ============ INITIALIZATION ============
-    async function initializePage() {
-      try {
-        showLoadingState();
-        await fetchAllExams();
-        updateStats();
-        applyFilters();
-      } catch (err) {
-        console.error("Initialization error:", err);
-        showStatusMessage("Failed to load exams. Please refresh the page.");
-      }
-    }
+// ============ INITIALIZATION ============
+async function initializePage() {
+  try {
+    showLoadingState();
+    await fetchAllExams();
+    updateStats();
+    applyFilters();
+  } catch (err) {
+    console.error("Initialization error:", err);
+    showStatusMessage("Failed to load exams. Please refresh the page.");
+  }
+}
 
-    // ============ FETCH EXAMS ============
+// ============ FETCH EXAMS ============
 async function fetchAllExams() {
   try {
     const res = await fetch(`${API_BASE}/api/exam-set`);
     if (!res.ok) throw new Error("Failed to fetch exams");
     const data = await res.json();
     
-    // Enrich with question counts
+    // Enrich with question counts and determine type
     allExams = await Promise.all((data || []).map(async (exam) => {
       try {
         const cbtRes = await fetch(`${API_BASE}/api/cbt-questions?examSet=${exam._id}`);
@@ -1565,301 +1566,331 @@ async function fetchAllExams() {
         const cbtCount = Array.isArray(cbtQuestions) ? cbtQuestions.length : 0;
         const theoryCount = Array.isArray(theoryQuestions) ? theoryQuestions.length : 0;
         
+        // Determine exam type
+        let examType = 'cbt';
+        if (theoryCount > 0 && cbtCount > 0) {
+          examType = 'hybrid';
+        } else if (theoryCount > 0) {
+          examType = 'theory';
+        } else if (cbtCount > 0) {
+          examType = 'cbt';
+        }
+        
         return {
           ...exam,
           cbtCount,
           theoryCount,
-          type: theoryCount > 0 && cbtCount > 0 ? 'hybrid' : theoryCount > 0 ? 'theory' : 'cbt'
+          examType,
+          totalQuestions: cbtCount + theoryCount
         };
       } catch (err) {
         console.warn("Error enriching exam:", err);
-        return { ...exam, cbtCount: 0, theoryCount: 0, type: 'cbt' };
+        return { 
+          ...exam, 
+          cbtCount: 0, 
+          theoryCount: 0, 
+          examType: 'cbt',
+          totalQuestions: 0
+        };
       }
     }));
 
     console.log("Fetched exams:", allExams);
-    renderExams(allExams);
   } catch (err) {
     console.error("Fetch exams error:", err);
     showStatusMessage("Unable to load exams. Please try again later.");
   }
 }
 
-    // ============ FILTERING & SEARCH ============
-    function applyFilters() {
-      currentPage = 1;
-      
-      filteredExams = allExams.filter(exam => {
-        const matchesFilter = activeFilter === "all" || (exam.examType || "cbt") === activeFilter;
-        const matchesSearch = !searchTerm || 
-          exam.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          exam.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          exam.accessCode?.toLowerCase().includes(searchTerm.toLowerCase());
-        
-        return matchesFilter && matchesSearch;
-      });
+// ============ FILTERING & SEARCH ============
+function applyFilters() {
+  currentPage = 1;
+  
+  filteredExams = allExams.filter(exam => {
+    const matchesFilter = activeFilter === "all" || exam.examType === activeFilter;
+    const matchesSearch = !searchTerm || 
+      exam.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      exam.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      exam.accessCode?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    return matchesFilter && matchesSearch;
+  });
 
+  renderExams();
+  renderPagination();
+}
+
+// ============ RENDER EXAMS ============
+function renderExams() {
+  examsGrid.innerHTML = '';
+  
+  if (filteredExams.length === 0) {
+    showStatusMessage("No exams found matching your criteria. Try adjusting your filters.");
+    return;
+  }
+
+  statusMessage.classList.add('hidden');
+
+  const start = (currentPage - 1) * ITEMS_PER_PAGE;
+  const end = start + ITEMS_PER_PAGE;
+  const paginatedExams = filteredExams.slice(start, end);
+
+  paginatedExams.forEach((exam) => {
+    const examType = exam.examType || "cbt";
+    const icon = getExamIcon(examType);
+    const examTitle = exam.title || exam.subject;
+    const examDescription = exam.tags ? exam.tags.join(", ") : "Practice exam";
+    const questionBreakdown = getQuestionBreakdown(exam);
+
+    const card = document.createElement('div');
+    card.className = `exam-card ${examType}`;
+    card.innerHTML = `
+      <div class="exam-header">
+        <div class="exam-icon">${icon}</div>
+        <div class="exam-subject">${exam.subject || "Unknown"}</div>
+      </div>
+      <div class="exam-body">
+        <div class="exam-type-badge ${examType}">
+          <i class="fas ${getExamTypeIcon(examType)}"></i>
+          ${getExamTypeLabel(examType)}
+        </div>
+        <div class="exam-code">
+          <i class="fas fa-barcode"></i> ${exam.accessCode || "N/A"}
+        </div>
+        <h3 class="exam-title">${examTitle}</h3>
+        <p class="exam-description">${examDescription || "Prepare for your exam with our comprehensive test suite."}</p>
+        <div class="exam-meta">
+          <div class="exam-meta-item">
+            <i class="fas fa-clock"></i>
+            <span>${exam.duration ? Math.round(exam.duration / 60) + " mins" : "Untimed"}</span>
+          </div>
+          <div class="exam-meta-item">
+            <i class="fas fa-question-circle"></i>
+            <span>${exam.totalQuestions} ${exam.totalQuestions === 1 ? 'question' : 'questions'}</span>
+          </div>
+          <div class="exam-meta-item">
+            <i class="fas fa-book"></i>
+            <span>${(exam.tags || []).slice(0, 1).join(", ") || "General"}</span>
+          </div>
+        </div>
+        ${questionBreakdown ? `<div class="exam-breakdown">${questionBreakdown}</div>` : ''}
+        <div class="exam-footer">
+          <a href="mock-access.html?accessCode=${encodeURIComponent(exam.accessCode)}&courseCode=${encodeURIComponent(exam.subject)}&type=${examType}" class="practice-btn">
+            <i class="fas fa-play-circle"></i> Start Practice
+          </a>
+        </div>
+      </div>
+    `;
+    examsGrid.appendChild(card);
+  });
+}
+
+// ============ PAGINATION ============
+function renderPagination() {
+  pagination.innerHTML = '';
+  const totalPages = Math.ceil(filteredExams.length / ITEMS_PER_PAGE);
+
+  if (totalPages <= 1) return;
+
+  // Previous button
+  const prevBtn = document.createElement('button');
+  prevBtn.className = 'pagination-btn';
+  prevBtn.disabled = currentPage === 1;
+  prevBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
+  prevBtn.onclick = () => {
+    if (currentPage > 1) {
+      currentPage--;
       renderExams();
       renderPagination();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
+  };
+  pagination.appendChild(prevBtn);
 
-    // ============ RENDER EXAMS ============
+  // Page buttons
+  const startPage = Math.max(1, currentPage - 2);
+  const endPage = Math.min(totalPages, currentPage + 2);
 
-    function renderExams() {
-      examsGrid.innerHTML = '';
-      
-      if (filteredExams.length === 0) {
-        showStatusMessage("No exams found matching your criteria. Try adjusting your filters.");
-        return;
-      }
-
-      statusMessage.classList.add('hidden');
-
-      const start = (currentPage - 1) * ITEMS_PER_PAGE;
-      const end = start + ITEMS_PER_PAGE;
-      const paginatedExams = filteredExams.slice(start, end);
-
-      paginatedExams.forEach((exam, index) => {
-        const examType = exam.examType || "cbt";
-        const icon = getExamIcon(examType);
-        const examTitle = exam.title || exam.subject;
-        const examDescription = exam.tags ? exam.tags.join(", ") : "Practice exam";
-
-        const card = document.createElement('div');
-        card.className = `exam-card ${examType}`;
-        card.innerHTML = `
-          <div class="exam-header">
-            <div class="exam-icon">${icon}</div>
-            <div class="exam-subject">${exam.subject || "Unknown"}</div>
-          </div>
-          <div class="exam-body">
-            <div class="exam-type-badge ${examType}">
-              <i class="fas ${getExamTypeIcon(examType)}"></i>
-              ${getExamTypeLabel(examType)}
-            </div>
-            <div class="exam-code">
-              <i class="fas fa-barcode"></i> ${exam.accessCode || "N/A"}
-            </div>
-            <h3 class="exam-title">${examTitle}</h3>
-            <p class="exam-description">${examDescription || "Prepare for your exam with our comprehensive test suite."}</p>
-            <div class="exam-meta">
-              <div class="exam-meta-item">
-                <i class="fas fa-clock"></i>
-                <span>${exam.duration ? Math.round(exam.duration / 60) + " mins" : "Untimed"}</span>
-              </div>
-              <div class="exam-meta-item">
-                <i class="fas fa-question-circle"></i>
-                <span>${getQuestionCount(exam)} questions</span>
-              </div>
-              <div class="exam-meta-item">
-                <i class="fas fa-book"></i>
-                <span>${(exam.tags || []).slice(0, 1).join(", ") || "General"}</span>
-              </div>
-            </div>
-            <div class="exam-footer">
-              <a href="mock-access?accessCode=${encodeURIComponent(exam.accessCode)}&courseCode=${encodeURIComponent(exam.subject)}" class="practice-btn">
-                <i class="fas fa-play-circle"></i> Start Practice
-              </a>
-            </div>
-          </div>
-        `;
-        examsGrid.appendChild(card);
-      });
+  if (startPage > 1) {
+    const firstBtn = createPageBtn(1);
+    pagination.appendChild(firstBtn);
+    if (startPage > 2) {
+      const dots = document.createElement('span');
+      dots.className = 'pagination-dots';
+      dots.textContent = '...';
+      pagination.appendChild(dots);
     }
+  }
 
-    // ============ PAGINATION ============
-    function renderPagination() {
-      pagination.innerHTML = '';
-      const totalPages = Math.ceil(filteredExams.length / ITEMS_PER_PAGE);
+  for (let i = startPage; i <= endPage; i++) {
+    pagination.appendChild(createPageBtn(i));
+  }
 
-      if (totalPages <= 1) return;
-
-      // Previous button
-      const prevBtn = document.createElement('button');
-      prevBtn.className = 'pagination-btn';
-      prevBtn.disabled = currentPage === 1;
-      prevBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
-      prevBtn.onclick = () => {
-        if (currentPage > 1) {
-          currentPage--;
-          renderExams();
-          renderPagination();
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-      };
-      pagination.appendChild(prevBtn);
-
-      // Page buttons
-      const startPage = Math.max(1, currentPage - 2);
-      const endPage = Math.min(totalPages, currentPage + 2);
-
-      if (startPage > 1) {
-        const firstBtn = createPageBtn(1);
-        pagination.appendChild(firstBtn);
-        if (startPage > 2) {
-          const dots = document.createElement('span');
-          dots.className = 'pagination-dots';
-          dots.textContent = '...';
-          pagination.appendChild(dots);
-        }
-      }
-
-      for (let i = startPage; i <= endPage; i++) {
-        pagination.appendChild(createPageBtn(i));
-      }
-
-      if (endPage < totalPages) {
-        if (endPage < totalPages - 1) {
-          const dots = document.createElement('span');
-          dots.className = 'pagination-dots';
-          dots.textContent = '...';
-          pagination.appendChild(dots);
-        }
-        const lastBtn = createPageBtn(totalPages);
-        pagination.appendChild(lastBtn);
-      }
-
-      // Next button
-      const nextBtn = document.createElement('button');
-      nextBtn.className = 'pagination-btn';
-      nextBtn.disabled = currentPage === totalPages;
-      nextBtn.innerHTML = '<i class="fas fa-chevron-right"></i>';
-      nextBtn.onclick = () => {
-        if (currentPage < totalPages) {
-          currentPage++;
-          renderExams();
-          renderPagination();
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-      };
-      pagination.appendChild(nextBtn);
+  if (endPage < totalPages) {
+    if (endPage < totalPages - 1) {
+      const dots = document.createElement('span');
+      dots.className = 'pagination-dots';
+      dots.textContent = '...';
+      pagination.appendChild(dots);
     }
+    const lastBtn = createPageBtn(totalPages);
+    pagination.appendChild(lastBtn);
+  }
 
-    function createPageBtn(page) {
-      const btn = document.createElement('button');
-      btn.className = `pagination-btn ${page === currentPage ? 'active' : ''}`;
-      btn.textContent = page;
-      btn.onclick = () => {
-        currentPage = page;
-        renderExams();
-        renderPagination();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      };
-      return btn;
+  // Next button
+  const nextBtn = document.createElement('button');
+  nextBtn.className = 'pagination-btn';
+  nextBtn.disabled = currentPage === totalPages;
+  nextBtn.innerHTML = '<i class="fas fa-chevron-right"></i>';
+  nextBtn.onclick = () => {
+    if (currentPage < totalPages) {
+      currentPage++;
+      renderExams();
+      renderPagination();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
+  };
+  pagination.appendChild(nextBtn);
+}
 
-    // ============ UTILITY FUNCTIONS ============
-    function getExamIcon(type) {
-      const icons = {
-        cbt: "📝",
-        theory: "📄",
-        hybrid: "🔀"
-      };
-      return icons[type] || "📝";
-    }
+function createPageBtn(page) {
+  const btn = document.createElement('button');
+  btn.className = `pagination-btn ${page === currentPage ? 'active' : ''}`;
+  btn.textContent = page;
+  btn.onclick = () => {
+    currentPage = page;
+    renderExams();
+    renderPagination();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  return btn;
+}
 
-    function getExamTypeIcon(type) {
-      const icons = {
-        cbt: "fa-square",
-        theory: "fa-file-alt",
-        hybrid: "fa-layer-group"
-      };
-      return icons[type] || "fa-square";
-    }
+// ============ UTILITY FUNCTIONS ============
+function getExamIcon(type) {
+  const icons = {
+    cbt: "📝",
+    theory: "📄",
+    hybrid: "🔀"
+  };
+  return icons[type] || "📝";
+}
 
-    function getExamTypeLabel(type) {
-      const labels = {
-        cbt: "Multiple Choice",
-        theory: "Essay/Theory",
-        hybrid: "Mixed Type"
-      };
-      return labels[type] || "CBT";
-    }
+function getExamTypeIcon(type) {
+  const icons = {
+    cbt: "fa-square",
+    theory: "fa-file-alt",
+    hybrid: "fa-layer-group"
+  };
+  return icons[type] || "fa-square";
+}
 
-    function getQuestionCount(exam) {
-      const examType = exam.examType || "cbt";
-      if (examType === "theory") {
-        return exam.theoryCount || 0;
-      } else if (examType === "hybrid") {
-        return (exam.cbtCount || 0) + (exam.theoryCount || 0);
-      }
-      return exam.cbtCount || 0;
-    }
+function getExamTypeLabel(type) {
+  const labels = {
+    cbt: "Multiple Choice",
+    theory: "Essay/Theory",
+    hybrid: "Mixed Type"
+  };
+  return labels[type] || "CBT";
+}
 
-    function showStatusMessage(message) {
-      statusText.textContent = message;
-      statusMessage.classList.remove('hidden');
-      examsGrid.innerHTML = '';
-    }
+function getQuestionBreakdown(exam) {
+  const { cbtCount, theoryCount, examType } = exam;
+  
+  if (examType === 'hybrid') {
+    return `<span class="breakdown-text"><i class="fas fa-layer-group" style="color: var(--hybrid-color);"></i> ${cbtCount} MCQ + ${theoryCount} Essay</span>`;
+  } else if (examType === 'theory') {
+    return `<span class="breakdown-text"><i class="fas fa-file-alt" style="color: var(--theory-color);"></i> ${theoryCount} Essay ${theoryCount === 1 ? 'Question' : 'Questions'}</span>`;
+  } else if (examType === 'cbt') {
+    return `<span class="breakdown-text"><i class="fas fa-square" style="color: var(--cbt-color);"></i> ${cbtCount} Multiple Choice ${cbtCount === 1 ? 'Question' : 'Questions'}</span>`;
+  }
+  return '';
+}
 
-    function showLoadingState() {
-      examsGrid.innerHTML = Array(6).fill(0).map(() => `
-        <div class="skeleton-card">
-          <div class="skeleton-header"></div>
-          <div class="skeleton-title"></div>
-          <div class="skeleton-text" style="width: 80%;"></div>
-          <div class="skeleton-text" style="width: 60%;"></div>
-        </div>
-      `).join('');
-    }
+function showStatusMessage(message) {
+  statusText.textContent = message;
+  statusMessage.classList.remove('hidden');
+  examsGrid.innerHTML = '';
+}
 
-    function updateStats() {
-      totalExamsElem.textContent = allExams.length;
-      const cbtCount = allExams.filter(e => (e.examType || "cbt") === "cbt").length;
-      const theoryCount = allExams.filter(e => e.examType === "theory").length;
-      cbtCountElem.textContent = cbtCount;
-      theoryCountElem.textContent = theoryCount;
-    }
+function showLoadingState() {
+  examsGrid.innerHTML = Array(6).fill(0).map(() => `
+    <div class="skeleton-card">
+      <div class="skeleton-header"></div>
+      <div class="skeleton-title"></div>
+      <div class="skeleton-text" style="width: 80%;"></div>
+      <div class="skeleton-text" style="width: 60%;"></div>
+    </div>
+  `).join('');
+}
 
-    // ============ EVENT LISTENERS ============
-    searchBtn.addEventListener('click', () => {
-      searchTerm = searchInput.value.trim();
-      filterClear.style.display = searchTerm || activeFilter !== "all" ? "inline-block" : "none";
-      applyFilters();
-    });
+function updateStats() {
+  const totalCount = allExams.length;
+  const cbtCount = allExams.filter(e => e.examType === "cbt").length;
+  const theoryCount = allExams.filter(e => e.examType === "theory").length;
+  const hybridCount = allExams.filter(e => e.examType === "hybrid").length;
+  
+  totalExamsElem.textContent = totalCount;
+  cbtCountElem.textContent = cbtCount;
+  theoryCountElem.textContent = theoryCount;
+  if (hybridCountElem) {
+    hybridCountElem.textContent = hybridCount;
+  }
+}
 
-    searchInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        searchBtn.click();
-      }
-    });
+// ============ EVENT LISTENERS ============
+searchBtn.addEventListener('click', () => {
+  searchTerm = searchInput.value.trim();
+  filterClear.style.display = searchTerm || activeFilter !== "all" ? "inline-block" : "none";
+  applyFilters();
+});
 
-    filterButtons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        filterButtons.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        activeFilter = btn.dataset.filter;
-        filterClear.style.display = searchTerm || activeFilter !== "all" ? "inline-block" : "none";
-        applyFilters();
-      });
-    });
+searchInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') {
+    searchBtn.click();
+  }
+});
 
-    filterClear.addEventListener('click', () => {
-      activeFilter = "all";
-      searchTerm = "";
-      searchInput.value = "";
-      filterButtons.forEach(b => {
-        b.classList.remove('active');
-        if (b.dataset.filter === "all") b.classList.add('active');
-      });
-      filterClear.style.display = "none";
-      applyFilters();
-    });
+filterButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    filterButtons.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeFilter = btn.dataset.filter;
+    filterClear.style.display = searchTerm || activeFilter !== "all" ? "inline-block" : "none";
+    applyFilters();
+  });
+});
 
-    sidebarToggle.addEventListener('click', () => {
-      sidebar.classList.toggle('active');
-      sidebarOverlay.classList.toggle('active');
-    });
+filterClear.addEventListener('click', () => {
+  activeFilter = "all";
+  searchTerm = "";
+  searchInput.value = "";
+  filterButtons.forEach(b => {
+    b.classList.remove('active');
+    if (b.dataset.filter === "all") b.classList.add('active');
+  });
+  filterClear.style.display = "none";
+  applyFilters();
+});
 
-    sidebarOverlay.addEventListener('click', () => {
-      sidebar.classList.remove('active');
-      sidebarOverlay.classList.remove('active');
-    });
+sidebarToggle.addEventListener('click', () => {
+  sidebar.classList.toggle('active');
+  sidebarOverlay.classList.toggle('active');
+});
 
-    document.getElementById('footerYear').textContent = new Date().getFullYear();
+sidebarOverlay.addEventListener('click', () => {
+  sidebar.classList.remove('active');
+  sidebarOverlay.classList.remove('active');
+});
 
-    // Initialize on load
-    window.addEventListener('DOMContentLoaded', initializePage);
+const footerYear = document.getElementById('footerYear');
+if (footerYear) {
+  footerYear.textContent = new Date().getFullYear();
+}
+
+// Initialize on load
+window.addEventListener('DOMContentLoaded', initializePage);
+
   </script>
 </body>
 </html>
