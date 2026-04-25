@@ -1,1149 +1,1117 @@
+<script>
+    "use strict";
 
+    const API_BASE = "https://examguide.onrender.com";
+    const DEVICE_CHECK_INTERVAL = 5000;
+    let deviceCheckTimer = null;
+    let hasRedirected = false;
 
-    <script>
-        "use strict";
+    // ============ LOCAL STORAGE KEYS ============
+    const LS_KEYS = {
+        ANSWERS: 'cbt_user_answers',
+        SHUFFLED_QUESTIONS: 'cbt_shuffled_questions',
+        EXAM_INFO: 'cbt_exam_info',
+        ATTEMPT_ID: 'cbt_attempt_id',
+        EXAM_DATA: 'cbt_exam_data',
+        CURRENT_QUESTION: 'cbt_current_question',
+        START_TIME: 'cbt_start_time',
+        IMAGE_ANSWERS: 'cbt_image_answers'
+    };
 
-        const API_BASE = "https://examguide.onrender.com";
-        const DEVICE_CHECK_INTERVAL = 5000;
-        let deviceCheckTimer = null;
-        let hasRedirected = false;
+    // ============ DEVICE DETECTION & REDIRECT ============
+    function detectDeviceType() {
+        const userAgent = navigator.userAgent;
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+        const isTablet = /iPad|Android/.test(userAgent) && !/Mobile/.test(userAgent);
+        return {
+            isMobile: isMobile || isTablet,
+            screenWidth: window.innerWidth,
+            isDesktopSize: window.innerWidth >= 1024
+        };
+    }
 
-        // ============ LOCAL STORAGE KEYS ============
-        const LS_KEYS = {
-            ANSWERS: 'cbt_user_answers',
-            SHUFFLED_QUESTIONS: 'cbt_shuffled_questions',
-            EXAM_INFO: 'cbt_exam_info',
-            ATTEMPT_ID: 'cbt_attempt_id',
-            EXAM_DATA: 'cbt_exam_data',
-            CURRENT_QUESTION: 'cbt_current_question',
-            START_TIME: 'cbt_start_time',
-            IMAGE_ANSWERS: 'cbt_image_answers'
+    function performDeviceRedirect() {
+        if (hasRedirected) return;
+
+        const device = detectDeviceType();
+        const currentPath = window.location.pathname;
+        const isCBTMobilePage = currentPath.includes('cbt.html');
+        const isDesktopPage = currentPath.includes('desktop') || currentPath.includes('cbt-desktop');
+
+        if (isCBTMobilePage && device.isDesktopSize && !device.isMobile && !isDesktopPage) {
+            hasRedirected = true;
+            console.log("Redirecting to desktop exam page...");
+            window.location.href = 'exam-in-sessions';
+            return;
+        }
+
+        if (isDesktopPage && (device.isMobile || !device.isDesktopSize)) {
+            hasRedirected = true;
+            console.log("Redirecting to mobile exam page...");
+            window.location.href = 'cbt.html';
+            return;
+        }
+    }
+
+    window.addEventListener('load', performDeviceRedirect);
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(performDeviceRedirect, 500);
+    });
+
+    function startDeviceCheckInterval() {
+        deviceCheckTimer = setInterval(performDeviceRedirect, DEVICE_CHECK_INTERVAL);
+    }
+
+    function stopDeviceCheckInterval() {
+        if (deviceCheckTimer) {
+            clearInterval(deviceCheckTimer);
+            deviceCheckTimer = null;
+        }
+    }
+
+    // ============ LOCAL STORAGE UTILITIES ============
+    function saveToLS(key, data) {
+        try {
+            localStorage.setItem(key, typeof data === 'string' ? data : JSON.stringify(data));
+            console.log(`✓ Saved to LS: ${key}`);
+        } catch (err) {
+            console.warn(`Failed to save ${key}:`, err);
+        }
+    }
+
+    function getFromLS(key) {
+        try {
+            const data = localStorage.getItem(key);
+            return data ? JSON.parse(data) : null;
+        } catch (err) {
+            console.warn(`Failed to parse ${key}:`, err);
+            return null;
+        }
+    }
+
+    function removeFromLS(key) {
+        try {
+            localStorage.removeItem(key);
+        } catch (err) {
+            console.warn(`Failed to remove ${key}:`, err);
+        }
+    }
+
+    function clearExamLS() {
+        Object.values(LS_KEYS).forEach(key => removeFromLS(key));
+    }
+
+    // ============ KEEP-ALIVE: Refresh backend every 4 minutes =====
+    let keepAliveTimer = null;
+    function startKeepAliveInterval() {
+        stopKeepAliveInterval();
+        keepAliveTimer = setInterval(async () => {
+            try {
+                const token = getToken();
+                if (token) {
+                    await fetch(API_BASE + "/api/auth/me", {
+                        headers: { Authorization: "Bearer " + token }
+                    });
+                    console.log("✓ Keep-alive ping sent");
+                }
+            } catch (err) {
+                console.warn("Keep-alive failed:", err.message);
+            }
+        }, 4 * 60 * 1000);
+    }
+
+    function stopKeepAliveInterval() {
+        if (keepAliveTimer) {
+            clearInterval(keepAliveTimer);
+            keepAliveTimer = null;
+        }
+    }
+
+    // ============ UTILITY FUNCTIONS ============
+    function getToken() {
+        return localStorage.getItem("student_jwt_token") || "";
+    }
+
+    function getExamAccessCode() {
+        return localStorage.getItem("exam_access_code") || "";
+    }
+
+    function getExamCourseCode() {
+        return localStorage.getItem("exam_course_code") || "";
+    }
+
+    // Reset session after reload guard
+    if (performance.navigation && performance.navigation.type === 1) {
+        clearExamLS();
+        location.replace(location.pathname + location.search);
+    }
+
+    // Fisher-Yates shuffle
+    function shuffleArray(arr) {
+        arr = arr.slice();
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+    }
+
+    // Normalize question/option HTML for MathJax
+    function normalizeQuestionMath(html) {
+        if (!html || typeof html !== 'string') return html;
+        let s = html.replace(/\\\\/g, '\\');
+        if (/\\\(|\\\[|\$\$?/.test(s)) return s;
+        const cmdRegex = /\\(?:frac|sqrt|sum|int|lim|left|right|cdot|times|pi|alpha|beta|gamma|theta|log|ln)(?:\{[^}]*\}|\^[^{\s]+|\_[^{\s]+)*/g;
+        s = s.replace(cmdRegex, function(m) { return `\\(${m}\\)`; });
+        const expRegex = /([A-Za-z0-9])\^(?:\{[^}]+\}|\d+)/g;
+        s = s.replace(expRegex, function(m) { return `\\(${m}\\)`; });
+        const subRegex = /([A-Za-z0-9])_(?:\{[^}]+\}|\d+)/g;
+        s = s.replace(subRegex, function(m) { return `\\(${m}\\)`; });
+        return s;
+    }
+
+    // Strip HTML tags
+    function stripHtml(html) {
+        const tmp = document.createElement("DIV");
+        tmp.innerHTML = html;
+        return tmp.textContent || tmp.innerText || "";
+    }
+
+    // ============ API CALLS ============
+    async function fetchStudentProfile() {
+        try {
+            const token = getToken();
+            if (!token) throw new Error("No token");
+            const res = await fetch(API_BASE + "/api/auth/me", {
+                headers: { Authorization: "Bearer " + token }
+            });
+            if (!res.ok) throw new Error("Not authenticated");
+            return await res.json();
+        } catch (err) {
+            console.error("Profile fetch error:", err);
+            return null;
+        }
+    }
+
+    async function fetchExamDataByAccessCode(accessCode) {
+        try {
+            if (!accessCode) throw new Error("No access code");
+            const res = await fetch(API_BASE + `/api/exam-set/by-access?accessCode=${encodeURIComponent(accessCode)}`);
+            if (!res.ok) throw new Error("Exam not found");
+            return await res.json();
+        } catch (err) {
+            console.error("Exam fetch error:", err);
+            return null;
+        }
+    }
+
+    async function fetchCBTQuestions(examSetId) {
+        try {
+            if (!examSetId) throw new Error("No exam set ID");
+            const res = await fetch(API_BASE + `/api/cbt-questions?examSet=${encodeURIComponent(examSetId)}`);
+            if (!res.ok) throw new Error("Not found");
+            return await res.json();
+        } catch (err) {
+            console.error("CBT questions fetch error:", err);
+            return [];
+        }
+    }
+
+    async function fetchTheoryQuestions(examSetId) {
+        try {
+            if (!examSetId) throw new Error("No exam set ID");
+            const res = await fetch(API_BASE + `/api/theory-questions?examSet=${encodeURIComponent(examSetId)}`);
+            if (!res.ok) throw new Error("Not found");
+            return await res.json();
+        } catch (err) {
+            console.error("Theory questions fetch error:", err);
+            return [];
+        }
+    }
+
+    async function determineExamType(examSetId) {
+        try {
+            const [cbtQs, theoryQs] = await Promise.all([
+                fetchCBTQuestions(examSetId),
+                fetchTheoryQuestions(examSetId)
+            ]);
+            
+            const cbtCount = Array.isArray(cbtQs) ? cbtQs.length : 0;
+            const theoryCount = Array.isArray(theoryQs) ? theoryQs.length : 0;
+            
+            if (cbtCount > 0 && theoryCount > 0) return { type: 'hybrid', cbtQs, theoryQs };
+            if (theoryCount > 0) return { type: 'theory', theoryQs };
+            return { type: 'cbt', cbtQs };
+        } catch (err) {
+            console.error("Determine exam type error:", err);
+            return { type: 'cbt', cbtQs: [] };
+        }
+    }
+
+    async function initTheoryAttempt(examSetId) {
+        try {
+            if (!examSetId) throw new Error("No exam set ID");
+            const token = getToken();
+            const res = await fetch(API_BASE + "/api/theory-answers/attempt/start", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + token
+                },
+                body: JSON.stringify({ examSet: examSetId })
+            });
+            if (!res.ok) throw new Error("Failed to start attempt");
+            return await res.json();
+        } catch (err) {
+            console.error("Init theory attempt error:", err);
+            return null;
+        }
+    }
+
+    async function submitTheoryAnswer(questionId, answerType, answerData) {
+        try {
+            if (!questionId || !answerType) throw new Error("Missing params");
+            const token = getToken();
+            const payload = {
+                examSet: examSet._id,
+                question: questionId,
+                attempt: attemptId,
+                answerType: answerType,
+                answerText: answerType === "text" ? answerData : "",
+                answerImageUrl: answerType === "image" ? answerData : ""
+            };
+            const res = await fetch(API_BASE + "/api/theory-answers", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + token
+                },
+                body: JSON.stringify(payload)
+            });
+            if (!res.ok) throw new Error("Submit failed");
+            return await res.json();
+        } catch (err) {
+            console.error("Submit answer error:", err);
+            return null;
+        }
+    }
+
+    async function submitTheoryExamAPI() {
+        try {
+            if (!attemptId) throw new Error("No attempt ID");
+            const token = getToken();
+            const res = await fetch(`${API_BASE}/api/theory-attempts/${attemptId}/submit`, {
+                method: 'PUT',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error("Submit failed");
+            return await res.json();
+        } catch (err) {
+            console.error("Submit exam error:", err);
+            return null;
+        }
+    }
+
+    // ============ STATE & VARIABLES ============
+    let userAnswers = {};
+    let examData = null;
+    let examSet = null;
+    let studentData = null;
+    let currentQ = 0;
+    let timer = null;
+    let duration = 0;
+    let courseCode = "";
+    let examType = "cbt";
+    let attemptId = null;
+    let theoryEditors = {};
+    let imageAnswers = {};
+    let isSubmitting = false;
+    let examStartTime = null;
+
+    // ============ MODAL DIALOG ============
+    function showModal(message, opts = {}) {
+        const root = document.getElementById('modal-root');
+        const title = opts.title || "Notice";
+        const actionText = opts.actionText || "";
+        const icon = opts.icon !== false;
+
+        root.innerHTML = `
+            <div class="modal-bg" id="modal-overlay">
+              <div class="modal-panel relative w-full max-w-sm mx-auto">
+                <button class="absolute right-4 top-4 text-xl text-gray-400 hover:text-gray-700 transition" id="close-modal-btn" aria-label="Close">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+                ${icon ? `
+                  <div class="flex justify-center mb-4">
+                    <i class="fa fa-info-circle text-yellow-500 text-4xl"></i>
+                  </div>
+                ` : ""}
+                <div class="text-center text-lg text-blue-900 font-bold mb-3">${title}</div>
+                <div class="mb-4 text-gray-600 text-sm leading-relaxed">${message}</div>
+                ${actionText ? `
+                    <button id="modal-action-btn" class="mx-auto block py-2 px-7 exam-action-btn rounded-xl hover:scale-105 transition">
+                        ${actionText}
+                    </button>
+                ` : ""}
+              </div>
+            </div>
+        `;
+
+        document.getElementById('close-modal-btn').onclick = () => {
+            root.innerHTML = "";
         };
 
-        // ============ DEVICE DETECTION & REDIRECT ============
-        function detectDeviceType() {
-            const userAgent = navigator.userAgent;
-            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
-            const isTablet = /iPad|Android/.test(userAgent) && !/Mobile/.test(userAgent);
-            return {
-                isMobile: isMobile || isTablet,
-                screenWidth: window.innerWidth,
-                isDesktopSize: window.innerWidth >= 1024
-            };
-        }
-async function fetchCBTQuestions(examSetId) {
-    try {
-        if (!examSetId) throw new Error("No exam set ID");
-        const res = await fetch(API_BASE + `/api/cbt-questions?examSet=${encodeURIComponent(examSetId)}`);
-        if (!res.ok) throw new Error("Not found");
-        return await res.json();
-    } catch (err) {
-        console.error("CBT questions fetch error:", err);
-        return [];
-    }
-}
-        async function determineExamType(examSetId) {
-    try {
-        const [cbtQs, theoryQs] = await Promise.all([
-            fetchCBTQuestions(examSetId),
-            fetchTheoryQuestions(examSetId)
-        ]);
-        
-        const cbtCount = Array.isArray(cbtQs) ? cbtQs.length : 0;
-        const theoryCount = Array.isArray(theoryQs) ? theoryQs.length : 0;
-        
-        if (cbtCount > 0 && theoryCount > 0) return { type: 'hybrid', cbtQs, theoryQs };
-        if (theoryCount > 0) return { type: 'theory', theoryQs };
-        return { type: 'cbt', cbtQs };
-    } catch (err) {
-        console.error("Determine exam type error:", err);
-        return { type: 'cbt', cbtQs: [] };
-    }
-}
-        function performDeviceRedirect() {
-            if (hasRedirected) return;
-
-            const device = detectDeviceType();
-            const currentPath = window.location.pathname;
-            const isCBTMobilePage = currentPath.includes('cbt.html');
-            const isDesktopPage = currentPath.includes('desktop') || currentPath.includes('cbt-desktop');
-
-            if (isCBTMobilePage && device.isDesktopSize && !device.isMobile && !isDesktopPage) {
-                hasRedirected = true;
-                console.log("Redirecting to desktop exam page...");
-                window.location.href = 'exam-in-sessions';
-                return;
+        document.getElementById('modal-overlay')?.addEventListener('click', (e) => {
+            if (e.target.id === 'modal-overlay') {
+                root.innerHTML = "";
             }
-
-            if (isDesktopPage && (device.isMobile || !device.isDesktopSize)) {
-                hasRedirected = true;
-                console.log("Redirecting to mobile exam page...");
-                window.location.href = 'cbt.html';
-                return;
-            }
-        }
-
-        window.addEventListener('load', performDeviceRedirect);
-        let resizeTimeout;
-        window.addEventListener('resize', () => {
-            clearTimeout(resizeTimeout);
-            resizeTimeout = setTimeout(performDeviceRedirect, 500);
         });
 
-        function startDeviceCheckInterval() {
-            deviceCheckTimer = setInterval(performDeviceRedirect, DEVICE_CHECK_INTERVAL);
+        if (opts.onAction && actionText) {
+            document.getElementById('modal-action-btn').onclick = () => {
+                root.innerHTML = "";
+                opts.onAction();
+            };
         }
+    }
 
-        function stopDeviceCheckInterval() {
-            if (deviceCheckTimer) {
-                clearInterval(deviceCheckTimer);
-                deviceCheckTimer = null;
-            }
+    // ============ PERSIST ANSWERS ============
+    function persistAllExamData() {
+        saveToLS(LS_KEYS.ANSWERS, userAnswers);
+        saveToLS(LS_KEYS.CURRENT_QUESTION, currentQ);
+        saveToLS(LS_KEYS.IMAGE_ANSWERS, imageAnswers);
+        
+        if (!examStartTime) {
+            examStartTime = Date.now();
         }
+        saveToLS(LS_KEYS.START_TIME, examStartTime);
 
-        // ============ LOCAL STORAGE UTILITIES ============
-        function saveToLS(key, data) {
-            try {
-                localStorage.setItem(key, typeof data === 'string' ? data : JSON.stringify(data));
-                console.log(`✓ Saved to LS: ${key}`);
-            } catch (err) {
-                console.warn(`Failed to save ${key}:`, err);
-            }
-        }
+        console.log("✓ All exam data persisted to localStorage");
+    }
 
-        function getFromLS(key) {
-            try {
-                const data = localStorage.getItem(key);
-                return data ? JSON.parse(data) : null;
-            } catch (err) {
-                console.warn(`Failed to parse ${key}:`, err);
-                return null;
-            }
-        }
+    // ============ RESTORE FROM LS ============
+    function restoreExamData() {
+        userAnswers = getFromLS(LS_KEYS.ANSWERS) || {};
+        currentQ = getFromLS(LS_KEYS.CURRENT_QUESTION) || 0;
+        imageAnswers = getFromLS(LS_KEYS.IMAGE_ANSWERS) || {};
+        examStartTime = getFromLS(LS_KEYS.START_TIME) || Date.now();
 
-        function removeFromLS(key) {
-            try {
-                localStorage.removeItem(key);
-            } catch (err) {
-                console.warn(`Failed to remove ${key}:`, err);
-            }
-        }
+        console.log("✓ Exam data restored from localStorage");
+        console.log("Answers:", userAnswers);
+        console.log("Current Q:", currentQ);
+    }
 
-        function clearExamLS() {
-            Object.values(LS_KEYS).forEach(key => removeFromLS(key));
-        }
+    // ============ RENDER QUESTION ============
+    function renderQuestion(idx) {
+        const qa = document.getElementById("question-area");
 
-        // ============ KEEP-ALIVE: Refresh backend every 4 minutes =====
-        let keepAliveTimer = null;
-        function startKeepAliveInterval() {
-            stopKeepAliveInterval();
-            keepAliveTimer = setInterval(async () => {
-                try {
-                    const token = getToken();
-                    if (token) {
-                        await fetch(API_BASE + "/api/auth/me", {
-                            headers: { Authorization: "Bearer " + token }
-                        });
-                        console.log("✓ Keep-alive ping sent");
-                    }
-                } catch (err) {
-                    console.warn("Keep-alive failed:", err.message);
-                }
-            }, 4 * 60 * 1000);
-        }
-
-        function stopKeepAliveInterval() {
-            if (keepAliveTimer) {
-                clearInterval(keepAliveTimer);
-                keepAliveTimer = null;
-            }
-        }
-
-        // ============ UTILITY FUNCTIONS ============
-        function getToken() {
-            return localStorage.getItem("student_jwt_token") || "";
-        }
-
-        function getExamAccessCode() {
-            return localStorage.getItem("exam_access_code") || "";
-        }
-
-        function getExamCourseCode() {
-            return localStorage.getItem("exam_course_code") || "";
-        }
-
-        // Reset session after reload guard
-        if (performance.navigation && performance.navigation.type === 1) {
-            clearExamLS();
-            location.replace(location.pathname + location.search);
-        }
-
-        // Fisher-Yates shuffle
-        function shuffleArray(arr) {
-            arr = arr.slice();
-            for (let i = arr.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [arr[i], arr[j]] = [arr[j], arr[i]];
-            }
-            return arr;
-        }
-
-        // Normalize question/option HTML for MathJax
-        function normalizeQuestionMath(html) {
-            if (!html || typeof html !== 'string') return html;
-            let s = html.replace(/\\\\/g, '\\');
-            if (/\\\(|\\\[|\$\$?/.test(s)) return s;
-            const cmdRegex = /\\(?:frac|sqrt|sum|int|lim|left|right|cdot|times|pi|alpha|beta|gamma|theta|log|ln)(?:\{[^}]*\}|\^[^{\s]+|\_[^{\s]+)*/g;
-            s = s.replace(cmdRegex, function(m) { return `\\(${m}\\)`; });
-            const expRegex = /([A-Za-z0-9])\^(?:\{[^}]+\}|\d+)/g;
-            s = s.replace(expRegex, function(m) { return `\\(${m}\\)`; });
-            const subRegex = /([A-Za-z0-9])_(?:\{[^}]+\}|\d+)/g;
-            s = s.replace(subRegex, function(m) { return `\\(${m}\\)`; });
-            return s;
-        }
-
-        // Strip HTML tags
-        function stripHtml(html) {
-            const tmp = document.createElement("DIV");
-            tmp.innerHTML = html;
-            return tmp.textContent || tmp.innerText || "";
-        }
-
-        // ============ API CALLS ============
-        async function fetchStudentProfile() {
-            try {
-                const token = getToken();
-                if (!token) throw new Error("No token");
-                const res = await fetch(API_BASE + "/api/auth/me", {
-                    headers: { Authorization: "Bearer " + token }
-                });
-                if (!res.ok) throw new Error("Not authenticated");
-                return await res.json();
-            } catch (err) {
-                console.error("Profile fetch error:", err);
-                return null;
-            }
-        }
-
-        async function fetchExamDataByAccessCode(accessCode) {
-            try {
-                if (!accessCode) throw new Error("No access code");
-                const res = await fetch(API_BASE + `/api/exam-set/by-access?accessCode=${encodeURIComponent(accessCode)}`);
-                if (!res.ok) throw new Error("Exam not found");
-                return await res.json();
-            } catch (err) {
-                console.error("Exam fetch error:", err);
-                return null;
-            }
-        }
-
-        async function fetchTheoryQuestions(examSetId) {
-            try {
-                if (!examSetId) throw new Error("No exam set ID");
-                const res = await fetch(API_BASE + `/api/theory-questions?examSet=${encodeURIComponent(examSetId)}`);
-                if (!res.ok) throw new Error("Not found");
-                return await res.json();
-            } catch (err) {
-                console.error("Theory questions fetch error:", err);
-                return [];
-            }
-        }
-
-        async function initTheoryAttempt(examSetId) {
-            try {
-                if (!examSetId) throw new Error("No exam set ID");
-                const token = getToken();
-                const res = await fetch(API_BASE + "/api/theory-answers/attempt/start", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": "Bearer " + token
-                    },
-                    body: JSON.stringify({ examSet: examSetId })
-                });
-                if (!res.ok) throw new Error("Failed to start attempt");
-                return await res.json();
-            } catch (err) {
-                console.error("Init theory attempt error:", err);
-                return null;
-            }
-        }
-
-        async function submitTheoryAnswer(questionId, answerType, answerData) {
-            try {
-                if (!questionId || !answerType) throw new Error("Missing params");
-                const token = getToken();
-                const payload = {
-                    examSet: examSet._id,
-                    question: questionId,
-                    attempt: attemptId,
-                    answerType: answerType,
-                    answerText: answerType === "text" ? answerData : "",
-                    answerImageUrl: answerType === "image" ? answerData : ""
-                };
-                const res = await fetch(API_BASE + "/api/theory-answers", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": "Bearer " + token
-                    },
-                    body: JSON.stringify(payload)
-                });
-                if (!res.ok) throw new Error("Submit failed");
-                return await res.json();
-            } catch (err) {
-                console.error("Submit answer error:", err);
-                return null;
-            }
-        }
-
-        async function submitTheoryExam() {
-            try {
-                if (!attemptId) throw new Error("No attempt ID");
-                const token = getToken();
-                const res = await fetch(`${API_BASE}/api/theory-attempts/${attemptId}/submit`, {
-                    method: 'PUT',
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (!res.ok) throw new Error("Submit failed");
-                return await res.json();
-            } catch (err) {
-                console.error("Submit exam error:", err);
-                return null;
-            }
-        }
-
-        // ============ STATE & VARIABLES ============
-        let userAnswers = {};
-        let examData = null;
-        let examSet = null;
-        let studentData = null;
-        let currentQ = 0;
-        let timer = null;
-        let duration = 0;
-        let courseCode = "";
-        let examType = "cbt";
-        let attemptId = null;
-        let theoryEditors = {};
-        let imageAnswers = {};
-        let isSubmitting = false;
-        let examStartTime = null;
-
-        // ============ MODAL DIALOG ============
-        function showModal(message, opts = {}) {
-            const root = document.getElementById('modal-root');
-            const title = opts.title || "Notice";
-            const actionText = opts.actionText || "";
-            const icon = opts.icon !== false;
-
-            root.innerHTML = `
-                <div class="modal-bg" id="modal-overlay">
-                  <div class="modal-panel relative w-full max-w-sm mx-auto">
-                    <button class="absolute right-4 top-4 text-xl text-gray-400 hover:text-gray-700 transition" id="close-modal-btn" aria-label="Close">
-                        <i class="fa-solid fa-times"></i>
-                    </button>
-                    ${icon ? `
-                      <div class="flex justify-center mb-4">
-                        <i class="fa fa-info-circle text-yellow-500 text-4xl"></i>
-                      </div>
-                    ` : ""}
-                    <div class="text-center text-lg text-blue-900 font-bold mb-3">${title}</div>
-                    <div class="mb-4 text-gray-600 text-sm leading-relaxed">${message}</div>
-                    ${actionText ? `
-                        <button id="modal-action-btn" class="mx-auto block py-2 px-7 exam-action-btn rounded-xl hover:scale-105 transition">
-                            ${actionText}
-                        </button>
-                    ` : ""}
-                  </div>
+        if (!examData || !examData.questions || idx >= examData.questions.length) {
+            qa.innerHTML = `
+                <div class="text-center my-10 text-red-500">
+                    <i class="fa fa-exclamation-circle text-4xl mb-3"></i>
+                    <p class="text-lg font-bold">No Question Found</p>
                 </div>
             `;
+            return;
+        }
 
-            document.getElementById('close-modal-btn').onclick = () => {
-                root.innerHTML = "";
-            };
+        const total = examData.questions.length;
+        const q = examData.questions[idx];
 
-            document.getElementById('modal-overlay')?.addEventListener('click', (e) => {
-                if (e.target.id === 'modal-overlay') {
-                    root.innerHTML = "";
+        if (q.type === "theory" || examType === "theory") {
+            renderTheoryQuestion(idx, q, qa, total);
+        } else {
+            renderCBTQuestion(idx, q, qa, total);
+        }
+
+        persistAllExamData();
+    }
+
+    function renderCBTQuestion(idx, q, qa, total) {
+        const savedAnswer = userAnswers[q.id] || "";
+        const questionHtml = normalizeQuestionMath(q.question || '');
+
+        qa.innerHTML = `
+            <h2 class="text-2xl font-bold text-blue-900 mb-7">Question ${idx + 1} of ${total}</h2>
+            <div class="text-lg leading-relaxed text-gray-700 mb-9 prose">${questionHtml}</div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-7 mb-10">
+                ${
+                    (q.options || []).map((opt, i) => {
+                        const label = String.fromCharCode(65 + i);
+                        const optHtml = normalizeQuestionMath(opt.text || '');
+                        return `
+                            <label class="option-card flex items-center p-7 cursor-pointer transition-all duration-200">
+                                <input type="radio" name="qSelect" value="${opt.key}" ${(savedAnswer === opt.key) ? 'checked' : ''} class="w-7 h-7 text-yellow-500 focus:ring-yellow-400" />
+                                <span class="ml-5 text-base md:text-lg">${label}. ${optHtml}</span>
+                            </label>
+                        `;
+                    }).join('')
                 }
+            </div>
+            <div class="flex flex-col gap-2 sm:flex-row sm:gap-4 justify-between items-center mt-8">
+                <div class="w-full sm:w-auto flex justify-between gap-2 order-1 sm:mb-0">
+                    <button class="px-8 py-3 bg-gray-300 text-gray-800 font-bold rounded-xl hover:bg-gray-400 transition shadow-md" ${idx === 0 ? 'disabled opacity-50' : ''} id="prev-btn">
+                        <i class="fas fa-chevron-left mr-2"></i> Previous
+                    </button>
+                    <button class="px-8 py-3 exam-action-btn rounded-xl hover:scale-105 transition flex items-center" ${idx === total - 1 ? 'disabled opacity-50' : ''} id="next-btn">
+                        Next <i class="fas fa-chevron-right ml-2"></i>
+                    </button>
+                </div>
+                <nav aria-label="Question navigation" class="flex-1 flex flex-col items-center order-2 w-full sm:w-auto">
+                    <ul class="question-pallet w-full flex flex-wrap" id="question-nav-list"></ul>
+                </nav>
+                <div class="flex gap-4 order-3 w-full sm:w-auto justify-center mt-2 sm:mt-0">
+                    <button class="px-8 py-3 exam-action-btn rounded-xl hover:scale-105 transition shadow" id="submit-btn">
+                        Submit Exam
+                    </button>
+                </div>
+            </div>
+        `;
+
+        const pallet = document.getElementById("question-nav-list");
+        let navHtml = "";
+        for (let j = 0; j < total; ++j) {
+            const navId = examData.questions[j].id;
+            const attempted = !!userAnswers[navId];
+            const curr = j === idx;
+            const navClass = curr ? "qp-current" : (attempted ? "qp-done" : "bg-white text-gray-600");
+            navHtml += `
+                <li>
+                    <a href="#" data-qp="${j}" 
+                       ${curr ? 'aria-current="page"' : ''} 
+                       class="block px-3 py-2 leading-tight text-xs sm:text-base border border-gray-300 hover:bg-yellow-100 ${navClass}" 
+                       title="Question ${j + 1}">
+                       ${j + 1}
+                    </a>
+                </li>
+            `;
+        }
+        pallet.innerHTML = navHtml;
+
+        if (window.MathJax && MathJax.typesetPromise) {
+            MathJax.typesetPromise([qa]).catch((err) => {
+                console.warn("MathJax typeset error:", err && err.message);
             });
+        }
 
-            if (opts.onAction && actionText) {
-                document.getElementById('modal-action-btn').onclick = () => {
-                    root.innerHTML = "";
-                    opts.onAction();
-                };
+        document.querySelectorAll('input[name="qSelect"]').forEach(input => {
+            input.onchange = function() {
+                userAnswers[q.id] = this.value;
+                persistAllExamData();
+                renderQuestion(idx);
+            };
+        });
+
+        document.getElementById("prev-btn").onclick = function(e) {
+            e.preventDefault();
+            if (currentQ > 0) {
+                currentQ--;
+                renderQuestion(currentQ);
             }
-        }
+        };
 
-        // ============ PERSIST ANSWERS ============
-        function persistAllExamData() {
-            // Save answers
-            saveToLS(LS_KEYS.ANSWERS, userAnswers);
-            
-            // Save current question index
-            saveToLS(LS_KEYS.CURRENT_QUESTION, currentQ);
-            
-            // Save image answers
-            saveToLS(LS_KEYS.IMAGE_ANSWERS, imageAnswers);
-            
-            // Save exam start time
-            if (!examStartTime) {
-                examStartTime = Date.now();
+        document.getElementById("next-btn").onclick = function(e) {
+            e.preventDefault();
+            if (currentQ < total - 1) {
+                currentQ++;
+                renderQuestion(currentQ);
             }
-            saveToLS(LS_KEYS.START_TIME, examStartTime);
+        };
 
-            console.log("✓ All exam data persisted to localStorage");
-        }
+        pallet.querySelectorAll('a[data-qp]').forEach(a => {
+            a.onclick = ev => {
+                ev.preventDefault();
+                currentQ = parseInt(a.getAttribute('data-qp'));
+                renderQuestion(currentQ);
+            };
+        });
 
-        // ============ RESTORE FROM LS ============
-        function restoreExamData() {
-            userAnswers = getFromLS(LS_KEYS.ANSWERS) || {};
-            currentQ = getFromLS(LS_KEYS.CURRENT_QUESTION) || 0;
-            imageAnswers = getFromLS(LS_KEYS.IMAGE_ANSWERS) || {};
-            examStartTime = getFromLS(LS_KEYS.START_TIME) || Date.now();
+        document.getElementById("submit-btn").onclick = function(e) {
+            e.preventDefault();
+            if (isSubmitting) return;
+            showModal("Are you sure you want to submit your answers and end the test? This action cannot be undone.", {
+                title: "Submit Exam",
+                icon: true,
+                actionText: "Yes, Submit",
+                onAction: submitCBTExam
+            });
+        };
+    }
 
-            console.log("✓ Exam data restored from localStorage");
-            console.log("Answers:", userAnswers);
-            console.log("Current Q:", currentQ);
-        }
+    function renderTheoryQuestion(idx, q, qa, total) {
+        const savedAnswer = userAnswers[q._id] || {};
+        const savedText = savedAnswer.text || "";
+        const savedImageUrl = imageAnswers[q._id] || "";
 
-        // ============ RENDER QUESTION ============
-        function renderQuestion(idx) {
-            const qa = document.getElementById("question-area");
-
-            if (!examData || !examData.questions || idx >= examData.questions.length) {
-                qa.innerHTML = `
-                    <div class="text-center my-10 text-red-500">
-                        <i class="fa fa-exclamation-circle text-4xl mb-3"></i>
-                        <p class="text-lg font-bold">No Question Found</p>
+        qa.innerHTML = `
+            <div class="mb-6 flex justify-between items-start">
+                <div>
+                    <h2 class="text-2xl font-bold text-blue-900 mb-3">Question ${idx + 1} of ${total}</h2>
+                    <div class="space-y-1">
+                        <span class="theory-badge">📊 Max Marks: ${q.maxMarks || 10}</span>
+                        <span class="theory-badge">📝 Length: ${q.expectedLength === 'short' ? 'Short (1-2 para)' : q.expectedLength === 'long' ? 'Long (Detailed)' : 'Medium (2-3 para)'}</span>
                     </div>
-                `;
+                </div>
+            </div>
+
+            <div class="bg-blue-50 p-6 rounded-lg border-2 border-blue-200 mb-6 prose">
+                <div class="text-lg leading-relaxed text-gray-700">${normalizeQuestionMath(q.question)}</div>
+            </div>
+
+            ${q.sampleAnswer ? `
+                <details class="mb-6 p-4 bg-gray-100 rounded-lg">
+                    <summary class="cursor-pointer font-bold text-gray-700">📖 View Sample Answer</summary>
+                    <div class="mt-3 prose text-sm text-gray-600">${normalizeQuestionMath(q.sampleAnswer)}</div>
+                </details>
+            ` : ''}
+
+            <div class="mb-6">
+                <div class="flex flex-wrap gap-3 mb-4">
+                    <button id="theory-text-mode" class="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition">
+                        💬 Type Answer
+                    </button>
+                    <button id="theory-image-mode" class="px-6 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition">
+                        📸 Upload Photo
+                    </button>
+                </div>
+
+                <div id="text-answer-area" class="hidden">
+                    <div id="theory-text-editor-${q._id}" class="theory-editor"></div>
+                    <button id="save-text-answer" class="px-6 py-2 bg-blue-700 text-white rounded-lg font-bold hover:bg-blue-900 transition mt-2">
+                        ✓ Save Text Answer
+                    </button>
+                </div>
+
+                <div id="image-answer-area" class="hidden">
+                    <input type="file" id="theory-photo-input" accept="image/*" class="block w-full mb-4 p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 transition" />
+                    <div id="photo-preview" class="hidden mb-4">
+                        <img id="preview-img" class="max-w-full max-h-96 rounded-lg border shadow-md" alt="Preview" />
+                    </div>
+                    <button id="save-image-answer" class="px-6 py-2 bg-green-700 text-white rounded-lg font-bold hover:bg-green-900 transition mt-2">
+                        ✓ Save Photo Answer
+                    </button>
+                </div>
+
+                <div id="theory-answer-status" class="mt-4"></div>
+            </div>
+
+            <div class="flex flex-col gap-2 sm:flex-row sm:gap-4 justify-between items-center mt-8">
+                <div class="w-full sm:w-auto flex justify-between gap-2 order-1 sm:mb-0">
+                    <button class="px-8 py-3 bg-gray-300 text-gray-800 font-bold rounded-xl hover:bg-gray-400 transition shadow-md" ${idx === 0 ? 'disabled opacity-50' : ''} id="prev-btn-theory">
+                        <i class="fas fa-chevron-left mr-2"></i> Previous
+                    </button>
+                    <button class="px-8 py-3 exam-action-btn rounded-xl hover:scale-105 transition flex items-center" ${idx === total - 1 ? 'disabled opacity-50' : ''} id="next-btn-theory">
+                        Next <i class="fas fa-chevron-right ml-2"></i>
+                    </button>
+                </div>
+                <nav aria-label="Question navigation" class="flex-1 flex flex-col items-center order-2 w-full sm:w-auto">
+                    <ul class="question-pallet w-full flex flex-wrap" id="question-nav-list-theory"></ul>
+                </nav>
+                <div class="flex gap-4 order-3 w-full sm:w-auto justify-center mt-2 sm:mt-0">
+                    <button class="px-8 py-3 exam-action-btn rounded-xl hover:scale-105 transition shadow" id="submit-btn-theory">
+                        Submit Exam
+                    </button>
+                </div>
+            </div>
+        `;
+
+        const editorId = `theory-text-editor-${q._id}`;
+        if (!theoryEditors[q._id]) {
+            setTimeout(() => {
+                if (document.getElementById(editorId)) {
+                    theoryEditors[q._id] = new Quill(`#${editorId}`, {
+                        theme: 'snow',
+                        placeholder: 'Type your answer here... (you can use formatting tools)',
+                        modules: {
+                            toolbar: [
+                                ['bold', 'italic', 'underline'],
+                                ['code-block'],
+                                [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                                ['link']
+                            ]
+                        }
+                    });
+                    theoryEditors[q._id].root.innerHTML = savedText;
+                }
+            }, 100);
+        }
+
+        const pallet = document.getElementById("question-nav-list-theory");
+        let navHtml = "";
+        for (let j = 0; j < total; ++j) {
+            const qId = examData.questions[j]._id || examData.questions[j].id;
+            const attempted = !!userAnswers[qId];
+            const curr = j === idx;
+            const navClass = curr ? "qp-current" : (attempted ? "qp-done" : "bg-white text-gray-600");
+            navHtml += `
+                <li>
+                    <a href="#" data-qp-theory="${j}" 
+                       ${curr ? 'aria-current="page"' : ''} 
+                       class="block px-3 py-2 leading-tight text-xs sm:text-base border border-gray-300 hover:bg-yellow-100 ${navClass}" 
+                       title="Question ${j + 1}">
+                       Q${j + 1}
+                    </a>
+                </li>
+            `;
+        }
+        pallet.innerHTML = navHtml;
+
+        document.getElementById('theory-text-mode').onclick = () => {
+            document.getElementById('text-answer-area').classList.remove('hidden');
+            document.getElementById('image-answer-area').classList.add('hidden');
+        };
+
+        document.getElementById('theory-image-mode').onclick = () => {
+            document.getElementById('image-answer-area').classList.remove('hidden');
+            document.getElementById('text-answer-area').classList.add('hidden');
+        };
+
+        document.getElementById('theory-photo-input').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                if (file.size > 10 * 1024 * 1024) {
+                    alert('File is too large. Maximum size is 10MB.');
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    document.getElementById('preview-img').src = ev.target.result;
+                    document.getElementById('photo-preview').classList.remove('hidden');
+                    imageAnswers[q._id] = ev.target.result;
+                    persistAllExamData();
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        document.getElementById('save-text-answer').onclick = async () => {
+            const text = theoryEditors[q._id].root.innerHTML.trim();
+            if (!text || text === '<p><br></p>') {
+                showModal("Please enter an answer before saving.", { icon: true });
                 return;
             }
+            document.getElementById('save-text-answer').disabled = true;
+            document.getElementById('save-text-answer').innerHTML = '<span class="loading-spinner mr-2"></span>Saving...';
 
-            const total = examData.questions.length;
-            const q = examData.questions[idx];
+            const result = await submitTheoryAnswer(q._id, 'text', text);
+            document.getElementById('save-text-answer').disabled = false;
+            document.getElementById('save-text-answer').innerHTML = '✓ Save Text Answer';
 
-            if (examType === "theory") {
-                renderTheoryQuestion(idx, q, qa, total);
-            } else {
-                renderCBTQuestion(idx, q, qa, total);
-            }
-
-            // Save current position
-            persistAllExamData();
-        }
-
-        function renderCBTQuestion(idx, q, qa, total) {
-            const savedAnswer = userAnswers[q.id] || "";
-            const questionHtml = normalizeQuestionMath(q.question || '');
-
-            qa.innerHTML = `
-                <h2 class="text-2xl font-bold text-blue-900 mb-7">Question ${idx + 1} of ${total}</h2>
-                <div class="text-lg leading-relaxed text-gray-700 mb-9 prose">${questionHtml}</div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-7 mb-10">
-                    ${
-                        (q.options || []).map((opt, i) => {
-                            const label = String.fromCharCode(65 + i);
-                            const optHtml = normalizeQuestionMath(opt.text || '');
-                            return `
-                                <label class="option-card flex items-center p-7 cursor-pointer transition-all duration-200">
-                                    <input type="radio" name="qSelect" value="${opt.key}" ${(savedAnswer === opt.key) ? 'checked' : ''} class="w-7 h-7 text-yellow-500 focus:ring-yellow-400" />
-                                    <span class="ml-5 text-base md:text-lg">${label}. ${optHtml}</span>
-                                </label>
-                            `;
-                        }).join('')
-                    }
-                </div>
-                <div class="flex flex-col gap-2 sm:flex-row sm:gap-4 justify-between items-center mt-8">
-                    <div class="w-full sm:w-auto flex justify-between gap-2 order-1 sm:mb-0">
-                        <button class="px-8 py-3 bg-gray-300 text-gray-800 font-bold rounded-xl hover:bg-gray-400 transition shadow-md" ${idx === 0 ? 'disabled opacity-50' : ''} id="prev-btn">
-                            <i class="fas fa-chevron-left mr-2"></i> Previous
-                        </button>
-                        <button class="px-8 py-3 exam-action-btn rounded-xl hover:scale-105 transition flex items-center" ${idx === total - 1 ? 'disabled opacity-50' : ''} id="next-btn">
-                            Next <i class="fas fa-chevron-right ml-2"></i>
-                        </button>
-                    </div>
-                    <nav aria-label="Question navigation" class="flex-1 flex flex-col items-center order-2 w-full sm:w-auto">
-                        <ul class="question-pallet w-full flex flex-wrap" id="question-nav-list"></ul>
-                    </nav>
-                    <div class="flex gap-4 order-3 w-full sm:w-auto justify-center mt-2 sm:mt-0">
-                        <button class="px-8 py-3 exam-action-btn rounded-xl hover:scale-105 transition shadow" id="submit-btn">
-                            Submit Exam
-                        </button>
-                    </div>
-                </div>
-            `;
-
-            // Navigator
-            const pallet = document.getElementById("question-nav-list");
-            let navHtml = "";
-            for (let j = 0; j < total; ++j) {
-                const navId = examData.questions[j].id;
-                const attempted = !!userAnswers[navId];
-                const curr = j === idx;
-                const navClass = curr ? "qp-current" : (attempted ? "qp-done" : "bg-white text-gray-600");
-                navHtml += `
-                    <li>
-                        <a href="#" data-qp="${j}" 
-                           ${curr ? 'aria-current="page"' : ''} 
-                           class="block px-3 py-2 leading-tight text-xs sm:text-base border border-gray-300 hover:bg-yellow-100 ${navClass}" 
-                           title="Question ${j + 1}">
-                           ${j + 1}
-                        </a>
-                    </li>
-                `;
-            }
-            pallet.innerHTML = navHtml;
-
-            // MathJax typeset
-            if (window.MathJax && MathJax.typesetPromise) {
-                MathJax.typesetPromise([qa]).catch((err) => {
-                    console.warn("MathJax typeset error:", err && err.message);
-                });
-            }
-
-            // Event listeners
-            document.querySelectorAll('input[name="qSelect"]').forEach(input => {
-                input.onchange = function() {
-                    userAnswers[q.id] = this.value;
-                    persistAllExamData();
-                    renderQuestion(idx);
-                };
-            });
-
-            document.getElementById("prev-btn").onclick = function(e) {
-                e.preventDefault();
-                if (currentQ > 0) {
-                    currentQ--;
-                    renderQuestion(currentQ);
-                }
-            };
-
-            document.getElementById("next-btn").onclick = function(e) {
-                e.preventDefault();
-                if (currentQ < total - 1) {
-                    currentQ++;
-                    renderQuestion(currentQ);
-                }
-            };
-
-            pallet.querySelectorAll('a[data-qp]').forEach(a => {
-                a.onclick = ev => {
-                    ev.preventDefault();
-                    currentQ = parseInt(a.getAttribute('data-qp'));
-                    renderQuestion(currentQ);
-                };
-            });
-
-            document.getElementById("submit-btn").onclick = function(e) {
-                e.preventDefault();
-                if (isSubmitting) return;
-                showModal("Are you sure you want to submit your answers and end the test? This action cannot be undone.", {
-                    title: "Submit Exam",
-                    icon: true,
-                    actionText: "Yes, Submit",
-                    onAction: submitCBTExam
-                });
-            };
-        }
-
-        function renderTheoryQuestion(idx, q, qa, total) {
-            const savedAnswer = userAnswers[q._id] || {};
-            const savedText = savedAnswer.text || "";
-            const savedImageUrl = imageAnswers[q._id] || "";
-
-            qa.innerHTML = `
-                <div class="mb-6 flex justify-between items-start">
-                    <div>
-                        <h2 class="text-2xl font-bold text-blue-900 mb-3">Question ${idx + 1} of ${total}</h2>
-                        <div class="space-y-1">
-                            <span class="theory-badge">📊 Max Marks: ${q.maxMarks || 10}</span>
-                            <span class="theory-badge">📝 Length: ${q.expectedLength === 'short' ? 'Short (1-2 para)' : q.expectedLength === 'long' ? 'Long (Detailed)' : 'Medium (2-3 para)'}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="bg-blue-50 p-6 rounded-lg border-2 border-blue-200 mb-6 prose">
-                    <div class="text-lg leading-relaxed text-gray-700">${normalizeQuestionMath(q.question)}</div>
-                </div>
-
-                ${q.sampleAnswer ? `
-                    <details class="mb-6 p-4 bg-gray-100 rounded-lg">
-                        <summary class="cursor-pointer font-bold text-gray-700">📖 View Sample Answer</summary>
-                        <div class="mt-3 prose text-sm text-gray-600">${normalizeQuestionMath(q.sampleAnswer)}</div>
-                    </details>
-                ` : ''}
-
-                <div class="mb-6">
-                    <div class="flex flex-wrap gap-3 mb-4">
-                        <button id="theory-text-mode" class="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition">
-                            💬 Type Answer
-                        </button>
-                        <button id="theory-image-mode" class="px-6 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition">
-                            📸 Upload Photo
-                        </button>
-                    </div>
-
-                    <!-- Text mode -->
-                    <div id="text-answer-area" class="hidden">
-                        <div id="theory-text-editor-${q._id}" class="theory-editor"></div>
-                        <button id="save-text-answer" class="px-6 py-2 bg-blue-700 text-white rounded-lg font-bold hover:bg-blue-900 transition mt-2">
-                            ✓ Save Text Answer
-                        </button>
-                    </div>
-
-                    <!-- Image mode -->
-                    <div id="image-answer-area" class="hidden">
-                        <input type="file" id="theory-photo-input" accept="image/*" class="block w-full mb-4 p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 transition" />
-                        <div id="photo-preview" class="hidden mb-4">
-                            <img id="preview-img" class="max-w-full max-h-96 rounded-lg border shadow-md" alt="Preview" />
-                        </div>
-                        <button id="save-image-answer" class="px-6 py-2 bg-green-700 text-white rounded-lg font-bold hover:bg-green-900 transition mt-2">
-                            ✓ Save Photo Answer
-                        </button>
-                    </div>
-
-                    <div id="theory-answer-status" class="mt-4"></div>
-                </div>
-
-                <div class="flex flex-col gap-2 sm:flex-row sm:gap-4 justify-between items-center mt-8">
-                    <div class="w-full sm:w-auto flex justify-between gap-2 order-1 sm:mb-0">
-                        <button class="px-8 py-3 bg-gray-300 text-gray-800 font-bold rounded-xl hover:bg-gray-400 transition shadow-md" ${idx === 0 ? 'disabled opacity-50' : ''} id="prev-btn-theory">
-                            <i class="fas fa-chevron-left mr-2"></i> Previous
-                        </button>
-                        <button class="px-8 py-3 exam-action-btn rounded-xl hover:scale-105 transition flex items-center" ${idx === total - 1 ? 'disabled opacity-50' : ''} id="next-btn-theory">
-                            Next <i class="fas fa-chevron-right ml-2"></i>
-                        </button>
-                    </div>
-                    <nav aria-label="Question navigation" class="flex-1 flex flex-col items-center order-2 w-full sm:w-auto">
-                        <ul class="question-pallet w-full flex flex-wrap" id="question-nav-list-theory"></ul>
-                    </nav>
-                    <div class="flex gap-4 order-3 w-full sm:w-auto justify-center mt-2 sm:mt-0">
-                        <button class="px-8 py-3 exam-action-btn rounded-xl hover:scale-105 transition shadow" id="submit-btn-theory">
-                            Submit Exam
-                        </button>
-                    </div>
-                </div>
-            `;
-
-            // Initialize text editor
-            const editorId = `theory-text-editor-${q._id}`;
-            if (!theoryEditors[q._id]) {
-                setTimeout(() => {
-                    if (document.getElementById(editorId)) {
-                        theoryEditors[q._id] = new Quill(`#${editorId}`, {
-                            theme: 'snow',
-                            placeholder: 'Type your answer here... (you can use formatting tools)',
-                            modules: {
-                                toolbar: [
-                                    ['bold', 'italic', 'underline'],
-                                    ['code-block'],
-                                    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-                                    ['link']
-                                ]
-                            }
-                        });
-                        theoryEditors[q._id].root.innerHTML = savedText;
-                    }
-                }, 100);
-            }
-
-            // Theory question navigator
-            const pallet = document.getElementById("question-nav-list-theory");
-            let navHtml = "";
-            for (let j = 0; j < total; ++j) {
-                const qId = examData.questions[j]._id;
-                const attempted = !!userAnswers[qId];
-                const curr = j === idx;
-                const navClass = curr ? "qp-current" : (attempted ? "qp-done" : "bg-white text-gray-600");
-                navHtml += `
-                    <li>
-                        <a href="#" data-qp-theory="${j}" 
-                           ${curr ? 'aria-current="page"' : ''} 
-                           class="block px-3 py-2 leading-tight text-xs sm:text-base border border-gray-300 hover:bg-yellow-100 ${navClass}" 
-                           title="Question ${j + 1}">
-                           Q${j + 1}
-                        </a>
-                    </li>
-                `;
-            }
-            pallet.innerHTML = navHtml;
-
-            // Mode switching
-            document.getElementById('theory-text-mode').onclick = () => {
-                document.getElementById('text-answer-area').classList.remove('hidden');
-                document.getElementById('image-answer-area').classList.add('hidden');
-            };
-
-            document.getElementById('theory-image-mode').onclick = () => {
-                document.getElementById('image-answer-area').classList.remove('hidden');
-                document.getElementById('text-answer-area').classList.add('hidden');
-            };
-
-            // Photo preview
-            document.getElementById('theory-photo-input').addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    if (file.size > 10 * 1024 * 1024) {
-                        alert('File is too large. Maximum size is 10MB.');
-                        return;
-                    }
-                    const reader = new FileReader();
-                    reader.onload = (ev) => {
-                        document.getElementById('preview-img').src = ev.target.result;
-                        document.getElementById('photo-preview').classList.remove('hidden');
-                        imageAnswers[q._id] = ev.target.result;
-                        persistAllExamData();
-                    };
-                    reader.readAsDataURL(file);
-                }
-            });
-
-            // Save text answer
-            document.getElementById('save-text-answer').onclick = async () => {
-                const text = theoryEditors[q._id].root.innerHTML.trim();
-                if (!text || text === '<p><br></p>') {
-                    showModal("Please enter an answer before saving.", { icon: true });
-                    return;
-                }
-                document.getElementById('save-text-answer').disabled = true;
-                document.getElementById('save-text-answer').innerHTML = '<span class="loading-spinner mr-2"></span>Saving...';
-
-                const result = await submitTheoryAnswer(q._id, 'text', text);
-                document.getElementById('save-text-answer').disabled = false;
-                document.getElementById('save-text-answer').innerHTML = '✓ Save Text Answer';
-
-                if (result) {
-                    userAnswers[q._id] = { type: 'text', text };
-                    persistAllExamData();
-                    const statusDiv = document.getElementById('theory-answer-status');
-                    statusDiv.innerHTML = `
-                        <div class="answer-status-badge saved">
-                            ✓ Answer saved (Score: ${result.autoScore || 0}/${q.maxMarks || 10})
-                        </div>
-                    `;
-                } else {
-                    const statusDiv = document.getElementById('theory-answer-status');
-                    statusDiv.innerHTML = `
-                        <div class="answer-status-badge error">
-                            ✗ Failed to save. Please try again.
-                        </div>
-                    `;
-                }
-            };
-
-            // Save image answer
-            document.getElementById('save-image-answer').onclick = async () => {
-                if (!imageAnswers[q._id]) {
-                    alert('Please select a photo first');
-                    return;
-                }
-                document.getElementById('save-image-answer').disabled = true;
-                document.getElementById('save-image-answer').innerHTML = '<span class="loading-spinner mr-2"></span>Uploading...';
-
-                const result = await submitTheoryAnswer(q._id, 'image', imageAnswers[q._id]);
-                document.getElementById('save-image-answer').disabled = false;
-                document.getElementById('save-image-answer').innerHTML = '✓ Save Photo Answer';
-
-                if (result) {
-                    userAnswers[q._id] = { type: 'image' };
-                    persistAllExamData();
-                    const statusDiv = document.getElementById('theory-answer-status');
-                    statusDiv.innerHTML = `
-                        <div class="answer-status-badge pending">
-                            ⏳ Photo saved. Awaiting OCR processing...
-                        </div>
-                    `;
-                } else {
-                    const statusDiv = document.getElementById('theory-answer-status');
-                    statusDiv.innerHTML = `
-                        <div class="answer-status-badge error">
-                            ✗ Failed to save. Please try again.
-                        </div>
-                    `;
-                }
-            };
-
-            // Navigation
-            document.getElementById('prev-btn-theory').onclick = (e) => {
-                e.preventDefault();
-                if (currentQ > 0) {
-                    currentQ--;
-                    renderQuestion(currentQ);
-                }
-            };
-
-            document.getElementById('next-btn-theory').onclick = (e) => {
-                e.preventDefault();
-                if (currentQ < total - 1) {
-                    currentQ++;
-                    renderQuestion(currentQ);
-                }
-            };
-
-            pallet.querySelectorAll('a[data-qp-theory]').forEach(a => {
-                a.onclick = ev => {
-                    ev.preventDefault();
-                    currentQ = parseInt(a.getAttribute('data-qp-theory'));
-                    renderQuestion(currentQ);
-                };
-            });
-
-            // Submit exam
-            document.getElementById('submit-btn-theory').onclick = (e) => {
-                e.preventDefault();
-                if (isSubmitting) return;
-                showModal("Are you sure you want to submit your answers and end the test? This action cannot be undone.", {
-                    title: "Submit Exam",
-                    icon: true,
-                    actionText: "Yes, Submit",
-                    onAction: submitTheoryExamHandler
-                });
-            };
-
-            // Default to text mode
-            document.getElementById('text-answer-area').classList.remove('hidden');
-        }
-
-        // ============ SUBMIT HANDLERS ============
-        async function submitCBTExam() {
-            if (isSubmitting) return;
-            isSubmitting = true;
-
-            try {
+            if (result) {
+                userAnswers[q._id] = { type: 'text', text };
                 persistAllExamData();
-                
-                // Save exam info
-                saveToLS(LS_KEYS.EXAM_INFO, {
-                    subject: examData.subject,
-                    matric: document.getElementById('student-regnum').innerText,
-                    student: (studentData.user.fullName || studentData.user.fullname || studentData.user.name || ''),
-                    course: courseCode,
-                    timeCompleted: new Date().toISOString(),
-                    type: examType,
-                    answers: userAnswers,
-                    totalQuestions: examData.questions.length,
-                    duration: duration
-                });
+                const statusDiv = document.getElementById('theory-answer-status');
+                statusDiv.innerHTML = `
+                    <div class="answer-status-badge saved">
+                        ✓ Answer saved (Score: ${result.autoScore || 0}/${q.maxMarks || 10})
+                    </div>
+                `;
+            } else {
+                const statusDiv = document.getElementById('theory-answer-status');
+                statusDiv.innerHTML = `
+                    <div class="answer-status-badge error">
+                        ✗ Failed to save. Please try again.
+                    </div>
+                `;
+            }
+        };
 
-                // Save shuffled questions for results
-                saveToLS(LS_KEYS.SHUFFLED_QUESTIONS, examData);
+        document.getElementById('save-image-answer').onclick = async () => {
+            if (!imageAnswers[q._id]) {
+                alert('Please select a photo first');
+                return;
+            }
+            document.getElementById('save-image-answer').disabled = true;
+            document.getElementById('save-image-answer').innerHTML = '<span class="loading-spinner mr-2"></span>Uploading...';
 
-                // Clear attempt ID if any
-                removeFromLS(LS_KEYS.ATTEMPT_ID);
+            const result = await submitTheoryAnswer(q._id, 'image', imageAnswers[q._id]);
+            document.getElementById('save-image-answer').disabled = false;
+            document.getElementById('save-image-answer').innerHTML = '✓ Save Photo Answer';
 
-                console.log("✓ Exam data saved to localStorage");
-                console.log("Saved exam info:", getFromLS(LS_KEYS.EXAM_INFO));
+            if (result) {
+                userAnswers[q._id] = { type: 'image' };
+                persistAllExamData();
+                const statusDiv = document.getElementById('theory-answer-status');
+                statusDiv.innerHTML = `
+                    <div class="answer-status-badge pending">
+                        ⏳ Photo saved. Awaiting OCR processing...
+                    </div>
+                `;
+            } else {
+                const statusDiv = document.getElementById('theory-answer-status');
+                statusDiv.innerHTML = `
+                    <div class="answer-status-badge error">
+                        ✗ Failed to save. Please try again.
+                    </div>
+                `;
+            }
+        };
 
+        document.getElementById('prev-btn-theory').onclick = (e) => {
+            e.preventDefault();
+            if (currentQ > 0) {
+                currentQ--;
+                renderQuestion(currentQ);
+            }
+        };
+
+        document.getElementById('next-btn-theory').onclick = (e) => {
+            e.preventDefault();
+            if (currentQ < total - 1) {
+                currentQ++;
+                renderQuestion(currentQ);
+            }
+        };
+
+        pallet.querySelectorAll('a[data-qp-theory]').forEach(a => {
+            a.onclick = ev => {
+                ev.preventDefault();
+                currentQ = parseInt(a.getAttribute('data-qp-theory'));
+                renderQuestion(currentQ);
+            };
+        });
+
+        document.getElementById('submit-btn-theory').onclick = (e) => {
+            e.preventDefault();
+            if (isSubmitting) return;
+            showModal("Are you sure you want to submit your answers and end the test? This action cannot be undone.", {
+                title: "Submit Exam",
+                icon: true,
+                actionText: "Yes, Submit",
+                onAction: submitTheoryExamHandler
+            });
+        };
+
+        document.getElementById('text-answer-area').classList.remove('hidden');
+    }
+
+    // ============ SUBMIT HANDLERS ============
+    async function submitCBTExam() {
+        if (isSubmitting) return;
+        isSubmitting = true;
+
+        try {
+            persistAllExamData();
+            
+            saveToLS(LS_KEYS.EXAM_INFO, {
+                subject: examSet.subject,
+                matric: document.getElementById('student-regnum').innerText,
+                student: (studentData.user?.fullName || studentData.user?.fullname || studentData.user?.name || ''),
+                course: courseCode,
+                timeCompleted: new Date().toISOString(),
+                type: examType,
+                answers: userAnswers,
+                totalQuestions: examData.questions.length,
+                duration: duration
+            });
+
+            saveToLS(LS_KEYS.SHUFFLED_QUESTIONS, examData);
+            removeFromLS(LS_KEYS.ATTEMPT_ID);
+
+            console.log("✓ Exam data saved to localStorage");
+
+            setTimeout(() => {
+                window.location.href = "results-summary";
+            }, 500);
+        } catch (err) {
+            console.error("Submit error:", err);
+            isSubmitting = false;
+            showModal("An error occurred while submitting. Please try again.", { icon: true });
+        }
+    }
+
+    async function submitTheoryExamHandler() {
+        if (isSubmitting) return;
+        isSubmitting = true;
+
+        showModal("Submitting your exam...", {
+            icon: false,
+            actionText: ""
+        });
+
+        try {
+            persistAllExamData();
+
+            saveToLS(LS_KEYS.EXAM_INFO, {
+                subject: examSet.subject,
+                matric: document.getElementById('student-regnum').innerText,
+                student: (studentData.user?.fullName || studentData.user?.fullname || studentData.user?.name || ''),
+                course: courseCode,
+                timeCompleted: new Date().toISOString(),
+                type: examType,
+                attemptId: attemptId,
+                answers: userAnswers,
+                totalQuestions: examData.questions.length,
+                duration: duration
+            });
+
+            const result = await submitTheoryExamAPI();
+            if (result) {
+                document.getElementById('modal-root').innerHTML = "";
                 setTimeout(() => {
                     window.location.href = "results-summary";
                 }, 500);
-            } catch (err) {
-                console.error("Submit error:", err);
-                isSubmitting = false;
-                showModal("An error occurred while submitting. Please try again.", { icon: true });
+            } else {
+                throw new Error("Submit failed");
+            }
+        } catch (err) {
+            console.error("Submit error:", err);
+            isSubmitting = false;
+            showModal("An error occurred while submitting. Please try again.", { icon: true });
+        }
+    }
+
+    // ============ TIMER ============
+    function startTimer(secs) {
+        let remaining = secs;
+        const timerElem = document.getElementById('timer');
+
+        function update() {
+            const hours = Math.floor(remaining / 3600);
+            const minutes = Math.floor((remaining % 3600) / 60);
+            const seconds = remaining % 60;
+            timerElem.textContent = 
+                `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+            if (remaining <= 300) {
+                timerElem.classList.add('animate-pulse');
+                timerElem.classList.remove('text-yellow-500');
+                timerElem.classList.add('text-red-500', 'bg-yellow-50');
             }
         }
 
-        async function submitTheoryExamHandler() {
-            if (isSubmitting) return;
-            isSubmitting = true;
-
-            showModal("Submitting your exam...", {
-                icon: false,
-                actionText: ""
-            });
-
-            try {
-                persistAllExamData();
-
-                saveToLS(LS_KEYS.EXAM_INFO, {
-                    subject: examData.subject,
-                    matric: document.getElementById('student-regnum').innerText,
-                    student: (studentData.user.fullName || studentData.user.fullname || studentData.user.name || ''),
-                    course: courseCode,
-                    timeCompleted: new Date().toISOString(),
-                    type: examType,
-                    attemptId: attemptId,
-                    answers: userAnswers,
-                    totalQuestions: examData.questions.length,
-                    duration: duration
-                });
-
-                const result = await submitTheoryExam();
-                if (result) {
-                    document.getElementById('modal-root').innerHTML = "";
-                    setTimeout(() => {
-                        window.location.href = "results-summary";
-                    }, 500);
-                } else {
-                    throw new Error("Submit failed");
-                }
-            } catch (err) {
-                console.error("Submit error:", err);
-                isSubmitting = false;
-                showModal("An error occurred while submitting. Please try again.", { icon: true });
-            }
-        }
-
-        // ============ TIMER ============
-        function startTimer(secs) {
-            let remaining = secs;
-            const timerElem = document.getElementById('timer');
-
-            function update() {
-                const hours = Math.floor(remaining / 3600);
-                const minutes = Math.floor((remaining % 3600) / 60);
-                const seconds = remaining % 60;
-                timerElem.textContent = 
-                    `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-
-                if (remaining <= 300) {
-                    timerElem.classList.add('animate-pulse');
-                    timerElem.classList.remove('text-yellow-500');
-                    timerElem.classList.add('text-red-500', 'bg-yellow-50');
-                }
-            }
-
+        update();
+        if (timer) clearInterval(timer);
+        timer = setInterval(() => {
+            remaining--;
             update();
-            if (timer) clearInterval(timer);
-            timer = setInterval(() => {
-                remaining--;
-                update();
-                if (remaining <= 0) {
-                    clearInterval(timer);
-                    timerElem.textContent = "00:00:00";
-                    persistAllExamData();
-                    showModal("⏰ Time's up! Your exam has been automatically submitted.", {
-                        title: "Time Expired",
-                        actionText: "See Results",
-                        onAction: () => {
-                            window.location.href = "results-summary";
-                        }
-                    });
-                }
-            }, 1000);
-        }
-
-        // ============ MAIN INITIALIZATION ============
-        async function main() {
-            try {
-                const accessCode = getExamAccessCode();
-                courseCode = getExamCourseCode() || "";
-
-                if (!accessCode) {
-                    showModal("You must enter an exam access code before writing a test.", {
-                        title: "No Access Code",
-                        actionText: "Go to Access",
-                        onAction: () => {
-                            window.location.href = "mock.html";
-                        }
-                    });
-                    return;
-                }
-
-                // Fetch student profile
-                studentData = await fetchStudentProfile();
-                if (!studentData || !studentData.user) {
-                    showModal("Session expired. Please login and try again.", {
-                        title: "Authentication Error",
-                        actionText: "Login Again",
-                        onAction: () => {
-                            window.location.href = "mock.html";
-                        }
-                    });
-                    return;
-                }
-
-                const studentName = studentData.user.fullName || studentData.user.fullname || studentData.user.name || "Student";
-                const studentId = studentData.user.studentId || studentData.user.username || "N/A";
-
-                document.getElementById('student-name').innerText = studentName;
-                document.getElementById('student-regnum').innerText = studentId;
-
-                // Fetch exam data
-                const result = await fetchExamDataByAccessCode(accessCode);
-                if (!result || !result.examSet) {
-                    showModal("Invalid or expired access code. Please re-enter.", {
-                        title: "Exam Not Found",
-                        actionText: "Go Back",
-                        onAction: () => {
-                            localStorage.removeItem("exam_access_code");
-                            window.location.href = "mock.html";
-                        }
-                    });
-                    return;
-                }
-
-                examSet = result.examSet;
-                document.getElementById('exam-subject').innerText = examSet.subject || courseCode || "Unknown Subject";
-                document.getElementById('exam-duration').innerText = (examSet.duration ? Math.round(examSet.duration / 60) + " mins" : "N/A");
-
-                duration = examSet.duration || 3600;
-                examType = examSet.examType || "cbt";
-
-                // Update UI with exam type
-                const examTypeText = examType === "theory" ? "📄 Theory Exam" : examType === "hybrid" ? "🔀 Hybrid Exam" : "📝 CBT Exam";
-                document.getElementById('exam-mode-label').textContent = examTypeText;
-                document.getElementById('exam-type-label').textContent = examType.toUpperCase();
-                document.getElementById('exam-type-indicator').innerHTML = 
-                    `<span class="exam-type-badge ${examType}">${examTypeText}</span>`;
-
-                // Load questions based on exam type
-                if (examType === "theory") {
-                    const theoryQuestions = await fetchTheoryQuestions(examSet._id);
-                    if (!theoryQuestions || theoryQuestions.length === 0) {
-                        showModal("No theory questions found for this exam.", {
-                            title: "No Questions",
-                            actionText: "Go Back",
-                            onAction: () => {
-                                window.location.href = "mock.html";
-                            }
-                        });
-                        return;
+            if (remaining <= 0) {
+                clearInterval(timer);
+                timerElem.textContent = "00:00:00";
+                persistAllExamData();
+                showModal("⏰ Time's up! Your exam has been automatically submitted.", {
+                    title: "Time Expired",
+                    actionText: "See Results",
+                    onAction: () => {
+                        window.location.href = "results-summary";
                     }
+                });
+            }
+        }, 1000);
+    }
 
-                    const attemptData = await initTheoryAttempt(examSet._id);
-                    if (!attemptData) {
-                        showModal("Failed to initialize theory exam. Please try again.", {
-                            title: "Initialization Error",
-                            actionText: "Go Back",
-                            onAction: () => {
-                                window.location.href = "mock.html";
-                            }
-                        });
-                        return;
-                    }
+    function showLoadingState() {
+        const qa = document.getElementById('question-area');
+        qa.innerHTML = `
+            <div class="text-center my-16 text-blue-700 font-semibold">
+                <div class="loading-spinner mx-auto mb-4"></div>
+                Loading exam...
+            </div>
+        `;
+    }
 
-                    attemptId = attemptData.attemptId;
-                    saveToLS(LS_KEYS.ATTEMPT_ID, attemptId);
+    function showStatusMessage(message) {
+        const qa = document.getElementById('question-area');
+        qa.innerHTML = `
+            <div class="text-center my-20 text-red-600">
+                <i class="fa fa-exclamation-triangle text-5xl mb-4"></i>
+                <p class="text-xl font-bold">${message}</p>
+                <a href="mock.html" class="mt-6 inline-block px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                    Back to Exams
+                </a>
+            </div>
+        `;
+    }
 
-                    examData = {
-                        subject: examSet.subject,
-                        duration: examSet.duration || 3600,
-                        questions: theoryQuestions,
-                        type: "theory"
-                    };
-                } else if (examType === "hybrid") {
-                    const theoryQuestions = await fetchTheoryQuestions(examSet._id);
-                    const cbtQuestions = result.questions || [];
+    // ============ MAIN INITIALIZATION ============
+    async function main() {
+        try {
+            const accessCode = getExamAccessCode();
+            courseCode = getExamCourseCode() || "";
 
-                    if ((cbtQuestions.length === 0 && theoryQuestions.length === 0)) {
-                        showModal("No questions found for this exam.", {
-                            title: "No Questions",
-                            actionText: "Go Back",
-                            onAction: () => {
-                                window.location.href = "mock.html";
-                            }
-                        });
-                        return;
-                    }
-
-                    let shuffleSession = getFromLS(LS_KEYS.SHUFFLED_QUESTIONS);
-                    if (shuffleSession) {
-                        examData = shuffleSession;
-                    } else {
-                        const allQuestions = [
-                            ...cbtQuestions.map(q => ({ ...q, type: "cbt", id: q._id || Math.random().toString(36).slice(2, 12) })),
-                            ...theoryQuestions.map(q => ({ ...q, type: "theory", id: q._id }))
-                        ];
-                        let shuffledQuestions = shuffleArray(allQuestions).map((q) => {
-                            if (q.type === "cbt") {
-                                return {
-                                    ...q,
-                                    options: shuffleArray((q.options || []).map(opt => ({ ...opt })))
-                                };
-                            }
-                            return q;
-                        });
-                        examData = {
-                            subject: examSet.subject,
-                            duration: examSet.duration || 3600,
-                            questions: shuffledQuestions,
-                            type: "hybrid"
-                        };
-                        saveToLS(LS_KEYS.SHUFFLED_QUESTIONS, examData);
-                    }
-                } else {
-                    // Standard CBT
-                    if (!Array.isArray(result.questions)) {
-                        showModal("Invalid exam data. Please try again.", {
-                            title: "Data Error",
-                            actionText: "Go Back",
-                            onAction: () => {
-                                window.location.href = "mock.html";
-                            }
-                        });
-                        return;
-                    }
-
-                    let shuffleSession = getFromLS(LS_KEYS.SHUFFLED_QUESTIONS);
-                    if (shuffleSession) {
-                        examData = shuffleSession;
-                    } else {
-                        let shuffledQuestions = shuffleArray(result.questions).map((q) => ({
-                            ...q,
-                            options: shuffleArray((q.options || []).map(opt => ({ ...opt }))),
-                            id: q._id || (Math.random().toString(36).slice(2, 12)),
-                        }));
-                        examData = {
-                            subject: examSet.subject,
-                            duration: examSet.duration || 3600,
-                            questions: shuffledQuestions,
-                            type: "cbt"
-                        };
-                        saveToLS(LS_KEYS.SHUFFLED_QUESTIONS, examData);
-                    }
-                }
-
-                // Restore exam data from localStorage
-                restoreExamData();
-
-                // Start services
-                startKeepAliveInterval();
-                startDeviceCheckInterval();
-                startTimer(duration);
-                renderQuestion(currentQ);
-
-            } catch (err) {
-                console.error("Main error:", err);
-                showModal(`An unexpected error occurred: ${err.message}`, {
-                    title: "Error",
-                    actionText: "Go Back",
+            if (!accessCode) {
+                showModal("You must enter an exam access code before writing a test.", {
+                    title: "No Access Code",
+                    actionText: "Go to Access",
                     onAction: () => {
                         window.location.href = "mock.html";
                     }
                 });
+                return;
             }
+
+            showLoadingState();
+
+            studentData = await fetchStudentProfile();
+            if (!studentData || !studentData.user) {
+                showModal("Session expired. Please login and try again.", {
+                    title: "Authentication Error",
+                    actionText: "Login Again",
+                    onAction: () => {
+                        window.location.href = "mock.html";
+                    }
+                });
+                return;
+            }
+
+            const studentName = studentData.user.fullName || studentData.user.fullname || studentData.user.name || "Student";
+            const studentId = studentData.user.studentId || studentData.user.username || "N/A";
+
+            document.getElementById('student-name').innerText = studentName;
+            document.getElementById('student-regnum').innerText = studentId;
+
+            const result = await fetchExamDataByAccessCode(accessCode);
+            if (!result || !result.examSet) {
+                showModal("Invalid or expired access code. Please re-enter.", {
+                    title: "Exam Not Found",
+                    actionText: "Go Back",
+                    onAction: () => {
+                        localStorage.removeItem("exam_access_code");
+                        window.location.href = "mock.html";
+                    }
+                });
+                return;
+            }
+
+            examSet = result.examSet;
+            document.getElementById('exam-subject').innerText = examSet.subject || courseCode || "Unknown Subject";
+            document.getElementById('exam-duration').innerText = (examSet.duration ? Math.round(examSet.duration / 60) + " mins" : "N/A");
+
+            duration = examSet.duration || 3600;
+
+            // Determine exam type
+            const typeResult = await determineExamType(examSet._id);
+            examType = typeResult.type;
+
+            // Update UI with exam type
+            const examTypeText = examType === "theory" ? "📄 Theory Exam" : examType === "hybrid" ? "🔀 Hybrid Exam" : "📝 CBT Exam";
+            document.getElementById('exam-mode-label').textContent = examTypeText;
+            document.getElementById('exam-type-label').textContent = examType.toUpperCase();
+            document.getElementById('exam-type-indicator').innerHTML = 
+                `<span class="exam-type-badge ${examType}">${examTypeText}</span>`;
+
+            // Load questions based on exam type
+            if (examType === "theory") {
+                const theoryQuestions = typeResult.theoryQs || [];
+                if (!theoryQuestions || theoryQuestions.length === 0) {
+                    showStatusMessage("No theory questions found for this exam.");
+                    return;
+                }
+
+                const attemptData = await initTheoryAttempt(examSet._id);
+                if (!attemptData) {
+                    showStatusMessage("Failed to initialize theory exam. Please try again.");
+                    return;
+                }
+
+                attemptId = attemptData.attemptId;
+                saveToLS(LS_KEYS.ATTEMPT_ID, attemptId);
+
+                examData = {
+                    subject: examSet.subject,
+                    duration: examSet.duration || 3600,
+                    questions: theoryQuestions,
+                    type: "theory"
+                };
+            } else if (examType === "hybrid") {
+                const cbtQuestions = typeResult.cbtQs || [];
+                const theoryQuestions = typeResult.theoryQs || [];
+
+                if ((cbtQuestions.length === 0 && theoryQuestions.length === 0)) {
+                    showStatusMessage("No questions found for this exam.");
+                    return;
+                }
+
+                let shuffleSession = getFromLS(LS_KEYS.SHUFFLED_QUESTIONS);
+                if (shuffleSession) {
+                    examData = shuffleSession;
+                } else {
+                    const allQuestions = [
+                        ...cbtQuestions.map(q => ({ ...q, type: "cbt", id: q._id || Math.random().toString(36).slice(2, 12) })),
+                        ...theoryQuestions.map(q => ({ ...q, type: "theory", id: q._id }))
+                    ];
+                    let shuffledQuestions = shuffleArray(allQuestions).map((q) => {
+                        if (q.type === "cbt") {
+                            return {
+                                ...q,
+                                options: shuffleArray((q.options || []).map(opt => ({ ...opt })))
+                            };
+                        }
+                        return q;
+                    });
+                    examData = {
+                        subject: examSet.subject,
+                        duration: examSet.duration || 3600,
+                        questions: shuffledQuestions,
+                        type: "hybrid"
+                    };
+                    saveToLS(LS_KEYS.SHUFFLED_QUESTIONS, examData);
+                }
+            } else {
+                // Standard CBT
+                const cbtQuestions = typeResult.cbtQs || [];
+                
+                if (!Array.isArray(cbtQuestions) || cbtQuestions.length === 0) {
+                    showStatusMessage("No CBT questions found for this exam.");
+                    return;
+                }
+
+                let shuffleSession = getFromLS(LS_KEYS.SHUFFLED_QUESTIONS);
+                if (shuffleSession) {
+                    examData = shuffleSession;
+                } else {
+                    let shuffledQuestions = shuffleArray(cbtQuestions).map((q) => ({
+                        ...q,
+                        options: shuffleArray((q.options || []).map(opt => ({ ...opt }))),
+                        id: q._id || (Math.random().toString(36).slice(2, 12)),
+                    }));
+                    examData = {
+                        subject: examSet.subject,
+                        duration: examSet.duration || 3600,
+                        questions: shuffledQuestions,
+                        type: "cbt"
+                    };
+                    saveToLS(LS_KEYS.SHUFFLED_QUESTIONS, examData);
+                }
+            }
+
+            restoreExamData();
+            startKeepAliveInterval();
+            startDeviceCheckInterval();
+            startTimer(duration);
+            renderQuestion(currentQ);
+
+        } catch (err) {
+            console.error("Main error:", err);
+            showStatusMessage(`An unexpected error occurred: ${err.message}`);
         }
+    }
 
-        // ============ PAGE LIFECYCLE ============
-        document.getElementById('year').textContent = new Date().getFullYear();
+    // ============ PAGE LIFECYCLE ============
+    document.getElementById('year').textContent = new Date().getFullYear();
 
-        window.addEventListener("DOMContentLoaded", () => {
-            performDeviceRedirect();
-            main();
-        });
+    window.addEventListener("DOMContentLoaded", () => {
+        performDeviceRedirect();
+        main();
+    });
 
-        // Cleanup on page unload
-        window.addEventListener("beforeunload", (e) => {
-            stopKeepAliveInterval();
-            stopDeviceCheckInterval();
-            if (timer) clearInterval(timer);
-            
-            // Final persist before unload
-            persistAllExamData();
-        });
+    window.addEventListener("beforeunload", (e) => {
+        stopKeepAliveInterval();
+        stopDeviceCheckInterval();
+        if (timer) clearInterval(timer);
+        
+        persistAllExamData();
+    });
 
-        // Prevent accidental navigation away
-        window.addEventListener("beforeunload", (e) => {
-            if (examData && examData.questions && currentQ < examData.questions.length) {
-                e.preventDefault();
-                e.returnValue = "You have an exam in progress. Are you sure you want to leave?";
-                return e.returnValue;
-            }
-        });
-    </script>
-
+    window.addEventListener("beforeunload", (e) => {
+        if (examData && examData.questions && currentQ < examData.questions.length) {
+            e.preventDefault();
+            e.returnValue = "You have an exam in progress. Are you sure you want to leave?";
+            return e.returnValue;
+        }
+    });
+</script>
+</body>
+</html>
