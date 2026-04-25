@@ -816,7 +816,9 @@
       ANSWERS: 'cbt_user_answers',
       EXAM_INFO: 'cbt_exam_info',
       SHUFFLED_QUESTIONS: 'cbt_shuffled_questions',
-      IMAGE_ANSWERS: 'cbt_image_answers'
+      IMAGE_ANSWERS: 'cbt_image_answers',
+      EXAM_TYPE: 'exam_type',
+      ATTEMPT_ID: 'cbt_attempt_id'
     };
 
     // ============ DATA RETRIEVAL ============
@@ -830,13 +832,30 @@
       }
     }
 
+    function getFromLSString(key) {
+      try {
+        return localStorage.getItem(key) || sessionStorage.getItem(key) || null;
+      } catch (err) {
+        console.warn(`Failed to get ${key}:`, err);
+        return null;
+      }
+    }
+
     let examInfo = getFromLS(LS_KEYS.EXAM_INFO) || {};
     let answers = getFromLS(LS_KEYS.ANSWERS) || {};
     let shuffledQuestions = getFromLS(LS_KEYS.SHUFFLED_QUESTIONS) || {};
     let imageAnswers = getFromLS(LS_KEYS.IMAGE_ANSWERS) || {};
+    
+    // Get exam type from multiple possible sources
+    let examType = examInfo.type || getFromLSString(LS_KEYS.EXAM_TYPE) || 'cbt';
+    
+    // Get attempt ID from multiple possible sources
+    let attemptId = examInfo.attemptId || getFromLSString(LS_KEYS.ATTEMPT_ID);
 
     console.log("Loaded exam info:", examInfo);
     console.log("Loaded answers:", answers);
+    console.log("Exam type:", examType);
+    console.log("Attempt ID:", attemptId);
 
     // ============ API CALLS ============
     async function fetchQuestions() {
@@ -1087,7 +1106,7 @@
         resultsList.innerHTML += `
           <div class="error-message">
             <i class="fas fa-exclamation-circle"></i>
-            No theory answers found. Please retake the exam.
+            No theory answers found in attempt.
           </div>
         `;
         return { correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0, scoreDisplay: "0/0" };
@@ -1115,7 +1134,10 @@
           answerId = answerRef.answer;
         }
 
-        if (!answerId) continue;
+        if (!answerId) {
+          console.warn("No answer ID found in:", answerRef);
+          continue;
+        }
 
         // Fetch full answer details if not already loaded
         if (!answerDetail) {
@@ -1260,7 +1282,8 @@
         document.getElementById('exam-subject').textContent = examInfo.subject || examInfo.course || "-";
         document.getElementById('exam-time').textContent = getTimeString(examInfo.timeCompleted) || "-";
 
-        const examType = examInfo.type || "cbt";
+        console.log("Using exam type:", examType);
+        console.log("Using attempt ID:", attemptId);
         
         // Update exam type badge
         const badge = document.getElementById('exam-type-display');
@@ -1281,10 +1304,8 @@
 
         if (examType === "theory") {
           // Render theory results
-          const attemptId = examInfo.attemptId;
-          console.log("Attempt ID:", attemptId);
-          
           if (!attemptId) {
+            console.error("No attempt ID available for theory exam");
             document.getElementById('results-list').innerHTML = `
               <div class="error-message">
                 <i class="fas fa-exclamation-circle"></i>
