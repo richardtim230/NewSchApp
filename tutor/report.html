@@ -806,863 +806,610 @@
     </div>
   </div>
 
-  <script>
-"use strict";
+<script>
+    "use strict";
 
-const API_BASE = "https://examguide.onrender.com";
-
-// ============ LOCAL STORAGE KEYS ============
-const LS_KEYS = {
-  ANSWERS: 'cbt_user_answers',
-  EXAM_INFO: 'cbt_exam_info',
-  SHUFFLED_QUESTIONS: 'cbt_shuffled_questions',
-  IMAGE_ANSWERS: 'cbt_image_answers'
-};
-
-// ============ DATA RETRIEVAL ============
-function getFromLS(key) {
-  try {
-    const data = localStorage.getItem(key) || sessionStorage.getItem(key);
-    return data ? JSON.parse(data) : null;
-  } catch (err) {
-    console.warn(`Failed to parse ${key}:`, err);
-    return null;
-  }
-}
-
-let examInfo = getFromLS(LS_KEYS.EXAM_INFO) || {};
-let answers = getFromLS(LS_KEYS.ANSWERS) || {};
-let shuffledQuestions = getFromLS(LS_KEYS.SHUFFLED_QUESTIONS) || {};
-let imageAnswers = getFromLS(LS_KEYS.IMAGE_ANSWERS) || {};
-
-console.log("Loaded exam info:", examInfo);
-console.log("Loaded answers:", answers);
-console.log("Loaded shuffled questions:", shuffledQuestions);
-
-// ============ API CALLS ============
-async function fetchQuestions() {
-  const accessCode = localStorage.getItem("exam_access_code");
-  if (!accessCode) return { questions: [], subject: "", examType: "cbt" };
-  try {
-    const res = await fetch(`${API_BASE}/api/exam-set/by-access?accessCode=${encodeURIComponent(accessCode)}`);
-    if (!res.ok) return { questions: [], subject: "", examType: "cbt" };
-    const js = await res.json();
-    return { 
-      questions: js.questions || [], 
-      subject: js.examSet?.subject || "",
-      examType: js.examSet?.examType || "cbt"
-    };
-  } catch (err) {
-    console.error("Fetch questions error:", err);
-    return { questions: [], subject: "", examType: "cbt" };
-  }
-}
-
-async function fetchCBTQuestions(examSetId) {
-  try {
-    if (!examSetId) return [];
-    const res = await fetch(`${API_BASE}/api/cbt-questions?examSet=${encodeURIComponent(examSetId)}`);
-    if (!res.ok) return [];
-    return await res.json();
-  } catch (err) {
-    console.error("Fetch CBT questions error:", err);
-    return [];
-  }
-}
-
-async function fetchTheoryAttempt(attemptId) {
-  try {
-    if (!attemptId) return null;
-    const token = localStorage.getItem("student_jwt_token");
-    const res = await fetch(`${API_BASE}/api/theory-attempts/${attemptId}`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch (err) {
-    console.error("Fetch theory attempt error:", err);
-    return null;
-  }
-}
-
-async function fetchTheoryAnswerDetail(answerId) {
-  try {
-    if (!answerId) return null;
-    const token = localStorage.getItem("student_jwt_token");
-    const res = await fetch(`${API_BASE}/api/theory-answers/${answerId}`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch (err) {
-    console.error("Fetch theory answer detail error:", err);
-    return null;
-  }
-}
-
-// ============ UTILITY FUNCTIONS ============
-function getTimeString(iso) {
-  if (!iso) return "";
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-  } catch (err) {
-    return iso;
-  }
-}
-
-function stripHtml(html) {
-  const tmp = document.createElement("DIV");
-  tmp.innerHTML = html || "";
-  return tmp.textContent || tmp.innerText || "";
-}
-
-function normalizeQuestionMath(html) {
-  if (!html || typeof html !== 'string') return html;
-  let s = html.replace(/\\\\/g, '\\');
-  if (/\\\(|\\\[|\$\$?/.test(s)) return s;
-  const cmdRegex = /\\(?:frac|sqrt|sum|int|lim|left|right|cdot|times|pi|alpha|beta|gamma|theta|log|ln|Delta|delta)(?:\{[^}]*\}|\^[^{\s]+|\_[^{\s]+)*/g;
-  s = s.replace(cmdRegex, function(m) { return `\\(${m}\\)`; });
-  const expRegex = /([A-Za-z0-9])\^(?:\{[^}]+\}|\d+)/g;
-  s = s.replace(expRegex, function(m) { return `\\(${m}\\)`; });
-  const subRegex = /([A-Za-z0-9])_(?:\{[^}]+\}|\d+)/g;
-  s = s.replace(subRegex, function(m) { return `\\(${m}\\)`; });
-  return s;
-}
-
-function getScoreTally(results) {
-  let correct = 0, pending = 0, unanswered = 0;
-  results.forEach(r => {
-    if (r.status === "correct") correct++;
-    else if (r.status === "pending") pending++;
-    else if (r.status === "unanswered") unanswered++;
-  });
-  return [correct, results.length - correct - pending - unanswered, pending, unanswered];
-}
-
-function feedbackRemark(pct) {
-  if (pct === 100) return "🎉 Excellent! You aced it!";
-  if (pct >= 80) return "👏 Great work! Almost perfect.";
-  if (pct >= 60) return "📚 Good. Keep studying!";
-  if (pct >= 40) return "💪 Keep practicing!";
-  return "🔄 Review & try again!";
-}
-
-// ============ RENDER CBT RESULTS ============
-async function renderCBTResults(questions) {
-  let results = [];
-  const resultsList = document.getElementById('results-list');
-  
-  resultsList.innerHTML = `
-    <div class="content-header">
-      <div class="content-title">
-        <i class="fas fa-chart-pie" style="color: #fbbf24;"></i> Exam Results
-      </div>
-      <div class="content-subject">${examInfo.subject || examInfo.course || "CBT Report"}</div>
-    </div>
-  `;
-
-  if (!questions || questions.length === 0) {
-    resultsList.innerHTML += `
-      <div class="error-message">
-        <i class="fas fa-exclamation-circle"></i> No questions found.
-      </div>
-    `;
-    return { correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0 };
-  }
-
-  for (let i = 0; i < questions.length; i++) {
-    const q = questions[i];
-    const qid = q._id || q.id || `q${i}`;
-    const userAns = answers[qid] || answers[q._id] || answers[q.id] || "";
-    const correctAns = q.answer;
-    const isCorrect = (userAns === correctAns);
-
-    const status = isCorrect ? "correct" : (userAns ? "incorrect" : "unanswered");
-    results.push({ isCorrect, status });
-
-    const opt = q.options || [];
-    const userOpt = opt.find(o => o.key === userAns);
-    const correctOpt = opt.find(o => o.key === correctAns);
-
-    const questionHtml = normalizeQuestionMath(q.question || '');
-    const userOptText = userOpt ? normalizeQuestionMath(userOpt.text || '') : '';
-    const correctOptText = correctOpt ? normalizeQuestionMath(correctOpt.text || '') : '';
-    const explanationHtml = normalizeQuestionMath(q.explanation || '');
-
-    const cardHtml = `
-      <div class="question-card ${isCorrect ? "correct" : "incorrect"}">
-        <div class="question-text">
-          <div class="question-number">${i + 1}</div>
-          <span>${questionHtml}</span>
-        </div>
-
-        <div class="answer-section">
-          <div class="answer-label">Your Answer</div>
-          <div class="answer-content">
-            <span class="answer-pill answer-user">
-              <i class="fas ${userAns ? (userAns === correctAns ? 'fa-check' : 'fa-times') : 'fa-minus'}"></i>
-              ${userAns ? `${userAns}${userOptText ? `. ${userOptText}` : ""}` : "Not Answered"}
-            </span>
-          </div>
-        </div>
-
-        <div class="answer-section">
-          <div class="answer-label">Correct Answer</div>
-          <div class="answer-content">
-            <span class="answer-pill answer-correct">
-              <i class="fas fa-check-circle"></i>
-              ${correctAns}${correctOptText ? `. ${correctOptText}` : ""}
-            </span>
-          </div>
-        </div>
-
-        ${explanationHtml ? `
-          <div class="explanation-box">
-            <details>
-              <summary class="explanation-summary">
-                <i class="fas fa-lightbulb"></i> Explanation
-              </summary>
-              <div class="explanation-content">
-                ${explanationHtml}
-              </div>
-            </details>
-          </div>
-        ` : ""}
-      </div>
-    `;
-
-    resultsList.innerHTML += cardHtml;
-  }
-
-  if (window.MathJax && MathJax.typesetPromise) {
-    try {
-      await MathJax.typesetPromise([resultsList]);
-    } catch (err) {
-      console.warn("MathJax error:", err && err.message);
-    }
-  }
-
-  const [correct, wrong, pending, unanswered] = getScoreTally(results);
-  const total = correct + wrong;
-  const percent = total ? Math.round(correct / total * 100) : 0;
-
-  return { correct, wrong, pending, unanswered, percent, total };
-}
-
-// ============ RENDER THEORY RESULTS ============
-async function renderTheoryResults(attempt) {
-  let results = [];
-  const resultsList = document.getElementById('results-list');
-
-  resultsList.innerHTML = `
-    <div class="content-header">
-      <div class="content-title">
-        <i class="fas fa-chart-pie" style="color: #fbbf24;"></i> Theory Exam Results
-      </div>
-      <div class="content-subject">${examInfo.subject || "Theory Report"}</div>
-    </div>
-  `;
-
-  if (!attempt || !attempt.answers || attempt.answers.length === 0) {
-    resultsList.innerHTML += `
-      <div class="error-message">
-        <i class="fas fa-exclamation-circle"></i>
-        No theory answers found. Please retake the exam.
-      </div>
-    `;
-    return { correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0, totalScore: 0, totalMarks: 0 };
-  }
-
-  for (let i = 0; i < attempt.answers.length; i++) {
-    const answerRef = attempt.answers[i];
-    const answerId = answerRef._id || answerRef;
-
-    // Fetch answer details
-    let answerDetail = null;
-    try {
-      answerDetail = await fetchTheoryAnswerDetail(answerId);
-    } catch (err) {
-      console.warn("Failed to fetch answer details:", err);
-      continue;
-    }
-
-    if (!answerDetail) continue;
-
-    const isGraded = answerDetail.isGraded || false;
-    const status = isGraded ? "graded" : "pending";
-    const score = answerDetail.finalScore || answerDetail.autoScore || 0;
-    const maxMarks = answerDetail.question?.maxMarks || 10;
-
-    results.push({ 
-      isGraded, 
-      status, 
-      score,
-      maxMarks
-    });
-
-    const questionText = answerDetail.question?.question || "";
-    const questionHtml = normalizeQuestionMath(questionText);
-
-    let answerDisplay = "";
-    if (answerDetail.answerType === "text") {
-      const textContent = answerDetail.answerText || answerDetail.ocrExtractedText || "";
-      answerDisplay = normalizeQuestionMath(textContent);
-    } else if (answerDetail.answerType === "image") {
-      answerDisplay = `<img src="${answerDetail.answerImageUrl}" alt="Student answer" style="max-width: 100%; max-height: 300px; border-radius: 0.5rem;" />`;
-    }
-
-    const statusColor = isGraded ? "correct" : "pending";
-    const statusIcon = isGraded ? 'fa-check-circle' : 'fa-hourglass-half';
-    const statusText = isGraded ? `Graded: ${score}/${maxMarks}` : "Pending Review";
-
-    const cardHtml = `
-      <div class="question-card theory ${statusColor}">
-        <div class="question-text">
-          <div class="question-number">${i + 1}</div>
-          <span>${questionHtml}</span>
-        </div>
-
-        <div class="answer-section">
-          <div class="answer-label">Your Answer</div>
-          <div class="theory-answer-display">
-            ${answerDisplay || "<em>No answer provided</em>"}
-          </div>
-        </div>
-
-        <div class="answer-section">
-          <div class="answer-label">Grading Status</div>
-          <div class="answer-content">
-            <span class="answer-pill ${isGraded ? 'answer-correct' : 'answer-pending'}">
-              <i class="fas ${statusIcon}"></i>
-              ${statusText}
-            </span>
-          </div>
-        </div>
-
-        ${answerDetail.matchedKeywords && answerDetail.matchedKeywords.length > 0 ? `
-          <div class="explanation-box">
-            <details>
-              <summary class="explanation-summary">
-                <i class="fas fa-key"></i> Matched Keywords
-              </summary>
-              <div class="explanation-content" style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
-                ${answerDetail.matchedKeywords.map(kw => `<span style="background: #dcfce7; color: #166534; padding: 0.35rem 0.75rem; border-radius: 0.35rem; display: inline-block; font-size: 0.85rem; font-weight: 600;">${kw}</span>`).join("")}
-              </div>
-            </details>
-          </div>
-        ` : ""}
-
-        ${answerDetail.manualFeedback ? `
-          <div class="explanation-box">
-            <details open>
-              <summary class="explanation-summary">
-                <i class="fas fa-comment-dots"></i> Tutor Feedback
-              </summary>
-              <div class="explanation-content">
-                ${normalizeQuestionMath(answerDetail.manualFeedback)}
-              </div>
-            </details>
-          </div>
-        ` : ""}
-
-        ${answerDetail.question?.sampleAnswer ? `
-          <div class="explanation-box">
-            <details>
-              <summary class="explanation-summary">
-                <i class="fas fa-lightbulb"></i> Sample Answer
-              </summary>
-              <div class="explanation-content">
-                ${normalizeQuestionMath(answerDetail.question.sampleAnswer)}
-              </div>
-            </details>
-          </div>
-        ` : ""}
-      </div>
-    `;
-
-    resultsList.innerHTML += cardHtml;
-  }
-
-  if (window.MathJax && MathJax.typesetPromise) {
-    try {
-      await MathJax.typesetPromise([resultsList]);
-    } catch (err) {
-      console.warn("MathJax error:", err && err.message);
-    }
-  }
-
-  const totalScore = results.reduce((sum, r) => sum + (r.score || 0), 0);
-  const totalMarks = results.reduce((sum, r) => sum + (r.maxMarks || 0), 0);
-  const graded = results.filter(r => r.isGraded).length;
-  const pending = results.filter(r => !r.isGraded).length;
-  const percent = totalMarks ? Math.round(totalScore / totalMarks * 100) : 0;
-
-  return { 
-    correct: graded, 
-    wrong: 0, 
-    pending: pending, 
-    unanswered: 0, 
-    percent: percent, 
-    total: results.length,
-    totalScore: totalScore,
-    totalMarks: totalMarks
-  };
-}
-
-// ============ RENDER HYBRID RESULTS ============
-async function renderHybridResults(cbtQuestions, theoryAttempt) {
-  let results = [];
-  const resultsList = document.getElementById('results-list');
-
-  resultsList.innerHTML = `
-    <div class="content-header">
-      <div class="content-title">
-        <i class="fas fa-chart-pie" style="color: #fbbf24;"></i> Hybrid Exam Results
-      </div>
-      <div class="content-subject">${examInfo.subject || "Hybrid Report"}</div>
-    </div>
-  `;
-
-  let cbtScore = { correct: 0, wrong: 0, pending: 0, unanswered: 0 };
-  let theoryScore = { correct: 0, wrong: 0, pending: 0, unanswered: 0, totalScore: 0, totalMarks: 0 };
-
-  // Display CBT questions
-  if (cbtQuestions && cbtQuestions.length > 0) {
-    resultsList.innerHTML += `<div style="padding: 1.5rem 0; border-bottom: 2px solid #f3f4f6; margin-bottom: 1.5rem;">
-      <h3 style="font-size: 1.25rem; font-weight: 700; color: #1f2937; display: flex; align-items: center; gap: 0.75rem;">
-        <i class="fas fa-check-square" style="color: #3b82f6;"></i> Multiple Choice Questions
-      </h3>
-    </div>`;
-
-    for (let i = 0; i < cbtQuestions.length; i++) {
-      const q = cbtQuestions[i];
-      const qid = q._id || q.id || `q${i}`;
-      const userAns = answers[qid] || answers[q._id] || answers[q.id] || "";
-      const correctAns = q.answer;
-      const isCorrect = (userAns === correctAns);
-
-      const status = isCorrect ? "correct" : (userAns ? "incorrect" : "unanswered");
-      const statusResult = { isCorrect, status };
-      results.push(statusResult);
-
-      if (status === "correct") cbtScore.correct++;
-      else if (status === "incorrect") cbtScore.wrong++;
-      else cbtScore.unanswered++;
-
-      const opt = q.options || [];
-      const userOpt = opt.find(o => o.key === userAns);
-      const correctOpt = opt.find(o => o.key === correctAns);
-
-      const questionHtml = normalizeQuestionMath(q.question || '');
-      const userOptText = userOpt ? normalizeQuestionMath(userOpt.text || '') : '';
-      const correctOptText = correctOpt ? normalizeQuestionMath(correctOpt.text || '') : '';
-      const explanationHtml = normalizeQuestionMath(q.explanation || '');
-
-      const cardHtml = `
-        <div class="question-card ${isCorrect ? "correct" : "incorrect"}">
-          <div class="question-text">
-            <div class="question-number">${i + 1}</div>
-            <span>${questionHtml}</span>
-          </div>
-
-          <div class="answer-section">
-            <div class="answer-label">Your Answer</div>
-            <div class="answer-content">
-              <span class="answer-pill answer-user">
-                <i class="fas ${userAns ? (userAns === correctAns ? 'fa-check' : 'fa-times') : 'fa-minus'}"></i>
-                ${userAns ? `${userAns}${userOptText ? `. ${userOptText}` : ""}` : "Not Answered"}
-              </span>
-            </div>
-          </div>
-
-          <div class="answer-section">
-            <div class="answer-label">Correct Answer</div>
-            <div class="answer-content">
-              <span class="answer-pill answer-correct">
-                <i class="fas fa-check-circle"></i>
-                ${correctAns}${correctOptText ? `. ${correctOptText}` : ""}
-              </span>
-            </div>
-          </div>
-
-          ${explanationHtml ? `
-            <div class="explanation-box">
-              <details>
-                <summary class="explanation-summary">
-                  <i class="fas fa-lightbulb"></i> Explanation
-                </summary>
-                <div class="explanation-content">
-                  ${explanationHtml}
-                </div>
-              </details>
-            </div>
-          ` : ""}
-        </div>
-      `;
-
-      resultsList.innerHTML += cardHtml;
-    }
-  }
-
-  // Display Theory section header
-  if (theoryAttempt && theoryAttempt.answers && theoryAttempt.answers.length > 0) {
-    resultsList.innerHTML += `<div style="padding: 1.5rem 0; border-bottom: 2px solid #f3f4f6; margin-top: 2rem; margin-bottom: 1.5rem;">
-      <h3 style="font-size: 1.25rem; font-weight: 700; color: #1f2937; display: flex; align-items: center; gap: 0.75rem;">
-        <i class="fas fa-file-alt" style="color: #10b981;"></i> Essay Questions
-      </h3>
-    </div>`;
-
-    for (let i = 0; i < theoryAttempt.answers.length; i++) {
-      const answerRef = theoryAttempt.answers[i];
-      const answerId = answerRef._id || answerRef;
-
-      let answerDetail = null;
-      try {
-        answerDetail = await fetchTheoryAnswerDetail(answerId);
-      } catch (err) {
-        console.warn("Failed to fetch answer details:", err);
-        continue;
-      }
-
-      if (!answerDetail) continue;
-
-      const isGraded = answerDetail.isGraded || false;
-      const status = isGraded ? "graded" : "pending";
-      const score = answerDetail.finalScore || answerDetail.autoScore || 0;
-      const maxMarks = answerDetail.question?.maxMarks || 10;
-
-      if (isGraded) {
-        theoryScore.correct++;
-      } else {
-        theoryScore.pending++;
-      }
-
-      theoryScore.totalScore += score;
-      theoryScore.totalMarks += maxMarks;
-
-      const questionText = answerDetail.question?.question || "";
-      const questionHtml = normalizeQuestionMath(questionText);
-
-      let answerDisplay = "";
-      if (answerDetail.answerType === "text") {
-        const textContent = answerDetail.answerText || answerDetail.ocrExtractedText || "";
-        answerDisplay = normalizeQuestionMath(textContent);
-      } else if (answerDetail.answerType === "image") {
-        answerDisplay = `<img src="${answerDetail.answerImageUrl}" alt="Student answer" style="max-width: 100%; max-height: 300px; border-radius: 0.5rem;" />`;
-      }
-
-      const statusColor = isGraded ? "correct" : "pending";
-      const statusIcon = isGraded ? 'fa-check-circle' : 'fa-hourglass-half';
-      const statusText = isGraded ? `Graded: ${score}/${maxMarks}` : "Pending Review";
-
-      const cardHtml = `
-        <div class="question-card theory ${statusColor}">
-          <div class="question-text">
-            <div class="question-number">${i + 1}</div>
-            <span>${questionHtml}</span>
-          </div>
-
-          <div class="answer-section">
-            <div class="answer-label">Your Answer</div>
-            <div class="theory-answer-display">
-              ${answerDisplay || "<em>No answer provided</em>"}
-            </div>
-          </div>
-
-          <div class="answer-section">
-            <div class="answer-label">Grading Status</div>
-            <div class="answer-content">
-              <span class="answer-pill ${isGraded ? 'answer-correct' : 'answer-pending'}">
-                <i class="fas ${statusIcon}"></i>
-                ${statusText}
-              </span>
-            </div>
-          </div>
-
-          ${answerDetail.matchedKeywords && answerDetail.matchedKeywords.length > 0 ? `
-            <div class="explanation-box">
-              <details>
-                <summary class="explanation-summary">
-                  <i class="fas fa-key"></i> Matched Keywords
-                </summary>
-                <div class="explanation-content" style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
-                  ${answerDetail.matchedKeywords.map(kw => `<span style="background: #dcfce7; color: #166534; padding: 0.35rem 0.75rem; border-radius: 0.35rem; display: inline-block; font-size: 0.85rem; font-weight: 600;">${kw}</span>`).join("")}
-                </div>
-              </details>
-            </div>
-          ` : ""}
-
-          ${answerDetail.manualFeedback ? `
-            <div class="explanation-box">
-              <details open>
-                <summary class="explanation-summary">
-                  <i class="fas fa-comment-dots"></i> Tutor Feedback
-                </summary>
-                <div class="explanation-content">
-                  ${normalizeQuestionMath(answerDetail.manualFeedback)}
-                </div>
-              </details>
-            </div>
-          ` : ""}
-
-          ${answerDetail.question?.sampleAnswer ? `
-            <div class="explanation-box">
-              <details>
-                <summary class="explanation-summary">
-                  <i class="fas fa-lightbulb"></i> Sample Answer
-                </summary>
-                <div class="explanation-content">
-                  ${normalizeQuestionMath(answerDetail.question.sampleAnswer)}
-                </div>
-              </details>
-            </div>
-          ` : ""}
-        </div>
-      `;
-
-      resultsList.innerHTML += cardHtml;
-    }
-  }
-
-  if (window.MathJax && MathJax.typesetPromise) {
-    try {
-      await MathJax.typesetPromise([resultsList]);
-    } catch (err) {
-      console.warn("MathJax error:", err && err.message);
-    }
-  }
-
-  const cbtTotal = cbtScore.correct + cbtScore.wrong;
-  const cbtPercent = cbtTotal ? Math.round(cbtScore.correct / cbtTotal * 100) : 0;
-  const theoryPercent = theoryScore.totalMarks ? Math.round(theoryScore.totalScore / theoryScore.totalMarks * 100) : 0;
-  const overallPercent = Math.round((cbtPercent + theoryPercent) / 2);
-
-  return {
-    correct: cbtScore.correct + theoryScore.correct,
-    wrong: cbtScore.wrong,
-    pending: cbtScore.unanswered + theoryScore.pending,
-    unanswered: 0,
-    percent: overallPercent,
-    total: (cbtTotal || 0) + (theoryScore.total || 0),
-    cbtScore: cbtScore,
-    theoryScore: theoryScore
-  };
-}
-
-// ============ UPDATE SCORE CARD ============
-function updateScoreCard(scores) {
-  const examType = examInfo.type || "cbt";
-
-  if (examType === "theory") {
-    document.getElementById('score-number').textContent = `${scores.totalScore}/${scores.totalMarks}`;
-    document.getElementById('correct-count').textContent = scores.correct;
-    document.getElementById('wrong-count').textContent = scores.wrong;
-    document.getElementById('pending-count').textContent = scores.pending;
-    document.getElementById('unanswered-count').textContent = scores.unanswered || 0;
-  } else if (examType === "hybrid") {
-    const cbtTotal = (scores.cbtScore?.correct || 0) + (scores.cbtScore?.wrong || 0);
-    const theoryTotal = (scores.theoryScore?.totalScore || 0) + (scores.theoryScore?.totalMarks || 0);
-    document.getElementById('score-number').textContent = `${scores.correct + scores.wrong}/${scores.total}`;
-    document.getElementById('correct-count').textContent = scores.correct;
-    document.getElementById('wrong-count').textContent = scores.wrong;
-    document.getElementById('pending-count').textContent = scores.pending;
-    document.getElementById('unanswered-count').textContent = scores.unanswered || 0;
-  } else {
-    document.getElementById('score-number').textContent = `${scores.correct}/${scores.total}`;
-    document.getElementById('correct-count').textContent = scores.correct;
-    document.getElementById('wrong-count').textContent = scores.wrong;
-    document.getElementById('pending-count').textContent = scores.pending;
-    document.getElementById('unanswered-count').textContent = scores.unanswered;
-  }
-
-  document.getElementById('score-percent').textContent = `${scores.percent}%`;
-  document.getElementById('score-feedback').textContent = feedbackRemark(scores.percent);
-}
-
-// ============ MAIN ============
-async function main() {
-  try {
-    // Display student info
-    document.getElementById('student-name').textContent = examInfo.student || "-";
-    document.getElementById('student-regnum').textContent = examInfo.matric || "-";
-    document.getElementById('exam-subject').textContent = examInfo.subject || examInfo.course || "-";
-    document.getElementById('exam-time').textContent = getTimeString(examInfo.timeCompleted) || "-";
-
-    const examType = examInfo.type || "cbt";
+    const API_BASE = "https://examguide.onrender.com";
     
-    // Update exam type badge
-    const badge = document.getElementById('exam-type-display');
-    if (examType === "theory") {
-      badge.textContent = "📄 THEORY";
-      badge.classList.remove('cbt');
-      badge.classList.add('theory');
-    } else if (examType === "hybrid") {
-      badge.textContent = "🔀 HYBRID";
-      badge.classList.remove('cbt');
-      badge.classList.add('theory');
-    } else {
-      badge.textContent = "📝 CBT";
-      badge.classList.add('cbt');
+    // ============ LOCAL STORAGE KEYS ============
+    const LS_KEYS = {
+      ANSWERS: 'cbt_user_answers',
+      EXAM_INFO: 'cbt_exam_info',
+      SHUFFLED_QUESTIONS: 'cbt_shuffled_questions',
+      IMAGE_ANSWERS: 'cbt_image_answers'
+    };
+
+    // ============ DATA RETRIEVAL ============
+    function getFromLS(key) {
+      try {
+        const data = localStorage.getItem(key) || sessionStorage.getItem(key);
+        return data ? JSON.parse(data) : null;
+      } catch (err) {
+        console.warn(`Failed to parse ${key}:`, err);
+        return null;
+      }
     }
 
-    let scores;
+    let examInfo = getFromLS(LS_KEYS.EXAM_INFO) || {};
+    let answers = getFromLS(LS_KEYS.ANSWERS) || {};
+    let shuffledQuestions = getFromLS(LS_KEYS.SHUFFLED_QUESTIONS) || {};
+    let imageAnswers = getFromLS(LS_KEYS.IMAGE_ANSWERS) || {};
 
-    if (examType === "theory") {
-      // Render theory results
-      const attemptId = examInfo.attemptId;
-      if (!attemptId) {
-        document.getElementById('results-list').innerHTML = `
-          <div class="error-message">
-            <i class="fas fa-exclamation-circle"></i>
-            No attempt ID found. Please retake the exam.
-          </div>
-        `;
-        updateScoreCard({ correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0 });
-        return;
+    console.log("Loaded exam info:", examInfo);
+    console.log("Loaded answers:", answers);
+
+    // ============ API CALLS ============
+    async function fetchQuestions() {
+      const accessCode = localStorage.getItem("exam_access_code");
+      if (!accessCode) return { questions: [], subject: "", examType: "cbt" };
+      try {
+        const res = await fetch(`${API_BASE}/api/exam-set/by-access?accessCode=${encodeURIComponent(accessCode)}`);
+        if (!res.ok) return { questions: [], subject: "", examType: "cbt" };
+        const js = await res.json();
+        return { 
+          questions: js.questions || [], 
+          subject: js.examSet?.subject || "",
+          examType: js.examSet?.examType || "cbt"
+        };
+      } catch (err) {
+        console.error("Fetch questions error:", err);
+        return { questions: [], subject: "", examType: "cbt" };
       }
+    }
 
-      const attempt = await fetchTheoryAttempt(attemptId);
-      if (!attempt) {
-        document.getElementById('results-list').innerHTML = `
-          <div class="error-message">
-            <i class="fas fa-exclamation-circle"></i>
-            Failed to load attempt data. Please refresh.
-          </div>
-        `;
-        updateScoreCard({ correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0 });
-        return;
+    async function fetchTheoryAttempt(attemptId) {
+      try {
+        if (!attemptId) return null;
+        const token = localStorage.getItem("student_jwt_token");
+        console.log("Fetching theory attempt with ID:", attemptId);
+        const res = await fetch(`${API_BASE}/api/theory-attempts/${attemptId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) {
+          console.error("Failed to fetch attempt, status:", res.status);
+          return null;
+        }
+        const data = await res.json();
+        console.log("Theory attempt data:", data);
+        return data;
+      } catch (err) {
+        console.error("Fetch theory attempt error:", err);
+        return null;
       }
+    }
 
-      scores = await renderTheoryResults(attempt);
+    async function fetchTheoryAnswerDetail(answerId) {
+      try {
+        if (!answerId) return null;
+        const token = localStorage.getItem("student_jwt_token");
+        const res = await fetch(`${API_BASE}/api/theory-answers/${answerId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return null;
+        return await res.json();
+      } catch (err) {
+        console.error("Fetch answer detail error:", err);
+        return null;
+      }
+    }
 
-    } else if (examType === "hybrid") {
-      // For hybrid: fetch both CBT and theory data
-      const attemptId = examInfo.attemptId;
-      const { questions: cbtQs } = await fetchQuestions();
+    // ============ UTILITY FUNCTIONS ============
+    function getTimeString(iso) {
+      if (!iso) return "";
+      try {
+        const d = new Date(iso);
+        return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+      } catch (err) {
+        return iso;
+      }
+    }
+
+    function stripHtml(html) {
+      const tmp = document.createElement("DIV");
+      tmp.innerHTML = html || "";
+      return tmp.textContent || tmp.innerText || "";
+    }
+
+    function normalizeQuestionMath(html) {
+      if (!html || typeof html !== 'string') return html;
+      let s = html.replace(/\\\\/g, '\\');
+      if (/\\\(|\\\[|\$\$?/.test(s)) return s;
+      const cmdRegex = /\\(?:frac|sqrt|sum|int|lim|left|right|cdot|times|pi|alpha|beta|gamma|theta|log|ln|Delta|delta)(?:\{[^}]*\}|\^[^{\s]+|\_[^{\s]+)*/g;
+      s = s.replace(cmdRegex, function(m) { return `\\(${m}\\)`; });
+      const expRegex = /([A-Za-z0-9])\^(?:\{[^}]+\}|\d+)/g;
+      s = s.replace(expRegex, function(m) { return `\\(${m}\\)`; });
+      const subRegex = /([A-Za-z0-9])_(?:\{[^}]+\}|\d+)/g;
+      s = s.replace(subRegex, function(m) { return `\\(${m}\\)`; });
+      return s;
+    }
+
+    function getScoreTally(results) {
+      let correct = 0, pending = 0, unanswered = 0;
+      results.forEach(r => {
+        if (r.status === "correct") correct++;
+        else if (r.status === "pending") pending++;
+        else if (r.status === "unanswered") unanswered++;
+      });
+      return [correct, results.length - correct - pending - unanswered, pending, unanswered];
+    }
+
+    function feedbackRemark(pct) {
+      if (pct === 100) return "🎉 Excellent! You aced it!";
+      if (pct >= 80) return "👏 Great work! Almost perfect.";
+      if (pct >= 60) return "📚 Good. Keep studying!";
+      if (pct >= 40) return "💪 Keep practicing!";
+      return "🔄 Review & try again!";
+    }
+
+    // ============ UPDATE SCORE CARD ============
+    function updateScoreCard(scores) {
+      document.getElementById('score-number').textContent = scores.scoreDisplay || `${scores.correct}/${scores.total}`;
+      document.getElementById('correct-count').textContent = scores.correct;
+      document.getElementById('wrong-count').textContent = scores.wrong;
+      document.getElementById('pending-count').textContent = scores.pending;
+      document.getElementById('unanswered-count').textContent = scores.unanswered || 0;
+      document.getElementById('score-percent').textContent = `${scores.percent}%`;
+      document.getElementById('score-feedback').textContent = feedbackRemark(scores.percent);
+    }
+
+    // ============ RENDER CBT RESULTS ============
+    async function renderCBTResults(questions) {
+      let results = [];
+      const resultsList = document.getElementById('results-list');
       
-      // Filter for CBT questions only
-      const cbtQuestions = (shuffledQuestions.questions || cbtQs).filter(q => q.type !== 'theory');
-      
-      let theoryAttempt = null;
-      if (attemptId) {
-        theoryAttempt = await fetchTheoryAttempt(attemptId);
-      }
-
-      scores = await renderHybridResults(cbtQuestions, theoryAttempt);
-
-    } else {
-      // Standard CBT
-      const { questions, subject } = await fetchQuestions();
-      if (subject) {
-        document.getElementById('exam-subject').textContent = subject;
-      }
+      resultsList.innerHTML = `
+        <div class="content-header">
+          <div class="content-title">
+            <i class="fas fa-chart-pie" style="color: #fbbf24;"></i> Exam Results
+          </div>
+          <div class="content-subject">${examInfo.subject || examInfo.course || "CBT Report"}</div>
+        </div>
+      `;
 
       if (!questions || questions.length === 0) {
+        resultsList.innerHTML += `
+          <div class="error-message">
+            <i class="fas fa-exclamation-circle"></i> No questions found.
+          </div>
+        `;
+        return { correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0 };
+      }
+
+      for (let i = 0; i < questions.length; i++) {
+        const q = questions[i];
+        const qid = q._id || q.id || `q${i}`;
+        const userAns = answers[qid] || answers[q._id] || answers[q.id] || "";
+        const correctAns = q.answer;
+        const isCorrect = (userAns === correctAns);
+
+        const status = isCorrect ? "correct" : (userAns ? "incorrect" : "unanswered");
+        results.push({ isCorrect, status });
+
+        const opt = q.options || [];
+        const userOpt = opt.find(o => o.key === userAns);
+        const correctOpt = opt.find(o => o.key === correctAns);
+
+        const questionHtml = normalizeQuestionMath(q.question || '');
+        const userOptText = userOpt ? normalizeQuestionMath(userOpt.text || '') : '';
+        const correctOptText = correctOpt ? normalizeQuestionMath(correctOpt.text || '') : '';
+        const explanationHtml = normalizeQuestionMath(q.explanation || '');
+
+        const cardHtml = `
+          <div class="question-card ${isCorrect ? "correct" : "incorrect"}">
+            <div class="question-text">
+              <div class="question-number">${i + 1}</div>
+              <span>${questionHtml}</span>
+            </div>
+
+            <div class="answer-section">
+              <div class="answer-label">Your Answer</div>
+              <div class="answer-content">
+                <span class="answer-pill answer-user">
+                  <i class="fas ${userAns ? (userAns === correctAns ? 'fa-check' : 'fa-times') : 'fa-minus'}"></i>
+                  ${userAns ? `${userAns}${userOptText ? `. ${userOptText}` : ""}` : "Not Answered"}
+                </span>
+              </div>
+            </div>
+
+            <div class="answer-section">
+              <div class="answer-label">Correct Answer</div>
+              <div class="answer-content">
+                <span class="answer-pill answer-correct">
+                  <i class="fas fa-check-circle"></i>
+                  ${correctAns}${correctOptText ? `. ${correctOptText}` : ""}
+                </span>
+              </div>
+            </div>
+
+            ${explanationHtml ? `
+              <div class="explanation-box">
+                <details>
+                  <summary class="explanation-summary">
+                    <i class="fas fa-lightbulb"></i> Explanation
+                  </summary>
+                  <div class="explanation-content">
+                    ${explanationHtml}
+                  </div>
+                </details>
+              </div>
+            ` : ""}
+          </div>
+        `;
+
+        resultsList.innerHTML += cardHtml;
+      }
+
+      if (window.MathJax && MathJax.typesetPromise) {
+        try {
+          await MathJax.typesetPromise([resultsList]);
+        } catch (err) {
+          console.warn("MathJax error:", err && err.message);
+        }
+      }
+
+      const [correct, wrong, pending, unanswered] = getScoreTally(results);
+      const total = correct + wrong;
+      const percent = total ? Math.round(correct / total * 100) : 0;
+
+      return { correct, wrong, pending, unanswered, percent, total, scoreDisplay: `${correct}/${total}` };
+    }
+
+    // ============ RENDER THEORY RESULTS ============
+    async function renderTheoryResults(attempt) {
+      let results = [];
+      const resultsList = document.getElementById('results-list');
+
+      resultsList.innerHTML = `
+        <div class="content-header">
+          <div class="content-title">
+            <i class="fas fa-chart-pie" style="color: #fbbf24;"></i> Theory Exam Results
+          </div>
+          <div class="content-subject">${examInfo.subject || "Theory Report"}</div>
+        </div>
+      `;
+
+      if (!attempt) {
+        resultsList.innerHTML += `
+          <div class="error-message">
+            <i class="fas fa-exclamation-circle"></i>
+            Failed to load attempt data.
+          </div>
+        `;
+        return { correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0, scoreDisplay: "0/0" };
+      }
+
+      // Check for answers in different possible locations
+      const answers = attempt.answers || attempt.theoryanswers || [];
+      
+      console.log("Theory attempt answers:", answers);
+
+      if (!answers || answers.length === 0) {
+        resultsList.innerHTML += `
+          <div class="error-message">
+            <i class="fas fa-exclamation-circle"></i>
+            No theory answers found. Please retake the exam.
+          </div>
+        `;
+        return { correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0, scoreDisplay: "0/0" };
+      }
+
+      let totalScore = 0;
+      let totalMarks = 0;
+      let graded = 0;
+      let pending = 0;
+
+      for (let i = 0; i < answers.length; i++) {
+        const answerRef = answers[i];
+        console.log("Processing answer:", answerRef);
+
+        let answerId = null;
+        let answerDetail = null;
+
+        // Handle different response formats
+        if (typeof answerRef === 'string') {
+          answerId = answerRef;
+        } else if (answerRef._id) {
+          answerId = answerRef._id;
+          answerDetail = answerRef; // Full answer object
+        } else if (answerRef.answer) {
+          answerId = answerRef.answer;
+        }
+
+        if (!answerId) continue;
+
+        // Fetch full answer details if not already loaded
+        if (!answerDetail) {
+          try {
+            answerDetail = await fetchTheoryAnswerDetail(answerId);
+          } catch (err) {
+            console.warn("Failed to fetch answer details:", err);
+            continue;
+          }
+        }
+
+        if (!answerDetail) {
+          console.warn("No answer detail for:", answerId);
+          continue;
+        }
+
+        const isGraded = answerDetail.isGraded || false;
+        const score = answerDetail.finalScore || answerDetail.autoScore || 0;
+        const maxMarks = answerDetail.question?.maxMarks || 10;
+
+        totalScore += score;
+        totalMarks += maxMarks;
+
+        if (isGraded) {
+          graded++;
+          results.push({ isGraded: true, status: "graded", score, maxMarks });
+        } else {
+          pending++;
+          results.push({ isGraded: false, status: "pending", score, maxMarks });
+        }
+
+        const questionText = answerDetail.question?.question || "";
+        const questionHtml = normalizeQuestionMath(questionText);
+
+        let answerDisplay = "";
+        if (answerDetail.answerType === "text") {
+          const textContent = answerDetail.answerText || answerDetail.ocrExtractedText || "";
+          answerDisplay = normalizeQuestionMath(textContent);
+        } else if (answerDetail.answerType === "image") {
+          answerDisplay = `<img src="${answerDetail.answerImageUrl}" alt="Student answer" style="max-width: 100%; max-height: 300px; border-radius: 0.5rem;" />`;
+        }
+
+        const statusColor = isGraded ? "correct" : "pending";
+        const statusIcon = isGraded ? 'fa-check-circle' : 'fa-hourglass-half';
+        const statusText = isGraded ? `Graded: ${score}/${maxMarks}` : "Pending Review";
+
+        const cardHtml = `
+          <div class="question-card theory ${statusColor}">
+            <div class="question-text">
+              <div class="question-number">${i + 1}</div>
+              <span>${questionHtml}</span>
+            </div>
+
+            <div class="answer-section">
+              <div class="answer-label">Your Answer</div>
+              <div class="theory-answer-display">
+                ${answerDisplay || "<em>No answer provided</em>"}
+              </div>
+            </div>
+
+            <div class="answer-section">
+              <div class="answer-label">Grading Status</div>
+              <div class="answer-content">
+                <span class="answer-pill ${isGraded ? 'answer-correct' : 'answer-pending'}">
+                  <i class="fas ${statusIcon}"></i>
+                  ${statusText}
+                </span>
+              </div>
+            </div>
+
+            ${answerDetail.matchedKeywords && answerDetail.matchedKeywords.length > 0 ? `
+              <div class="explanation-box">
+                <details>
+                  <summary class="explanation-summary">
+                    <i class="fas fa-key"></i> Matched Keywords
+                  </summary>
+                  <div class="explanation-content" style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                    ${answerDetail.matchedKeywords.map(kw => `<span style="background: #dcfce7; color: #166534; padding: 0.35rem 0.75rem; border-radius: 0.35rem; display: inline-block; font-size: 0.85rem; font-weight: 600;">${kw}</span>`).join("")}
+                  </div>
+                </details>
+              </div>
+            ` : ""}
+
+            ${answerDetail.manualFeedback ? `
+              <div class="explanation-box">
+                <details open>
+                  <summary class="explanation-summary">
+                    <i class="fas fa-comment-dots"></i> Tutor Feedback
+                  </summary>
+                  <div class="explanation-content">
+                    ${normalizeQuestionMath(answerDetail.manualFeedback)}
+                  </div>
+                </details>
+              </div>
+            ` : ""}
+
+            ${answerDetail.question?.sampleAnswer ? `
+              <div class="explanation-box">
+                <details>
+                  <summary class="explanation-summary">
+                    <i class="fas fa-lightbulb"></i> Sample Answer
+                  </summary>
+                  <div class="explanation-content">
+                    ${normalizeQuestionMath(answerDetail.question.sampleAnswer)}
+                  </div>
+                </details>
+              </div>
+            ` : ""}
+          </div>
+        `;
+
+        resultsList.innerHTML += cardHtml;
+      }
+
+      if (window.MathJax && MathJax.typesetPromise) {
+        try {
+          await MathJax.typesetPromise([resultsList]);
+        } catch (err) {
+          console.warn("MathJax error:", err && err.message);
+        }
+      }
+
+      const percent = totalMarks ? Math.round(totalScore / totalMarks * 100) : 0;
+
+      return { 
+        correct: graded, 
+        wrong: 0, 
+        pending: pending, 
+        unanswered: 0, 
+        percent: percent, 
+        total: results.length,
+        scoreDisplay: `${totalScore}/${totalMarks}`
+      };
+    }
+
+    // ============ MAIN ============
+    async function main() {
+      try {
+        // Display student info
+        document.getElementById('student-name').textContent = examInfo.student || "-";
+        document.getElementById('student-regnum').textContent = examInfo.matric || "-";
+        document.getElementById('exam-subject').textContent = examInfo.subject || examInfo.course || "-";
+        document.getElementById('exam-time').textContent = getTimeString(examInfo.timeCompleted) || "-";
+
+        const examType = examInfo.type || "cbt";
+        
+        // Update exam type badge
+        const badge = document.getElementById('exam-type-display');
+        if (examType === "theory") {
+          badge.textContent = "📄 THEORY";
+          badge.classList.remove('cbt');
+          badge.classList.add('theory');
+        } else if (examType === "hybrid") {
+          badge.textContent = "🔀 HYBRID";
+          badge.classList.remove('cbt');
+          badge.classList.add('theory');
+        } else {
+          badge.textContent = "📝 CBT";
+          badge.classList.add('cbt');
+        }
+
+        let scores;
+
+        if (examType === "theory") {
+          // Render theory results
+          const attemptId = examInfo.attemptId;
+          console.log("Attempt ID:", attemptId);
+          
+          if (!attemptId) {
+            document.getElementById('results-list').innerHTML = `
+              <div class="error-message">
+                <i class="fas fa-exclamation-circle"></i>
+                No attempt ID found. Please retake the exam.
+              </div>
+            `;
+            updateScoreCard({ correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0 });
+            return;
+          }
+
+          const attempt = await fetchTheoryAttempt(attemptId);
+          scores = await renderTheoryResults(attempt);
+
+        } else {
+          // Render CBT results
+          const { questions, subject } = await fetchQuestions();
+          if (subject) {
+            document.getElementById('exam-subject').textContent = subject;
+          }
+
+          if (!questions || questions.length === 0) {
+            document.getElementById('results-list').innerHTML = `
+              <div class="error-message">
+                <i class="fas fa-exclamation-circle"></i>
+                No questions found.
+              </div>
+            `;
+            updateScoreCard({ correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0 });
+            return;
+          }
+
+          scores = await renderCBTResults(questions);
+        }
+
+        // Update score card
+        updateScoreCard(scores);
+
+      } catch (err) {
+        console.error("Main error:", err);
         document.getElementById('results-list').innerHTML = `
           <div class="error-message">
             <i class="fas fa-exclamation-circle"></i>
-            No questions found.
+            Error loading results: ${err.message}
           </div>
         `;
         updateScoreCard({ correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0 });
-        return;
-      }
-
-      scores = await renderCBTResults(questions);
-    }
-
-    // Update score card
-    updateScoreCard(scores);
-
-  } catch (err) {
-    console.error("Main error:", err);
-    document.getElementById('results-list').innerHTML = `
-      <div class="error-message">
-        <i class="fas fa-exclamation-circle"></i>
-        Error loading results: ${err.message}
-      </div>
-    `;
-    updateScoreCard({ correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0 });
-  }
-}
-
-window.addEventListener('DOMContentLoaded', main);
-
-// ============ PDF DOWNLOAD ============
-document.addEventListener('DOMContentLoaded', function() {
-  const btn = document.getElementById('download-pdf-btn');
-  if (!btn) return;
-
-  btn.onclick = async function() {
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner" style="animation: spin 1s linear infinite; margin-right: 0.5rem;"></i>Generating...';
-
-    const reportMain = document.querySelector('.report-wrapper');
-    
-    if (window.MathJax && MathJax.typesetPromise) {
-      try {
-        await MathJax.typesetPromise();
-        await new Promise(r => setTimeout(r, 200));
-      } catch (err) {
-        console.warn("MathJax error:", err && err.message);
       }
     }
 
-    try {
-      const canvas = await html2canvas(reportMain, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#fff",
-        logging: false,
-        allowTaint: true,
-        windowHeight: reportMain.scrollHeight
-      });
+    window.addEventListener('DOMContentLoaded', main);
 
-      const imgData = canvas.toDataURL("image/png");
-      const { jsPDF } = window.jspdf;
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'pt',
-        format: 'a4'
-      });
+    // ============ PDF DOWNLOAD ============
+    document.addEventListener('DOMContentLoaded', function() {
+      const btn = document.getElementById('download-pdf-btn');
+      if (!btn) return;
 
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const margin = 24;
-      const imgWidth = pageWidth - margin * 2;
-      const imgHeight = canvas.height * (imgWidth / canvas.width);
+      btn.onclick = async function() {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner" style="animation: spin 1s linear infinite; margin-right: 0.5rem;"></i>Generating...';
 
-      if (imgHeight <= pageHeight - margin * 2) {
-        pdf.addImage(imgData, 'PNG', margin, margin, imgWidth, imgHeight);
-      } else {
-        let heightLeft = imgHeight;
-        let position = 0;
-
-        pdf.addImage(imgData, 'PNG', margin, margin - position, imgWidth, imgHeight);
-        heightLeft -= pageHeight - margin * 2;
-
-        while (heightLeft > 0) {
-          position = heightLeft - imgHeight;
-          pdf.addPage();
-          pdf.addImage(imgData, 'PNG', margin, margin - position, imgWidth, imgHeight);
-          heightLeft -= pageHeight - margin * 2;
+        const reportMain = document.querySelector('.report-wrapper');
+        
+        if (window.MathJax && MathJax.typesetPromise) {
+          try {
+            await MathJax.typesetPromise();
+            await new Promise(r => setTimeout(r, 200));
+          } catch (err) {
+            console.warn("MathJax error:", err && err.message);
+          }
         }
-      }
-      
-      const filename = `exam-report-${new Date().toISOString().slice(0, 10)}.pdf`;
-      pdf.save(filename);
 
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-download"></i> Download PDF';
-    } catch (err) {
-      console.error("PDF generation error:", err);
-      alert("Failed to generate PDF. Please try again.");
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-download"></i> Download PDF';
-    }
-  };
-});
+        try {
+          const canvas = await html2canvas(reportMain, {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: "#fff",
+            logging: false,
+            allowTaint: true,
+            windowHeight: reportMain.scrollHeight
+          });
+
+          const imgData = canvas.toDataURL("image/png");
+          const { jsPDF } = window.jspdf;
+          const pdf = new jsPDF({
+            orientation: 'portrait',
+            unit: 'pt',
+            format: 'a4'
+          });
+
+          const pageWidth = pdf.internal.pageSize.getWidth();
+          const pageHeight = pdf.internal.pageSize.getHeight();
+          const margin = 24;
+          const imgWidth = pageWidth - margin * 2;
+          const imgHeight = canvas.height * (imgWidth / canvas.width);
+
+          if (imgHeight <= pageHeight - margin * 2) {
+            pdf.addImage(imgData, 'PNG', margin, margin, imgWidth, imgHeight);
+          } else {
+            let heightLeft = imgHeight;
+            let position = 0;
+
+            pdf.addImage(imgData, 'PNG', margin, margin - position, imgWidth, imgHeight);
+            heightLeft -= pageHeight - margin * 2;
+
+            while (heightLeft > 0) {
+              position = heightLeft - imgHeight;
+              pdf.addPage();
+              pdf.addImage(imgData, 'PNG', margin, margin - position, imgWidth, imgHeight);
+              heightLeft -= pageHeight - margin * 2;
+            }
+          }
+          
+          const filename = `exam-report-${new Date().toISOString().slice(0, 10)}.pdf`;
+          pdf.save(filename);
+
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-download"></i> Download PDF';
+        } catch (err) {
+          console.error("PDF generation error:", err);
+          alert("Failed to generate PDF. Please try again.");
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-download"></i> Download PDF';
+        }
+      };
+    });
   </script>
 </body>
 </html>
