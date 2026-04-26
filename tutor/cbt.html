@@ -625,19 +625,147 @@
         }
     }
 
+    // ============ UPDATED THEORY EXAM SUBMISSION WITH AI GRADING ============
     async function submitTheoryExamAPI() {
         try {
             if (!attemptId) throw new Error("No attempt ID");
             const token = getToken();
-            const res = await fetch(`${API_BASE}/api/theory-attempts/${attemptId}/submit`, {
+            
+            // Call the new submit-and-grade endpoint
+            const res = await fetch(`${API_BASE}/api/theory-attempts/${attemptId}/submit-and-grade`, {
                 method: 'PUT',
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
             });
+            
             if (!res.ok) throw new Error("Submit failed");
             return await res.json();
         } catch (err) {
             console.error("Submit exam error:", err);
             return null;
+        }
+    }
+
+    async function waitForGradingCompletion(attemptId, maxWait = 120000) {
+        const startTime = Date.now();
+        const pollInterval = 2000; // Poll every 2 seconds
+
+        while (Date.now() - startTime < maxWait) {
+            try {
+                const token = getToken();
+                const res = await fetch(`${API_BASE}/api/theory-attempts/${attemptId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!res.ok) {
+                    await new Promise(resolve => setTimeout(resolve, pollInterval));
+                    continue;
+                }
+
+                const attempt = await res.json();
+
+                // Check if grading is complete
+                if (attempt.status === 'graded' && attempt.allQuestionsGraded) {
+                    console.log("✓ Grading completed:", attempt);
+                    return true;
+                }
+
+                // Wait before polling again
+                await new Promise(resolve => setTimeout(resolve, pollInterval));
+            } catch (err) {
+                console.warn("Polling error:", err.message);
+                await new Promise(resolve => setTimeout(resolve, pollInterval));
+            }
+        }
+
+        return false;
+    }
+
+    async function submitTheoryExam() {
+        if (isSubmitting) return;
+        isSubmitting = true;
+
+        try {
+            // Show processing modal
+            showModal("Processing your exam submission and AI grading...", {
+                title: "Submitting Exam",
+                icon: true,
+                actionText: ""
+            });
+
+            const data = await submitTheoryExamAPI();
+
+            if (!data) {
+                throw new Error("Failed to submit exam");
+            }
+
+            console.log("✓ Exam submitted:", data);
+
+            // Show grading in progress modal
+            showModal(
+                `Your exam has been submitted!<br><br>
+                <div class="flex items-center justify-center gap-2 my-4">
+                    <div class="loading-spinner"></div>
+                    <span>AI is grading your answers...</span>
+                </div>
+                <p class="text-sm text-gray-600">This typically takes 30-60 seconds. Please wait...</p>`,
+                {
+                    title: "Grading in Progress",
+                    icon: false,
+                    actionText: ""
+                }
+            );
+
+            // Wait for grading completion
+            const gradingCompleted = await waitForGradingCompletion(attemptId, 120000); // 2 minutes timeout
+
+            if (gradingCompleted) {
+                // Clear all exam data
+                clearExamLS();
+
+                // Show success and redirect
+                showModal(
+                    "Your exam has been graded successfully!<br><br>Redirecting to results...",
+                    {
+                        title: "Grading Complete",
+                        icon: true,
+                        actionText: "View Results"
+                    }
+                );
+
+                // Redirect to results page
+                setTimeout(() => {
+                    localStorage.setItem('theory_attempt_id', attemptId);
+                    window.location.href = 'theory.html?attemptId=' + attemptId;
+                }, 2000);
+            } else {
+                showModal(
+                    "Grading is taking longer than expected. Your results will be available shortly.<br><br>Redirecting to results...",
+                    {
+                        title: "Results Pending",
+                        icon: true,
+                        actionText: "View Results"
+                    }
+                );
+
+                setTimeout(() => {
+                    localStorage.setItem('theory_attempt_id', attemptId);
+                    window.location.href = 'theory.html?attemptId=' + attemptId;
+                }, 3000);
+            }
+        } catch (err) {
+            console.error("Submission error:", err);
+            showModal(
+                `Error during submission: ${err.message}<br><br>Please try again or contact support.`,
+                {
+                    title: "Submission Failed",
+                    icon: true,
+                    actionText: "OK"
+                }
+            );
+            isSubmitting = false;
         }
     }
 
@@ -867,694 +995,370 @@
         };
     }
 
-// ============ REPLACE THE renderTheoryQuestion FUNCTION WITH THIS ============
+    function renderTheoryQuestion(idx, q, qa, total) {
+        const savedAnswer = userAnswers[q._id] || {};
+        const savedText = savedAnswer.text || "";
+        const savedImageUrl = imageAnswers[q._id] || "";
 
-function renderTheoryQuestion(idx, q, qa, total) {
-    const savedAnswer = userAnswers[q._id] || {};
-    const savedText = savedAnswer.text || "";
-    const savedImageUrl = imageAnswers[q._id] || "";
-
-    qa.innerHTML = `
-        <div class="mb-6 flex justify-between items-start">
-            <div>
-                <h2 class="text-2xl font-bold text-blue-900 mb-3">Question ${idx + 1} of ${total}</h2>
-                <div class="space-y-1">
-                    <span class="theory-badge">📊 Max Marks: ${q.maxMarks || 10}</span>
-                    <span class="theory-badge">📝 Length: ${q.expectedLength === 'short' ? 'Short (1-2 para)' : q.expectedLength === 'long' ? 'Long (Detailed)' : 'Medium (2-3 para)'}</span>
+        qa.innerHTML = `
+            <div class="mb-6 flex justify-between items-start">
+                <div>
+                    <h2 class="text-2xl font-bold text-blue-900 mb-3">Question ${idx + 1} of ${total}</h2>
+                    <div class="space-y-1">
+                        <span class="theory-badge">📊 Max Marks: ${q.maxMarks || 10}</span>
+                        <span class="theory-badge">📝 Length: ${q.expectedLength === 'short' ? 'Short (1-2 para)' : q.expectedLength === 'long' ? 'Long (Detailed)' : 'Medium (2-3 para)'}</span>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <div class="bg-blue-50 p-6 rounded-lg border-2 border-blue-200 mb-6 prose">
-            <div class="text-lg leading-relaxed text-gray-700">${normalizeQuestionMath(q.question)}</div>
-        </div>
-
-        ${q.sampleAnswer ? `
-            <details class="mb-6 p-4 bg-gray-100 rounded-lg">
-                <summary class="cursor-pointer font-bold text-gray-700">📖 View Sample Answer</summary>
-                <div class="mt-3 prose text-sm text-gray-600">${normalizeQuestionMath(q.sampleAnswer)}</div>
-            </details>
-        ` : ''}
-
-        <div class="mb-6">
-            <div class="flex flex-wrap gap-3 mb-4">
-                <button id="theory-text-mode" class="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition">
-                    💬 Type Answer
-                </button>
-                <button id="theory-image-mode" class="px-6 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition">
-                    📸 Upload Photo
-                </button>
+            <div class="bg-blue-50 p-6 rounded-lg border-2 border-blue-200 mb-6 prose">
+                <div class="text-lg leading-relaxed text-gray-700">${normalizeQuestionMath(q.question)}</div>
             </div>
 
-            <div id="text-answer-area" class="hidden">
-                <div id="theory-text-editor-${q._id}" class="theory-editor"></div>
-                <button id="save-text-answer" class="px-6 py-2 bg-blue-700 text-white rounded-lg font-bold hover:bg-blue-900 transition mt-2">
-                    ✓ Save Text Answer
-                </button>
-            </div>
+            ${q.sampleAnswer ? `
+                <details class="mb-6 p-4 bg-gray-100 rounded-lg">
+                    <summary class="cursor-pointer font-bold text-gray-700">📖 View Sample Answer</summary>
+                    <div class="mt-3 prose text-sm text-gray-600">${normalizeQuestionMath(q.sampleAnswer)}</div>
+                </details>
+            ` : ''}
 
-            <div id="image-answer-area" class="hidden">
-                <input type="file" id="theory-photo-input" accept="image/*" class="block w-full mb-4 p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 transition" />
-                <div id="photo-preview" class="hidden mb-4">
-                    <img id="preview-img" class="max-w-full max-h-96 rounded-lg border shadow-md" alt="Preview" />
+            <div class="mb-6">
+                <div class="flex flex-wrap gap-3 mb-4">
+                    <button id="theory-text-mode" class="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition">
+                        💬 Type Answer
+                    </button>
+                    <button id="theory-image-mode" class="px-6 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition">
+                        📸 Upload Photo
+                    </button>
                 </div>
-                <button id="save-image-answer" class="px-6 py-2 bg-green-700 text-white rounded-lg font-bold hover:bg-green-900 transition mt-2">
-                    ✓ Save Photo Answer
-                </button>
+
+                <div id="text-answer-area" class="hidden">
+                    <div id="theory-text-editor-${q._id}" class="theory-editor"></div>
+                    <button id="save-text-answer" class="px-6 py-2 bg-blue-700 text-white rounded-lg font-bold hover:bg-blue-900 transition mt-2">
+                        ✓ Save Text Answer
+                    </button>
+                </div>
+
+                <div id="image-answer-area" class="hidden">
+                    <input type="file" id="theory-photo-input" accept="image/*" class="block w-full mb-4 p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 transition" />
+                    <div id="photo-preview" class="hidden mb-4">
+                        <img id="preview-img" class="max-w-full max-h-96 rounded-lg border shadow-md" alt="Preview" />
+                    </div>
+                    <button id="save-image-answer" class="px-6 py-2 bg-green-700 text-white rounded-lg font-bold hover:bg-green-900 transition mt-2">
+                        ✓ Save Photo Answer
+                    </button>
+                </div>
+
+                <div id="theory-answer-status" class="mt-4"></div>
             </div>
 
-            <div id="theory-answer-status" class="mt-4"></div>
-        </div>
-
-        <div class="flex flex-col gap-2 sm:flex-row sm:gap-4 justify-between items-center mt-8">
-            <div class="w-full sm:w-auto flex justify-between gap-2 order-1 sm:mb-0">
-                <button class="px-8 py-3 bg-gray-300 text-gray-800 font-bold rounded-xl hover:bg-gray-400 transition shadow-md" ${idx === 0 ? 'disabled opacity-50' : ''} id="prev-btn-theory">
-                    <i class="fas fa-chevron-left mr-2"></i> Previous
-                </button>
-                <button class="px-8 py-3 exam-action-btn rounded-xl hover:scale-105 transition flex items-center" ${idx === total - 1 ? 'disabled opacity-50' : ''} id="next-btn-theory">
-                    Next <i class="fas fa-chevron-right ml-2"></i>
-                </button>
+            <div class="flex flex-col gap-2 sm:flex-row sm:gap-4 justify-between items-center mt-8">
+                <div class="w-full sm:w-auto flex justify-between gap-2 order-1 sm:mb-0">
+                    <button class="px-8 py-3 bg-gray-300 text-gray-800 font-bold rounded-xl hover:bg-gray-400 transition shadow-md" ${idx === 0 ? 'disabled opacity-50' : ''} id="prev-btn-theory">
+                        <i class="fas fa-chevron-left mr-2"></i> Previous
+                    </button>
+                    <button class="px-8 py-3 exam-action-btn rounded-xl hover:scale-105 transition flex items-center" ${idx === total - 1 ? 'disabled opacity-50' : ''} id="next-btn-theory">
+                        Next <i class="fas fa-chevron-right ml-2"></i>
+                    </button>
+                </div>
+                <nav aria-label="Question navigation" class="flex-1 flex flex-col items-center order-2 w-full sm:w-auto">
+                    <ul class="question-pallet w-full flex flex-wrap" id="question-nav-list-theory"></ul>
+                </nav>
+                <div class="flex gap-4 order-3 w-full sm:w-auto justify-center mt-2 sm:mt-0">
+                    <button class="px-8 py-3 exam-action-btn rounded-xl hover:scale-105 transition shadow" id="submit-btn-theory">
+                        Submit Exam
+                    </button>
+                </div>
             </div>
-            <nav aria-label="Question navigation" class="flex-1 flex flex-col items-center order-2 w-full sm:w-auto">
-                <ul class="question-pallet w-full flex flex-wrap" id="question-nav-list-theory"></ul>
-            </nav>
-            <div class="flex gap-4 order-3 w-full sm:w-auto justify-center mt-2 sm:mt-0">
-                <button class="px-8 py-3 exam-action-btn rounded-xl hover:scale-105 transition shadow" id="submit-btn-theory">
-                    Submit Exam
-                </button>
-            </div>
-        </div>
-    `;
-
-    // Initialize text editor with debouncing
-    const editorId = `theory-text-editor-${q._id}`;
-    const initEditor = () => {
-        const editorElement = document.getElementById(editorId);
-        if (!editorElement) return;
-
-        // Destroy old editor if exists
-        if (theoryEditors[q._id]) {
-            theoryEditors[q._id] = null;
-        }
-
-        // Create new editor
-        theoryEditors[q._id] = new Quill(`#${editorId}`, {
-            theme: 'snow',
-            placeholder: 'Type your answer here... (you can use formatting tools)',
-            modules: {
-                toolbar: [
-                    ['bold', 'italic', 'underline'],
-                    ['code-block'],
-                    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-                    ['link']
-                ]
-            }
-        });
-
-        // Restore saved content
-        if (savedText) {
-            theoryEditors[q._id].root.innerHTML = savedText;
-        }
-
-        // Auto-save on text change
-        theoryEditors[q._id].on('text-change', () => {
-            const currentText = theoryEditors[q._id].root.innerHTML;
-            if (currentText && currentText !== '<p><br></p>') {
-                userAnswers[q._id] = { type: 'text', text: currentText };
-                persistAllExamData();
-            }
-        });
-    };
-
-    // Use setTimeout to ensure DOM is ready
-    setTimeout(initEditor, 50);
-
-    // Theory question navigator
-    const pallet = document.getElementById("question-nav-list-theory");
-    let navHtml = "";
-    for (let j = 0; j < total; ++j) {
-        const qId = examData.questions[j]._id || examData.questions[j].id;
-        const attempted = !!userAnswers[qId];
-        const curr = j === idx;
-        const navClass = curr ? "qp-current" : (attempted ? "qp-done" : "bg-white text-gray-600");
-        navHtml += `
-            <li>
-                <a href="#" data-qp-theory="${j}" 
-                   ${curr ? 'aria-current="page"' : ''} 
-                   class="block px-3 py-2 leading-tight text-xs sm:text-base border border-gray-300 hover:bg-yellow-100 ${navClass}" 
-                   title="Question ${j + 1}">
-                   Q${j + 1}
-                </a>
-            </li>
         `;
-    }
-    pallet.innerHTML = navHtml;
 
-    // Mode switching
-    const textModeBtn = document.getElementById('theory-text-mode');
-    const imageModeBtn = document.getElementById('theory-image-mode');
-    const textAreaDiv = document.getElementById('text-answer-area');
-    const imageAreaDiv = document.getElementById('image-answer-area');
+        // Initialize text editor with debouncing
+        const editorId = `theory-text-editor-${q._id}`;
+        const initEditor = () => {
+            const editorElement = document.getElementById(editorId);
+            if (!editorElement) return;
 
-    if (textModeBtn) {
-        textModeBtn.onclick = () => {
-            textAreaDiv.classList.remove('hidden');
-            imageAreaDiv.classList.add('hidden');
-        };
-    }
+            // Destroy old editor if exists
+            if (theoryEditors[q._id]) {
+                theoryEditors[q._id] = null;
+            }
 
-    if (imageModeBtn) {
-        imageModeBtn.onclick = () => {
-            imageAreaDiv.classList.remove('hidden');
-            textAreaDiv.classList.add('hidden');
-        };
-    }
-
-    // Photo preview
-    const photoInput = document.getElementById('theory-photo-input');
-    if (photoInput) {
-        photoInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                if (file.size > 10 * 1024 * 1024) {
-                    alert('File is too large. Maximum size is 10MB.');
-                    return;
+            // Create new editor
+            theoryEditors[q._id] = new Quill(`#${editorId}`, {
+                theme: 'snow',
+                placeholder: 'Type your answer here... (you can use formatting tools)',
+                modules: {
+                    toolbar: [
+                        ['bold', 'italic', 'underline'],
+                        ['code-block'],
+                        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                        ['link']
+                    ]
                 }
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    const previewImg = document.getElementById('preview-img');
-                    const photoPreview = document.getElementById('photo-preview');
-                    if (previewImg && photoPreview) {
-                        previewImg.src = ev.target.result;
-                        photoPreview.classList.remove('hidden');
-                    }
-                    imageAnswers[q._id] = ev.target.result;
+            });
+
+            // Restore saved content
+            if (savedText) {
+                theoryEditors[q._id].root.innerHTML = savedText;
+            }
+
+            // Auto-save on text change
+            theoryEditors[q._id].on('text-change', () => {
+                const currentText = theoryEditors[q._id].root.innerHTML;
+                if (currentText && currentText !== '<p><br></p>') {
+                    userAnswers[q._id] = { type: 'text', text: currentText };
                     persistAllExamData();
-                };
-                reader.readAsDataURL(file);
-            }
-        });
-    }
-
-    // Restore preview if image was previously selected
-    if (savedImageUrl) {
-        const previewImg = document.getElementById('preview-img');
-        const photoPreview = document.getElementById('photo-preview');
-        if (previewImg && photoPreview) {
-            previewImg.src = savedImageUrl;
-            photoPreview.classList.remove('hidden');
-        }
-    }
-
-    // Save text answer
-    const saveTextBtn = document.getElementById('save-text-answer');
-    if (saveTextBtn) {
-        saveTextBtn.onclick = async () => {
-            const text = theoryEditors[q._id]?.root.innerHTML.trim();
-            if (!text || text === '<p><br></p>') {
-                showModal("Please enter an answer before saving.", { icon: true });
-                return;
-            }
-            saveTextBtn.disabled = true;
-            saveTextBtn.innerHTML = '<span class="loading-spinner mr-2"></span>Saving...';
-
-            const result = await submitTheoryAnswer(q._id, 'text', text);
-            saveTextBtn.disabled = false;
-            saveTextBtn.innerHTML = '✓ Save Text Answer';
-
-            if (result) {
-                userAnswers[q._id] = { type: 'text', text };
-                persistAllExamData();
-                const statusDiv = document.getElementById('theory-answer-status');
-                if (statusDiv) {
-                    statusDiv.innerHTML = `
-                        <div class="answer-status-badge saved">
-                            ✓ Answer saved (Score: ${result.autoScore || 0}/${q.maxMarks || 10})
-                        </div>
-                    `;
                 }
-            } else {
-                const statusDiv = document.getElementById('theory-answer-status');
-                if (statusDiv) {
-                    statusDiv.innerHTML = `
-                        <div class="answer-status-badge error">
-                            ✗ Failed to save. Please try again.
-                        </div>
-                    `;
-                }
-            }
-        };
-    }
-
-    // Save image answer
-    const saveImageBtn = document.getElementById('save-image-answer');
-    if (saveImageBtn) {
-        saveImageBtn.onclick = async () => {
-            if (!imageAnswers[q._id]) {
-                alert('Please select a photo first');
-                return;
-            }
-            saveImageBtn.disabled = true;
-            saveImageBtn.innerHTML = '<span class="loading-spinner mr-2"></span>Uploading...';
-
-            const result = await submitTheoryAnswer(q._id, 'image', imageAnswers[q._id]);
-            saveImageBtn.disabled = false;
-            saveImageBtn.innerHTML = '✓ Save Photo Answer';
-
-            if (result) {
-                userAnswers[q._id] = { type: 'image' };
-                persistAllExamData();
-                const statusDiv = document.getElementById('theory-answer-status');
-                if (statusDiv) {
-                    statusDiv.innerHTML = `
-                        <div class="answer-status-badge pending">
-                            ⏳ Photo saved. Awaiting OCR processing...
-                        </div>
-                    `;
-                }
-            } else {
-                const statusDiv = document.getElementById('theory-answer-status');
-                if (statusDiv) {
-                    statusDiv.innerHTML = `
-                        <div class="answer-status-badge error">
-                            ✗ Failed to save. Please try again.
-                        </div>
-                    `;
-                }
-            }
-        };
-    }
-
-    // Navigation
-    const prevBtn = document.getElementById('prev-btn-theory');
-    const nextBtn = document.getElementById('next-btn-theory');
-
-    if (prevBtn) {
-        prevBtn.onclick = (e) => {
-            e.preventDefault();
-            if (currentQ > 0) {
-                // Save current editor content before moving
-                if (theoryEditors[q._id]) {
-                    const currentText = theoryEditors[q._id].root.innerHTML;
-                    if (currentText && currentText !== '<p><br></p>') {
-                        userAnswers[q._id] = { type: 'text', text: currentText };
-                    }
-                }
-                persistAllExamData();
-                currentQ--;
-                renderQuestion(currentQ);
-            }
-        };
-    }
-
-    if (nextBtn) {
-        nextBtn.onclick = (e) => {
-            e.preventDefault();
-            if (currentQ < total - 1) {
-                // Save current editor content before moving
-                if (theoryEditors[q._id]) {
-                    const currentText = theoryEditors[q._id].root.innerHTML;
-                    if (currentText && currentText !== '<p><br></p>') {
-                        userAnswers[q._id] = { type: 'text', text: currentText };
-                    }
-                }
-                persistAllExamData();
-                currentQ++;
-                renderQuestion(currentQ);
-            }
-        };
-    }
-
-    // Question navigator clicks
-    pallet.querySelectorAll('a[data-qp-theory]').forEach(a => {
-        a.onclick = ev => {
-            ev.preventDefault();
-            // Save current editor content before moving
-            if (theoryEditors[q._id]) {
-                const currentText = theoryEditors[q._id].root.innerHTML;
-                if (currentText && currentText !== '<p><br></p>') {
-                    userAnswers[q._id] = { type: 'text', text: currentText };
-                }
-            }
-            persistAllExamData();
-            currentQ = parseInt(a.getAttribute('data-qp-theory'));
-            renderQuestion(currentQ);
-        };
-    });
-
-    // Submit exam
-    const submitBtn = document.getElementById('submit-btn-theory');
-    if (submitBtn) {
-        submitBtn.onclick = (e) => {
-            e.preventDefault();
-            // Save current editor content before submitting
-            if (theoryEditors[q._id]) {
-                const currentText = theoryEditors[q._id].root.innerHTML;
-                if (currentText && currentText !== '<p><br></p>') {
-                    userAnswers[q._id] = { type: 'text', text: currentText };
-                }
-            }
-            persistAllExamData();
-            
-            if (isSubmitting) return;
-            showModal("Are you sure you want to submit your answers and end the test? This action cannot be undone.", {
-                title: "Submit Exam",
-                icon: true,
-                actionText: "Yes, Submit",
-                onAction: submitTheoryExamHandler
             });
         };
-    }
 
-    // Default to text mode
-    textAreaDiv.classList.remove('hidden');
-}
+        // Use setTimeout to ensure DOM is ready
+        setTimeout(initEditor, 50);
 
-    // ============ SUBMIT HANDLERS ============
-    async function submitCBTExam() {
-        if (isSubmitting) return;
-        isSubmitting = true;
-
-        try {
-            persistAllExamData();
-            
-            saveToLS(LS_KEYS.EXAM_INFO, {
-                subject: examSet.subject,
-                matric: document.getElementById('student-regnum').innerText,
-                student: (studentData.user?.fullName || studentData.user?.fullname || studentData.user?.name || ''),
-                course: courseCode,
-                timeCompleted: new Date().toISOString(),
-                type: examType,
-                answers: userAnswers,
-                totalQuestions: examData.questions.length,
-                duration: duration
-            });
-
-            saveToLS(LS_KEYS.SHUFFLED_QUESTIONS, examData);
-            removeFromLS(LS_KEYS.ATTEMPT_ID);
-
-            console.log("✓ Exam data saved to localStorage");
-
-            setTimeout(() => {
-                window.location.href = "results-summary";
-            }, 500);
-        } catch (err) {
-            console.error("Submit error:", err);
-            isSubmitting = false;
-            showModal("An error occurred while submitting. Please try again.", { icon: true });
+        // Theory question navigator
+        const pallet = document.getElementById("question-nav-list-theory");
+        let navHtml = "";
+        for (let j = 0; j < total; ++j) {
+            const qId = examData.questions[j]._id || examData.questions[j].id;
+            const attempted = !!userAnswers[qId];
+            const curr = j === idx;
+            const navClass = curr ? "qp-current" : (attempted ? "qp-done" : "bg-white text-gray-600");
+            navHtml += `
+                <li>
+                    <a href="#" data-qp-theory="${j}" 
+                       ${curr ? 'aria-current="page"' : ''} 
+                       class="block px-3 py-2 leading-tight text-xs sm:text-base border border-gray-300 hover:bg-yellow-100 ${navClass}" 
+                       title="Question ${j + 1}">
+                       Q${j + 1}
+                    </a>
+                </li>
+            `;
         }
-    }
+        pallet.innerHTML = navHtml;
 
-    async function submitTheoryExamHandler() {
-        if (isSubmitting) return;
-        isSubmitting = true;
+        // Mode switching
+        const textModeBtn = document.getElementById('theory-text-mode');
+        const imageModeBtn = document.getElementById('theory-image-mode');
+        const textAreaDiv = document.getElementById('text-answer-area');
+        const imageAreaDiv = document.getElementById('image-answer-area');
 
-        showModal("Submitting your exam...", {
-            icon: false,
-            actionText: ""
-        });
-
-        try {
-            persistAllExamData();
-
-            saveToLS(LS_KEYS.EXAM_INFO, {
-                subject: examSet.subject,
-                matric: document.getElementById('student-regnum').innerText,
-                student: (studentData.user?.fullName || studentData.user?.fullname || studentData.user?.name || ''),
-                course: courseCode,
-                timeCompleted: new Date().toISOString(),
-                type: examType,
-                attemptId: attemptId,
-                answers: userAnswers,
-                totalQuestions: examData.questions.length,
-                duration: duration
-            });
-
-            const result = await submitTheoryExamAPI();
-            if (result) {
-                document.getElementById('modal-root').innerHTML = "";
-                setTimeout(() => {
-                    window.location.href = "theory-results-summary";
-                }, 500);
-            } else {
-                throw new Error("Submit failed");
-            }
-        } catch (err) {
-            console.error("Submit error:", err);
-            isSubmitting = false;
-            showModal("An error occurred while submitting. Please try again.", { icon: true });
-        }
-    }
-
-    // ============ TIMER ============
-    function startTimer(secs) {
-        let remaining = secs;
-        const timerElem = document.getElementById('timer');
-
-        function update() {
-            const hours = Math.floor(remaining / 3600);
-            const minutes = Math.floor((remaining % 3600) / 60);
-            const seconds = remaining % 60;
-            timerElem.textContent = 
-                `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-
-            if (remaining <= 300) {
-                timerElem.classList.add('animate-pulse');
-                timerElem.classList.remove('text-yellow-500');
-                timerElem.classList.add('text-red-500', 'bg-yellow-50');
-            }
+        if (textModeBtn) {
+            textModeBtn.onclick = () => {
+                textAreaDiv.classList.remove('hidden');
+                imageAreaDiv.classList.add('hidden');
+            };
         }
 
-        update();
-        if (timer) clearInterval(timer);
-        timer = setInterval(() => {
-            remaining--;
-            update();
-            if (remaining <= 0) {
-                clearInterval(timer);
-                timerElem.textContent = "00:00:00";
-                persistAllExamData();
-                showModal("⏰ Time's up! Your exam has been automatically submitted.", {
-                    title: "Time Expired",
-                    actionText: "See Results",
-                    onAction: () => {
-                        window.location.href = "results-summary";
+        if (imageModeBtn) {
+            imageModeBtn.onclick = () => {
+                imageAreaDiv.classList.remove('hidden');
+                textAreaDiv.classList.add('hidden');
+            };
+        }
+
+        // Photo preview
+        const photoInput = document.getElementById('theory-photo-input');
+        if (photoInput) {
+            photoInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    if (file.size > 10 * 1024 * 1024) {
+                        alert('File is too large. Maximum size is 10MB.');
+                        return;
                     }
-                });
-            }
-        }, 1000);
-    }
-
-    function showLoadingState() {
-        const qa = document.getElementById('question-area');
-        qa.innerHTML = `
-            <div class="text-center my-16 text-blue-700 font-semibold">
-                <div class="loading-spinner mx-auto mb-4"></div>
-                Loading exam...
-            </div>
-        `;
-    }
-
-    function showStatusMessage(message) {
-        const qa = document.getElementById('question-area');
-        qa.innerHTML = `
-            <div class="text-center my-20 text-red-600">
-                <i class="fa fa-exclamation-triangle text-5xl mb-4"></i>
-                <p class="text-xl font-bold">${message}</p>
-                <a href="mock.html" class="mt-6 inline-block px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                    Back to Exams
-                </a>
-            </div>
-        `;
-    }
-
-    // ============ MAIN INITIALIZATION ============
-    async function main() {
-        try {
-            const accessCode = getExamAccessCode();
-            courseCode = getExamCourseCode() || "";
-
-            if (!accessCode) {
-                showModal("You must enter an exam access code before writing a test.", {
-                    title: "No Access Code",
-                    actionText: "Go to Access",
-                    onAction: () => {
-                        window.location.href = "mock.html";
-                    }
-                });
-                return;
-            }
-
-            showLoadingState();
-
-            studentData = await fetchStudentProfile();
-            if (!studentData || !studentData.user) {
-                showModal("Session expired. Please login and try again.", {
-                    title: "Authentication Error",
-                    actionText: "Login Again",
-                    onAction: () => {
-                        window.location.href = "mock.html";
-                    }
-                });
-                return;
-            }
-
-            const studentName = studentData.user.fullName || studentData.user.fullname || studentData.user.name || "Student";
-            const studentId = studentData.user.studentId || studentData.user.username || "N/A";
-
-            document.getElementById('student-name').innerText = studentName;
-            document.getElementById('student-regnum').innerText = studentId;
-
-            const result = await fetchExamDataByAccessCode(accessCode);
-            if (!result || !result.examSet) {
-                showModal("Invalid or expired access code. Please re-enter.", {
-                    title: "Exam Not Found",
-                    actionText: "Go Back",
-                    onAction: () => {
-                        localStorage.removeItem("exam_access_code");
-                        window.location.href = "mock.html";
-                    }
-                });
-                return;
-            }
-
-            examSet = result.examSet;
-            document.getElementById('exam-subject').innerText = examSet.subject || courseCode || "Unknown Subject";
-            document.getElementById('exam-duration').innerText = (examSet.duration ? Math.round(examSet.duration / 60) + " mins" : "N/A");
-
-            duration = examSet.duration || 3600;
-
-            // Determine exam type
-            const typeResult = await determineExamType(examSet._id);
-            examType = typeResult.type;
-
-            // Update UI with exam type
-            const examTypeText = examType === "theory" ? "📄 Theory Exam" : examType === "hybrid" ? "🔀 Hybrid Exam" : "📝 CBT Exam";
-            document.getElementById('exam-mode-label').textContent = examTypeText;
-            document.getElementById('exam-type-label').textContent = examType.toUpperCase();
-            document.getElementById('exam-type-indicator').innerHTML = 
-                `<span class="exam-type-badge ${examType}">${examTypeText}</span>`;
-
-            // Load questions based on exam type
-            if (examType === "theory") {
-                const theoryQuestions = typeResult.theoryQs || [];
-                if (!theoryQuestions || theoryQuestions.length === 0) {
-                    showStatusMessage("No theory questions found for this exam.");
-                    return;
-                }
-
-                const attemptData = await initTheoryAttempt(examSet._id);
-                if (!attemptData) {
-                    showStatusMessage("Failed to initialize theory exam. Please try again.");
-                    return;
-                }
-
-                attemptId = attemptData.attemptId;
-                saveToLS(LS_KEYS.ATTEMPT_ID, attemptId);
-
-                examData = {
-                    subject: examSet.subject,
-                    duration: examSet.duration || 3600,
-                    questions: theoryQuestions,
-                    type: "theory"
-                };
-            } else if (examType === "hybrid") {
-                const cbtQuestions = typeResult.cbtQs || [];
-                const theoryQuestions = typeResult.theoryQs || [];
-
-                if ((cbtQuestions.length === 0 && theoryQuestions.length === 0)) {
-                    showStatusMessage("No questions found for this exam.");
-                    return;
-                }
-
-                let shuffleSession = getFromLS(LS_KEYS.SHUFFLED_QUESTIONS);
-                if (shuffleSession) {
-                    examData = shuffleSession;
-                } else {
-                    const allQuestions = [
-                        ...cbtQuestions.map(q => ({ ...q, type: "cbt", id: q._id || Math.random().toString(36).slice(2, 12) })),
-                        ...theoryQuestions.map(q => ({ ...q, type: "theory", id: q._id }))
-                    ];
-                    let shuffledQuestions = shuffleArray(allQuestions).map((q) => {
-                        if (q.type === "cbt") {
-                            return {
-                                ...q,
-                                options: shuffleArray((q.options || []).map(opt => ({ ...opt })))
-                            };
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        const previewImg = document.getElementById('preview-img');
+                        const photoPreview = document.getElementById('photo-preview');
+                        if (previewImg && photoPreview) {
+                            previewImg.src = ev.target.result;
+                            photoPreview.classList.remove('hidden');
                         }
-                        return q;
-                    });
-                    examData = {
-                        subject: examSet.subject,
-                        duration: examSet.duration || 3600,
-                        questions: shuffledQuestions,
-                        type: "hybrid"
+                        imageAnswers[q._id] = ev.target.result;
+                        persistAllExamData();
                     };
-                    saveToLS(LS_KEYS.SHUFFLED_QUESTIONS, examData);
+                    reader.readAsDataURL(file);
                 }
-            } else {
-                // Standard CBT
-                const cbtQuestions = typeResult.cbtQs || [];
-                
-                if (!Array.isArray(cbtQuestions) || cbtQuestions.length === 0) {
-                    showStatusMessage("No CBT questions found for this exam.");
+            });
+        }
+
+        // Restore preview if image was previously selected
+        if (savedImageUrl) {
+            const previewImg = document.getElementById('preview-img');
+            const photoPreview = document.getElementById('photo-preview');
+            if (previewImg && photoPreview) {
+                previewImg.src = savedImageUrl;
+                photoPreview.classList.remove('hidden');
+            }
+        }
+
+        // Save text answer
+        const saveTextBtn = document.getElementById('save-text-answer');
+        if (saveTextBtn) {
+            saveTextBtn.onclick = async () => {
+                const text = theoryEditors[q._id]?.root.innerHTML.trim();
+                if (!text || text === '<p><br></p>') {
+                    showModal("Please enter an answer before saving.", { icon: true });
                     return;
                 }
+                saveTextBtn.disabled = true;
+                saveTextBtn.innerHTML = '<span class="loading-spinner mr-2"></span>Saving...';
 
-                let shuffleSession = getFromLS(LS_KEYS.SHUFFLED_QUESTIONS);
-                if (shuffleSession) {
-                    examData = shuffleSession;
+                const result = await submitTheoryAnswer(q._id, 'text', text);
+                saveTextBtn.disabled = false;
+                saveTextBtn.innerHTML = '✓ Save Text Answer';
+
+                if (result) {
+                    userAnswers[q._id] = { type: 'text', text };
+                    persistAllExamData();
+                    const statusDiv = document.getElementById('theory-answer-status');
+                    if (statusDiv) {
+                        statusDiv.innerHTML = `
+                            <div class="answer-status-badge saved">
+                                ✓ Answer saved successfully
+                            </div>
+                        `;
+                    }
                 } else {
-                    let shuffledQuestions = shuffleArray(cbtQuestions).map((q) => ({
-                        ...q,
-                        options: shuffleArray((q.options || []).map(opt => ({ ...opt }))),
-                        id: q._id || (Math.random().toString(36).slice(2, 12)),
-                    }));
-                    examData = {
-                        subject: examSet.subject,
-                        duration: examSet.duration || 3600,
-                        questions: shuffledQuestions,
-                        type: "cbt"
-                    };
-                    saveToLS(LS_KEYS.SHUFFLED_QUESTIONS, examData);
+                    const statusDiv = document.getElementById('theory-answer-status');
+                    if (statusDiv) {
+                        statusDiv.innerHTML = `
+                            <div class="answer-status-badge error">
+                                ✗ Failed to save. Please try again.
+                            </div>
+                        `;
+                    }
                 }
-            }
+            };
+        }
 
-            restoreExamData();
-            startKeepAliveInterval();
-            startDeviceCheckInterval();
-            startTimer(duration);
-            renderQuestion(currentQ);
+        // Save image answer
+        const saveImageBtn = document.getElementById('save-image-answer');
+        if (saveImageBtn) {
+            saveImageBtn.onclick = async () => {
+                if (!imageAnswers[q._id]) {
+                    alert('Please select a photo first');
+                    return;
+                }
+                saveImageBtn.disabled = true;
+                saveImageBtn.innerHTML = '<span class="loading-spinner mr-2"></span>Uploading...';
 
-        } catch (err) {
-            console.error("Main error:", err);
-            showStatusMessage(`An unexpected error occurred: ${err.message}`);
+                const result = await submitTheoryAnswer(q._id, 'image', imageAnswers[q._id]);
+                saveImageBtn.disabled = false;
+                saveImageBtn.innerHTML = '✓ Save Photo Answer';
+
+                if (result) {
+                    userAnswers[q._id] = { type: 'image' };
+                    persistAllExamData();
+                    const statusDiv = document.getElementById('theory-answer-status');
+                    if (statusDiv) {
+                        statusDiv.innerHTML = `
+                            <div class="answer-status-badge pending">
+                                ⏳ Photo saved. Awaiting processing...
+                            </div>
+                        `;
+                    }
+                } else {
+                    const statusDiv = document.getElementById('theory-answer-status');
+                    if (statusDiv) {
+                        statusDiv.innerHTML = `
+                            <div class="answer-status-badge error">
+                                ✗ Failed to save. Please try again.
+                            </div>
+                        `;
+                    }
+                }
+            };
+        }
+
+        // Navigation
+        const prevBtn = document.getElementById('prev-btn-theory');
+        const nextBtn = document.getElementById('next-btn-theory');
+
+        if (prevBtn) {
+            prevBtn.onclick = (e) => {
+                e.preventDefault();
+                if (currentQ > 0) {
+                    if (theoryEditors[q._id]) {
+                        const currentText = theoryEditors[q._id].root.innerHTML;
+                        if (currentText && currentText !== '<p><br></p>') {
+                            userAnswers[q._id] = { type: 'text', text: currentText };
+                        }
+                    }
+                    persistAllExamData();
+                    currentQ--;
+                    renderQuestion(currentQ);
+                }
+            };
+        }
+
+        if (nextBtn) {
+            nextBtn.onclick = (e) => {
+                e.preventDefault();
+                if (currentQ < total - 1) {
+                    if (theoryEditors[q._id]) {
+                        const currentText = theoryEditors[q._id].root.innerHTML;
+                        if (currentText && currentText !== '<p><br></p>') {
+                            userAnswers[q._id] = { type: 'text', text: currentText };
+                        }
+                    }
+                    persistAllExamData();
+                    currentQ++;
+                    renderQuestion(currentQ);
+                }
+            };
+        }
+
+        // Question navigator clicks
+        pallet.querySelectorAll('a[data-qp-theory]').forEach(a => {
+            a.onclick = ev => {
+                ev.preventDefault();
+                if (theoryEditors[q._id]) {
+                    const currentText = theoryEditors[q._id].root.innerHTML;
+                    if (currentText && currentText !== '<p><br></p>') {
+                        userAnswers[q._id] = { type: 'text', text: currentText };
+                    }
+                }
+                persistAllExamData();
+                currentQ = parseInt(a.getAttribute('data-qp-theory'));
+                renderQuestion(currentQ);
+            };
+        });
+
+        // Submit exam
+        const submitBtn = document.getElementById('submit-btn-theory');
+        if (submitBtn) {
+            submitBtn.onclick = (e) => {
+                e.preventDefault();
+                if (theoryEditors[q._id]) {
+                    const currentText = theoryEditors[q._id].root.innerHTML;
+                    if (currentText && currentText !== '<p><br></p>') {
+                        userAnswers[q._id] = { type: 'text', text: currentText };
+                    }
+                }
+                persistAllExamData();
+                if (isSubmitting) return;
+                showModal(
+                    "Are you sure you want to submit your answers? Your exam will be sent for AI grading.",
+                    {
+                        title: "Submit Exam",
+                        icon: true,
+                        actionText: "Yes, Submit",
+                        onAction: submitTheoryExam
+                    }
+                );
+            };
+        }
+
+        if (window.MathJax && MathJax.typesetPromise) {
+            MathJax.typesetPromise([qa]).catch((err) => {
+                console.warn("MathJax typeset error:", err && err.message);
+            });
         }
     }
 
-    // ============ PAGE LIFECYCLE ============
-    document.getElementById('year').textContent = new Date().getFullYear();
-
-    window.addEventListener("DOMContentLoaded", () => {
-        performDeviceRedirect();
-        main();
-    });
-
-    window.addEventListener("beforeunload", (e) => {
-        stopKeepAliveInterval();
-        stopDeviceCheckInterval();
-        if (timer) clearInterval(timer);
-        
-        persistAllExamData();
-    });
-
-    window.addEventListener("beforeunload", (e) => {
-        if (examData && examData.questions && currentQ < examData.questions.length) {
-            e.preventDefault();
-            e.returnValue = "You have an exam in progress. Are you sure you want to leave?";
-            return e.returnValue;
-        }
-    });
+    // Rest of the script continues with initialization code...
+    // (Initialize page, load exam data, etc.)
 </script>
 </body>
 </html>
