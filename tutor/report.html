@@ -1082,268 +1082,133 @@
     }
 
     // ============ RENDER THEORY RESULTS ============
-    async function renderTheoryResults(attempt) {
-      let results = [];
-      const resultsList = document.getElementById('results-list');
+// ============ RENDER THEORY RESULTS ============
+async function renderTheoryResults(attempt) {
+  if (!attempt) {
+    document.getElementById('results-list').innerHTML = `
+      <div class="error-message">
+        <i class="fas fa-exclamation-circle"></i> Failed to load theory attempt data.
+      </div>
+    `;
+    return { correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0 };
+  }
 
-      resultsList.innerHTML = `
-        <div class="content-header">
-          <div class="content-title">
-            <i class="fas fa-chart-pie" style="color: #fbbf24;"></i> Theory Exam Results
-          </div>
-          <div class="content-subject">${examInfo.subject || "Theory Report"}</div>
-        </div>
-      `;
+  const resultsList = document.getElementById('results-list');
+  const subject = attempt.examSet?.subject || attempt.subject || "Theory Exam";
+  
+  // Update student info in sidebar
+  document.getElementById('student-name').textContent = attempt.student?.name || attempt.studentName || "-";
+  document.getElementById('student-regnum').textContent = attempt.student?.registrationNumber || attempt.regNum || "-";
+  document.getElementById('exam-subject').textContent = subject;
+  document.getElementById('exam-time').textContent = getTimeString(attempt.submittedAt || attempt.completedAt);
 
-      if (!attempt) {
-        resultsList.innerHTML += `
-          <div class="error-message">
-            <i class="fas fa-exclamation-circle"></i>
-            Failed to load attempt data.
-          </div>
-        `;
-        return { correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0, scoreDisplay: "0/0" };
-      }
+  resultsList.innerHTML = `
+    <div class="content-header">
+      <div class="content-title">
+        <i class="fas fa-chart-pie" style="color: #fbbf24;"></i> Theory Exam Results
+      </div>
+      <div class="content-subject">${subject}</div>
+    </div>
+  `;
 
-      // Check for answers in different possible locations
-      const attemptAnswers = attempt.answers || attempt.theoryanswers || [];
-      
-      console.log("Theory attempt data:", attempt);
-      console.log("Theory attempt answers:", attemptAnswers);
+  const allAnswers = attempt.answers || [];
+  
+  if (!allAnswers || allAnswers.length === 0) {
+    resultsList.innerHTML += `
+      <div class="error-message">
+        <i class="fas fa-exclamation-circle"></i> No answers found.
+      </div>
+    `;
+    return { correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0 };
+  }
 
-      if (!attemptAnswers || attemptAnswers.length === 0) {
-        resultsList.innerHTML += `
-          <div class="error-message">
-            <i class="fas fa-exclamation-circle"></i>
-            No theory answers found in attempt.
-          </div>
-        `;
-        return { correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0, scoreDisplay: "0/0" };
-      }
+  let totalMarks = 0;
+  let obtainedMarks = 0;
+  let pendingCount = 0;
+  let gradedCount = 0;
 
-      let totalScore = 0;
-      let totalMarks = 0;
-      let graded = 0;
-      let pending = 0;
+  for (let i = 0; i < allAnswers.length; i++) {
+    const ans = allAnswers[i];
+    const question = ans.question || {};
+    const qNum = i + 1;
+    const maxMarks = question.maxMarks || ans.maxMarks || 10;
+    const earnedMarks = ans.score !== undefined ? ans.score : 0;
+    const isGraded = ans.isGraded !== false;
+    const status = isGraded ? "graded" : "pending";
 
-      for (let i = 0; i < attemptAnswers.length; i++) {
-        const answerRef = attemptAnswers[i];
-        console.log("Processing answer:", answerRef);
-
-        let answerId = null;
-        let answerDetail = null;
-
-        // Handle different response formats
-        if (typeof answerRef === 'string') {
-          answerId = answerRef;
-        } else if (answerRef._id) {
-          answerId = answerRef._id;
-          answerDetail = answerRef; // Full answer object
-        } else if (answerRef.answer) {
-          answerId = answerRef.answer;
-        }
-
-        if (!answerId) {
-          console.warn("No answer ID found in:", answerRef);
-          continue;
-        }
-
-        // Fetch full answer details if not already loaded
-        if (!answerDetail || !answerDetail.answerText) {
-          try {
-            answerDetail = await fetchTheoryAnswerDetail(answerId);
-          } catch (err) {
-            console.warn("Failed to fetch answer details:", err);
-          }
-        }
-
-        if (!answerDetail) {
-          console.warn("No answer detail for:", answerId);
-          continue;
-        }
-
-        console.log("Answer detail:", answerDetail);
-
-        const isGraded = answerDetail.isGraded || false;
-        const score = answerDetail.finalScore || answerDetail.aiScore || answerDetail.autoScore || 0;
-        const maxMarks = answerDetail.question?.maxMarks || 10;
-
-        totalScore += score;
-        totalMarks += maxMarks;
-
-        if (isGraded) {
-          graded++;
-          results.push({ isGraded: true, status: "graded", score, maxMarks });
-        } else {
-          pending++;
-          results.push({ isGraded: false, status: "pending", score, maxMarks });
-        }
-
-        const questionText = answerDetail.question?.question || "";
-        const questionHtml = normalizeQuestionMath(questionText);
-
-        let answerDisplay = "";
-        let answerStatus = "";
-
-        // Display the student's answer
-        if (answerDetail.answerType === "text") {
-          const textContent = answerDetail.answerText || answerDetail.ocrExtractedText || "";
-          answerDisplay = textContent ? normalizeQuestionMath(textContent) : "<em>No answer provided</em>";
-        } else if (answerDetail.answerType === "image") {
-          answerDisplay = answerDetail.answerImageUrl 
-            ? `<img src="${answerDetail.answerImageUrl}" alt="Student answer" style="max-width: 100%; max-height: 300px; border-radius: 0.5rem;" />`
-            : "<em>No image provided</em>";
-        }
-
-        // Determine grading status display
-        let statusColor = "pending";
-        let statusIcon = 'fa-hourglass-half';
-        let statusText = "Pending Review";
-        let scoringMethod = "";
-
-        if (isGraded) {
-          statusColor = "correct";
-          statusIcon = 'fa-check-circle';
-          
-          // Show which scoring method was used
-          if (answerDetail.scoringMethod === "manual") {
-            statusText = `Manual Grade: ${score}/${maxMarks}`;
-            scoringMethod = "🧑‍🏫 Manual Grading";
-          } else if (answerDetail.scoringMethod === "ai") {
-            statusText = `AI Grade: ${score}/${maxMarks}`;
-            scoringMethod = "🤖 AI Grading (Gemini)";
-          } else {
-            statusText = `Auto Grade: ${score}/${maxMarks}`;
-            scoringMethod = "🔍 Keyword Matching";
-          }
-        }
-
-        let feedbackSection = "";
-        let keywordsSection = "";
-        let aiSection = "";
-
-        // Matched keywords
-        if (answerDetail.matchedKeywords && answerDetail.matchedKeywords.length > 0) {
-          keywordsSection = `
-            <div class="explanation-box">
-              <details>
-                <summary class="explanation-summary">
-                  <i class="fas fa-key"></i> Matched Keywords (${answerDetail.matchedKeywords.length})
-                </summary>
-                <div class="explanation-content" style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
-                  ${answerDetail.matchedKeywords.map(kw => `<span style="background: #dcfce7; color: #166534; padding: 0.35rem 0.75rem; border-radius: 0.35rem; display: inline-block; font-size: 0.85rem; font-weight: 600;">${kw}</span>`).join("")}
-                </div>
-              </details>
-            </div>
-          `;
-        }
-
-        // AI Grading Details
-        if (answerDetail.aiGradingAttempted && answerDetail.aiGradingSuccess) {
-          aiSection = `
-            <div class="explanation-box">
-              <details>
-                <summary class="explanation-summary">
-                  <i class="fas fa-robot"></i> AI Grading Details
-                </summary>
-                <div class="explanation-content">
-                  <p><strong>AI Score:</strong> ${answerDetail.aiScore}/${maxMarks}</p>
-                  <p><strong>AI Explanation:</strong> ${normalizeQuestionMath(answerDetail.aiExplanation || "")}</p>
-                </div>
-              </details>
-            </div>
-          `;
-        }
-
-        // Manual or AI Feedback
-        if (answerDetail.manualFeedback || answerDetail.aiFeedback) {
-          feedbackSection = `
-            <div class="explanation-box">
-              <details open>
-                <summary class="explanation-summary">
-                  <i class="fas fa-comment-dots"></i> ${answerDetail.manualFeedback ? '👨‍🏫 Tutor Feedback' : '🤖 AI Feedback'}
-                </summary>
-                <div class="explanation-content">
-                  ${normalizeQuestionMath(answerDetail.manualFeedback || answerDetail.aiFeedback || "")}
-                </div>
-              </details>
-            </div>
-          `;
-        }
-
-        // Sample answer
-        const sampleAnswerSection = answerDetail.question?.sampleAnswer ? `
-          <div class="explanation-box">
-            <details>
-              <summary class="explanation-summary">
-                <i class="fas fa-lightbulb"></i> Sample Answer
-              </summary>
-              <div class="explanation-content">
-                ${normalizeQuestionMath(answerDetail.question.sampleAnswer)}
-              </div>
-            </details>
-          </div>
-        ` : "";
-
-        const cardHtml = `
-          <div class="question-card theory ${statusColor}">
-            <div class="question-text">
-              <div class="question-number">${i + 1}</div>
-              <span>${questionHtml}</span>
-            </div>
-
-            <div class="answer-section">
-              <div class="answer-label">Your Answer</div>
-              <div class="theory-answer-display">
-                ${answerDisplay}
-              </div>
-            </div>
-
-            <div class="answer-section">
-              <div class="answer-label">Grading Status</div>
-              <div class="answer-content">
-                <span class="answer-pill ${isGraded ? 'answer-correct' : 'answer-pending'}">
-                  <i class="fas ${statusIcon}"></i>
-                  ${statusText}
-                </span>
-              </div>
-              ${scoringMethod ? `<small style="color: #6b7280; margin-top: 0.5rem; display: block;">${scoringMethod}</small>` : ""}
-            </div>
-
-            ${keywordsSection}
-            ${aiSection}
-            ${feedbackSection}
-            ${sampleAnswerSection}
-          </div>
-        `;
-
-        resultsList.innerHTML += cardHtml;
-      }
-
-      if (window.MathJax && MathJax.typesetPromise) {
-        try {
-          await MathJax.typesetPromise([resultsList]);
-        } catch (err) {
-          console.warn("MathJax error:", err && err.message);
-        }
-      }
-
-      const percent = totalMarks ? Math.round(totalScore / totalMarks * 100) : 0;
-      const totalQuestions = attemptAnswers.length;
-
-      return { 
-        correct: graded, 
-        wrong: 0, 
-        pending: pending, 
-        unanswered: 0, 
-        percent: percent, 
-        total: totalQuestions,
-        scoreDisplay: `${totalScore}/${totalMarks}`
-      };
+    totalMarks += maxMarks;
+    if (isGraded) {
+      obtainedMarks += earnedMarks;
+      gradedCount++;
+    } else {
+      pendingCount++;
     }
 
-      
+    const statusClass = isGraded ? "correct" : "theory";
+    const statusBadge = !isGraded ? "Pending Review" : `${earnedMarks}/${maxMarks}`;
+    const statusColor = !isGraded ? "#1e90ff" : "#10b981";
 
+    let answerDisplay = `<p>${stripHtml(ans.answerText) || "No text answer"}</p>`;
+    
+    if (ans.answerImage) {
+      answerDisplay += `<img src="${ans.answerImage}" alt="Student answer" style="max-width: 100%; margin-top: 0.5rem;">`;
+    }
+
+    const feedbackSection = ans.feedback ? `
+      <div class="explanation-box">
+        <div class="explanation-summary">
+          <i class="fas fa-comment-dots"></i> Feedback
+        </div>
+        <div class="explanation-content">${ans.feedback}</div>
+      </div>
+    ` : "";
+
+    resultsList.innerHTML += `
+      <div class="question-card ${statusClass}">
+        <div class="question-text">
+          <span class="question-number">${qNum}</span>
+          <div>
+            <div>${normalizeQuestionMath(stripHtml(question.text || "Question")) || "Question"}</div>
+            <div style="font-size: 0.85rem; color: #6b7280; margin-top: 0.5rem;">Max Marks: <strong>${maxMarks}</strong></div>
+          </div>
+        </div>
+        
+        <div class="answer-section">
+          <div class="answer-label">Your Answer</div>
+          <div class="theory-answer-display">
+            ${answerDisplay}
+          </div>
+        </div>
+
+        <div class="answer-section">
+          <div class="answer-label">Score</div>
+          <div class="answer-content">
+            <span class="answer-pill" style="background: ${statusColor}20; color: ${statusColor};">
+              ${statusBadge}
+            </span>
+          </div>
+        </div>
+
+        ${feedbackSection}
+      </div>
+    `;
+  }
+
+  const percentage = totalMarks > 0 ? Math.round((obtainedMarks / totalMarks) * 100) : 0;
+
+  return {
+    correct: gradedCount,
+    wrong: 0,
+    pending: pendingCount,
+    unanswered: 0,
+    percent: percentage,
+    total: allAnswers.length,
+    scoreDisplay: `${obtainedMarks}/${totalMarks}`
+  };
+}        
+
+        
+                
     // ============ MAIN ============
     async function main() {
       try {
