@@ -1265,46 +1265,53 @@ function renderTheoryQuestion(idx, q, qa, total) {
         }
     }
 
-    async function submitTheoryExamHandler() {
-        if (isSubmitting) return;
-        isSubmitting = true;
+    // ============ SUBMIT THEORY EXAM ============
+async function submitTheoryExam() {
+    if (isSubmitting) return;
+    isSubmitting = true;
 
-        showModal("Submitting your exam...", {
-            icon: false,
-            actionText: ""
+    try {
+        // Disable submit button to prevent double submit
+        const btn = document.getElementById("submit-btn-theory");
+        if (btn) btn.disabled = true;
+
+        showModal("Submitting your exam...", { title: "Please Wait", icon: false });
+
+        // Submit all answers to backend
+        const token = getToken();
+        const payload = {
+            answers: userAnswers,
+            imageAnswers: imageAnswers,
+            duration: duration
+        };
+
+        const res = await fetch(`${API_BASE}/api/theory-attempts/${attemptId}/submit`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(payload)
         });
 
-        try {
-            persistAllExamData();
+        if (!res.ok) throw new Error("Submission failed");
+        const result = await res.json();
 
-            saveToLS(LS_KEYS.EXAM_INFO, {
-                subject: examSet.subject,
-                matric: document.getElementById('student-regnum').innerText,
-                student: (studentData.user?.fullName || studentData.user?.fullname || studentData.user?.name || ''),
-                course: courseCode,
-                timeCompleted: new Date().toISOString(),
-                type: examType,
-                attemptId: attemptId,
-                answers: userAnswers,
-                totalQuestions: examData.questions.length,
-                duration: duration
-            });
+        clearExamLS();
+        stopKeepAliveInterval();
 
-            const result = await submitTheoryExamAPI();
-            if (result) {
-                document.getElementById('modal-root').innerHTML = "";
-                setTimeout(() => {
-                    window.location.href = "theory-results-summary";
-                }, 500);
-            } else {
-                throw new Error("Submit failed");
-            }
-        } catch (err) {
-            console.error("Submit error:", err);
-            isSubmitting = false;
-            showModal("An error occurred while submitting. Please try again.", { icon: true });
-        }
+        // Redirect to theory report page instead of CBT report
+        window.location.href = `theory-results-summary?attemptId=${result._id || attemptId}`;
+
+    } catch (err) {
+        console.error("Submit error:", err);
+        isSubmitting = false;
+        showModal(`Submission failed: ${err.message}. Please try again.`, {
+            title: "Error",
+            icon: true
+        });
     }
+}
 
     // ============ TIMER ============
     function startTimer(secs) {
