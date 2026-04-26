@@ -1005,7 +1005,7 @@
       const percentage = totalMarks > 0 ? Math.round((obtainedMarks / totalMarks) * 100) : 0;
       const avgPerQuestion = allAnswers.length > 0 ? Math.round((obtainedMarks / allAnswers.length) * 100) : 0;
 
-      return {
+      const scores = {
         obtained: obtainedMarks,
         total: totalMarks,
         graded: gradedCount,
@@ -1014,9 +1014,19 @@
         avgScore: `${avgPerQuestion}%`,
         scoreDisplay: `${obtainedMarks}/${totalMarks}`
       };
+
+      if (window.MathJax && MathJax.typesetPromise) {
+        try {
+          await MathJax.typesetPromise([resultsList]);
+        } catch (err) {
+          console.warn("MathJax typeset error:", err && err.message);
+        }
+      }
+
+      return scores;
     }
 
-    // ============ MAIN FUNCTION ============
+    // ============ MAIN INITIALIZATION ============
     async function main() {
       try {
         if (!attemptId) {
@@ -1030,6 +1040,7 @@
           return;
         }
 
+        console.log("Starting main initialization with attemptId:", attemptId);
         const attempt = await fetchTheoryAttempt(attemptId);
         const scores = await renderTheoryResults(attempt);
         updateScoreCard(scores);
@@ -1046,6 +1057,7 @@
       }
     }
 
+    // Initialize on page load
     window.addEventListener('DOMContentLoaded', main);
 
     // ============ PDF DOWNLOAD ============
@@ -1080,20 +1092,18 @@
 
           const imgData = canvas.toDataURL("image/png");
           const pdf = new jsPDF('p', 'mm', 'a4');
-          const imgWidth = 210;
           const pageHeight = 295;
-          let heightLeft = canvas.height * imgWidth / canvas.width;
           let position = 0;
 
           const pageWidth = pdf.internal.pageSize.getWidth();
           const imgHeight = (canvas.height * pageWidth) / canvas.width;
-          let heightLeft2 = imgHeight;
+          let heightLeft = imgHeight;
 
-          while (heightLeft2 >= 0) {
+          while (heightLeft >= 0) {
             pdf.addImage(imgData, 'PNG', 0, position, pageWidth, imgHeight);
-            heightLeft2 -= pageHeight;
-            position = heightLeft2 - imgHeight;
-            if (heightLeft2 > 0) {
+            heightLeft -= pageHeight;
+            position = heightLeft - imgHeight;
+            if (heightLeft > 0) {
               pdf.addPage();
             }
           }
