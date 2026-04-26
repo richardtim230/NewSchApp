@@ -793,332 +793,397 @@
   </div>
 
 <script>
-    "use strict";
+  "use strict";
 
-    const API_BASE = "https://examguide.onrender.com";
+  const API_BASE = "https://examguide.onrender.com";
+  let attemptData = null;
+  let studentData = null;
+  let allAnswers = [];
 
-    // ============ DATA RETRIEVAL ============
-    function getFromLS(key) {
-      try {
-        const data = localStorage.getItem(key) || sessionStorage.getItem(key);
-        return data ? JSON.parse(data) : null;
-      } catch (err) {
-        console.warn(`Failed to parse ${key}:`, err);
-        return null;
-      }
+  // ============ UTILITY FUNCTIONS ============
+  function getToken() {
+    return localStorage.getItem("student_jwt_token") || "";
+  }
+
+  function getFromLS(key) {
+    try {
+      const data = localStorage.getItem(key);
+      return data ? JSON.parse(data) : null;
+    } catch (err) {
+      console.warn(`Failed to parse ${key}:`, err);
+      return null;
     }
+  }
 
-    function getFromLSString(key) {
-      try {
-        return localStorage.getItem(key) || sessionStorage.getItem(key) || null;
-      } catch (err) {
-        console.warn(`Failed to get ${key}:`, err);
-        return null;
-      }
+  // ============ API CALLS ============
+  async function fetchStudentProfile() {
+    try {
+      const token = getToken();
+      if (!token) throw new Error("No token");
+      const res = await fetch(API_BASE + "/api/auth/me", {
+        headers: { Authorization: "Bearer " + token }
+      });
+      if (!res.ok) throw new Error("Not authenticated");
+      return await res.json();
+    } catch (err) {
+      console.error("Profile fetch error:", err);
+      return null;
     }
+  }
 
-    let attemptId = getFromLSString('cbt_attempt_id') || getFromLSString('theory_attempt_id');
-
-    console.log("Theory Attempt ID:", attemptId);
-
-    // ============ API CALLS ============
-    async function fetchTheoryAttempt(attemptId) {
-      try {
-        if (!attemptId) return null;
-        const token = localStorage.getItem("student_jwt_token");
-        console.log("Fetching theory attempt with ID:", attemptId);
-        const res = await fetch(`${API_BASE}/api/theory-attempts/${attemptId}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) {
-          console.error("Failed to fetch attempt, status:", res.status);
-          return null;
-        }
-        const data = await res.json();
-        console.log("Theory attempt data:", data);
-        return data;
-      } catch (err) {
-        console.error("Fetch theory attempt error:", err);
-        return null;
-      }
+  async function fetchTheoryAttempt(attemptId) {
+    try {
+      if (!attemptId) throw new Error("No attempt ID");
+      const token = getToken();
+      const res = await fetch(`${API_BASE}/api/theory-attempts/${attemptId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Attempt not found");
+      return await res.json();
+    } catch (err) {
+      console.error("Fetch attempt error:", err);
+      return null;
     }
+  }
 
-    // ============ UTILITY FUNCTIONS ============
-    function getTimeString(iso) {
-      if (!iso) return "";
-      try {
-        const d = new Date(iso);
-        return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-      } catch (err) {
-        return iso;
-      }
+  async function fetchTheoryAnswer(answerId) {
+    try {
+      if (!answerId) throw new Error("No answer ID");
+      const token = getToken();
+      const res = await fetch(`${API_BASE}/api/theory-answers/${answerId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Answer not found");
+      return await res.json();
+    } catch (err) {
+      console.error("Fetch answer error:", err);
+      return null;
     }
+  }
 
-    function stripHtml(html) {
-      const tmp = document.createElement("DIV");
-      tmp.innerHTML = html || "";
-      return tmp.textContent || tmp.innerText || "";
-    }
-
-    function normalizeQuestionMath(html) {
-      if (!html || typeof html !== 'string') return html;
-      let s = html.replace(/\\\\/g, '\\');
-      if (/\\\(|\\\[|\$\$?/.test(s)) return s;
-      const cmdRegex = /\\(?:frac|sqrt|sum|int|lim|left|right|cdot|times|pi|alpha|beta|gamma|theta|log|ln|Delta|delta)(?:\{[^}]*\}|\^[^{\s]+|\_[^{\s]+)*/g;
-      s = s.replace(cmdRegex, function(m) { return `\\(${m}\\)`; });
-      const expRegex = /([A-Za-z0-9])\^(?:\{[^}]+\}|\d+)/g;
-      s = s.replace(expRegex, function(m) { return `\\(${m}\\)`; });
-      const subRegex = /([A-Za-z0-9])_(?:\{[^}]+\}|\d+)/g;
-      s = s.replace(subRegex, function(m) { return `\\(${m}\\)`; });
-      return s;
-    }
-
-    function feedbackRemark(pct) {
-      if (pct === 100) return "🎉 Excellent! You aced it!";
-      if (pct >= 80) return "👏 Great work! Almost perfect.";
-      if (pct >= 60) return "📚 Good. Keep studying!";
-      if (pct >= 40) return "💪 Keep practicing!";
-      return "🔄 Review & try again!";
-    }
-
-    // ============ UPDATE SCORE CARD ============
-    function updateScoreCard(scores) {
-      document.getElementById('score-number').textContent = scores.scoreDisplay || `${scores.obtained}/${scores.total}`;
-      document.getElementById('graded-count').textContent = scores.graded;
-      document.getElementById('pending-count').textContent = scores.pending;
-      document.getElementById('total-questions').textContent = scores.total;
-      document.getElementById('avg-score').textContent = scores.avgScore;
-      document.getElementById('score-percent').textContent = `${scores.percent}%`;
-      document.getElementById('score-feedback').textContent = feedbackRemark(scores.percent);
-    }
-
-    // ============ RENDER THEORY RESULTS ============
-    async function renderTheoryResults(attempt) {
-      if (!attempt) {
-        document.getElementById('results-list').innerHTML = `
-          <div class="error-message">
-            <i class="fas fa-exclamation-circle"></i> Failed to load theory attempt data.
-          </div>
-        `;
-        return { obtained: 0, total: 0, graded: 0, pending: 0, percent: 0, avgScore: "0%", scoreDisplay: "0/0" };
-      }
-
-      const resultsList = document.getElementById('results-list');
-      const subject = attempt.examSet?.subject || attempt.subject || "Theory Exam";
+  async function fetchAllAttemptAnswers(attemptId) {
+    try {
+      if (!attemptId) throw new Error("No attempt ID");
+      const token = getToken();
       
-      // Update student info in sidebar
-      document.getElementById('student-name').textContent = attempt.student?.name || attempt.studentName || "-";
-      document.getElementById('student-regnum').textContent = attempt.student?.registrationNumber || attempt.regNum || "-";
-      document.getElementById('exam-subject').textContent = subject;
-      document.getElementById('exam-time').textContent = getTimeString(attempt.submittedAt || attempt.completedAt);
+      // Fetch the attempt first to get all answer IDs
+      const attempt = await fetchTheoryAttempt(attemptId);
+      if (!attempt) throw new Error("Attempt not found");
 
-      resultsList.innerHTML = `
-        <div class="content-header">
-          <div class="content-title">
-            <i class="fas fa-chart-pie" style="color: #fbbf24;"></i> Theory Exam Results
-          </div>
-          <div class="content-subject">${subject}</div>
+      // Fetch all answers in parallel
+      const answerPromises = attempt.answers.map(answerRef => 
+        fetchTheoryAnswer(answerRef.answer)
+      );
+      const answers = await Promise.all(answerPromises);
+      return answers.filter(a => a !== null);
+    } catch (err) {
+      console.error("Fetch all answers error:", err);
+      return [];
+    }
+  }
+
+  // ============ STRIP HTML ============
+  function stripHtml(html) {
+    const tmp = document.createElement("DIV");
+    tmp.innerHTML = html;
+    return tmp.textContent || tmp.innerText || "";
+  }
+
+  // ============ RENDER REPORT ============
+  async function renderReport() {
+    try {
+      console.log("Rendering theory report...");
+
+      // Get attempt ID from URL or localStorage
+      const urlParams = new URLSearchParams(window.location.search);
+      let attemptId = urlParams.get('attemptId') || localStorage.getItem('theory_attempt_id');
+
+      if (!attemptId) {
+        throw new Error("No attempt ID provided");
+      }
+
+      // Fetch student profile
+      studentData = await fetchStudentProfile();
+      if (!studentData) {
+        throw new Error("Failed to fetch student profile");
+      }
+
+      // Fetch attempt data
+      attemptData = await fetchTheoryAttempt(attemptId);
+      if (!attemptData) {
+        throw new Error("Failed to fetch attempt");
+      }
+
+      // Fetch all answers
+      allAnswers = await fetchAllAttemptAnswers(attemptId);
+      console.log("Fetched answers:", allAnswers);
+
+      // Populate sidebar
+      populateSidebar();
+
+      // Populate content area
+      populateContent();
+
+      // Setup action buttons
+      setupActionButtons();
+
+      // Render math
+      if (window.MathJax && MathJax.typesetPromise) {
+        await MathJax.typesetPromise();
+      }
+
+    } catch (err) {
+      console.error("Render report error:", err);
+      showError(err.message);
+    }
+  }
+
+  function populateSidebar() {
+    const sidebar = document.querySelector('.sidebar-left');
+    
+    // Score Card
+    const scoreHtml = `
+      <div class="score-card">
+        <div class="score-card-number">${attemptData.totalScore || 0}</div>
+        <div class="score-card-label">Total Score</div>
+        <div class="score-card-percent">${attemptData.percentage || 0}%</div>
+      </div>
+    `;
+
+    // Stats Grid
+    const statsHtml = `
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div class="stat-number">${allAnswers.length}</div>
+          <div class="stat-label">Questions</div>
         </div>
-      `;
+        <div class="stat-item">
+          <div class="stat-number">${attemptData.maxScore || 0}</div>
+          <div class="stat-label">Max Score</div>
+        </div>
+      </div>
+    `;
 
-      const allAnswers = attempt.answers || [];
-      
-      if (!allAnswers || allAnswers.length === 0) {
-        resultsList.innerHTML += `
-          <div class="error-message">
-            <i class="fas fa-exclamation-circle"></i> No answers found.
-          </div>
-        `;
-        return { obtained: 0, total: 0, graded: 0, pending: 0, percent: 0, avgScore: "0%", scoreDisplay: "0/0" };
+    // Student Info
+    const submittedAt = attemptData.submittedAt ? new Date(attemptData.submittedAt).toLocaleString() : "—";
+    const gradedAt = attemptData.gradedAt ? new Date(attemptData.gradedAt).toLocaleString() : "—";
+
+    const infoHtml = `
+      <div class="student-info">
+        <div class="info-row">
+          <div class="info-icon">👤</div>
+          <div class="info-text">${studentData.fullname || studentData.username}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-icon">🆔</div>
+          <div class="info-text">${studentData.studentId || studentData.email}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-icon">📧</div>
+          <div class="info-text">${studentData.email}</div>
+        </div>
+      </div>
+    `;
+
+    // Status
+    const statusClass = attemptData.status === 'graded' ? 'success' : 'warning';
+    const statusText = attemptData.status === 'graded' ? '✓ Graded' : '⏳ Pending';
+
+    const feedbackHtml = `
+      <div class="feedback-box">
+        <div class="feedback-icon">${attemptData.status === 'graded' ? '✓' : '⏳'}</div>
+        <div class="feedback-text">${statusText}</div>
+      </div>
+    `;
+
+    // Action buttons
+    const buttonsHtml = `
+      <div class="action-buttons">
+        <button class="btn-sidebar btn-download" id="download-pdf-btn">
+          <i class="fas fa-download"></i> Download PDF
+        </button>
+        <button class="btn-sidebar btn-retake" id="retake-btn">
+          <i class="fas fa-redo"></i> Retake Exam
+        </button>
+      </div>
+    `;
+
+    sidebar.innerHTML = `
+      <h3 class="sidebar-title">📊 Results Summary</h3>
+      ${scoreHtml}
+      ${statsHtml}
+      <div class="sidebar-divider"></div>
+      <h3 class="sidebar-title">👤 Student Info</h3>
+      ${infoHtml}
+      <div class="sidebar-divider"></div>
+      ${feedbackHtml}
+      ${buttonsHtml}
+    `;
+  }
+
+  function populateContent() {
+    const contentArea = document.querySelector('.content-area');
+
+    // Header
+    const headerHtml = `
+      <div class="content-header">
+        <div class="content-title">
+          <i class="fas fa-file-alt"></i>
+          Theory Exam Report
+        </div>
+        <div class="content-subject">
+          Submitted: ${new Date(attemptData.submittedAt).toLocaleString()}
+        </div>
+      </div>
+    `;
+
+    // Questions and Answers
+    let questionsHtml = '';
+    allAnswers.forEach((answer, idx) => {
+      const cardClass = answer.isGraded ? 'graded' : 'pending';
+      const scoreDisplay = answer.isGraded ? `${answer.finalScore}/${answer.question.maxMarks}` : 'Pending';
+      const scoringMethod = answer.scoringMethod === 'ai' ? '🤖 AI Graded' : answer.scoringMethod === 'manual' ? '👤 Manual' : '⚙️ Auto';
+
+      // Question text
+      const questionText = stripHtml(answer.question.question);
+
+      // Answer display
+      let answerDisplay = '';
+      if (answer.answerType === 'text') {
+        answerDisplay = `<div class="theory-answer-display">${answer.answerText}</div>`;
+      } else if (answer.answerType === 'image') {
+        answerDisplay = `<div class="theory-answer-display"><img src="${answer.answerImageUrl}" alt="Answer image" /></div>`;
       }
 
-      let totalMarks = 0;
-      let obtainedMarks = 0;
-      let pendingCount = 0;
-      let gradedCount = 0;
-
-      for (let i = 0; i < allAnswers.length; i++) {
-        const ans = allAnswers[i];
-        const question = ans.question || {};
-        const qNum = i + 1;
-        const maxMarks = question.maxMarks || ans.maxMarks || 10;
-        const earnedMarks = ans.score !== undefined ? ans.score : 0;
-        const isGraded = ans.isGraded !== false;
-
-        totalMarks += maxMarks;
-        if (isGraded) {
-          obtainedMarks += earnedMarks;
-          gradedCount++;
-        } else {
-          pendingCount++;
-        }
-
-        const statusClass = isGraded ? "graded" : "pending";
-        const statusLabel = !isGraded ? "Pending Review" : `${earnedMarks}/${maxMarks}`;
-
-        let answerDisplay = `<p>${stripHtml(ans.answerText) || "No text answer"}</p>`;
-        
-        if (ans.answerImage) {
-          answerDisplay += `<img src="${ans.answerImage}" alt="Student answer" style="max-width: 100%; margin-top: 0.5rem; cursor: pointer;" onclick="window.open(this.src)">`;
-        }
-
-        const feedbackSection = ans.feedback ? `
+      // AI Feedback
+      let feedbackDisplay = '';
+      if (answer.aiFeedback) {
+        feedbackDisplay = `
           <div class="feedback-section">
             <div class="feedback-header">
-              <i class="fas fa-comment-dots"></i> Instructor Feedback
+              <i class="fas fa-lightbulb"></i>
+              AI Feedback
             </div>
-            <div class="feedback-body">${ans.feedback}</div>
-          </div>
-        ` : "";
-
-        resultsList.innerHTML += `
-          <div class="question-card ${statusClass}">
-            <div class="question-text">
-              <span class="question-number">${qNum}</span>
-              <div>
-                <div>${normalizeQuestionMath(stripHtml(question.text || "Question")) || "Question"}</div>
-                <div class="max-marks">Max Marks: <strong>${maxMarks}</strong></div>
-              </div>
-            </div>
-            
-            <div class="answer-section">
-              <div class="answer-label">Your Answer</div>
-              <div class="theory-answer-display">
-                ${answerDisplay}
-              </div>
-            </div>
-
-            <div class="answer-section">
-              <div class="answer-label">Score</div>
-              <div class="answer-content">
-                <span class="score-badge ${isGraded ? 'answer-correct' : 'answer-pending'}">
-                  ${statusLabel}
-                </span>
-              </div>
-            </div>
-
-            ${feedbackSection}
+            <div class="feedback-body">${answer.aiFeedback}</div>
           </div>
         `;
       }
 
-      const percentage = totalMarks > 0 ? Math.round((obtainedMarks / totalMarks) * 100) : 0;
-      const avgPerQuestion = allAnswers.length > 0 ? Math.round((obtainedMarks / allAnswers.length) * 100) : 0;
-
-      const scores = {
-        obtained: obtainedMarks,
-        total: totalMarks,
-        graded: gradedCount,
-        pending: pendingCount,
-        percent: percentage,
-        avgScore: `${avgPerQuestion}%`,
-        scoreDisplay: `${obtainedMarks}/${totalMarks}`
-      };
-
-      if (window.MathJax && MathJax.typesetPromise) {
-        try {
-          await MathJax.typesetPromise([resultsList]);
-        } catch (err) {
-          console.warn("MathJax typeset error:", err && err.message);
-        }
-      }
-
-      return scores;
-    }
-
-    // ============ MAIN INITIALIZATION ============
-    async function main() {
-      try {
-        if (!attemptId) {
-          document.getElementById('results-list').innerHTML = `
-            <div class="error-message">
-              <i class="fas fa-exclamation-circle"></i>
-              No attempt ID found. Please return to exam and try again.
+      questionsHtml += `
+        <div class="question-card ${cardClass}">
+          <div class="question-text">
+            <span class="question-number">${idx + 1}</span>
+            <div>
+              <div>${questionText}</div>
+              <div style="font-size: 0.85rem; color: #6b7280; margin-top: 0.5rem;">
+                Max Marks: ${answer.question.maxMarks}
+              </div>
             </div>
-          `;
-          updateScoreCard({ obtained: 0, total: 0, graded: 0, pending: 0, percent: 0, avgScore: "0%", scoreDisplay: "0/0" });
-          return;
-        }
-
-        console.log("Starting main initialization with attemptId:", attemptId);
-        const attempt = await fetchTheoryAttempt(attemptId);
-        const scores = await renderTheoryResults(attempt);
-        updateScoreCard(scores);
-
-      } catch (err) {
-        console.error("Main error:", err);
-        document.getElementById('results-list').innerHTML = `
-          <div class="error-message">
-            <i class="fas fa-exclamation-circle"></i>
-            Error loading results: ${err.message}
           </div>
-        `;
-        updateScoreCard({ obtained: 0, total: 0, graded: 0, pending: 0, percent: 0, avgScore: "0%", scoreDisplay: "0/0" });
-      }
-    }
 
-    // Initialize on page load
-    window.addEventListener('DOMContentLoaded', main);
+          <div class="answer-section">
+            <div class="answer-label">Your Answer</div>
+            ${answerDisplay}
+          </div>
 
-    // ============ PDF DOWNLOAD ============
-    document.addEventListener('DOMContentLoaded', function() {
-      const btn = document.getElementById('download-pdf-btn');
-      if (!btn) return;
+          <div class="answer-section" style="margin-top: 1.5rem;">
+            <div class="answer-label">Grading Details</div>
+            <div class="answer-content">
+              <span class="answer-pill answer-user">
+                <i class="fas fa-star"></i>
+                Score: ${scoreDisplay}
+              </span>
+              <span class="answer-pill" style="background: #f3e8ff; color: #6b21a8;">
+                ${scoringMethod}
+              </span>
+            </div>
+          </div>
 
-      btn.onclick = async function() {
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner" style="animation: spin 1s linear infinite; margin-right: 0.5rem;"></i>Generating...';
+          ${answer.aiExplanation ? `
+            <div style="margin-top: 1rem; padding: 0.75rem; background: #f0f9ff; border-left: 3px solid #3b82f6; border-radius: 0.5rem;">
+              <div style="font-size: 0.85rem; font-weight: 600; color: #1e40af; margin-bottom: 0.25rem;">
+                <i class="fas fa-info-circle"></i> AI Explanation
+              </div>
+              <div style="font-size: 0.9rem; color: #1e40af;">${answer.aiExplanation}</div>
+            </div>
+          ` : ''}
 
-        const reportMain = document.querySelector('.report-wrapper');
-        
-        if (window.MathJax && MathJax.typesetPromise) {
-          try {
-            await MathJax.typesetPromise();
-            await new Promise(r => setTimeout(r, 200));
-          } catch (err) {
-            console.warn("MathJax error:", err && err.message);
-          }
-        }
-
-        try {
-          const canvas = await html2canvas(reportMain, {
-            scale: 2,
-            useCORS: true,
-            backgroundColor: "#fff",
-            logging: false,
-            allowTaint: true,
-            windowHeight: reportMain.scrollHeight
-          });
-
-          const imgData = canvas.toDataURL("image/png");
-          const pdf = new jsPDF('p', 'mm', 'a4');
-          const pageHeight = 295;
-          let position = 0;
-
-          const pageWidth = pdf.internal.pageSize.getWidth();
-          const imgHeight = (canvas.height * pageWidth) / canvas.width;
-          let heightLeft = imgHeight;
-
-          while (heightLeft >= 0) {
-            pdf.addImage(imgData, 'PNG', 0, position, pageWidth, imgHeight);
-            heightLeft -= pageHeight;
-            position = heightLeft - imgHeight;
-            if (heightLeft > 0) {
-              pdf.addPage();
-            }
-          }
-
-          pdf.save('theory-exam-report.pdf');
-          btn.disabled = false;
-          btn.innerHTML = '<i class="fas fa-download"></i> Download PDF';
-        } catch (err) {
-          console.error("PDF error:", err);
-          btn.disabled = false;
-          btn.innerHTML = '<i class="fas fa-download"></i> Download PDF';
-          alert('Error generating PDF: ' + err.message);
-        }
-      };
+          ${feedbackDisplay}
+        </div>
+      `;
     });
+
+    contentArea.innerHTML = headerHtml + questionsHtml;
+  }
+
+  function setupActionButtons() {
+    const downloadBtn = document.getElementById('download-pdf-btn');
+    const retakeBtn = document.getElementById('retake-btn');
+
+    if (downloadBtn) {
+      downloadBtn.addEventListener('click', downloadPDF);
+    }
+
+    if (retakeBtn) {
+      retakeBtn.addEventListener('click', () => {
+        if (confirm('Are you sure you want to retake this exam?')) {
+          // Navigate back to exam start
+          window.location.href = 'cbt.html';
+        }
+      });
+    }
+  }
+
+  async function downloadPDF() {
+    try {
+      const element = document.querySelector('.main-layout');
+      const opt = {
+        margin: 10,
+        filename: `theory-report-${attemptData._id}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' }
+      };
+
+      // Use html2pdf library
+      if (window.html2pdf) {
+        window.html2pdf().set(opt).from(element).save();
+      } else {
+        alert('PDF generation library not loaded. Please try again.');
+      }
+    } catch (err) {
+      console.error("PDF download error:", err);
+      alert('Error generating PDF: ' + err.message);
+    }
+  }
+
+  function showError(message) {
+    const contentArea = document.querySelector('.content-area');
+    contentArea.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: center; height: 100%; flex-direction: column; gap: 1rem;">
+        <i class="fas fa-exclamation-circle" style="font-size: 3rem; color: #dc2626;"></i>
+        <h2 style="color: #1f2937; font-size: 1.5rem;">Error Loading Report</h2>
+        <p style="color: #6b7280; text-align: center;">${message}</p>
+        <button onclick="window.history.back()" style="padding: 0.75rem 1.5rem; background: #fbbf24; color: #1f2937; border: none; border-radius: 0.5rem; font-weight: 600; cursor: pointer;">
+          Go Back
+        </button>
+      </div>
+    `;
+  }
+
+  // ============ PAGE INITIALIZATION ============
+  window.addEventListener('DOMContentLoaded', () => {
+    console.log("Theory report page loading...");
+    renderReport();
+  });
+
+  // Set current year in footer
+  document.addEventListener('DOMContentLoaded', () => {
+    const yearElements = document.querySelectorAll('.year');
+    yearElements.forEach(el => {
+      el.textContent = new Date().getFullYear();
+    });
+  });
 </script>
 </body>
 </html>
