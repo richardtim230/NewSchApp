@@ -344,7 +344,38 @@
         START_TIME: 'cbt_start_time',
         IMAGE_ANSWERS: 'cbt_image_answers'
     };
+const SESSION_TIMEOUT = 10000; // 10 seconds in milliseconds
+const LS_KEYS_SESSION = {
+    ...LS_KEYS,
+    SESSION_TIMESTAMP: 'cbt_session_timestamp'
+};
 
+function saveSessionTimestamp() {
+    saveToLS(LS_KEYS_SESSION.SESSION_TIMESTAMP, Date.now());
+}
+
+function isSessionValid() {
+    const savedTimestamp = getFromLS(LS_KEYS_SESSION.SESSION_TIMESTAMP);
+    if (!savedTimestamp) return false;
+    
+    const currentTime = Date.now();
+    const sessionAge = currentTime - savedTimestamp;
+    
+    console.log(`Session age: ${sessionAge}ms (timeout: ${SESSION_TIMEOUT}ms)`);
+    return sessionAge < SESSION_TIMEOUT;
+}
+
+function clearSessionButKeepReport() {
+    // Clear only exam session data, NOT report data
+    removeFromLS(LS_KEYS.ANSWERS);
+    removeFromLS(LS_KEYS.CURRENT_QUESTION);
+    removeFromLS(LS_KEYS.SHUFFLED_QUESTIONS);
+    removeFromLS(LS_KEYS.IMAGE_ANSWERS);
+    removeFromLS(LS_KEYS.START_TIME);
+    removeFromLS(LS_KEYS_SESSION.SESSION_TIMESTAMP);
+    
+    console.log("✓ Session cleared (report data preserved)");
+}
     // ============ DEVICE DETECTION & REDIRECT ============
     function detectDeviceType() {
         const userAgent = navigator.userAgent;
@@ -706,29 +737,40 @@
 
     // ============ PERSIST ANSWERS ============
     function persistAllExamData() {
-        saveToLS(LS_KEYS.ANSWERS, userAnswers);
-        saveToLS(LS_KEYS.CURRENT_QUESTION, currentQ);
-        saveToLS(LS_KEYS.IMAGE_ANSWERS, imageAnswers);
-        
-        if (!examStartTime) {
-            examStartTime = Date.now();
-        }
-        saveToLS(LS_KEYS.START_TIME, examStartTime);
-
-        console.log("✓ All exam data persisted to localStorage");
+    saveToLS(LS_KEYS.ANSWERS, userAnswers);
+    saveToLS(LS_KEYS.CURRENT_QUESTION, currentQ);
+    saveToLS(LS_KEYS.IMAGE_ANSWERS, imageAnswers);
+    
+    if (!examStartTime) {
+        examStartTime = Date.now();
     }
+    saveToLS(LS_KEYS.START_TIME, examStartTime);
+    saveSessionTimestamp(); // Save current timestamp
+
+    console.log("✓ All exam data persisted to localStorage");
+}
 
     // ============ RESTORE FROM LS ============
     function restoreExamData() {
+    // Check if session is still valid
+    if (!isSessionValid()) {
+        console.log("⚠ Session expired, starting fresh");
+        clearSessionButKeepReport();
+        userAnswers = {};
+        currentQ = 0;
+        imageAnswers = {};
+        examStartTime = Date.now();
+    } else {
         userAnswers = getFromLS(LS_KEYS.ANSWERS) || {};
         currentQ = getFromLS(LS_KEYS.CURRENT_QUESTION) || 0;
         imageAnswers = getFromLS(LS_KEYS.IMAGE_ANSWERS) || {};
         examStartTime = getFromLS(LS_KEYS.START_TIME) || Date.now();
-
-        console.log("✓ Exam data restored from localStorage");
-        console.log("Answers:", userAnswers);
-        console.log("Current Q:", currentQ);
     }
+
+    console.log("✓ Exam data restored from localStorage");
+    console.log("Answers:", userAnswers);
+    console.log("Current Q:", currentQ);
+}
 
     // ============ RENDER QUESTION ============
     function renderQuestion(idx) {
