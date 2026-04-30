@@ -96,22 +96,6 @@ document.addEventListener('DOMContentLoaded', function() {
         tabBtns.forEach(btn => { if (btn.dataset.tab === 'login') btn.classList.add('active'); });
         messageBox.innerHTML = '';
     }
-
-    // ====== Prevent multiple registrations: show notice/block register tab & form ======
-    const regCardSpot = messageBox; // or another dedicated div
-    const savedReg = window.localStorage.getItem('registeredUser');
-    if (savedReg) {
-        const regInfo = JSON.parse(savedReg);
-        regCardSpot.innerHTML = `<div class="message error">
-            <strong>Notice:</strong> The following account has already been registered on this device:<br>
-            <b>${regInfo.username}</b> (${regInfo.email})<br>
-            Registration of multiple accounts is not allowed.
-        </div>`;
-        // Disable and hide register form/tab
-        const regTabBtn = document.querySelector('.tab-btn[data-tab="register"]');
-        if (regTabBtn) regTabBtn.disabled = true;
-        forms.register.style.display = 'none';
-    }
 });
 
 tabBtns.forEach(btn => {
@@ -122,20 +106,8 @@ tabBtns.forEach(btn => {
         forms[btn.dataset.tab].classList.add('active');
         messageBox.innerHTML = '';
 
-        // If register tab is clicked and registration is forbidden, show warning again
         if (btn.dataset.tab === 'register') {
-            const savedReg = window.localStorage.getItem('registeredUser');
-            if (savedReg) {
-                const regInfo = JSON.parse(savedReg);
-                messageBox.innerHTML = `<div class="message error">
-                    <strong>Notice:</strong> The following account has already been registered on this device:<br>
-                    <b>${regInfo.username}</b> (${regInfo.email})<br>
-                    Registration of multiple accounts is not allowed.
-                </div>`;
-                forms.register.style.display = 'none';
-            } else {
-                forms.register.style.display = '';
-            }
+            forms.register.style.display = '';
         }
     });
 });
@@ -286,18 +258,6 @@ forms.login.addEventListener('submit', async function(e) {
                         case 'blogger': roleMsg = "Welcome, Blogger!"; break;
                         default: roleMsg = "Welcome, Student!";
                     }
-                    // Store user info (for registration prevention, on login)
-                    try {
-                        window.localStorage.setItem('registeredUser', JSON.stringify({
-                            fullname: user.fullname || "",
-                            username: user.username || "",
-                            email: user.email || "",
-                            faculty: user.facultyName || "", // Adapt if info is there
-                            department: user.departmentName || "",
-                            level: user.level || "",
-                            phone: user.phone || ""
-                        }));
-                    } catch {}
                     showStatusModal("success", "Login Successful", roleMsg, false);
                     setTimeout(() => { window.location.href = (role === 'superadmin') ? "supaadmin.html" : "loader.html"; }, 1300);
                     await setLoginLoading(false);
@@ -320,19 +280,6 @@ forms.login.addEventListener('submit', async function(e) {
 // ====== REGISTRATION HANDLING (with confirmation modal) ======
 forms.register.addEventListener('submit', async function(e) {
     e.preventDefault();
-
-    // Prevent duplicate registration on same device
-    const savedReg = window.localStorage.getItem('registeredUser');
-    if (savedReg) {
-        const regInfo = JSON.parse(savedReg);
-        showStatusModal(
-            "error",
-            "Registration Blocked",
-            `An account has already been registered on this device:<br><b>${regInfo.username}</b> (${regInfo.email}).<br><br>Multiple registrations are not permitted.`,
-            true
-        );
-        return;
-    }
 
     // Collect all registration details
     const fullName = document.getElementById('reg-fullname').value.trim();
@@ -393,18 +340,6 @@ forms.register.addEventListener('submit', async function(e) {
             await setRegLoading(false);
 
             if (registerResponse.ok) {
-                // Save registration info to localStorage on success
-                const userObject = {
-                    fullname: fullName,
-                    username,
-                    email,
-                    faculty: facultyText,
-                    department: departmentText,
-                    level,
-                    phone
-                };
-                window.localStorage.setItem('registeredUser', JSON.stringify(userObject));
-
                 showStatusModal("success", "Registration Successful", result.message || "Account created! Redirecting to login...", false);
                 // Auto-close modal and switch to login after short timeout
                 setTimeout(() => {
@@ -422,6 +357,7 @@ forms.register.addEventListener('submit', async function(e) {
         }
     });
 });
+
 document.querySelectorAll('.social-btn').forEach(btn => {
     btn.addEventListener('click', function() {
         const platform = btn.classList.contains('google') ? "Google" : "Facebook";
