@@ -759,6 +759,86 @@
       display: inline !important;
       margin: 0 0.15em !important;
     }
+        /* ===== OPTIONS DISPLAY ===== */
+    .options-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+    }
+
+    .option-display {
+      display: flex;
+      gap: 1rem;
+      padding: 1rem;
+      border-radius: 0.75rem;
+      border: 2px solid #e5e7eb;
+      background: #f9fafb;
+      align-items: flex-start;
+      transition: all 0.2s ease;
+    }
+
+    .option-display.answer-correct {
+      border-color: #10b981;
+      background: #f0fdf4;
+    }
+
+    .option-display.answer-wrong {
+      border-color: #ef4444;
+      background: #fef2f2;
+    }
+
+    .option-display.answer-na {
+      border-color: #e5e7eb;
+      background: #f9fafb;
+    }
+
+    .option-key {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 2.5rem;
+      padding: 0.5rem;
+      border-radius: 0.5rem;
+      font-weight: 700;
+      white-space: nowrap;
+      background: rgba(251, 191, 36, 0.1);
+      color: #fbbf24;
+      flex-shrink: 0;
+    }
+
+    .option-display.answer-correct .option-key {
+      background: rgba(16, 185, 129, 0.1);
+      color: #10b981;
+    }
+
+    .option-display.answer-wrong .option-key {
+      background: rgba(239, 68, 68, 0.1);
+      color: #ef4444;
+    }
+
+    .option-text {
+      flex: 1;
+      font-size: 0.95rem;
+      color: #4b5563;
+      line-height: 1.5;
+      word-break: break-word;
+      display: inline;
+    }
+
+    .option-display.answer-correct .option-text {
+      color: #166534;
+      font-weight: 600;
+    }
+
+    .option-display.answer-wrong .option-text {
+      color: #991b1b;
+    }
+
+    .option-display mjx-container {
+      display: inline !important;
+      margin: 0 0.15em !important;
+    }
   </style>
 </head>
 <body>
@@ -1079,9 +1159,16 @@
 
       let correct = 0, wrong = 0, unanswered = 0;
 
-      for (let i = 0; i < questions.length; i++) {
-        const q = questions[i];
-        const qid = q._id || q.id || `q${i}`;
+      // Use shuffled order if available, otherwise use original order
+      const orderedQuestions = shuffledQuestions && shuffledQuestions.length > 0 
+        ? shuffledQuestions.map(idx => questions[idx]) 
+        : questions;
+
+      for (let displayOrder = 0; displayOrder < orderedQuestions.length; displayOrder++) {
+        const q = orderedQuestions[displayOrder];
+        if (!q) continue;
+
+        const qid = q._id || q.id || `q${displayOrder}`;
         const userAns = answers[qid] || answers[q._id] || answers[q.id] || "";
         const isCorrect = (userAns === q.answer);
         const status = userAns ? (isCorrect ? "correct" : "incorrect") : "unanswered";
@@ -1093,6 +1180,7 @@
         let questionHtml = normalizeQuestionMath(q.question || '');
         questionHtml = cleanupQuestionHtml(questionHtml);
         
+        // Build detailed options with content
         let optionsHtml = '';
         if (q.options && Array.isArray(q.options)) {
           optionsHtml = q.options.map(opt => {
@@ -1100,9 +1188,24 @@
             optText = cleanupAnswerHtml(optText);
             const isAnswer = opt.key === q.answer;
             const isUserAnswer = opt.key === userAns;
-            const answerClass = isAnswer ? 'answer-correct' : (isUserAnswer && !isCorrect ? 'answer-wrong' : 'answer-na');
-            const label = isAnswer ? '✓' : (isUserAnswer ? '✗' : '-');
-            return `<span class="answer-pill ${answerClass}">${label} ${opt.key}</span>`;
+            
+            let iconClass = 'answer-na';
+            let icon = '-';
+            
+            if (isAnswer) {
+              iconClass = 'answer-correct';
+              icon = '✓';
+            } else if (isUserAnswer && !isCorrect) {
+              iconClass = 'answer-wrong';
+              icon = '✗';
+            }
+            
+            return `
+              <div class="option-display ${iconClass}">
+                <span class="option-key">${icon} ${opt.key}</span>
+                <span class="option-text">${optText}</span>
+              </div>
+            `;
           }).join('');
         }
 
@@ -1111,21 +1214,24 @@
         resultsList.innerHTML += `
           <div class="question-card ${status}">
             <div class="question-text">
-              <span class="question-number">${i + 1}</span>
+              <span class="question-number">${displayOrder + 1}</span>
               <div>${questionHtml}</div>
             </div>
+
             <div class="answer-section">
               <div class="answer-label">Your Answer:</div>
               <div class="answer-content">
                 ${userAns ? `<span class="answer-pill answer-user">${userAns}</span>` : '<span class="answer-pill answer-na">Not Answered</span>'}
               </div>
             </div>
+
             <div class="answer-section">
               <div class="answer-label">Options:</div>
-              <div class="answer-content">
+              <div class="options-grid">
                 ${optionsHtml}
               </div>
             </div>
+
             ${explanationHtml ? `
               <div class="explanation-box">
                 <div class="explanation-summary" onclick="this.nextElementSibling.classList.toggle('hidden')">
@@ -1141,7 +1247,7 @@
       // Rerender MathJax after all content is added
       rerenderMathJax(resultsList);
 
-      const totalQuestions = questions.length;
+      const totalQuestions = orderedQuestions.length;
       const percent = totalQuestions ? Math.round(correct / totalQuestions * 100) : 0;
 
       return { 
