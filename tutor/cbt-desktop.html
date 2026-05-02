@@ -991,6 +991,11 @@
 <script>
     const API_BASE = "https://examguide.onrender.com";
     
+    // ===== SESSION TIMEOUT CONFIG =====
+    const INACTIVITY_TIMEOUT = 10000; // 10 seconds
+    let inactivityTimer = null;
+    let isOnExamPage = true;
+    
     // ===== KEEP-ALIVE: Refresh backend every 4 minutes =====
     function startKeepAliveInterval() {
         setInterval(async () => {
@@ -1063,6 +1068,82 @@
     let examData = null, studentData = null, currentQ = 0, timer = null, duration = 0, courseCode = "";
     let questionIdMap = {}; // Maps question index to question ID for reliable lookup
 
+    // ===== SESSION TIMEOUT FUNCTIONS =====
+    function clearExamSessionData() {
+        console.log("🔄 Clearing exam session data due to 10 seconds of inactivity");
+        sessionStorage.removeItem('cbt_user_answers');
+        sessionStorage.removeItem('cbt_shuffled_questions');
+        sessionStorage.removeItem('cbt_exam_info');
+        userAnswers = {};
+        
+        // Show notification
+        showModal("Your exam session has expired due to inactivity. Please refresh the page to start a new session.", {
+            title: "Session Expired",
+            iconClass: "fa-clock",
+            iconColor: "#f97316",
+            actionText: "Refresh Page",
+            onAction: () => {
+                location.reload();
+            }
+        });
+    }
+
+    function resetInactivityTimer() {
+        // Only reset if we're on the exam page
+        if (!isOnExamPage) return;
+        
+        // Clear existing timer
+        if (inactivityTimer) {
+            clearTimeout(inactivityTimer);
+        }
+        
+        // Set new timer
+        inactivityTimer = setTimeout(clearExamSessionData, INACTIVITY_TIMEOUT);
+    }
+
+    function setupActivityTracking() {
+        // Activity events that indicate user is actively on exam page
+        const activityEvents = ['mousedown', 'keydown', 'click', 'scroll', 'touchstart', 'change'];
+        
+        activityEvents.forEach(event => {
+            document.addEventListener(event, () => {
+                if (isOnExamPage) {
+                    resetInactivityTimer();
+                }
+            }, { passive: true });
+        });
+        
+        // Track page visibility
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                // Page is hidden, pause session
+                isOnExamPage = false;
+                console.log("📴 Exam page hidden, pausing inactivity timer");
+                if (inactivityTimer) clearTimeout(inactivityTimer);
+            } else {
+                // Page is visible again
+                isOnExamPage = true;
+                console.log("📱 Exam page visible, resuming inactivity timer");
+                resetInactivityTimer();
+            }
+        });
+        
+        // Cleanup on page unload/beforeunload
+        window.addEventListener('beforeunload', () => {
+            isOnExamPage = false;
+            if (inactivityTimer) clearTimeout(inactivityTimer);
+        });
+        
+        // Cleanup on page exit
+        window.addEventListener('pagehide', () => {
+            isOnExamPage = false;
+            if (inactivityTimer) clearTimeout(inactivityTimer);
+        });
+        
+        // Initialize timer on load
+        resetInactivityTimer();
+    }
+
     function showModal(message, opts = {}) {
         const root = document.getElementById('modal-root');
         const iconClass = opts.iconClass || 'fa-info-circle';
@@ -1089,8 +1170,14 @@
             </div>
         `;
 
-        document.getElementById('close-modal-btn').onclick = () => root.innerHTML = "";
-        document.getElementById('modal-close-btn').onclick = () => root.innerHTML = "";
+        document.getElementById('close-modal-btn').onclick = () => {
+            root.innerHTML = "";
+            resetInactivityTimer();
+        };
+        document.getElementById('modal-close-btn').onclick = () => {
+            root.innerHTML = "";
+            resetInactivityTimer();
+        };
 
         if (opts.onAction && document.getElementById('modal-action-btn')) {
             document.getElementById('modal-action-btn').onclick = () => {
@@ -1104,6 +1191,7 @@
         sessionStorage.setItem('cbt_user_answers', JSON.stringify(userAnswers));
         localStorage.setItem('cbt_user_answers', JSON.stringify(userAnswers));
         console.log("Answers persisted:", userAnswers);
+        resetInactivityTimer(); // Reset timer on every answer save
     }
 
     function updateStats() {
@@ -1115,6 +1203,7 @@
 
     async function main() {
         startKeepAliveInterval();
+        setupActivityTracking(); // Initialize activity tracking
 
         const accessCode = getExamAccessCode();
         courseCode = getExamCourseCode() || "";
@@ -1289,6 +1378,8 @@
 
         document.getElementById("submit-btn").onclick = (e) => {
             e.preventDefault();
+            isOnExamPage = false; // Disable inactivity tracking during submission
+            
             showModal("Are you sure you want to submit your answers and end the test? This action cannot be undone.", {
                 title: "Submit Exam",
                 iconClass: "fa-question-circle",
@@ -1297,7 +1388,7 @@
                 onAction: () => {
                     persistUserAnswers();
                     
-                    // Enhanced data structure for report page
+                    // Enhanced data structure for report page (PRESERVED WITH TIMESTAMPS)
                     const examInfoToSave = {
                         subject: examData.subject,
                         matric: document.getElementById('student-regnum').innerText,
@@ -1311,7 +1402,8 @@
                             question: q.question,
                             options: q.options,
                             correctAnswer: q.correctAnswer
-                        }))
+                        })),
+                        _reportExpiryTime: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // Report expires in 24 hours
                     };
                     
                     sessionStorage.setItem('cbt_user_answers', JSON.stringify(userAnswers));
@@ -1357,6 +1449,8 @@
             if (remaining <= 0) {
                 clearInterval(timer);
                 timerElem.textContent = "00:00:00";
+                isOnExamPage = false; // Disable inactivity tracking when time expires
+                
                 showModal("Time has expired! Your exam has been automatically submitted.", {
                     title: "Time Up",
                     iconClass: "fa-hourglass-end",
@@ -1378,7 +1472,8 @@
                                 question: q.question,
                                 options: q.options,
                                 correctAnswer: q.correctAnswer
-                            }))
+                            })),
+                            _reportExpiryTime: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
                         };
                         
                         sessionStorage.setItem('cbt_user_answers', JSON.stringify(userAnswers));
