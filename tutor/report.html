@@ -710,6 +710,55 @@
         padding: 0.6rem;
       }
     }
+        /* ===== FIX MATHJAX INLINE RENDERING ===== */
+    .content-area {
+      overflow-wrap: break-word;
+      word-wrap: break-word;
+    }
+
+    .content-area p {
+      display: inline;
+      margin: 0;
+      line-height: 1.8;
+    }
+
+    .content-area mjx-container {
+      display: inline !important;
+      margin: 0 0.15em !important;
+    }
+
+    .content-area svg[role="img"] {
+      display: inline !important;
+      vertical-align: middle !important;
+      margin: 0 0.15em !important;
+      max-height: 1.5em;
+    }
+
+    .question-text {
+      display: block;
+      word-break: break-word;
+    }
+
+    .question-text mjx-container,
+    .answer-content mjx-container {
+      display: inline !important;
+      margin: 0 0.1em !important;
+    }
+
+    .answer-pill mjx-container {
+      display: inline !important;
+      margin: 0 0.05em !important;
+    }
+
+    .explanation-content p {
+      display: inline;
+      margin: 0;
+    }
+
+    .explanation-content mjx-container {
+      display: inline !important;
+      margin: 0 0.15em !important;
+    }
   </style>
 </head>
 <body>
@@ -941,7 +990,40 @@
       s = s.replace(subRegex, function(m) { return `\\(${m}\\)`; });
       return s;
     }
+    // ============ HTML CLEANUP FOR MATHJAX ============
+    function cleanupQuestionHtml(html) {
+      if (!html) return html;
+      // Remove extra <p> tags that cause line breaks
+      html = html
+        .replace(/<p>\s*<\/p>/g, '') // Remove empty paragraphs
+        .replace(/<\/p>\s*<p>/g, ' ') // Replace p-to-p breaks with space
+        .replace(/<p>/g, '') // Remove opening p tags
+        .replace(/<\/p>/g, ''); // Remove closing p tags
+      
+      // Wrap in single paragraph if needed
+      if (html.trim() && !html.trim().startsWith('<div')) {
+        html = `<p>${html}</p>`;
+      }
+      return html;
+    }
 
+    function cleanupAnswerHtml(html) {
+      if (!html) return html;
+      return html
+        .replace(/<p>\s*<\/p>/g, '')
+        .replace(/<\/p>\s*<p>/g, ' ')
+        .replace(/<p>/g, '')
+        .replace(/<\/p>/g, '');
+    }
+
+    // ============ FORCE MATHJAX RERENDER ============
+    function rerenderMathJax(element) {
+      if (window.MathJax && MathJax.typesetPromise) {
+        MathJax.typesetPromise([element]).catch((err) => {
+          console.warn("MathJax typeset error:", err);
+        });
+      }
+    }
     function getScoreTally(results) {
       let correct = 0, pending = 0, unanswered = 0;
       results.forEach(r => {
@@ -995,68 +1077,63 @@
       }
 
       for (let i = 0; i < questions.length; i++) {
+            for (let i = 0; i < questions.length; i++) {
         const q = questions[i];
         const qid = q._id || q.id || `q${i}`;
         const userAns = answers[qid] || answers[q._id] || answers[q.id] || "";
-        const correctAns = q.answer;
-        const isCorrect = (userAns === correctAns);
+        const correct = (userAns === q.answer);
+        const status = userAns ? (correct ? "correct" : "incorrect") : "unanswered";
+        
+        let questionHtml = normalizeQuestionMath(q.question || '');
+        questionHtml = cleanupQuestionHtml(questionHtml); // Clean up HTML
+        
+        let optionsHtml = '';
+        if (q.options && Array.isArray(q.options)) {
+          optionsHtml = q.options.map(opt => {
+            let optText = normalizeQuestionMath(opt.text || '');
+            optText = cleanupAnswerHtml(optText); // Clean up option HTML
+            const isAnswer = opt.key === q.answer;
+            const isUserAnswer = opt.key === userAns;
+            const answerClass = isAnswer ? 'answer-correct' : (isUserAnswer && !correct ? 'answer-wrong' : 'answer-na');
+            const label = isAnswer ? '✓' : (isUserAnswer ? '✗' : '-');
+            return `<span class="answer-pill ${answerClass}">${label} ${opt.key}</span>`;
+          }).join('');
+        }
 
-        const status = isCorrect ? "correct" : (userAns ? "incorrect" : "unanswered");
-        results.push({ isCorrect, status });
-
-        const opt = q.options || [];
-        const userOpt = opt.find(o => o.key === userAns);
-        const correctOpt = opt.find(o => o.key === correctAns);
-
-        const questionHtml = normalizeQuestionMath(q.question || '');
-        const userOptText = userOpt ? normalizeQuestionMath(userOpt.text || '') : '';
-        const correctOptText = correctOpt ? normalizeQuestionMath(correctOpt.text || '') : '';
-        const explanationHtml = normalizeQuestionMath(q.explanation || '');
-
-        const cardHtml = `
-          <div class="question-card ${isCorrect ? "correct" : "incorrect"}">
+        const explanationHtml = q.explanation ? cleanupQuestionHtml(normalizeQuestionMath(q.explanation)) : '';
+        
+        resultsList.innerHTML += `
+          <div class="question-card ${status}">
             <div class="question-text">
-              <div class="question-number">${i + 1}</div>
-              <span>${questionHtml}</span>
+              <span class="question-number">${i + 1}</span>
+              <div>${questionHtml}</div>
             </div>
-
             <div class="answer-section">
-              <div class="answer-label">Your Answer</div>
+              <div class="answer-label">Your Answer:</div>
               <div class="answer-content">
-                <span class="answer-pill answer-user">
-                  <i class="fas ${userAns ? (userAns === correctAns ? 'fa-check' : 'fa-times') : 'fa-minus'}"></i>
-                  ${userAns ? `${userAns}${userOptText ? `. ${userOptText}` : ""}` : "Not Answered"}
-                </span>
+                ${userAns ? `<span class="answer-pill answer-user">${userAns}</span>` : '<span class="answer-pill answer-na">Not Answered</span>'}
               </div>
             </div>
-
             <div class="answer-section">
-              <div class="answer-label">Correct Answer</div>
+              <div class="answer-label">Options:</div>
               <div class="answer-content">
-                <span class="answer-pill answer-correct">
-                  <i class="fas fa-check-circle"></i>
-                  ${correctAns}${correctOptText ? `. ${correctOptText}` : ""}
-                </span>
+                ${optionsHtml}
               </div>
             </div>
-
             ${explanationHtml ? `
               <div class="explanation-box">
-                <details>
-                  <summary class="explanation-summary">
-                    <i class="fas fa-lightbulb"></i> Explanation
-                  </summary>
-                  <div class="explanation-content">
-                    ${explanationHtml}
-                  </div>
-                </details>
+                <div class="explanation-summary" onclick="this.nextElementSibling.classList.toggle('hidden')">
+                  <i class="fas fa-chevron-right"></i> View Explanation
+                </div>
+                <div class="explanation-content hidden">${explanationHtml}</div>
               </div>
-            ` : ""}
+            ` : ''}
           </div>
         `;
-
-        resultsList.innerHTML += cardHtml;
       }
+
+      // Rerender MathJax after all content is added
+      rerenderMathJax(resultsList);
 
       if (window.MathJax && MathJax.typesetPromise) {
         try {
