@@ -991,10 +991,77 @@
 <script>
     const API_BASE = "https://examguide.onrender.com";
     
-    // ===== SESSION EXPIRATION CONFIGURATION =====
-    const SESSION_INACTIVITY_TIMEOUT = 10000; // 10 seconds in milliseconds
-    const SESSION_TIMESTAMP_KEY = 'cbt_session_timestamp';
-    const SESSION_ACTIVE_KEY = 'cbt_session_active';
+    // ===== SESSION EXPIRATION TRACKING =====
+    const SESSION_KEYS = {
+        LAST_ACTIVE_TIME: 'cbt_last_active_timestamp',
+        SESSION_STARTED: 'cbt_session_started',
+        SESSION_SUBMITTED: 'cbt_session_submitted',
+        EXPIRATION_TIMEOUT: 10000 // 10 seconds
+    };
+    
+    let sessionActive = false; // Becomes true once exam page fully loads
+    let sessionSubmitted = false; // Becomes true once exam is submitted
+    
+    function checkAndClearExpiredSession() {
+        // Only check expiration AFTER session has been submitted
+        if (!sessionSubmitted) {
+            console.log("Session check skipped - exam not yet submitted");
+            return false;
+        }
+        
+        const lastActiveTime = localStorage.getItem(SESSION_KEYS.LAST_ACTIVE_TIME);
+        const currentTime = Date.now();
+        
+        if (!lastActiveTime) {
+            console.log("No previous session timestamp found");
+            return false;
+        }
+        
+        const timeSinceLastActive = currentTime - parseInt(lastActiveTime);
+        console.log(`Time since last active: ${timeSinceLastActive}ms`);
+        
+        if (timeSinceLastActive > SESSION_KEYS.EXPIRATION_TIMEOUT) {
+            console.log("✓ Session expired - clearing stored progress");
+            clearSessionData();
+            return true;
+        }
+        
+        console.log(`Session still valid - expires in ${SESSION_KEYS.EXPIRATION_TIMEOUT - timeSinceLastActive}ms`);
+        return false;
+    }
+    
+    function updateSessionTimestamp() {
+        if (sessionActive) {
+            localStorage.setItem(SESSION_KEYS.LAST_ACTIVE_TIME, Date.now().toString());
+            console.log("✓ Session timestamp updated");
+        }
+    }
+    
+    function clearSessionData() {
+        // Clear ONLY exam progress, NOT report data
+        sessionStorage.removeItem('cbt_user_answers');
+        sessionStorage.removeItem('cbt_shuffled_questions');
+        localStorage.removeItem('cbt_shuffled_questions');
+        localStorage.removeItem(SESSION_KEYS.LAST_ACTIVE_TIME);
+        localStorage.removeItem(SESSION_KEYS.SESSION_STARTED);
+        
+        // Keep localStorage answers and exam_info for report page
+        console.log("Session data cleared. Report data preserved.");
+    }
+    
+    function markSessionAsStarted() {
+        sessionActive = true;
+        localStorage.setItem(SESSION_KEYS.SESSION_STARTED, Date.now().toString());
+        updateSessionTimestamp();
+        console.log("✓ Exam session started");
+    }
+    
+    function markSessionAsSubmitted() {
+        sessionSubmitted = true;
+        localStorage.setItem(SESSION_KEYS.SESSION_SUBMITTED, 'true');
+        updateSessionTimestamp();
+        console.log("✓ Exam session marked as submitted - expiration check now ACTIVE");
+    }
 
     // ===== KEEP-ALIVE: Refresh backend every 4 minutes =====
     function startKeepAliveInterval() {
@@ -1017,69 +1084,11 @@
     function getExamAccessCode() { return localStorage.getItem("exam_access_code"); }
     function getExamCourseCode() { return localStorage.getItem("exam_course_code"); }
 
-    // ===== SESSION MANAGEMENT =====
-    function initializeSession() {
-        const now = Date.now();
-        sessionStorage.setItem(SESSION_TIMESTAMP_KEY, now.toString());
-        sessionStorage.setItem(SESSION_ACTIVE_KEY, 'true');
-        localStorage.setItem(SESSION_TIMESTAMP_KEY, now.toString());
-        localStorage.setItem(SESSION_ACTIVE_KEY, 'true');
-    }
-
-    function updateSessionTimestamp() {
-        const now = Date.now();
-        sessionStorage.setItem(SESSION_TIMESTAMP_KEY, now.toString());
-        localStorage.setItem(SESSION_TIMESTAMP_KEY, now.toString());
-    }
-
-    function isSessionExpired() {
-        const sessionTimestamp = parseInt(sessionStorage.getItem(SESSION_TIMESTAMP_KEY)) || 
-                                 parseInt(localStorage.getItem(SESSION_TIMESTAMP_KEY)) || 0;
-        const now = Date.now();
-        const elapsed = now - sessionTimestamp;
-        
-        console.log(`Session check: Elapsed=${elapsed}ms, Threshold=${SESSION_INACTIVITY_TIMEOUT}ms, Expired=${elapsed > SESSION_INACTIVITY_TIMEOUT}`);
-        
-        return elapsed > SESSION_INACTIVITY_TIMEOUT;
-    }
-
-    function clearExamSession() {
-        console.log("⏱️ Session expired! Clearing exam progress...");
+    if (performance.navigation && performance.navigation.type === 1) {
         sessionStorage.removeItem('cbt_user_answers');
         sessionStorage.removeItem('cbt_shuffled_questions');
         sessionStorage.removeItem('cbt_exam_info');
-        localStorage.removeItem('cbt_user_answers');
-        localStorage.removeItem('cbt_shuffled_questions');
-        localStorage.removeItem('cbt_exam_info');
-        sessionStorage.removeItem(SESSION_TIMESTAMP_KEY);
-        sessionStorage.removeItem(SESSION_ACTIVE_KEY);
-        localStorage.removeItem(SESSION_TIMESTAMP_KEY);
-        localStorage.removeItem(SESSION_ACTIVE_KEY);
-    }
-
-    function clearOnlySessionProgress() {
-        // Clear only exam progress, keep report data intact
-        console.log("Clearing only session progress data...");
-        sessionStorage.removeItem('cbt_user_answers');
-        sessionStorage.removeItem('cbt_shuffled_questions');
-        localStorage.removeItem('cbt_user_answers');
-        localStorage.removeItem('cbt_shuffled_questions');
-    }
-
-    // ===== CHECK FOR PAGE RELOAD/REFRESH =====
-    if (performance.navigation && performance.navigation.type === 1) {
-        // Page was reloaded
-        if (isSessionExpired()) {
-            console.log("Page reloaded after inactivity timeout");
-            clearExamSession();
-            location.replace(location.pathname + location.search);
-        } else {
-            console.log("Page reloaded within timeout window, resuming session");
-            updateSessionTimestamp();
-        }
-    } else {
-        // Fresh page load
-        initializeSession();
+        location.replace(location.pathname + location.search);
     }
 
     function shuffleArray(arr) {
@@ -1124,7 +1133,7 @@
 
     let userAnswers = {};
     let examData = null, studentData = null, currentQ = 0, timer = null, duration = 0, courseCode = "";
-    let questionIdMap = {}; // Maps question index to question ID for reliable lookup
+    let questionIdMap = {};
 
     function showModal(message, opts = {}) {
         const root = document.getElementById('modal-root');
@@ -1166,7 +1175,7 @@
     function persistUserAnswers() {
         sessionStorage.setItem('cbt_user_answers', JSON.stringify(userAnswers));
         localStorage.setItem('cbt_user_answers', JSON.stringify(userAnswers));
-        updateSessionTimestamp(); // Update timestamp on each answer save
+        updateSessionTimestamp(); // Update timestamp on every answer change
         console.log("Answers persisted:", userAnswers);
     }
 
@@ -1177,59 +1186,8 @@
         document.getElementById('remaining-count').textContent = total - answered;
     }
 
-    // ===== INACTIVITY DETECTION =====
-    function setupInactivityWarning() {
-        let warningShown = false;
-        let warningTimeout = null;
-
-        function resetInactivityTimer() {
-            updateSessionTimestamp();
-            if (warningShown) {
-                warningShown = false;
-                const root = document.getElementById('modal-root');
-                if (root) root.innerHTML = "";
-                console.log("User activity detected, session resumed");
-            }
-        }
-
-        // Track user activity
-        document.addEventListener('click', resetInactivityTimer);
-        document.addEventListener('keypress', resetInactivityTimer);
-        document.addEventListener('mousemove', resetInactivityTimer);
-        document.addEventListener('scroll', resetInactivityTimer);
-
-        // Check for inactivity periodically
-        setInterval(() => {
-            if (isSessionExpired() && !warningShown) {
-                warningShown = true;
-                console.log("Session expired due to inactivity");
-                showModal(
-                    "Your exam session has expired due to inactivity. Your progress will be lost if you continue. Please refresh the page to start a new test.",
-                    {
-                        title: "Session Expired",
-                        iconClass: "fa-clock",
-                        iconColor: "#ef4444",
-                        actionText: "Refresh Page",
-                        onAction: () => {
-                            clearOnlySessionProgress();
-                            location.reload();
-                        }
-                    }
-                );
-            }
-        }, 2000); // Check every 2 seconds
-    }
-
     async function main() {
-        // Check if session is still valid
-        if (isSessionExpired()) {
-            console.log("Session expired on page load, clearing data");
-            clearExamSession();
-        }
-
-        initializeSession();
         startKeepAliveInterval();
-        setupInactivityWarning();
 
         const accessCode = getExamAccessCode();
         courseCode = getExamCourseCode() || "";
@@ -1292,7 +1250,6 @@
             sessionStorage.setItem('cbt_shuffled_questions', JSON.stringify(examData));
         }
 
-        // Build question ID map for reliable lookup in report
         examData.questions.forEach((q, idx) => {
             questionIdMap[idx] = q.id;
         });
@@ -1303,6 +1260,9 @@
 
         const storedAnswers = sessionStorage.getItem('cbt_user_answers');
         if (storedAnswers) userAnswers = JSON.parse(storedAnswers);
+
+        // ===== MARK SESSION AS STARTED =====
+        markSessionAsStarted();
 
         duration = examData.duration || 3600;
         startTimer(duration);
@@ -1412,7 +1372,6 @@
                 onAction: () => {
                     persistUserAnswers();
                     
-                    // Enhanced data structure for report page
                     const examInfoToSave = {
                         subject: examData.subject,
                         matric: document.getElementById('student-regnum').innerText,
@@ -1435,8 +1394,8 @@
                     localStorage.setItem('cbt_exam_info', JSON.stringify(examInfoToSave));
                     sessionStorage.removeItem('cbt_shuffled_questions');
                     
-                    // Clear inactivity timers so they don't interfere with report
-                    clearOnlySessionProgress();
+                    // ===== MARK SESSION AS SUBMITTED =====
+                    markSessionAsSubmitted();
                     
                     console.log("Exam submitted with data:", {
                         answers: userAnswers,
@@ -1505,7 +1464,8 @@
                         localStorage.setItem('cbt_exam_info', JSON.stringify(examInfoToSave));
                         sessionStorage.removeItem('cbt_shuffled_questions');
                         
-                        clearOnlySessionProgress();
+                        // ===== MARK SESSION AS SUBMITTED =====
+                        markSessionAsSubmitted();
                         
                         window.location.href = "results-summary";
                     }
