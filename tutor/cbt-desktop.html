@@ -988,364 +988,413 @@
     <!-- MODAL ROOT -->
     <div id="modal-root"></div>
 
-    <script>
-        const API_BASE = "https://examguide.onrender.com";
-        
-        // ===== KEEP-ALIVE: Refresh backend every 4 minutes =====
-        function startKeepAliveInterval() {
-            setInterval(async () => {
-                try {
-                    const token = getToken();
-                    if (token) {
-                        await fetch(API_BASE + "/api/auth/me", {
-                            headers: { Authorization: "Bearer " + token }
-                        });
-                        console.log("✓ Keep-alive ping sent");
-                    }
-                } catch (err) {
-                    console.warn("Keep-alive failed:", err.message);
+<script>
+    const API_BASE = "https://examguide.onrender.com";
+    
+    // ===== KEEP-ALIVE: Refresh backend every 4 minutes =====
+    function startKeepAliveInterval() {
+        setInterval(async () => {
+            try {
+                const token = getToken();
+                if (token) {
+                    await fetch(API_BASE + "/api/auth/me", {
+                        headers: { Authorization: "Bearer " + token }
+                    });
+                    console.log("✓ Keep-alive ping sent");
                 }
-            }, 4 * 60 * 1000);
-        }
-
-        function getToken() { return localStorage.getItem("student_jwt_token"); }
-        function getExamAccessCode() { return localStorage.getItem("exam_access_code"); }
-        function getExamCourseCode() { return localStorage.getItem("exam_course_code"); }
-
-        if (performance.navigation && performance.navigation.type === 1) {
-            sessionStorage.removeItem('cbt_user_answers');
-            sessionStorage.removeItem('cbt_shuffled_questions');
-            sessionStorage.removeItem('cbt_exam_info');
-            location.replace(location.pathname + location.search);
-        }
-
-        function shuffleArray(arr) {
-            arr = arr.slice();
-            for (let i = arr.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [arr[i], arr[j]] = [arr[j], arr[i]];
+            } catch (err) {
+                console.warn("Keep-alive failed:", err.message);
             }
-            return arr;
+        }, 4 * 60 * 1000);
+    }
+
+    function getToken() { return localStorage.getItem("student_jwt_token"); }
+    function getExamAccessCode() { return localStorage.getItem("exam_access_code"); }
+    function getExamCourseCode() { return localStorage.getItem("exam_course_code"); }
+
+    if (performance.navigation && performance.navigation.type === 1) {
+        sessionStorage.removeItem('cbt_user_answers');
+        sessionStorage.removeItem('cbt_shuffled_questions');
+        sessionStorage.removeItem('cbt_exam_info');
+        location.replace(location.pathname + location.search);
+    }
+
+    function shuffleArray(arr) {
+        arr = arr.slice();
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
         }
+        return arr;
+    }
 
-        function normalizeQuestionMath(html) {
-            if (!html || typeof html !== 'string') return html;
-            let s = html.replace(/\\\\/g, '\\');
-            if (/\\\(|\\\[|\$\$?/.test(s)) return s;
-            const cmdRegex = /\\(?:frac|sqrt|sum|int|lim|left|right|cdot|times|pi|alpha|beta|gamma|theta|log|ln)(?:\{[^}]*\}|\^[^{\s]+|\_[^{\s]+)*/g;
-            s = s.replace(cmdRegex, m => `\\(${m}\\)`);
-            const expRegex = /([A-Za-z0-9])\^(?:\{[^}]+\}|\d+)/g;
-            s = s.replace(expRegex, m => `\\(${m}\\)`);
-            const subRegex = /([A-Za-z0-9])_(?:\{[^}]+\}|\d+)/g;
-            s = s.replace(subRegex, m => `\\(${m}\\)`);
-            return s;
-        }
+    function normalizeQuestionMath(html) {
+        if (!html || typeof html !== 'string') return html;
+        let s = html.replace(/\\\\/g, '\\');
+        if (/\\\(|\\\[|\$\$?/.test(s)) return s;
+        const cmdRegex = /\\(?:frac|sqrt|sum|int|lim|left|right|cdot|times|pi|alpha|beta|gamma|theta|log|ln)(?:\{[^}]*\}|\^[^{\s]+|\_[^{\s]+)*/g;
+        s = s.replace(cmdRegex, m => `\\(${m}\\)`);
+        const expRegex = /([A-Za-z0-9])\^(?:\{[^}]+\}|\d+)/g;
+        s = s.replace(expRegex, m => `\\(${m}\\)`);
+        const subRegex = /([A-Za-z0-9])_(?:\{[^}]+\}|\d+)/g;
+        s = s.replace(subRegex, m => `\\(${m}\\)`);
+        return s;
+    }
 
-        async function fetchStudentProfile() {
-            try {
-                const res = await fetch(API_BASE + "/api/auth/me", {
-                    headers: { Authorization: "Bearer " + getToken() }
-                });
-                if (!res.ok) throw new Error("Not authenticated");
-                return await res.json();
-            } catch (err) { return null; }
-        }
+    async function fetchStudentProfile() {
+        try {
+            const res = await fetch(API_BASE + "/api/auth/me", {
+                headers: { Authorization: "Bearer " + getToken() }
+            });
+            if (!res.ok) throw new Error("Not authenticated");
+            return await res.json();
+        } catch (err) { return null; }
+    }
 
-        async function fetchExamDataByAccessCode(accessCode) {
-            try {
-                const res = await fetch(API_BASE + `/api/exam-set/by-access?accessCode=${encodeURIComponent(accessCode)}`);
-                if (!res.ok) throw new Error("Not found");
-                return await res.json();
-            } catch (err) { return null; }
-        }
+    async function fetchExamDataByAccessCode(accessCode) {
+        try {
+            const res = await fetch(API_BASE + `/api/exam-set/by-access?accessCode=${encodeURIComponent(accessCode)}`);
+            if (!res.ok) throw new Error("Not found");
+            return await res.json();
+        } catch (err) { return null; }
+    }
 
-        let userAnswers = {};
-        let examData = null, studentData = null, currentQ = 0, timer = null, duration = 0, courseCode = "";
+    let userAnswers = {};
+    let examData = null, studentData = null, currentQ = 0, timer = null, duration = 0, courseCode = "";
+    let questionIdMap = {}; // Maps question index to question ID for reliable lookup
 
-        function showModal(message, opts = {}) {
-            const root = document.getElementById('modal-root');
-            const iconClass = opts.iconClass || 'fa-info-circle';
-            const iconColor = opts.iconColor || '#fbbf24';
+    function showModal(message, opts = {}) {
+        const root = document.getElementById('modal-root');
+        const iconClass = opts.iconClass || 'fa-info-circle';
+        const iconColor = opts.iconColor || '#fbbf24';
 
-            root.innerHTML = `
-                <div class="modal-backdrop">
-                    <div class="modal-box">
-                        <button class="modal-close" id="close-modal-btn">
-                            <i class="fas fa-times"></i>
-                        </button>
-                        ${(opts.icon !== false) ? `
-                            <div class="modal-icon">
-                                <i class="fas ${iconClass}" style="color: ${iconColor};"></i>
-                            </div>
-                        ` : ""}
-                        <div class="modal-title">${opts.title || "Notice"}</div>
-                        <div class="modal-message">${message}</div>
-                        <div class="modal-actions">
-                            ${(opts.actionText) ? `<button id="modal-action-btn" class="modal-btn modal-btn-primary">${opts.actionText}</button>` : ""}
-                            <button id="modal-close-btn" class="modal-btn modal-btn-secondary">Close</button>
+        root.innerHTML = `
+            <div class="modal-backdrop">
+                <div class="modal-box">
+                    <button class="modal-close" id="close-modal-btn">
+                        <i class="fas fa-times"></i>
+                    </button>
+                    ${(opts.icon !== false) ? `
+                        <div class="modal-icon">
+                            <i class="fas ${iconClass}" style="color: ${iconColor};"></i>
                         </div>
+                    ` : ""}
+                    <div class="modal-title">${opts.title || "Notice"}</div>
+                    <div class="modal-message">${message}</div>
+                    <div class="modal-actions">
+                        ${(opts.actionText) ? `<button id="modal-action-btn" class="modal-btn modal-btn-primary">${opts.actionText}</button>` : ""}
+                        <button id="modal-close-btn" class="modal-btn modal-btn-secondary">Close</button>
                     </div>
                 </div>
-            `;
+            </div>
+        `;
 
-            document.getElementById('close-modal-btn').onclick = () => root.innerHTML = "";
-            document.getElementById('modal-close-btn').onclick = () => root.innerHTML = "";
+        document.getElementById('close-modal-btn').onclick = () => root.innerHTML = "";
+        document.getElementById('modal-close-btn').onclick = () => root.innerHTML = "";
 
-            if (opts.onAction && document.getElementById('modal-action-btn')) {
-                document.getElementById('modal-action-btn').onclick = () => {
-                    root.innerHTML = "";
-                    opts.onAction();
-                };
-            }
+        if (opts.onAction && document.getElementById('modal-action-btn')) {
+            document.getElementById('modal-action-btn').onclick = () => {
+                root.innerHTML = "";
+                opts.onAction();
+            };
+        }
+    }
+
+    function persistUserAnswers() {
+        sessionStorage.setItem('cbt_user_answers', JSON.stringify(userAnswers));
+        localStorage.setItem('cbt_user_answers', JSON.stringify(userAnswers));
+        console.log("Answers persisted:", userAnswers);
+    }
+
+    function updateStats() {
+        const total = examData.questions.length;
+        const answered = Object.keys(userAnswers).filter(k => userAnswers[k]).length;
+        document.getElementById('answered-count').textContent = answered;
+        document.getElementById('remaining-count').textContent = total - answered;
+    }
+
+    async function main() {
+        startKeepAliveInterval();
+
+        const accessCode = getExamAccessCode();
+        courseCode = getExamCourseCode() || "";
+
+        if (!accessCode) {
+            showModal("You must enter an exam access code before writing a test.", {
+                title: "No Access Code",
+                iconClass: "fa-lock",
+                iconColor: "#ef4444",
+                actionText: "Go to Access",
+                onAction: () => { window.location.href = "mock.html"; }
+            });
+            return;
         }
 
-        function persistUserAnswers() {
-            sessionStorage.setItem('cbt_user_answers', JSON.stringify(userAnswers));
+        studentData = await fetchStudentProfile();
+        if (!studentData) {
+            showModal("Session expired, please login and try again.", {
+                title: "Session Expired",
+                iconClass: "fa-clock",
+                iconColor: "#f97316",
+                actionText: "Go to Login",
+                onAction: () => { window.location.href = "mock.html"; }
+            });
+            return;
         }
 
-        function updateStats() {
-            const total = examData.questions.length;
-            const answered = Object.keys(userAnswers).filter(k => userAnswers[k]).length;
-            document.getElementById('answered-count').textContent = answered;
-            document.getElementById('remaining-count').textContent = total - answered;
+        document.getElementById('student-name').innerText = studentData.user.fullName || studentData.user.fullname || studentData.user.name || "(No Name)";
+        document.getElementById('student-regnum').innerText = studentData.user.studentId || studentData.user.username || "(No Student ID)";
+
+        const result = await fetchExamDataByAccessCode(accessCode);
+        if (!result || !result.examSet || !Array.isArray(result.questions)) {
+            showModal("Invalid or expired access code. Please re-enter.", {
+                title: "Invalid Access Code",
+                iconClass: "fa-exclamation-triangle",
+                iconColor: "#ef4444",
+                actionText: "Go to Access",
+                onAction: () => {
+                    localStorage.removeItem("exam_access_code");
+                    window.location.href = "mock.html";
+                }
+            });
+            return;
         }
 
-        async function main() {
-            startKeepAliveInterval();
-
-            const accessCode = getExamAccessCode();
-            courseCode = getExamCourseCode() || "";
-
-            if (!accessCode) {
-                showModal("You must enter an exam access code before writing a test.", {
-                    title: "No Access Code",
-                    iconClass: "fa-lock",
-                    iconColor: "#ef4444",
-                    actionText: "Go to Access",
-                    onAction: () => { window.location.href = "mock.html"; }
-                });
-                return;
-            }
-
-            studentData = await fetchStudentProfile();
-            if (!studentData) {
-                showModal("Session expired, please login and try again.", {
-                    title: "Session Expired",
-                    iconClass: "fa-clock",
-                    iconColor: "#f97316",
-                    actionText: "Go to Login",
-                    onAction: () => { window.location.href = "mock.html"; }
-                });
-                return;
-            }
-
-            document.getElementById('student-name').innerText = studentData.user.fullName || studentData.user.fullname || studentData.user.name || "(No Name)";
-            document.getElementById('student-regnum').innerText = studentData.user.studentId || studentData.user.username || "(No Student ID)";
-
-            const result = await fetchExamDataByAccessCode(accessCode);
-            if (!result || !result.examSet || !Array.isArray(result.questions)) {
-                showModal("Invalid or expired access code. Please re-enter.", {
-                    title: "Invalid Access Code",
-                    iconClass: "fa-exclamation-triangle",
-                    iconColor: "#ef4444",
-                    actionText: "Go to Access",
-                    onAction: () => {
-                        localStorage.removeItem("exam_access_code");
-                        window.location.href = "mock.html";
-                    }
-                });
-                return;
-            }
-
-            let shuffleSession = sessionStorage.getItem('cbt_shuffled_questions');
-            if (shuffleSession) {
-                examData = JSON.parse(shuffleSession);
-            } else {
-                let shuffledQuestions = shuffleArray(result.questions).map((q) => ({
-                    ...q,
-                    options: shuffleArray((q.options || []).map(opt => ({ ...opt }))),
-                    id: q._id || (Math.random().toString(36).slice(2, 12)),
-                }));
-                examData = {
-                    subject: result.examSet.subject,
-                    duration: result.examSet.duration || 3600,
-                    questions: shuffledQuestions
-                };
-                sessionStorage.setItem('cbt_shuffled_questions', JSON.stringify(examData));
-            }
-
-            document.getElementById('exam-subject').innerText = examData.subject || courseCode;
-            document.getElementById('navbar-subject').innerText = examData.subject || courseCode;
-            document.getElementById('exam-duration').innerText = (examData.duration ? Math.round(examData.duration / 60) + " mins" : '');
-
-            const storedAnswers = sessionStorage.getItem('cbt_user_answers');
-            if (storedAnswers) userAnswers = JSON.parse(storedAnswers);
-
-            duration = examData.duration || 3600;
-            startTimer(duration);
-            renderQuestion(currentQ);
+        let shuffleSession = sessionStorage.getItem('cbt_shuffled_questions');
+        if (shuffleSession) {
+            examData = JSON.parse(shuffleSession);
+        } else {
+            let shuffledQuestions = shuffleArray(result.questions).map((q) => ({
+                ...q,
+                options: shuffleArray((q.options || []).map(opt => ({ ...opt }))),
+                id: q._id || (Math.random().toString(36).slice(2, 12)),
+            }));
+            examData = {
+                subject: result.examSet.subject,
+                duration: result.examSet.duration || 3600,
+                questions: shuffledQuestions
+            };
+            sessionStorage.setItem('cbt_shuffled_questions', JSON.stringify(examData));
         }
 
-        function renderQuestion(idx) {
-            const qa = document.getElementById("question-area");
-            if (!examData || !examData.questions || idx >= examData.questions.length) {
-                qa.innerHTML = '<div class="loading-spinner"><i class="fas fa-exclamation-circle" style="color: #ef4444;"></i><p>No Question Found.</p></div>';
-                return;
-            }
+        // Build question ID map for reliable lookup in report
+        examData.questions.forEach((q, idx) => {
+            questionIdMap[idx] = q.id;
+        });
 
-            const total = examData.questions.length;
-            const q = examData.questions[idx];
-            const savedAnswer = userAnswers[q.id] || "";
-            const questionHtml = normalizeQuestionMath(q.question || '');
+        document.getElementById('exam-subject').innerText = examData.subject || courseCode;
+        document.getElementById('navbar-subject').innerText = examData.subject || courseCode;
+        document.getElementById('exam-duration').innerText = (examData.duration ? Math.round(examData.duration / 60) + " mins" : '');
 
-            qa.innerHTML = `
-                <div class="question-meta">
-                    <div>
-                        <div class="question-number-label">Question ${idx + 1}</div>
-                        <div class="question-progress">${idx + 1} of ${total}</div>
-                    </div>
+        const storedAnswers = sessionStorage.getItem('cbt_user_answers');
+        if (storedAnswers) userAnswers = JSON.parse(storedAnswers);
+
+        duration = examData.duration || 3600;
+        startTimer(duration);
+        renderQuestion(currentQ);
+    }
+
+    function renderQuestion(idx) {
+        const qa = document.getElementById("question-area");
+        if (!examData || !examData.questions || idx >= examData.questions.length) {
+            qa.innerHTML = '<div class="loading-spinner"><i class="fas fa-exclamation-circle" style="color: #ef4444;"></i><p>No Question Found.</p></div>';
+            return;
+        }
+
+        const total = examData.questions.length;
+        const q = examData.questions[idx];
+        const savedAnswer = userAnswers[q.id] || "";
+        const questionHtml = normalizeQuestionMath(q.question || '');
+
+        qa.innerHTML = `
+            <div class="question-meta">
+                <div>
+                    <div class="question-number-label">Question ${idx + 1}</div>
+                    <div class="question-progress">${idx + 1} of ${total}</div>
                 </div>
-                <div class="question-text">${questionHtml}</div>
-                <div class="options-list">
-                    ${(q.options || []).map((opt, i) => {
-                        const label = String.fromCharCode(65 + i);
-                        const optHtml = normalizeQuestionMath(opt.text || '');
-                        const isChecked = savedAnswer === opt.key;
-                        return `
-                            <label class="option-item ${isChecked ? 'selected' : ''}">
-                                <input type="radio" name="qSelect" value="${opt.key}" ${isChecked ? 'checked' : ''} />
-                                <span class="option-text"><strong>${label}.</strong> ${optHtml}</span>
-                            </label>
-                        `;
-                    }).join('')}
-                </div>
+            </div>
+            <div class="question-text">${questionHtml}</div>
+            <div class="options-list">
+                ${(q.options || []).map((opt, i) => {
+                    const label = String.fromCharCode(65 + i);
+                    const optHtml = normalizeQuestionMath(opt.text || '');
+                    const isChecked = savedAnswer === opt.key;
+                    return `
+                        <label class="option-item ${isChecked ? 'selected' : ''}">
+                            <input type="radio" name="qSelect" value="${opt.key}" ${isChecked ? 'checked' : ''} />
+                            <span class="option-text"><strong>${label}.</strong> ${optHtml}</span>
+                        </label>
+                    `;
+                }).join('')}
+            </div>
+        `;
+
+        const pallet = document.getElementById("question-nav-list");
+        let navHtml = "";
+        for (let j = 0; j < total; j++) {
+            const navId = examData.questions[j].id;
+            const attempted = !!userAnswers[navId];
+            const curr = j === idx;
+            const navClass = curr ? "current" : (attempted ? "answered" : "");
+            navHtml += `
+                <a href="#" data-qp="${j}" class="q-button ${navClass}" ${curr ? 'aria-current="page"' : ''}>
+                    ${j + 1}
+                </a>
             `;
+        }
+        pallet.innerHTML = navHtml;
 
-            const pallet = document.getElementById("question-nav-list");
-            let navHtml = "";
-            for (let j = 0; j < total; j++) {
-                const navId = examData.questions[j].id;
-                const attempted = !!userAnswers[navId];
-                const curr = j === idx;
-                const navClass = curr ? "current" : (attempted ? "answered" : "");
-                navHtml += `
-                    <a href="#" data-qp="${j}" class="q-button ${navClass}" ${curr ? 'aria-current="page"' : ''}>
-                        ${j + 1}
-                    </a>
-                `;
+        updateStats();
+
+        if (window.MathJax && MathJax.typesetPromise) {
+            MathJax.typesetPromise([qa]).catch(err => {
+                console.warn("MathJax error:", err && err.message);
+            });
+        }
+
+        document.querySelectorAll('input[name="qSelect"]').forEach(input => {
+            input.onchange = function() {
+                userAnswers[q.id] = this.value;
+                persistUserAnswers();
+                renderQuestion(idx);
+            };
+        });
+
+        document.getElementById("prev-btn").disabled = idx === 0;
+        document.getElementById("next-btn").disabled = idx === total - 1;
+
+        document.getElementById("prev-btn").onclick = (e) => {
+            e.preventDefault();
+            if (currentQ > 0) {
+                currentQ--;
+                renderQuestion(currentQ);
             }
-            pallet.innerHTML = navHtml;
+        };
 
-            updateStats();
-
-            if (window.MathJax && MathJax.typesetPromise) {
-                MathJax.typesetPromise([qa]).catch(err => {
-                    console.warn("MathJax error:", err && err.message);
-                });
+        document.getElementById("next-btn").onclick = (e) => {
+            e.preventDefault();
+            if (currentQ < total - 1) {
+                currentQ++;
+                renderQuestion(currentQ);
             }
+        };
 
-            document.querySelectorAll('input[name="qSelect"]').forEach(input => {
-                input.onchange = function() {
-                    userAnswers[q.id] = this.value;
+        pallet.querySelectorAll('a[data-qp]').forEach(a => {
+            a.onclick = (ev) => {
+                ev.preventDefault();
+                currentQ = parseInt(a.getAttribute('data-qp'));
+                renderQuestion(currentQ);
+            };
+        });
+
+        document.getElementById("submit-btn").onclick = (e) => {
+            e.preventDefault();
+            showModal("Are you sure you want to submit your answers and end the test? This action cannot be undone.", {
+                title: "Submit Exam",
+                iconClass: "fa-question-circle",
+                iconColor: "#fbbf24",
+                actionText: "Yes, Submit",
+                onAction: () => {
                     persistUserAnswers();
-                    renderQuestion(idx);
-                };
-            });
-
-            document.getElementById("prev-btn").disabled = idx === 0;
-            document.getElementById("next-btn").disabled = idx === total - 1;
-
-            document.getElementById("prev-btn").onclick = (e) => {
-                e.preventDefault();
-                if (currentQ > 0) {
-                    currentQ--;
-                    renderQuestion(currentQ);
+                    
+                    // Enhanced data structure for report page
+                    const examInfoToSave = {
+                        subject: examData.subject,
+                        matric: document.getElementById('student-regnum').innerText,
+                        student: (studentData.user.fullName || studentData.user.fullname || studentData.user.name || ''),
+                        course: courseCode,
+                        timeCompleted: new Date().toISOString(),
+                        type: 'cbt',
+                        questions: examData.questions.map(q => ({
+                            id: q.id,
+                            _id: q._id,
+                            question: q.question,
+                            options: q.options,
+                            correctAnswer: q.correctAnswer
+                        }))
+                    };
+                    
+                    sessionStorage.setItem('cbt_user_answers', JSON.stringify(userAnswers));
+                    localStorage.setItem('cbt_user_answers', JSON.stringify(userAnswers));
+                    sessionStorage.setItem('cbt_exam_info', JSON.stringify(examInfoToSave));
+                    localStorage.setItem('cbt_exam_info', JSON.stringify(examInfoToSave));
+                    sessionStorage.removeItem('cbt_shuffled_questions');
+                    
+                    console.log("Exam submitted with data:", {
+                        answers: userAnswers,
+                        examInfo: examInfoToSave
+                    });
+                    
+                    window.location.href = "results-summary";
                 }
-            };
-
-            document.getElementById("next-btn").onclick = (e) => {
-                e.preventDefault();
-                if (currentQ < total - 1) {
-                    currentQ++;
-                    renderQuestion(currentQ);
-                }
-            };
-
-            pallet.querySelectorAll('a[data-qp]').forEach(a => {
-                a.onclick = (ev) => {
-                    ev.preventDefault();
-                    currentQ = parseInt(a.getAttribute('data-qp'));
-                    renderQuestion(currentQ);
-                };
             });
+        };
+    }
 
-            document.getElementById("submit-btn").onclick = (e) => {
-                e.preventDefault();
-                showModal("Are you sure you want to submit your answers and end the test? This action cannot be undone.", {
-                    title: "Submit Exam",
-                    iconClass: "fa-question-circle",
-                    iconColor: "#fbbf24",
-                    actionText: "Yes, Submit",
+    function startTimer(secs) {
+        let remaining = secs;
+        const timerElem = document.getElementById('timer');
+
+        function update() {
+            const hours = Math.floor(remaining / 3600);
+            const minutes = Math.floor((remaining % 3600) / 60);
+            const seconds = remaining % 60;
+            timerElem.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+            if (remaining <= 300) {
+                timerElem.classList.add('critical');
+            } else {
+                timerElem.classList.remove('critical');
+            }
+        }
+
+        update();
+        if (timer) clearInterval(timer);
+
+        timer = setInterval(() => {
+            remaining--;
+            update();
+            if (remaining <= 0) {
+                clearInterval(timer);
+                timerElem.textContent = "00:00:00";
+                showModal("Time has expired! Your exam has been automatically submitted.", {
+                    title: "Time Up",
+                    iconClass: "fa-hourglass-end",
+                    iconColor: "#ef4444",
+                    actionText: "View Results",
                     onAction: () => {
                         persistUserAnswers();
-                        sessionStorage.setItem('cbt_user_answers', JSON.stringify(userAnswers));
-                        sessionStorage.setItem('cbt_exam_info', JSON.stringify({
+                        
+                        const examInfoToSave = {
                             subject: examData.subject,
                             matric: document.getElementById('student-regnum').innerText,
                             student: (studentData.user.fullName || studentData.user.fullname || studentData.user.name || ''),
                             course: courseCode,
-                            timeCompleted: new Date().toISOString()
-                        }));
+                            timeCompleted: new Date().toISOString(),
+                            type: 'cbt',
+                            questions: examData.questions.map(q => ({
+                                id: q.id,
+                                _id: q._id,
+                                question: q.question,
+                                options: q.options,
+                                correctAnswer: q.correctAnswer
+                            }))
+                        };
+                        
+                        sessionStorage.setItem('cbt_user_answers', JSON.stringify(userAnswers));
+                        localStorage.setItem('cbt_user_answers', JSON.stringify(userAnswers));
+                        sessionStorage.setItem('cbt_exam_info', JSON.stringify(examInfoToSave));
+                        localStorage.setItem('cbt_exam_info', JSON.stringify(examInfoToSave));
                         sessionStorage.removeItem('cbt_shuffled_questions');
+                        
                         window.location.href = "results-summary";
                     }
                 });
-            };
-        }
-
-        function startTimer(secs) {
-            let remaining = secs;
-            const timerElem = document.getElementById('timer');
-
-            function update() {
-                const hours = Math.floor(remaining / 3600);
-                const minutes = Math.floor((remaining % 3600) / 60);
-                const seconds = remaining % 60;
-                timerElem.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-
-                if (remaining <= 300) {
-                    timerElem.classList.add('critical');
-                } else {
-                    timerElem.classList.remove('critical');
-                }
             }
+        }, 1000);
+    }
 
-            update();
-            if (timer) clearInterval(timer);
-
-            timer = setInterval(() => {
-                remaining--;
-                update();
-                if (remaining <= 0) {
-                    clearInterval(timer);
-                    timerElem.textContent = "00:00:00";
-                    showModal("Time has expired! Your exam has been automatically submitted.", {
-                        title: "Time Up",
-                        iconClass: "fa-hourglass-end",
-                        iconColor: "#ef4444",
-                        actionText: "View Results",
-                        onAction: () => {
-                            persistUserAnswers();
-                            sessionStorage.setItem('cbt_user_answers', JSON.stringify(userAnswers));
-                            sessionStorage.removeItem('cbt_shuffled_questions');
-                            window.location.href = "results-summary";
-                        }
-                    });
-                }
-            }, 1000);
-        }
-
-        window.addEventListener("DOMContentLoaded", main);
-    </script>
+    window.addEventListener("DOMContentLoaded", main);
+</script>
 </body>
 </html>
