@@ -274,6 +274,38 @@
     display: inline;
     margin: 0 0.25em;
 }
+        /* Fix inline math rendering */
+#question-area {
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+}
+
+#question-area p {
+    display: inline;
+    margin: 0;
+}
+
+#question-area mjx-container {
+    display: inline !important;
+    margin: 0 0.15em !important;
+}
+
+#question-area svg[role="img"] {
+    display: inline !important;
+    vertical-align: middle !important;
+    margin: 0 0.15em !important;
+}
+
+/* Option cards with math */
+.option-card span {
+    display: inline;
+    word-break: break-word;
+}
+
+.option-card mjx-container {
+    display: inline !important;
+    margin: 0 0.1em !important;
+}
     </style>
 </head>
 <body class="min-h-screen flex flex-col items-center justify-center p-2">
@@ -820,17 +852,38 @@ function clearSessionButKeepReport() {
 
     function renderCBTQuestion(idx, q, qa, total) {
     const savedAnswer = userAnswers[q.id] || "";
-    const questionHtml = normalizeQuestionMath(q.question || '');
+    let questionHtml = normalizeQuestionMath(q.question || '');
+    
+    // FIX: Remove extra <p> tags that cause line breaks
+    questionHtml = questionHtml
+        .replace(/<p>\s*<\/p>/g, '') // Remove empty paragraphs
+        .replace(/<\/p>\s*<p>/g, ' ') // Replace p-to-p breaks with space
+        .replace(/<p>/g, '') // Remove opening p tags
+        .replace(/<\/p>/g, ''); // Remove closing p tags
+    
+    // Wrap in single paragraph
+    if (questionHtml.trim() && !questionHtml.trim().startsWith('<div')) {
+        questionHtml = `<p>${questionHtml}</p>`;
+    }
+
     qa.innerHTML = `
         <h2 class="text-2xl font-bold text-blue-900 mb-7">Question ${idx + 1} of ${total}</h2>
-        <div class="text-lg leading-relaxed text-gray-700 mb-9" style="line-height: 1.8;">
+        <div class="text-lg leading-relaxed text-gray-700 mb-9" style="line-height: 1.8; word-break: break-word;">
             ${questionHtml}
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-7 mb-10">
             ${
                 (q.options || []).map((opt, i) => {
                     const label = String.fromCharCode(65 + i);
-                    const optHtml = normalizeQuestionMath(opt.text || '');
+                    let optHtml = normalizeQuestionMath(opt.text || '');
+                    
+                    // FIX: Clean up option HTML too
+                    optHtml = optHtml
+                        .replace(/<p>\s*<\/p>/g, '')
+                        .replace(/<\/p>\s*<p>/g, ' ')
+                        .replace(/<p>/g, '')
+                        .replace(/<\/p>/g, '');
+                    
                     return `
                         <label class="option-card flex items-center p-7 cursor-pointer transition-all duration-200">
                             <input type="radio" name="qSelect" value="${opt.key}" ${(savedAnswer === opt.key) ? 'checked' : ''} class="w-7 h-7 text-yellow-500 focus:ring-yellow-400" />
@@ -840,100 +893,103 @@ function clearSessionButKeepReport() {
                 }).join('')
             }
         </div>
-            <div class="flex flex-col gap-2 sm:flex-row sm:gap-4 justify-between items-center mt-8">
-                <div class="w-full sm:w-auto flex justify-between gap-2 order-1 sm:mb-0">
-                    <button class="px-8 py-3 bg-gray-300 text-gray-800 font-bold rounded-xl hover:bg-gray-400 transition shadow-md" ${idx === 0 ? 'disabled opacity-50' : ''} id="prev-btn">
-                        <i class="fas fa-chevron-left mr-2"></i> Previous
-                    </button>
-                    <button class="px-8 py-3 exam-action-btn rounded-xl hover:scale-105 transition flex items-center" ${idx === total - 1 ? 'disabled opacity-50' : ''} id="next-btn">
-                        Next <i class="fas fa-chevron-right ml-2"></i>
-                    </button>
-                </div>
-                <nav aria-label="Question navigation" class="flex-1 flex flex-col items-center order-2 w-full sm:w-auto">
-                    <ul class="question-pallet w-full flex flex-wrap" id="question-nav-list"></ul>
-                </nav>
-                <div class="flex gap-4 order-3 w-full sm:w-auto justify-center mt-2 sm:mt-0">
-                    <button class="px-8 py-3 exam-action-btn rounded-xl hover:scale-105 transition shadow" id="submit-btn">
-                        Submit Exam
-                    </button>
-                </div>
+        <div class="flex flex-col gap-2 sm:flex-row sm:gap-4 justify-between items-center mt-8">
+            <div class="w-full sm:w-auto flex justify-between gap-2 order-1 sm:mb-0">
+                <button class="px-8 py-3 bg-gray-300 text-gray-800 font-bold rounded-xl hover:bg-gray-400 transition shadow-md" ${idx === 0 ? 'disabled opacity-50' : ''} id="prev-btn">
+                    <i class="fas fa-chevron-left mr-2"></i> Previous
+                </button>
+                <button class="px-8 py-3 exam-action-btn rounded-xl hover:scale-105 transition flex items-center" ${idx === total - 1 ? 'disabled opacity-50' : ''} id="next-btn">
+                    Next <i class="fas fa-chevron-right ml-2"></i>
+                </button>
             </div>
+            <nav aria-label="Question navigation" class="flex-1 flex flex-col items-center order-2 w-full sm:w-auto">
+                <ul class="question-pallet w-full flex flex-wrap" id="question-nav-list"></ul>
+            </nav>
+            <div class="flex gap-4 order-3 w-full sm:w-auto justify-center mt-2 sm:mt-0">
+                <button class="px-8 py-3 exam-action-btn rounded-xl hover:scale-105 transition shadow" id="submit-btn">
+                    Submit Exam
+                </button>
+            </div>
+        </div>
+    `;
+
+    const pallet = document.getElementById("question-nav-list");
+    let navHtml = "";
+    for (let j = 0; j < total; ++j) {
+        const navId = examData.questions[j].id;
+        const attempted = !!userAnswers[navId];
+        const curr = j === idx;
+        const navClass = curr ? "qp-current" : (attempted ? "qp-done" : "bg-white text-gray-600");
+        navHtml += `
+            <li>
+                <a href="#" data-qp="${j}" 
+                   ${curr ? 'aria-current="page"' : ''} 
+                   class="block px-3 py-2 leading-tight text-xs sm:text-base border border-gray-300 hover:bg-yellow-100 ${navClass}" 
+                   title="Question ${j + 1}">
+                   ${j + 1}
+                </a>
+            </li>
         `;
+    }
+    pallet.innerHTML = navHtml;
 
-        const pallet = document.getElementById("question-nav-list");
-        let navHtml = "";
-        for (let j = 0; j < total; ++j) {
-            const navId = examData.questions[j].id;
-            const attempted = !!userAnswers[navId];
-            const curr = j === idx;
-            const navClass = curr ? "qp-current" : (attempted ? "qp-done" : "bg-white text-gray-600");
-            navHtml += `
-                <li>
-                    <a href="#" data-qp="${j}" 
-                       ${curr ? 'aria-current="page"' : ''} 
-                       class="block px-3 py-2 leading-tight text-xs sm:text-base border border-gray-300 hover:bg-yellow-100 ${navClass}" 
-                       title="Question ${j + 1}">
-                       ${j + 1}
-                    </a>
-                </li>
-            `;
-        }
-        pallet.innerHTML = navHtml;
+    // Add CSS to fix MathJax rendering
+    const qaElement = document.getElementById('question-area');
+    qaElement.style.setProperty('overflow-wrap', 'break-word');
+    qaElement.style.setProperty('word-wrap', 'break-word');
 
-        if (window.MathJax && MathJax.typesetPromise) {
-            MathJax.typesetPromise([qa]).catch((err) => {
-                console.warn("MathJax typeset error:", err && err.message);
-            });
-        }
-
-        document.querySelectorAll('input[name="qSelect"]').forEach(input => {
-            input.onchange = function() {
-                userAnswers[q.id] = this.value;
-                persistAllExamData();
-                renderQuestion(idx);
-            };
-        });
-
-        document.getElementById("prev-btn").onclick = function(e) {
-            e.preventDefault();
-            if (currentQ > 0) {
-                currentQ--;
-                renderQuestion(currentQ);
-            }
-        };
-
-        document.getElementById("next-btn").onclick = function(e) {
-            e.preventDefault();
-            if (currentQ < total - 1) {
-                currentQ++;
-                renderQuestion(currentQ);
-            }
-        };
-
-        pallet.querySelectorAll('a[data-qp]').forEach(a => {
-            a.onclick = ev => {
-                ev.preventDefault();
-                currentQ = parseInt(a.getAttribute('data-qp'));
-                renderQuestion(currentQ);
-            };
-        });
-
-        document.getElementById("submit-btn").onclick = function(e) {
-            e.preventDefault();
-            if (isSubmitting) return;
-            showModal("Are you sure you want to submit your answers and end the test? This action cannot be undone.", {
-                title: "Submit Exam",
-                icon: true,
-                actionText: "Yes, Submit",
-                onAction: submitCBTExam
-            });
-        };
-        if (window.MathJax && MathJax.typesetPromise) {
+    if (window.MathJax && MathJax.typesetPromise) {
         MathJax.typesetPromise([qa]).catch((err) => {
             console.warn("MathJax typeset error:", err && err.message);
         });
     }
-    }
+
+    // Add event listeners
+    document.querySelectorAll('input[name="qSelect"]').forEach(input => {
+        input.onchange = function() {
+            userAnswers[q.id] = this.value;
+            persistAllExamData();
+            renderQuestion(idx);
+        };
+    });
+
+    document.getElementById("prev-btn").onclick = function(e) {
+        e.preventDefault();
+        if (currentQ > 0) {
+            currentQ--;
+            renderQuestion(currentQ);
+        }
+    };
+
+    document.getElementById("next-btn").onclick = function(e) {
+        e.preventDefault();
+        if (currentQ < total - 1) {
+            currentQ++;
+            renderQuestion(currentQ);
+        }
+    };
+
+    pallet.querySelectorAll('a[data-qp]').forEach(a => {
+        a.onclick = ev => {
+            ev.preventDefault();
+            currentQ = parseInt(a.getAttribute('data-qp'));
+            renderQuestion(currentQ);
+        };
+    });
+
+    document.getElementById("submit-btn").onclick = function(e) {
+        e.preventDefault();
+        if (isSubmitting) return;
+        showModal("Are you sure you want to submit your answers and end the test? This action cannot be undone.", {
+            title: "Submit Exam",
+            icon: true,
+            actionText: "Yes, Submit",
+            onAction: submitCBTExam
+        });
+    };
+}
+
+        
     
 
 // ============ REPLACE THE renderTheoryQuestion FUNCTION WITH THIS ============
