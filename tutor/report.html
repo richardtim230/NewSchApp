@@ -856,7 +856,7 @@
   </div>
 
 <script>
-    "use strict";
+"use strict";
 
     const API_BASE = "https://examguide.onrender.com";
     
@@ -990,6 +990,7 @@
       s = s.replace(subRegex, function(m) { return `\\(${m}\\)`; });
       return s;
     }
+
     // ============ HTML CLEANUP FOR MATHJAX ============
     function cleanupQuestionHtml(html) {
       if (!html) return html;
@@ -1024,6 +1025,7 @@
         });
       }
     }
+
     function getScoreTally(results) {
       let correct = 0, pending = 0, unanswered = 0;
       results.forEach(r => {
@@ -1055,7 +1057,6 @@
 
     // ============ RENDER CBT RESULTS ============
     async function renderCBTResults(questions) {
-      let results = [];
       const resultsList = document.getElementById('results-list');
       
       resultsList.innerHTML = `
@@ -1076,25 +1077,30 @@
         return { correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0 };
       }
 
+      let correct = 0, wrong = 0, unanswered = 0;
+
       for (let i = 0; i < questions.length; i++) {
-            for (let i = 0; i < questions.length; i++) {
         const q = questions[i];
         const qid = q._id || q.id || `q${i}`;
         const userAns = answers[qid] || answers[q._id] || answers[q.id] || "";
-        const correct = (userAns === q.answer);
-        const status = userAns ? (correct ? "correct" : "incorrect") : "unanswered";
+        const isCorrect = (userAns === q.answer);
+        const status = userAns ? (isCorrect ? "correct" : "incorrect") : "unanswered";
+        
+        if (isCorrect) correct++;
+        else if (userAns) wrong++;
+        else unanswered++;
         
         let questionHtml = normalizeQuestionMath(q.question || '');
-        questionHtml = cleanupQuestionHtml(questionHtml); // Clean up HTML
+        questionHtml = cleanupQuestionHtml(questionHtml);
         
         let optionsHtml = '';
         if (q.options && Array.isArray(q.options)) {
           optionsHtml = q.options.map(opt => {
             let optText = normalizeQuestionMath(opt.text || '');
-            optText = cleanupAnswerHtml(optText); // Clean up option HTML
+            optText = cleanupAnswerHtml(optText);
             const isAnswer = opt.key === q.answer;
             const isUserAnswer = opt.key === userAns;
-            const answerClass = isAnswer ? 'answer-correct' : (isUserAnswer && !correct ? 'answer-wrong' : 'answer-na');
+            const answerClass = isAnswer ? 'answer-correct' : (isUserAnswer && !isCorrect ? 'answer-wrong' : 'answer-na');
             const label = isAnswer ? '✓' : (isUserAnswer ? '✗' : '-');
             return `<span class="answer-pill ${answerClass}">${label} ${opt.key}</span>`;
           }).join('');
@@ -1135,22 +1141,13 @@
       // Rerender MathJax after all content is added
       rerenderMathJax(resultsList);
 
-      if (window.MathJax && MathJax.typesetPromise) {
-        try {
-          await MathJax.typesetPromise([resultsList]);
-        } catch (err) {
-          console.warn("MathJax error:", err && err.message);
-        }
-      }
-
-      const [correct, wrong, pending, unanswered] = getScoreTally(results);
       const totalQuestions = questions.length;
       const percent = totalQuestions ? Math.round(correct / totalQuestions * 100) : 0;
 
       return { 
         correct, 
         wrong, 
-        pending, 
+        pending: 0, 
         unanswered, 
         percent, 
         total: totalQuestions,
@@ -1159,133 +1156,135 @@
     }
 
     // ============ RENDER THEORY RESULTS ============
-// ============ RENDER THEORY RESULTS ============
-async function renderTheoryResults(attempt) {
-  if (!attempt) {
-    document.getElementById('results-list').innerHTML = `
-      <div class="error-message">
-        <i class="fas fa-exclamation-circle"></i> Failed to load theory attempt data.
-      </div>
-    `;
-    return { correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0 };
-  }
+    async function renderTheoryResults(attempt) {
+      if (!attempt) {
+        document.getElementById('results-list').innerHTML = `
+          <div class="error-message">
+            <i class="fas fa-exclamation-circle"></i> Failed to load theory attempt data.
+          </div>
+        `;
+        return { correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0 };
+      }
 
-  const resultsList = document.getElementById('results-list');
-  const subject = attempt.examSet?.subject || attempt.subject || "Theory Exam";
-  
-  // Update student info in sidebar
-  document.getElementById('student-name').textContent = attempt.student?.name || attempt.studentName || "-";
-  document.getElementById('student-regnum').textContent = attempt.student?.registrationNumber || attempt.regNum || "-";
-  document.getElementById('exam-subject').textContent = subject;
-  document.getElementById('exam-time').textContent = getTimeString(attempt.submittedAt || attempt.completedAt);
+      const resultsList = document.getElementById('results-list');
+      const subject = attempt.examSet?.subject || attempt.subject || "Theory Exam";
+      
+      // Update student info in sidebar
+      document.getElementById('student-name').textContent = attempt.student?.name || attempt.studentName || "-";
+      document.getElementById('student-regnum').textContent = attempt.student?.registrationNumber || attempt.regNum || "-";
+      document.getElementById('exam-subject').textContent = subject;
+      document.getElementById('exam-time').textContent = getTimeString(attempt.submittedAt || attempt.completedAt);
 
-  resultsList.innerHTML = `
-    <div class="content-header">
-      <div class="content-title">
-        <i class="fas fa-chart-pie" style="color: #fbbf24;"></i> Theory Exam Results
-      </div>
-      <div class="content-subject">${subject}</div>
-    </div>
-  `;
+      resultsList.innerHTML = `
+        <div class="content-header">
+          <div class="content-title">
+            <i class="fas fa-chart-pie" style="color: #fbbf24;"></i> Theory Exam Results
+          </div>
+          <div class="content-subject">${subject}</div>
+        </div>
+      `;
 
-  const allAnswers = attempt.answers || [];
-  
-  if (!allAnswers || allAnswers.length === 0) {
-    resultsList.innerHTML += `
-      <div class="error-message">
-        <i class="fas fa-exclamation-circle"></i> No answers found.
-      </div>
-    `;
-    return { correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0 };
-  }
+      const allAnswers = attempt.answers || [];
+      
+      if (!allAnswers || allAnswers.length === 0) {
+        resultsList.innerHTML += `
+          <div class="error-message">
+            <i class="fas fa-exclamation-circle"></i> No answers found.
+          </div>
+        `;
+        return { correct: 0, wrong: 0, pending: 0, unanswered: 0, percent: 0, total: 0 };
+      }
 
-  let totalMarks = 0;
-  let obtainedMarks = 0;
-  let pendingCount = 0;
-  let gradedCount = 0;
+      let totalMarks = 0;
+      let obtainedMarks = 0;
+      let pendingCount = 0;
+      let gradedCount = 0;
 
-  for (let i = 0; i < allAnswers.length; i++) {
-    const ans = allAnswers[i];
-    const question = ans.question || {};
-    const qNum = i + 1;
-    const maxMarks = question.maxMarks || ans.maxMarks || 10;
-    const earnedMarks = ans.score !== undefined ? ans.score : 0;
-    const isGraded = ans.isGraded !== false;
-    const status = isGraded ? "graded" : "pending";
+      for (let i = 0; i < allAnswers.length; i++) {
+        const ans = allAnswers[i];
+        const question = ans.question || {};
+        const qNum = i + 1;
+        const maxMarks = question.maxMarks || ans.maxMarks || 10;
+        const earnedMarks = ans.score !== undefined ? ans.score : 0;
+        const isGraded = ans.isGraded !== false;
 
-    totalMarks += maxMarks;
-    if (isGraded) {
-      obtainedMarks += earnedMarks;
-      gradedCount++;
-    } else {
-      pendingCount++;
+        totalMarks += maxMarks;
+        if (isGraded) {
+          obtainedMarks += earnedMarks;
+          gradedCount++;
+        } else {
+          pendingCount++;
+        }
+
+        const statusClass = isGraded ? "correct" : "theory";
+        const statusBadge = !isGraded ? "Pending Review" : `${earnedMarks}/${maxMarks}`;
+        const statusColor = !isGraded ? "#1e90ff" : "#10b981";
+
+        let questionText = normalizeQuestionMath(question.question || question.text || "Question");
+        questionText = cleanupQuestionHtml(questionText);
+
+        let answerDisplay = `<p>${stripHtml(ans.answerText) || "No text answer"}</p>`;
+        
+        if (ans.answerImage) {
+          answerDisplay += `<img src="${ans.answerImage}" alt="Student answer" style="max-width: 100%; margin-top: 0.5rem;">`;
+        }
+
+        const feedbackSection = ans.feedback ? `
+          <div class="explanation-box">
+            <div class="explanation-summary">
+              <i class="fas fa-comment-dots"></i> Feedback
+            </div>
+            <div class="explanation-content">${cleanupQuestionHtml(normalizeQuestionMath(ans.feedback))}</div>
+          </div>
+        ` : "";
+
+        resultsList.innerHTML += `
+          <div class="question-card ${statusClass}">
+            <div class="question-text">
+              <span class="question-number">${qNum}</span>
+              <div>
+                <div>${questionText}</div>
+                <div style="font-size: 0.85rem; color: #6b7280; margin-top: 0.5rem;">Max Marks: <strong>${maxMarks}</strong></div>
+              </div>
+            </div>
+            
+            <div class="answer-section">
+              <div class="answer-label">Your Answer</div>
+              <div class="theory-answer-display">
+                ${answerDisplay}
+              </div>
+            </div>
+
+            <div class="answer-section">
+              <div class="answer-label">Score</div>
+              <div class="answer-content">
+                <span class="answer-pill" style="background: ${statusColor}20; color: ${statusColor};">
+                  ${statusBadge}
+                </span>
+              </div>
+            </div>
+
+            ${feedbackSection}
+          </div>
+        `;
+      }
+
+      // Rerender MathJax after all content is added
+      rerenderMathJax(resultsList);
+
+      const percentage = totalMarks > 0 ? Math.round((obtainedMarks / totalMarks) * 100) : 0;
+
+      return {
+        correct: gradedCount,
+        wrong: 0,
+        pending: pendingCount,
+        unanswered: 0,
+        percent: percentage,
+        total: allAnswers.length,
+        scoreDisplay: `${obtainedMarks}/${totalMarks}`
+      };
     }
 
-    const statusClass = isGraded ? "correct" : "theory";
-    const statusBadge = !isGraded ? "Pending Review" : `${earnedMarks}/${maxMarks}`;
-    const statusColor = !isGraded ? "#1e90ff" : "#10b981";
-
-    let answerDisplay = `<p>${stripHtml(ans.answerText) || "No text answer"}</p>`;
-    
-    if (ans.answerImage) {
-      answerDisplay += `<img src="${ans.answerImage}" alt="Student answer" style="max-width: 100%; margin-top: 0.5rem;">`;
-    }
-
-    const feedbackSection = ans.feedback ? `
-      <div class="explanation-box">
-        <div class="explanation-summary">
-          <i class="fas fa-comment-dots"></i> Feedback
-        </div>
-        <div class="explanation-content">${ans.feedback}</div>
-      </div>
-    ` : "";
-
-    resultsList.innerHTML += `
-      <div class="question-card ${statusClass}">
-        <div class="question-text">
-          <span class="question-number">${qNum}</span>
-          <div>
-            <div>${normalizeQuestionMath(stripHtml(question.text || "Question")) || "Question"}</div>
-            <div style="font-size: 0.85rem; color: #6b7280; margin-top: 0.5rem;">Max Marks: <strong>${maxMarks}</strong></div>
-          </div>
-        </div>
-        
-        <div class="answer-section">
-          <div class="answer-label">Your Answer</div>
-          <div class="theory-answer-display">
-            ${answerDisplay}
-          </div>
-        </div>
-
-        <div class="answer-section">
-          <div class="answer-label">Score</div>
-          <div class="answer-content">
-            <span class="answer-pill" style="background: ${statusColor}20; color: ${statusColor};">
-              ${statusBadge}
-            </span>
-          </div>
-        </div>
-
-        ${feedbackSection}
-      </div>
-    `;
-  }
-
-  const percentage = totalMarks > 0 ? Math.round((obtainedMarks / totalMarks) * 100) : 0;
-
-  return {
-    correct: gradedCount,
-    wrong: 0,
-    pending: pendingCount,
-    unanswered: 0,
-    percent: percentage,
-    total: allAnswers.length,
-    scoreDisplay: `${obtainedMarks}/${totalMarks}`
-  };
-}        
-
-        
-                
     // ============ MAIN ============
     async function main() {
       try {
@@ -1444,6 +1443,6 @@ async function renderTheoryResults(attempt) {
         }
       };
     });
-  </script>
+</script>
 </body>
 </html>
