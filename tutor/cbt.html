@@ -399,16 +399,17 @@ window.MathJax = {
     let hasRedirected = false;
 
     // ============ LOCAL STORAGE KEYS ============
-    const LS_KEYS = {
-        ANSWERS: 'cbt_user_answers',
-        SHUFFLED_QUESTIONS: 'cbt_shuffled_questions',
-        EXAM_INFO: 'cbt_exam_info',
-        ATTEMPT_ID: 'cbt_attempt_id',
-        EXAM_DATA: 'cbt_exam_data',
-        CURRENT_QUESTION: 'cbt_current_question',
-        START_TIME: 'cbt_start_time',
-        IMAGE_ANSWERS: 'cbt_image_answers'
-    };
+const LS_KEYS = {
+    ANSWERS: 'cbt_user_answers',
+    SHUFFLED_QUESTIONS: 'cbt_shuffled_questions',
+    EXAM_INFO: 'cbt_exam_info',
+    ATTEMPT_ID: 'cbt_attempt_id',
+    EXAM_DATA: 'cbt_exam_data',
+    CURRENT_QUESTION: 'cbt_current_question',
+    START_TIME: 'cbt_start_time',
+    IMAGE_ANSWERS: 'cbt_image_answers',
+    EXAM_ID: 'cbt_exam_id'  // ADD THIS
+};
 const SESSION_TIMEOUT = 10000; // 10 seconds in milliseconds
 const LS_KEYS_SESSION = {
     ...LS_KEYS,
@@ -431,12 +432,12 @@ function isSessionValid() {
 }
 
 function clearSessionButKeepReport() {
-    // Clear only exam session data, NOT report data
     removeFromLS(LS_KEYS.ANSWERS);
     removeFromLS(LS_KEYS.CURRENT_QUESTION);
     removeFromLS(LS_KEYS.SHUFFLED_QUESTIONS);
     removeFromLS(LS_KEYS.IMAGE_ANSWERS);
     removeFromLS(LS_KEYS.START_TIME);
+    removeFromLS(LS_KEYS.EXAM_ID);  // ADD THIS
     removeFromLS(LS_KEYS_SESSION.SESSION_TIMESTAMP);
     
     console.log("✓ Session cleared (report data preserved)");
@@ -815,10 +816,20 @@ function clearSessionButKeepReport() {
     console.log("✓ All exam data persisted to localStorage");
 }
 
-    // ============ RESTORE FROM LS ============
-    function restoreExamData() {
+// ============ RESTORE FROM LS ============
+function restoreExamData() {
+    // Check if this is a NEW exam session (different from last one)
+    const storedExamId = getFromLS(LS_KEYS.EXAM_ID);
+    if (storedExamId && storedExamId !== examSet._id) {
+        console.log("⚠ Different exam detected, clearing old session");
+        clearSessionButKeepReport();
+        userAnswers = {};
+        currentQ = 0;
+        imageAnswers = {};
+        examStartTime = Date.now();
+    } 
     // Check if session is still valid
-    if (!isSessionValid()) {
+    else if (!isSessionValid()) {
         console.log("⚠ Session expired, starting fresh");
         clearSessionButKeepReport();
         userAnswers = {};
@@ -1655,6 +1666,8 @@ function renderTheoryQuestion(idx, q, qa, total) {
                         type: "cbt"
                     };
                     saveToLS(LS_KEYS.SHUFFLED_QUESTIONS, examData);
+                   
+saveToLS(LS_KEYS.EXAM_ID, examSet._id);
                 }
             }
 
