@@ -259,7 +259,7 @@ forms.login.addEventListener('submit', async function(e) {
                         default: roleMsg = "Welcome, Student!";
                     }
                     showStatusModal("success", "Login Successful", roleMsg, false);
-                    setTimeout(() => { window.location.href = (role === 'superadmin') ? "supaadmin.html" : "loader.html"; }, 1300);
+                    setTimeout(() => { window.location.href = (role === 'superadmin') ? "supaadmin.html" : "landing-dash"; }, 1300);
                     await setLoginLoading(false);
                     return;
                 }
