@@ -265,7 +265,7 @@ forms.login.addEventListener('submit', async function(e) {
                 }
             } catch {
                 showStatusModal("success", "Login Successful", "You have been logged in!", false);
-                setTimeout(() => { window.location.href = "loader.html"; }, 1200);
+                setTimeout(() => { window.location.href = "landing-dash"; }, 1200);
             }
             await setLoginLoading(false);
             return;
