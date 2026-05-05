@@ -710,7 +710,324 @@
     </footer>
 
     <script>
-        // [Include all the original JavaScript code here, but add these enhancements]
+            // === CONFIG ===
+    const API_URL = "https://examguide.onrender.com/api/";
+    const BACKEND_URL = "https://examguard-jmjv.onrender.com";
+    const token = localStorage.getItem("token");
+    let currentUser = "Guest";
+    let currentUserId = null;
+    let examSet = "";
+
+    // --- Parse examSetId from URL ---
+    function getQueryParam(name) {
+      const url = new URL(window.location.href);
+      return url.searchParams.get(name);
+    }
+    const examSetId = getQueryParam('examSet');
+
+    // On load: authenticate user
+    async function fetchCurrentUser() {
+      if (!token) {
+        window.location.href = "mock.html";
+        return;
+      }
+      try {
+        const resp = await fetch(API_URL + "auth/me", {
+          headers: { Authorization: "Bearer " + token }
+        });
+        const data = await resp.json();
+        if (resp.ok && data.user && data.user.username) {
+          currentUser = data.user.username;
+          currentUserId = data.user._id || data.user.id;
+          document.getElementById('candidateName').innerText = "CANDIDATE: " + currentUser;
+        } else {
+          localStorage.removeItem('token');
+          window.location.href = "mock.html";
+        }
+      } catch (e) {
+        localStorage.removeItem('token');
+        window.location.href = "mock.html";
+      }
+    }
+    fetchCurrentUser();
+
+    // Utility: mark quiz task as done for today
+    async function markQuizTaskDoneOnServer(userId, quizId) {
+      const today = new Date();
+      const dateStr = `${today.getFullYear()}-${(today.getMonth()+1).toString().padStart(2,"0")}-${today.getDate().toString().padStart(2,"0")}`;
+      try {
+        await fetch(`${BACKEND_URL}/api/users/${userId}/daily-tasks`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: 'Bearer ' + (localStorage.getItem("token") || "")
+          },
+          body: JSON.stringify({ date: dateStr, taskId: `quiz-${quizId}` })
+        });
+      } catch (e) { /* fail silently */ }
+    }
+
+    // Modal logic
+    function closeInstructionModal() {
+      document.getElementById('instructionModal').style.display = 'none';
+      window._cbtReadyToStart = true;
+      if (typeof window._cbtLoadQuestions === 'function') window._cbtLoadQuestions();
+    }
+    window.onload = function() {
+      document.getElementById('instructionModal').style.display = 'flex';
+    };
+
+    // Session constants
+    const MAX_SESSION_QUESTIONS = 60;
+    const SESSION_TIME_LIMIT = 40 * 60;
+
+    // State
+    let questions = [];
+    let currentQuestionIndex = 0;
+    let userAnswers = {};
+    let timeLimit = SESSION_TIME_LIMIT;
+    let timeRemaining = timeLimit;
+    let timerInterval;
+
+    // Exam selection modal logic (not used here, but kept for single page multi-exam use)
+    function showExamSelectionModal(activeSets, proceedCallback) {
+      const modal = document.getElementById('examSelectionModal');
+      const btnsDiv = document.getElementById('examButtons');
+      btnsDiv.innerHTML = "";
+      activeSets.forEach((set, idx) => {
+        const btn = document.createElement('button');
+        btn.className = "exam-select-btn";
+        btn.innerText = set.title || `Exam #${idx+1}`;
+        btn.onclick = () => {
+          modal.style.display = "none";
+          proceedCallback(set);
+        };
+        btnsDiv.appendChild(btn);
+      });
+      modal.style.display = "flex";
+    }
+
+    // Defer loading until instructions closed
+    window._cbtLoadQuestions = async function loadQuestions(selectedExamSet = null) {
+      if (!window._cbtReadyToStart) return;
+      if (!examSetId) {
+        document.getElementById("examTitle").textContent = "No Exam Selected";
+        document.getElementById("questionBox").innerHTML = "";
+        document.getElementById('navButtons').style.display = "none";
+        document.getElementById('noActiveSet').style.display = "";
+        document.getElementById("timer").innerText = "Error!";
+        return;
+      }
+      try {
+        // 1. Get all questions for the set
+        const res = await fetch(`${API_URL}questionsets/${examSetId}`, {
+          headers: { Authorization: "Bearer " + token }
+        });
+        if (!res.ok) throw new Error("Could not load exam set");
+        const activeSet = await res.json();
+        if (!activeSet || !activeSet.questions || activeSet.questions.length === 0) {
+          document.getElementById("examTitle").textContent = "No Questions Found";
+          document.getElementById("questionBox").innerHTML = "";
+          document.getElementById('navButtons').style.display = "none";
+          document.getElementById('noActiveSet').style.display = "";
+          document.getElementById("timer").innerText = "Error!";
+          return;
+        }
+        document.getElementById('examTitle').textContent = activeSet.title || "CBT Test";
+        examSet = activeSet.title || "CBT Test";
+        const allQuestions = activeSet.questions.slice();
+
+        // 2. Fetch user's previously attempted question IDs for this exam set
+        let answeredIds = [];
+        try {
+          const progressRes = await fetch(`${API_URL}progress?examSet=${encodeURIComponent(examSet)}`, {
+            headers: { Authorization: "Bearer " + token }
+          });
+          if (progressRes.ok) {
+            const { progress } = await progressRes.json();
+            if (progress && Array.isArray(progress.answeredIds)) {
+              answeredIds = progress.answeredIds;
+            }
+          }
+        } catch (e) {
+          // Ignore progress errors, treat as no history
+        }
+
+        // 3. Filter for unseen questions, if any
+        let unseenQuestions = allQuestions.filter(q => !answeredIds.includes(q.id));
+        if (unseenQuestions.length === 0) unseenQuestions = allQuestions.slice();
+
+        // 4. Start a fresh session (no resume of answers/timer)
+        questions = shuffle(unseenQuestions).slice(0, MAX_SESSION_QUESTIONS);
+        userAnswers = {};
+        currentQuestionIndex = 0;
+        timeLimit = SESSION_TIME_LIMIT;
+        timeRemaining = timeLimit;
+
+        document.getElementById('noActiveSet').style.display = "none";
+        document.getElementById('navButtons').style.display = "";
+        renderQuestion();
+        updateTimerDisplay();
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+          updateTimer();
+        }, 1000);
+      } catch (err) {
+        document.getElementById("questionBox").innerHTML =
+          `<p style="color:red;">Failed to load questions. Please refresh or try again later.</p>`;
+        document.getElementById("timer").innerText = "Error!";
+        document.getElementById('navButtons').style.display = "none";
+        console.error(err);
+      }
+    };
+
+    function updateProgressUI() {
+      const total = questions.length;
+      const curr = currentQuestionIndex + 1;
+      document.getElementById("questionCounter").innerText = `Question ${curr} of ${total}`;
+      const percent = total ? (curr/total)*100 : 0;
+      document.getElementById("progressBarFG").style.width = percent + "%";
+    }
+
+    function renderQuestion() {
+      const q = questions[currentQuestionIndex];
+      const container = document.getElementById("questionBox");
+      if (!q) {
+        container.innerHTML = `<div style="color:red;">No question available.</div>`;
+        return;
+      }
+      const questionImageHTML = q.questionImage
+        ? `<div style="margin: 10px 0;"><img src="${q.questionImage}" style="max-width:100%; border-radius:8px;"></div>`
+        : "";
+      const optionsHTML = q.options.map(opt => {
+        const isSelected = userAnswers[q.id] === opt.text;
+        const hasImage = opt.image ? `<img src="${opt.image}" style="max-height:80px; margin-left:10px;">` : "";
+        return `
+          <button onclick="selectAnswer(${q.id}, '${opt.text.replace(/'/g,"\\'")}', this)" class="${isSelected ? 'selected' : ''}">
+            ${opt.text}${hasImage}
+          </button>`;
+      }).join('');
+      container.innerHTML = `
+        <div class="question">${currentQuestionIndex + 1}. ${q.question}</div>
+        ${questionImageHTML}
+        <div class="options">${optionsHTML}</div>
+      `;
+      document.getElementById("prevBtn").disabled = currentQuestionIndex === 0;
+      document.getElementById("nextBtn").innerText =
+        currentQuestionIndex === questions.length - 1 ? 'Submit' : 'Next';
+      if (window.MathJax && window.MathJax.typesetPromise) MathJax.typesetPromise();
+      updateProgressUI();
+    }
+
+    function selectAnswer(qid, answer, btn) {
+      userAnswers[qid] = answer;
+      document.querySelectorAll(".options button").forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+    }
+
+    function nextQuestion() {
+      if (currentQuestionIndex < questions.length - 1) {
+        currentQuestionIndex++;
+        renderQuestion();
+      } else {
+        submitTest();
+      }
+    }
+
+    function prevQuestion() {
+      if (currentQuestionIndex > 0) {
+        currentQuestionIndex--;
+        renderQuestion();
+      }
+    }
+
+    function updateTimerDisplay() {
+      const mins = String(Math.floor(timeRemaining / 60)).padStart(2, '0');
+      const secs = String(timeRemaining % 60).padStart(2, '0');
+      document.getElementById("timer").innerText = `Time Remaining: ${mins}:${secs}`;
+    }
+
+    function updateTimer() {
+      if (timeRemaining <= 0) {
+        submitTest();
+        return;
+      }
+      timeRemaining--;
+      updateTimerDisplay();
+    }
+
+    // Add this to your script block in test.html
+
+async function submitTest() {
+  clearInterval(timerInterval);
+
+  // Show spinner on the submit button and disable it
+  const nextBtn = document.getElementById("nextBtn");
+  if (nextBtn) {
+    nextBtn.disabled = true;
+    nextBtn.innerHTML = `<span class="spinner-border"></span>Submitting...`;
+  }
+
+  let score = 0;
+  for (const q of questions) {
+    const userAns = userAnswers[q.id];
+    if (typeof userAns !== "undefined" && userAns === q.answer) score++;
+  }
+  const timeTaken = SESSION_TIME_LIMIT - timeRemaining;
+
+  const payload = {
+    examSet: examSetId,
+    answers: userAnswers,
+    score,
+    timeTaken,
+    questions: questions.map(q => ({
+      id: q.id,
+      question: q.question,
+      answer: q.answer,
+      options: q.options,
+      explanation: q.explanation,
+      questionImage: q.questionImage || null
+    }))
+  };
+  try {
+    const response = await fetch(API_URL + "results", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+      alert("Failed to save result. Please try again.");
+      // Restore button
+      if (nextBtn) {
+        nextBtn.disabled = false;
+        nextBtn.innerHTML = 'Submit';
+      }
+      return;
+    }
+    if (currentUserId && examSetId) {
+      try { await markQuizTaskDoneOnServer(currentUserId, examSetId); } catch(e) {}
+    }
+    window.location.href = `result-summary?examSet=${encodeURIComponent(examSetId)}`;
+  } catch (err) {
+    alert("Network error. Please try again.");
+    // Restore button
+    if (nextBtn) {
+      nextBtn.disabled = false;
+      nextBtn.innerHTML = 'Submit';
+    }
+  }
+}
+
+    function shuffle(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
         document.getElementById('year').textContent = new Date().getFullYear();
 
         // Enhanced timer styling
