@@ -934,11 +934,10 @@
       </div>
     </div>
   </div>
-
 <script>
 "use strict";
 
-    const API_BASE = "https://examguide.onrender.com";
+    const API_BASE = "https://examguard-jmvj.onrender.com/api";
     
     // ============ LOCAL STORAGE KEYS ============
     const LS_KEYS = {
@@ -947,7 +946,9 @@
       SHUFFLED_QUESTIONS: 'cbt_shuffled_questions',
       IMAGE_ANSWERS: 'cbt_image_answers',
       EXAM_TYPE: 'exam_type',
-      ATTEMPT_ID: 'cbt_attempt_id'
+      ATTEMPT_ID: 'cbt_attempt_id',
+      START_TIME: 'cbt_start_time',
+      EXAM_SET_ID: 'cbt_exam_set_id'
     };
 
     // ============ DATA RETRIEVAL ============
@@ -970,37 +971,52 @@
       }
     }
 
+    function saveToLS(key, data) {
+      try {
+        localStorage.setItem(key, JSON.stringify(data));
+      } catch (err) {
+        console.warn(`Failed to save ${key}:`, err);
+      }
+    }
+
+    function removeFromLS(key) {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    }
+
     let examInfo = getFromLS(LS_KEYS.EXAM_INFO) || {};
     let answers = getFromLS(LS_KEYS.ANSWERS) || {};
     let shuffledQuestions = getFromLS(LS_KEYS.SHUFFLED_QUESTIONS) || {};
     let imageAnswers = getFromLS(LS_KEYS.IMAGE_ANSWERS) || {};
     
-    // Get exam type from multiple possible sources
     let examType = examInfo.type || getFromLSString(LS_KEYS.EXAM_TYPE) || 'cbt';
-    
-    // Get attempt ID from multiple possible sources
     let attemptId = examInfo.attemptId || getFromLSString(LS_KEYS.ATTEMPT_ID);
+    let examSetId = examInfo.examSetId || getFromLSString(LS_KEYS.EXAM_SET_ID);
 
-    console.log("Loaded exam info:", examInfo);
-    console.log("Loaded answers:", answers);
-    console.log("Exam type:", examType);
-    console.log("Attempt ID:", attemptId);
+    let savedReportId = null;
+
+    console.log("✓ Loaded exam info:", examInfo);
+    console.log("✓ Loaded answers:", answers);
+    console.log("✓ Exam type:", examType);
+    console.log("✓ Attempt ID:", attemptId);
+    console.log("✓ Exam Set ID:", examSetId);
 
     // ============ API CALLS ============
     async function fetchQuestions() {
       const accessCode = localStorage.getItem("exam_access_code");
       if (!accessCode) return { questions: [], subject: "", examType: "cbt" };
       try {
-        const res = await fetch(`${API_BASE}/api/exam-set/by-access?accessCode=${encodeURIComponent(accessCode)}`);
+        const res = await fetch(`${API_BASE}/exam-set/by-access?accessCode=${encodeURIComponent(accessCode)}`);
         if (!res.ok) return { questions: [], subject: "", examType: "cbt" };
         const js = await res.json();
         return { 
           questions: js.questions || [], 
           subject: js.examSet?.subject || "",
-          examType: js.examSet?.examType || "cbt"
+          examType: js.examSet?.examType || "cbt",
+          examSetId: js.examSet?._id
         };
       } catch (err) {
-        console.error("Fetch questions error:", err);
+        console.error("❌ Fetch questions error:", err);
         return { questions: [], subject: "", examType: "cbt" };
       }
     }
@@ -1008,37 +1024,109 @@
     async function fetchTheoryAttempt(attemptId) {
       try {
         if (!attemptId) return null;
-        const token = localStorage.getItem("student_jwt_token");
-        console.log("Fetching theory attempt with ID:", attemptId);
-        const res = await fetch(`${API_BASE}/api/theory-attempts/${attemptId}`, {
+        const token = localStorage.getItem("token");
+        console.log("📥 Fetching theory attempt with ID:", attemptId);
+        const res = await fetch(`${API_BASE}/theory-attempts/${attemptId}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (!res.ok) {
-          console.error("Failed to fetch attempt, status:", res.status);
+          console.error("❌ Failed to fetch attempt, status:", res.status);
           return null;
         }
         const data = await res.json();
-        console.log("Theory attempt data:", data);
+        console.log("✓ Theory attempt data:", data);
         return data;
       } catch (err) {
-        console.error("Fetch theory attempt error:", err);
+        console.error("❌ Fetch theory attempt error:", err);
         return null;
       }
     }
 
-    async function fetchTheoryAnswerDetail(answerId) {
+    /**
+     * Save Report to Backend
+     */
+    async function saveReportToBackend(reportData) {
       try {
-        if (!answerId) return null;
-        const token = localStorage.getItem("student_jwt_token");
-        const res = await fetch(`${API_BASE}/api/theory-answers/${answerId}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+        const token = localStorage.getItem("token");
+        if (!token) {
+          console.warn("⚠ No token found. Skipping backend save.");
+          return null;
+        }
+
+        console.log("📤 Saving report to backend...");
+
+        const response = await fetch(`${API_BASE}/exam-reports`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify(reportData)
         });
-        if (!res.ok) return null;
-        return await res.json();
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Failed to save report");
+        }
+
+        const savedData = await response.json();
+        console.log("✓ Report saved to backend:", savedData.report._id);
+        return savedData.report._id;
+
       } catch (err) {
-        console.error("Fetch answer detail error:", err);
+        console.error("❌ Error saving report:", err);
         return null;
       }
+    }
+
+    /**
+     * Build Report Payload
+     */
+    function buildReportPayload(scores, questions, subject, examSetId) {
+      const startTime = getFromLSString(LS_KEYS.START_TIME);
+      const currentTime = new Date().getTime();
+      const startTimeMs = startTime ? new Date(startTime).getTime() : currentTime - (examInfo.duration * 1000);
+      const timeSpentMs = currentTime - startTimeMs;
+      const timeSpentSeconds = Math.floor(timeSpentMs / 1000);
+
+      // Build answer details
+      const answerDetails = (questions || []).map((q, idx) => {
+        const userAnswer = answers[q._id] || answers[q.id] || answers[idx] || null;
+        const isCorrect = userAnswer === q.answer;
+
+        return {
+          questionId: q._id || q.id,
+          questionText: q.question || "",
+          questionType: "cbt",
+          userAnswer: userAnswer,
+          correctAnswer: q.answer,
+          isCorrect: isCorrect,
+          explanation: q.explanation || "",
+          points: isCorrect ? 1 : 0
+        };
+      });
+
+      const reportPayload = {
+        examSetId: examSetId || examInfo.examSetId,
+        attemptId: attemptId || `attempt_${Date.now()}`,
+        subject: subject || examInfo.subject,
+        title: examInfo.title || subject || examInfo.subject,
+        examType: "cbt",
+        totalQuestions: scores.total,
+        attemptedQuestions: scores.total - scores.unanswered,
+        correctAnswers: scores.correct,
+        wrongAnswers: scores.wrong,
+        skippedQuestions: scores.unanswered,
+        percentage: scores.percent,
+        score: scores.correct,
+        totalDuration: examInfo.duration,
+        timeSpent: timeSpentSeconds,
+        startTime: startTime || new Date().toISOString(),
+        endTime: new Date().toISOString(),
+        answers: answerDetails
+      };
+
+      return reportPayload;
     }
 
     // ============ UTILITY FUNCTIONS ============
@@ -1074,14 +1162,12 @@
     // ============ HTML CLEANUP FOR MATHJAX ============
     function cleanupQuestionHtml(html) {
       if (!html) return html;
-      // Remove extra <p> tags that cause line breaks
       html = html
-        .replace(/<p>\s*<\/p>/g, '') // Remove empty paragraphs
-        .replace(/<\/p>\s*<p>/g, ' ') // Replace p-to-p breaks with space
-        .replace(/<p>/g, '') // Remove opening p tags
-        .replace(/<\/p>/g, ''); // Remove closing p tags
+        .replace(/<p>\s*<\/p>/g, '')
+        .replace(/<\/p>\s*<p>/g, ' ')
+        .replace(/<p>/g, '')
+        .replace(/<\/p>/g, '');
       
-      // Wrap in single paragraph if needed
       if (html.trim() && !html.trim().startsWith('<div')) {
         html = `<p>${html}</p>`;
       }
@@ -1104,16 +1190,6 @@
           console.warn("MathJax typeset error:", err);
         });
       }
-    }
-
-    function getScoreTally(results) {
-      let correct = 0, pending = 0, unanswered = 0;
-      results.forEach(r => {
-        if (r.status === "correct") correct++;
-        else if (r.status === "pending") pending++;
-        else if (r.status === "unanswered") unanswered++;
-      });
-      return [correct, results.length - correct - pending - unanswered, pending, unanswered];
     }
 
     function feedbackRemark(pct) {
@@ -1159,7 +1235,6 @@
 
       let correct = 0, wrong = 0, unanswered = 0;
 
-      // Use shuffled order if available, otherwise use original order
       const orderedQuestions = shuffledQuestions && shuffledQuestions.length > 0 
         ? shuffledQuestions.map(idx => questions[idx]) 
         : questions;
@@ -1180,7 +1255,6 @@
         let questionHtml = normalizeQuestionMath(q.question || '');
         questionHtml = cleanupQuestionHtml(questionHtml);
         
-        // Build detailed options with content
         let optionsHtml = '';
         if (q.options && Array.isArray(q.options)) {
           optionsHtml = q.options.map(opt => {
@@ -1244,7 +1318,6 @@
         `;
       }
 
-      // Rerender MathJax after all content is added
       rerenderMathJax(resultsList);
 
       const totalQuestions = orderedQuestions.length;
@@ -1275,7 +1348,6 @@
       const resultsList = document.getElementById('results-list');
       const subject = attempt.examSet?.subject || attempt.subject || "Theory Exam";
       
-      // Update student info in sidebar
       document.getElementById('student-name').textContent = attempt.student?.name || attempt.studentName || "-";
       document.getElementById('student-regnum').textContent = attempt.student?.registrationNumber || attempt.regNum || "-";
       document.getElementById('exam-subject').textContent = subject;
@@ -1375,7 +1447,6 @@
         `;
       }
 
-      // Rerender MathJax after all content is added
       rerenderMathJax(resultsList);
 
       const percentage = totalMarks > 0 ? Math.round((obtainedMarks / totalMarks) * 100) : 0;
@@ -1394,16 +1465,14 @@
     // ============ MAIN ============
     async function main() {
       try {
-        // Display student info
         document.getElementById('student-name').textContent = examInfo.student || "-";
         document.getElementById('student-regnum').textContent = examInfo.matric || "-";
         document.getElementById('exam-subject').textContent = examInfo.subject || examInfo.course || "-";
         document.getElementById('exam-time').textContent = getTimeString(examInfo.timeCompleted) || "-";
 
-        console.log("Using exam type:", examType);
-        console.log("Using attempt ID:", attemptId);
+        console.log("🔍 Using exam type:", examType);
+        console.log("🔍 Using attempt ID:", attemptId);
         
-        // Update exam type badge
         const badge = document.getElementById('exam-type-display');
         if (examType === "theory") {
           badge.textContent = "📄 THEORY";
@@ -1419,11 +1488,11 @@
         }
 
         let scores;
+        let fetchedExamSetId = examSetId;
 
         if (examType === "theory") {
-          // Render theory results
           if (!attemptId) {
-            console.error("No attempt ID available for theory exam");
+            console.error("❌ No attempt ID available for theory exam");
             document.getElementById('results-list').innerHTML = `
               <div class="error-message">
                 <i class="fas fa-exclamation-circle"></i>
@@ -1438,8 +1507,9 @@
           scores = await renderTheoryResults(attempt);
 
         } else {
-          // Render CBT results
-          const { questions, subject } = await fetchQuestions();
+          const { questions, subject, examSetId: fetchedId } = await fetchQuestions();
+          fetchedExamSetId = fetchedId || examSetId;
+
           if (subject) {
             document.getElementById('exam-subject').textContent = subject;
           }
@@ -1456,13 +1526,44 @@
           }
 
           scores = await renderCBTResults(questions);
+
+          // ============ SAVE REPORT TO BACKEND ============
+          if (scores && scores.total > 0) {
+            try {
+              const reportPayload = buildReportPayload(scores, questions, subject, fetchedExamSetId);
+              console.log("📋 Report payload:", reportPayload);
+
+              const reportId = await saveReportToBackend(reportPayload);
+              if (reportId) {
+                savedReportId = reportId;
+                saveToLS("lastReportId", reportId);
+                console.log("✓ Report saved with ID:", reportId);
+
+                // Show success message
+                const successMsg = document.createElement('div');
+                successMsg.className = 'success-message';
+                successMsg.innerHTML = `
+                  <i class="fas fa-check-circle"></i> 
+                  <strong>Report saved successfully!</strong> You can view it anytime from your dashboard.
+                `;
+                document.getElementById('results-list').insertBefore(successMsg, document.getElementById('results-list').firstChild);
+              }
+            } catch (saveErr) {
+              console.warn("⚠ Failed to save report to backend:", saveErr);
+            }
+          }
         }
 
-        // Update score card
         updateScoreCard(scores);
 
+        // Clear exam session data
+        removeFromLS(LS_KEYS.ANSWERS);
+        removeFromLS(LS_KEYS.SHUFFLED_QUESTIONS);
+        removeFromLS(LS_KEYS.ATTEMPT_ID);
+        removeFromLS(LS_KEYS.START_TIME);
+
       } catch (err) {
-        console.error("Main error:", err);
+        console.error("❌ Main error:", err);
         document.getElementById('results-list').innerHTML = `
           <div class="error-message">
             <i class="fas fa-exclamation-circle"></i>
@@ -1491,7 +1592,7 @@
             await MathJax.typesetPromise();
             await new Promise(r => setTimeout(r, 200));
           } catch (err) {
-            console.warn("MathJax error:", err && err.message);
+            console.warn("⚠ MathJax error:", err && err.message);
           }
         }
 
@@ -1536,19 +1637,72 @@
             }
           }
           
-          const filename = `exam-report-${new Date().toISOString().slice(0, 10)}.pdf`;
+          const filename = `exam-report-${examInfo.subject || 'exam'}-${new Date().toISOString().slice(0, 10)}.pdf`;
           pdf.save(filename);
 
           btn.disabled = false;
           btn.innerHTML = '<i class="fas fa-download"></i> Download PDF';
         } catch (err) {
-          console.error("PDF generation error:", err);
+          console.error("❌ PDF generation error:", err);
           alert("Failed to generate PDF. Please try again.");
           btn.disabled = false;
           btn.innerHTML = '<i class="fas fa-download"></i> Download PDF';
         }
       };
     });
+
+    // ============ UTILITY: Retake Exam ============
+    function retakeExam() {
+      if (confirm("Are you sure? All your answers will be cleared.")) {
+        removeFromLS(LS_KEYS.EXAM_INFO);
+        removeFromLS(LS_KEYS.ANSWERS);
+        removeFromLS(LS_KEYS.SHUFFLED_QUESTIONS);
+        removeFromLS(LS_KEYS.ATTEMPT_ID);
+        removeFromLS(LS_KEYS.START_TIME);
+        window.location.href = "mock.html";
+      }
+    }
+
+    // ============ UTILITY: Go Back to Dashboard ============
+    function goToDashboard() {
+      window.location.href = "landing-dash.html";
+    }
+
+    // Success Message Styles (Add to CSS)
+    const styleSheet = document.createElement('style');
+    styleSheet.textContent = `
+      .success-message {
+        background: #dcfce7;
+        border: 2px solid #10b981;
+        color: #166534;
+        padding: 1rem;
+        border-radius: 0.75rem;
+        margin: 1rem 0;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+
+      .error-message {
+        background: #fee2e2;
+        border: 2px solid #ef4444;
+        color: #991b1b;
+        padding: 1rem;
+        border-radius: 0.75rem;
+        margin: 1rem 0;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    `;
+    document.head.appendChild(styleSheet);
 </script>
 </body>
 </html>
