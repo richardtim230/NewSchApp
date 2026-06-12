@@ -32,7 +32,7 @@ const COMMENTS_API = API_BASE + "/posts";
               console.warn("No user token found. User is not logged in, cannot award reading points.");
               return;
             }
-            fetch('https://examguard-jmvj.onrender.com/api/rewards/reading', {
+            fetch('https://examguide.onrender.com/api/rewards/reading', {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
