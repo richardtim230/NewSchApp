@@ -1381,38 +1381,202 @@ function renderTheoryQuestion(idx, q, qa, total) {
 
     // ============ SUBMIT HANDLERS ============
     async function submitCBTExam() {
-        if (isSubmitting) return;
-        isSubmitting = true;
+  if (isSubmitting) return;
+  isSubmitting = true;
 
-        try {
-            persistAllExamData();
-            
-            saveToLS(LS_KEYS.EXAM_INFO, {
-                subject: examSet.subject,
-                matric: document.getElementById('student-regnum').innerText,
-                student: (studentData.user?.fullName || studentData.user?.fullname || studentData.user?.name || ''),
-                course: courseCode,
-                timeCompleted: new Date().toISOString(),
-                type: examType,
-                answers: userAnswers,
-                totalQuestions: examData.questions.length,
-                duration: duration
-            });
+  try {
+    persistAllExamData();
+    
+    const examInfoData = {
+      subject: examSet.subject,
+      matric: document.getElementById('student-regnum').innerText,
+      student: (studentData.user?.fullName || studentData.user?.fullname || studentData.user?.name || ''),
+      course: courseCode,
+      timeCompleted: new Date().toISOString(),
+      type: examType,
+      answers: userAnswers,
+      totalQuestions: examData.questions.length,
+      duration: duration
+    };
 
-            saveToLS(LS_KEYS.SHUFFLED_QUESTIONS, examData);
-            removeFromLS(LS_KEYS.ATTEMPT_ID);
+    saveToLS(LS_KEYS.EXAM_INFO, examInfoData);
+    saveToLS(LS_KEYS.SHUFFLED_QUESTIONS, examData);
 
-            console.log("✓ Exam data saved to localStorage");
+    console.log("✓ Exam data saved to localStorage");
 
-            setTimeout(() => {
-                window.location.href = "results-summary";
-            }, 500);
-        } catch (err) {
-            console.error("Submit error:", err);
-            isSubmitting = false;
-            showModal("An error occurred while submitting. Please try again.", { icon: true });
-        }
+    // ============ CALCULATE SCORES ============
+    const { correctCount, wrongCount, skippedCount } = calculateExamScores(
+      userAnswers,
+      examData.questions
+    );
+
+    const totalQuestions = examData.questions.length;
+    const attemptedQuestions = Object.keys(userAnswers).length;
+    const percentage = totalQuestions > 0 
+      ? Math.round((correctCount / totalQuestions) * 100) 
+      : 0;
+
+    // ============ BUILD REPORT PAYLOAD ============
+    const reportPayload = {
+      examSetId: examSet._id,
+      attemptId: getFromLS(LS_KEYS.ATTEMPT_ID) || `attempt_${Date.now()}`,
+      subject: examSet.subject,
+      title: examSet.title || examSet.subject,
+      examType: "cbt",
+      totalQuestions: totalQuestions,
+      attemptedQuestions: attemptedQuestions,
+      correctAnswers: correctCount,
+      wrongAnswers: wrongCount,
+      skippedQuestions: skippedCount,
+      percentage: percentage,
+      score: correctCount,
+      totalDuration: duration,
+      timeSpent: duration - (remainingTime || 0),
+      startTime: getFromLS(LS_KEYS.START_TIME) || new Date().toISOString(),
+      endTime: new Date().toISOString(),
+      answers: buildAnswerDetails(userAnswers, examData.questions)
+    };
+
+    console.log("📊 Report payload prepared:", reportPayload);
+
+    // ============ SAVE REPORT TO BACKEND ============
+    const token = localStorage.getItem("token");
+    if (!token) {
+      console.warn("⚠ No token found. Skipping backend save.");
+      // Continue with local save only
+      removeFromLS(LS_KEYS.ATTEMPT_ID);
+      setTimeout(() => {
+        window.location.href = "results-summary";
+      }, 500);
+      return;
     }
+
+    const reportResponse = await fetch(`${API_BASE}/exam-reports`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify(reportPayload)
+    });
+
+    if (!reportResponse.ok) {
+      const errorData = await reportResponse.json();
+      throw new Error(errorData.error || "Failed to save report");
+    }
+
+    const savedReport = await reportResponse.json();
+    console.log("✓ Report saved to backend:", savedReport.report._id);
+
+    // ============ SAVE REPORT ID TO LOCAL STORAGE ============
+    saveToLS("lastReportId", savedReport.report._id);
+    removeFromLS(LS_KEYS.ATTEMPT_ID);
+
+    // ============ SEND PUSH NOTIFICATION ============
+    try {
+      await sendExamCompletionNotification({
+        subject: examSet.subject,
+        percentage: percentage,
+        reportId: savedReport.report._id
+      });
+    } catch (notifErr) {
+      console.warn("⚠ Notification failed (non-blocking):", notifErr.message);
+    }
+
+    console.log("✓ Exam submitted successfully");
+
+    // ============ REDIRECT TO RESULTS PAGE ============
+    setTimeout(() => {
+      window.location.href = `results-summary?reportId=${savedReport.report._id}`;
+    }, 500);
+
+  } catch (err) {
+    console.error("❌ Submit error:", err);
+    isSubmitting = false;
+    showModal(`An error occurred while submitting: ${err.message}. Please try again.`, { icon: true });
+  }
+}
+
+/**
+ * Calculate exam scores from answers
+ */
+function calculateExamScores(answers, questions) {
+  let correctCount = 0;
+  let wrongCount = 0;
+  let skippedCount = 0;
+
+  questions.forEach((question, idx) => {
+    const userAnswer = answers[idx];
+
+    if (userAnswer === undefined || userAnswer === null || userAnswer === '') {
+      skippedCount++;
+    } else if (userAnswer === question.answer) {
+      correctCount++;
+    } else {
+      wrongCount++;
+    }
+  });
+
+  return { correctCount, wrongCount, skippedCount };
+}
+
+/**
+ * Build detailed answer array for report
+ */
+function buildAnswerDetails(answers, questions) {
+  return questions.map((question, idx) => {
+    const userAnswer = answers[idx];
+    const isCorrect = userAnswer === question.answer;
+
+    return {
+      questionId: question._id,
+      questionText: question.question || "",
+      questionType: "cbt",
+      userAnswer: userAnswer || null,
+      correctAnswer: question.answer,
+      isCorrect: isCorrect,
+      explanation: question.explanation || "",
+      points: isCorrect ? 1 : 0
+    };
+  });
+}
+
+/**
+ * Send exam completion notification
+ */
+async function sendExamCompletionNotification(data) {
+  try {
+    // Only send notification if OneSignal is available
+    if (typeof OneSignal === "undefined") {
+      console.warn("⚠ OneSignal not available for notifications");
+      return;
+    }
+
+    const performanceLevel = data.percentage >= 70 
+      ? "excellent" 
+      : data.percentage >= 50 
+      ? "good" 
+      : "needs improvement";
+
+    await OneSignal.push(function() {
+      OneSignal.sendSelfNotification({
+        headings: { en: "✓ Exam Completed!" },
+        contents: { 
+          en: `${data.subject}: ${data.percentage}% - ${performanceLevel}` 
+        },
+        data: {
+          reportId: data.reportId,
+          url: `results-summary?reportId=${data.reportId}`
+        }
+      });
+    });
+
+    console.log("✓ Completion notification sent");
+  } catch (err) {
+    console.warn("⚠ Failed to send notification:", err.message);
+    // Don't throw - this is non-blocking
+  }
+}
 
     async function submitTheoryExamHandler() {
         if (isSubmitting) return;
