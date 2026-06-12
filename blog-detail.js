@@ -1,6 +1,6 @@
 // blog-detail.js -- Ultra-fast blog details page, always uses new endpoints
 
-const API_BASE = "https://examguide.onrender.com/api";
+const API_BASE = "https://examguard-jmvj.onrender.com/api";
 const POSTS_API = API_BASE + "/public/posts";
 const USERS_API = API_BASE + "/users";
 const COMMENTS_API = API_BASE + "/posts";
@@ -32,7 +32,7 @@ const COMMENTS_API = API_BASE + "/posts";
               console.warn("No user token found. User is not logged in, cannot award reading points.");
               return;
             }
-            fetch('https://examguide.onrender.com/api/rewards/reading', {
+            fetch('https://examguard-jmvj.onrender.com/api/rewards/reading', {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -441,4 +441,4 @@ function injectBlogPostJsonLD({ title, image, author, datePublished, description
 function showNotificationModal(title, message, type = "info") {
   // Use your modal, or simply alert for now
   alert(title + ": " + message);
-}
+  }
