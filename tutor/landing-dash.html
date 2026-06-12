@@ -963,7 +963,62 @@
           <div class="stat-value">24/7</div>
         </div>
       </div>
+<!-- ===== EXAM HISTORY SECTION ===== -->
+<div class="student-details-section">
+  <div class="student-details-header">
+    <i class="fas fa-history text-2xl text-blue-600"></i>
+    <div>
+      <h3>Recent Exam Reports</h3>
+      <p class="text-sm text-gray-600">Your recent exam attempts and scores</p>
+    </div>
+  </div>
 
+  <div id="reports-container" class="space-y-4">
+    <div class="text-center text-gray-500 py-8">
+      <i class="fas fa-spinner animate-spin text-2xl"></i>
+      <p>Loading your reports...</p>
+    </div>
+  </div>
+
+  <!-- Load More Button -->
+  <div class="text-center mt-6">
+    <button id="load-more-reports" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+      Load More Reports
+    </button>
+  </div>
+</div>
+
+<!-- ===== STATS SUMMARY SECTION ===== -->
+<div class="quick-stats mt-8">
+  <div class="stat-card">
+    <div class="stat-card-header">
+      <span class="stat-label">Total Attempts</span>
+      <div class="stat-icon">📊</div>
+    </div>
+    <div class="stat-value" id="total-attempts">0</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-header">
+      <span class="stat-label">Average Score</span>
+      <div class="stat-icon">📈</div>
+    </div>
+    <div class="stat-value" id="average-score">0%</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-header">
+      <span class="stat-label">Best Score</span>
+      <div class="stat-icon">🏆</div>
+    </div>
+    <div class="stat-value" id="best-score">0%</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-header">
+      <span class="stat-label">Time Spent</span>
+      <div class="stat-icon">⏱️</div>
+    </div>
+    <div class="stat-value" id="total-time">0h</div>
+  </div>
+</div>
       <!-- ===== STUDENT DETAILS SECTION ===== -->
       <section class="student-details-section" id="studentDetailsSection">
         <div class="student-details-header">
@@ -1661,6 +1716,159 @@ window.startActiveExam = function() {
       closeActiveExamModal();
     }
   });
+  // Add this script section to landing-dash.html
+
+const API_BASE = "https://examguide.onrender.com/api";
+let currentReportsPage = 1;
+const reportsPerPage = 5;
+
+async function loadUserReports(page = 1) {
+  try {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    const response = await fetch(
+      `${API_BASE}/exam-reports?page=${page}&limit=${reportsPerPage}`,
+      {
+        headers: { "Authorization": `Bearer ${token}` }
+      }
+    );
+
+    if (!response.ok) throw new Error("Failed to load reports");
+
+    const data = await response.json();
+    displayReports(data.reports, page);
+    currentReportsPage = page;
+  } catch (err) {
+    console.error("Error loading reports:", err);
+    document.getElementById("reports-container").innerHTML =
+      `<div class="text-center text-red-500 py-8">Failed to load reports</div>`;
+  }
+}
+
+function displayReports(reports, page) {
+  const container = document.getElementById("reports-container");
+
+  if (reports.length === 0 && page === 1) {
+    container.innerHTML = `
+      <div class="text-center text-gray-500 py-8">
+        <i class="fas fa-inbox text-4xl mb-4"></i>
+        <p>No exam reports yet. Start an exam to see your reports here!</p>
+      </div>
+    `;
+    return;
+  }
+
+  const html = reports.map(report => {
+    const scoreColor = report.percentage >= 70 ? "green" : report.percentage >= 50 ? "yellow" : "red";
+    const scoreClass = scoreColor === "green" ? "text-green-600" : scoreColor === "yellow" ? "text-yellow-600" : "text-red-600";
+    const attemptedPercent = ((report.attemptedQuestions / report.totalQuestions) * 100).toFixed(0);
+
+    return `
+      <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition cursor-pointer"
+           onclick="viewReportDetail('${report._id}')">
+        <div class="flex justify-between items-start mb-3">
+          <div>
+            <h4 class="font-bold text-gray-800">${report.subject}</h4>
+            <p class="text-sm text-gray-500">${new Date(report.createdAt).toLocaleDateString()}</p>
+          </div>
+          <div class="text-right">
+            <div class="text-2xl font-bold ${scoreClass}">${report.percentage}%</div>
+            <span class="inline-block px-2 py-1 text-xs rounded ${
+              report.examType === "cbt" ? "bg-blue-100 text-blue-800" :
+              report.examType === "theory" ? "bg-green-100 text-green-800" :
+              "bg-purple-100 text-purple-800"
+            }">
+              ${report.examType.toUpperCase()}
+            </span>
+          </div>
+        </div>
+        
+        <div class="grid grid-cols-4 gap-2 text-sm mb-3">
+          <div>
+            <span class="text-gray-500">Correct</span>
+            <p class="font-bold text-green-600">${report.correctAnswers}</p>
+          </div>
+          <div>
+            <span class="text-gray-500">Wrong</span>
+            <p class="font-bold text-red-600">${report.wrongAnswers}</p>
+          </div>
+          <div>
+            <span class="text-gray-500">Skipped</span>
+            <p class="font-bold text-yellow-600">${report.skippedQuestions}</p>
+          </div>
+          <div>
+            <span class="text-gray-500">Attempted</span>
+            <p class="font-bold text-blue-600">${attemptedPercent}%</p>
+          </div>
+        </div>
+        
+        <div class="flex justify-between items-center text-xs text-gray-500">
+          <span>⏱️ ${formatDuration(report.timeSpent)}</span>
+          <a href="report.html?reportId=${report._id}" class="text-blue-600 hover:underline">View Details →</a>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  if (page === 1) {
+    container.innerHTML = html;
+  } else {
+    container.innerHTML += html;
+  }
+
+  // Update load more button
+  const loadMoreBtn = document.getElementById("load-more-reports");
+  if (reports.length < reportsPerPage) {
+    loadMoreBtn.style.display = "none";
+  } else {
+    loadMoreBtn.style.display = "block";
+  }
+}
+
+async function loadUserStats() {
+  try {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    const response = await fetch(`${API_BASE}/exam-reports/stats/summary`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    });
+
+    if (!response.ok) throw new Error("Failed to load stats");
+
+    const stats = await response.json();
+
+    document.getElementById("total-attempts").textContent = stats.totalAttempts;
+    document.getElementById("average-score").textContent = stats.averageScore + "%";
+    document.getElementById("best-score").textContent = stats.bestScore + "%";
+    document.getElementById("total-time").textContent = formatDuration(stats.totalTimeSpent);
+  } catch (err) {
+    console.error("Error loading stats:", err);
+  }
+}
+
+function formatDuration(seconds) {
+  if (!seconds) return "0m";
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+function viewReportDetail(reportId) {
+  window.location.href = `report.html?reportId=${reportId}`;
+}
+
+document.getElementById("load-more-reports")?.addEventListener("click", () => {
+  loadUserReports(currentReportsPage + 1);
+});
+
+// Load reports and stats on page load
+window.addEventListener("DOMContentLoaded", () => {
+  loadUserReports(1);
+  loadUserStats();
+});
 </script>
 </body>
 </html>
