@@ -165,6 +165,7 @@
       background: #000;
     }
 
+    .video-container video,
     .video-container iframe {
       width: 100%;
       height: 100%;
@@ -491,9 +492,9 @@
             <option value="">All Types</option>
             <option value="pdf">PDF</option>
             <option value="video">Video</option>
-            <option value="notes">Notes</option>
+            <option value="document">Document</option>
             <option value="audio">Audio</option>
-            <option value="link">Link</option>
+            <option value="presentation">Presentation</option>
           </select>
         </div>
       </div>
@@ -574,7 +575,9 @@
       </div>
       <div class="modal-body">
         <div class="video-container">
-          <iframe id="videoPlayer" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+          <video id="videoPlayer" controls style="width: 100%; height: 100%;">
+            Your browser does not support the video tag.
+          </video>
         </div>
       </div>
     </div>
@@ -707,10 +710,7 @@
     let pdfDoc = null;
     let pageNum = 1;
     let currentPdfUrl = null;
-    let currentPdfPages = null;
-    let currentPdfPageIndex = 0;
-    let currentNotesPages = null;
-    let currentNotesPageIndex = 0;
+    let currentResourceTitle = '';
 
     // ===== INITIALIZATION =====
     async function initializePage() {
@@ -937,8 +937,8 @@
         'pdf': 'file-pdf',
         'video': 'video',
         'audio': 'music',
-        'notes': 'sticky-note',
-        'link': 'link'
+        'document': 'file-word',
+        'presentation': 'presentation'
       };
       return icons[type] || 'file';
     }
@@ -948,8 +948,8 @@
         'pdf': 'file-pdf',
         'video': 'video',
         'audio': 'music',
-        'notes': 'book',
-        'link': 'external-link-alt'
+        'document': 'file-word',
+        'presentation': 'file-powerpoint'
       };
       return icons[type] || 'file';
     }
@@ -995,359 +995,320 @@
           openVideoModal(resource);
           break;
         case 'pdf':
-          // Check if it has extracted pages or a file URL
-          if (resource.pages && resource.pages.length > 0) {
-            openPagedPdfModal(resource);
-          } else if (resource.fileUrl) {
-            openPdfModal(resource);
-          } else {
-            alert('PDF file not available');
-          }
+        case 'document':
+          openPdfModal(resource);
           break;
         case 'audio':
-          if (resource.fileUrl) {
-            openAudioModal(resource);
-          } else {
-            alert('Audio file not available');
-          }
+          openAudioModal(resource);
           break;
         case 'notes':
-          if (resource.pages && resource.pages.length > 0) {
-            openPagedNotesModal(resource);
-          } else if (resource.fileUrl) {
-            openNotesModal(resource);
-          } else {
-            alert('Notes file not available');
-          }
+          openNotesModal(resource);
+          break;
+        case 'presentation':
+          openPdfModal(resource);
           break;
         case 'link':
           openLinkModal(resource);
           break;
         default:
-          if (resource.fileUrl) {
-            window.open(resource.fileUrl, '_blank');
-          } else {
-            alert('Resource file not available');
-          }
+          alert('Unsupported resource type: ' + resource.type);
       }
     }
 
-    // ===== VIDEO PLAYER =====
+    // ===== OPEN VIDEO MODAL =====
     function openVideoModal(resource) {
-      const videoTitle = document.getElementById('videoTitle');
-      const videoPlayer = document.getElementById('videoPlayer');
-      
-      videoTitle.textContent = resource.title;
-      
-      // Handle YouTube URLs
-      if (resource.fileUrl.includes('youtube.com') || resource.fileUrl.includes('youtu.be')) {
-        const videoId = extractYouTubeId(resource.fileUrl);
-        videoPlayer.src = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
-      } else {
-        // Direct video file
-        videoPlayer.src = resource.fileUrl;
-      }
-      
-      document.getElementById('videoModal').classList.add('active');
-    }
-
-    function closeVideoModal() {
-      document.getElementById('videoPlayer').src = '';
-      document.getElementById('videoModal').classList.remove('active');
-    }
-
-    function extractYouTubeId(url) {
-      const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/);
-      return match ? match[1] : url;
-    }
-
-    // ===== PDF VIEWER (File-based) =====
-    async function openPdfModal(resource) {
-      document.getElementById('pdfTitle').textContent = resource.title;
-      currentPdfUrl = resource.fileUrl;
-      currentPdfPages = null;
-      document.getElementById('pdfModal').classList.add('active');
-      
-      try {
-        pdfDoc = await pdfjsLib.getDocument(resource.fileUrl).promise;
-        document.getElementById('pageCount').textContent = pdfDoc.numPages;
-        pageNum = 1;
-        renderPdfPage(pageNum);
-      } catch (error) {
-        console.error('PDF loading error:', error);
-        alert('Failed to load PDF');
-        closePdfModal();
-      }
-    }
-
-    // ===== PAGED PDF MODAL (for extracted pages) =====
-    function openPagedPdfModal(resource) {
-      document.getElementById('pdfTitle').textContent = resource.title;
-      
-      // Store pages data
-      currentPdfPages = resource.pages || [];
-      currentPdfPageIndex = 0;
-      pdfDoc = null;
-      
-      document.getElementById('pdfModal').classList.add('active');
-      renderPagedPdfPage(0);
-      
-      // Update page count
-      document.getElementById('pageCount').textContent = currentPdfPages.length;
-      document.getElementById('pageNumInput').value = 1;
-    }
-
-    // ===== RENDER PDF PAGE (File-based) =====
-    async function renderPdfPage(num) {
-      if (!pdfDoc) return;
-      
-      try {
-        const page = await pdfDoc.getPage(num);
-        const scale = 2;
-        const viewport = page.getViewport({ scale });
-        const canvas = document.getElementById('pdfCanvas');
-        const context = canvas.getContext('2d');
-        
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
-        
-        await page.render({ canvasContext: context, viewport }).promise;
-        document.getElementById('pageNumInput').value = num;
-      } catch (error) {
-        console.error('Error rendering page:', error);
-      }
-    }
-
-    // ===== RENDER PAGED PDF PAGE (Extracted pages) =====
-    function renderPagedPdfPage(index) {
-      if (!currentPdfPages || index < 0 || index >= currentPdfPages.length) {
+      if (!resource._id) {
+        alert('Resource ID not available');
         return;
       }
 
-      currentPdfPageIndex = index;
-      const page = currentPdfPages[index];
-      const canvas = document.getElementById('pdfCanvas');
-      const ctx = canvas.getContext('2d');
+      const videoModal = document.getElementById('videoModal');
+      document.getElementById('videoTitle').textContent = resource.title;
       
-      // Create image and render to canvas
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = function() {
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
-      };
-      img.onerror = function() {
-        console.error('Failed to load page image:', page.imageUrl);
-        ctx.font = '20px Arial';
-        ctx.fillStyle = '#666';
-        ctx.fillText('Failed to load page image', 50, 50);
-      };
-      img.src = page.imageUrl;
+      const videoUrl = `${API_BASE_URL}/api/resources/${resource._id}/download`;
+      const videoPlayer = document.getElementById('videoPlayer');
       
-      document.getElementById('pageNumInput').value = index + 1;
+      videoPlayer.src = videoUrl;
+      videoPlayer.type = resource.fileMime || 'video/mp4';
+      
+      videoModal.classList.add('active');
+    }
+
+    // ===== OPEN PDF MODAL =====
+    async function openPdfModal(resource) {
+      if (!resource._id) {
+        alert('Resource ID not available');
+        return;
+      }
+
+      const pdfModal = document.getElementById('pdfModal');
+      document.getElementById('pdfTitle').textContent = resource.title;
+      currentResourceTitle = resource.title;
+      
+      try {
+        // Show loading state
+        const canvas = document.getElementById('pdfCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 400;
+        canvas.height = 300;
+        ctx.fillStyle = '#f3f4f6';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#9ca3af';
+        ctx.font = '16px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Loading PDF...', 200, 150);
+
+        // Fetch the PDF from the download endpoint
+        const response = await fetch(`${API_BASE_URL}/api/resources/${resource._id}/download`);
+        
+        if (!response.ok) {
+          throw new Error('Failed to load PDF');
+        }
+
+        const blob = await response.blob();
+        const pdfUrl = URL.createObjectURL(blob);
+        
+        currentPdfUrl = pdfUrl;
+        
+        // Load PDF with pdf.js
+        if (typeof pdfjsLib !== 'undefined') {
+          pdfDoc = await pdfjsLib.getDocument(pdfUrl).promise;
+          document.getElementById('pageCount').textContent = pdfDoc.numPages;
+          document.getElementById('pageNumInput').max = pdfDoc.numPages;
+          pageNum = 1;
+          await renderPdfPage(1);
+          pdfModal.classList.add('active');
+        } else {
+          throw new Error('PDF.js not loaded');
+        }
+      } catch (error) {
+        console.error('Error loading PDF:', error);
+        alert('Failed to load PDF: ' + error.message);
+      }
+    }
+
+    // ===== RENDER PDF PAGE =====
+    async function renderPdfPage(num) {
+      try {
+        if (!pdfDoc) return;
+        
+        const page = await pdfDoc.getPage(num);
+        const scale = window.innerWidth < 768 ? 1.5 : 2;
+        const viewport = page.getViewport({ scale });
+        
+        const canvas = document.getElementById('pdfCanvas');
+        const context = canvas.getContext('2d');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        
+        await page.render({
+          canvasContext: context,
+          viewport: viewport
+        }).promise;
+        
+        pageNum = num;
+        document.getElementById('pageNumInput').value = num;
+      } catch (error) {
+        console.error('Error rendering PDF page:', error);
+        alert('Error rendering page: ' + error.message);
+      }
     }
 
     // ===== PDF NAVIGATION =====
-    function nextPage() {
-      if (currentPdfPages) {
-        // Paged PDF
-        if (currentPdfPageIndex < currentPdfPages.length - 1) {
-          renderPagedPdfPage(currentPdfPageIndex + 1);
-        }
-      } else if (pdfDoc && pageNum < pdfDoc.numPages) {
-        // File-based PDF
-        pageNum++;
-        renderPdfPage(pageNum);
+    async function nextPage() {
+      if (pdfDoc && pageNum < pdfDoc.numPages) {
+        await renderPdfPage(pageNum + 1);
       }
     }
 
-    function previousPage() {
-      if (currentPdfPages) {
-        // Paged PDF
-        if (currentPdfPageIndex > 0) {
-          renderPagedPdfPage(currentPdfPageIndex - 1);
-        }
-      } else if (pageNum > 1) {
-        // File-based PDF
-        pageNum--;
-        renderPdfPage(pageNum);
+    async function previousPage() {
+      if (pageNum > 1) {
+        await renderPdfPage(pageNum - 1);
       }
     }
 
-    function goToPage(num) {
-      num = parseInt(num);
+    async function goToPage(pageNumber) {
+      const num = parseInt(pageNumber, 10);
+      if (pdfDoc && num > 0 && num <= pdfDoc.numPages) {
+        await renderPdfPage(num);
+      } else {
+        alert('Invalid page number');
+      }
+    }
+
+    // ===== DOWNLOAD PDF =====
+    function downloadPdfCurrently() {
+      if (!currentPdfUrl) {
+        alert('PDF not loaded');
+        return;
+      }
       
-      if (currentPdfPages) {
-        // Paged PDF (1-indexed to 0-indexed)
-        const index = num - 1;
-        if (index >= 0 && index < currentPdfPages.length) {
-          renderPagedPdfPage(index);
-        }
-      } else if (pdfDoc && num >= 1 && num <= pdfDoc.numPages) {
-        // File-based PDF
-        pageNum = num;
-        renderPdfPage(pageNum);
+      const a = document.createElement('a');
+      a.href = currentPdfUrl;
+      a.download = `${currentResourceTitle || 'document'}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    // ===== OPEN AUDIO MODAL =====
+    function openAudioModal(resource) {
+      if (!resource._id) {
+        alert('Resource ID not available');
+        return;
       }
+
+      const audioModal = document.getElementById('audioModal');
+      document.getElementById('audioTitle').textContent = resource.title;
+      
+      const audioUrl = `${API_BASE_URL}/api/resources/${resource._id}/download`;
+      const audioPlayer = document.getElementById('audioPlayer');
+      audioPlayer.src = audioUrl;
+      audioPlayer.type = resource.fileMime || 'audio/mpeg';
+      
+      audioModal.classList.add('active');
+    }
+
+    // ===== DOWNLOAD AUDIO =====
+    function downloadAudioFile() {
+      const audioPlayer = document.getElementById('audioPlayer');
+      if (!audioPlayer.src) {
+        alert('Audio not loaded');
+        return;
+      }
+      
+      const a = document.createElement('a');
+      a.href = audioPlayer.src;
+      a.download = `${document.getElementById('audioTitle').textContent || 'audio'}.mp3`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    // ===== OPEN NOTES MODAL =====
+    async function openNotesModal(resource) {
+      if (!resource._id) {
+        alert('Resource ID not available');
+        return;
+      }
+
+      const notesModal = document.getElementById('notesModal');
+      document.getElementById('notesTitle').textContent = resource.title;
+      
+      try {
+        // If notes are stored as pages array
+        if (resource.pages && resource.pages.length > 0) {
+          const notesContent = document.getElementById('notesContent');
+          notesContent.innerHTML = resource.pages.map((page, idx) => 
+            `<div style="page-break-after: always; margin-bottom: 20px;">
+              <img src="${page.url}" alt="Page ${page.pageNumber}" style="width: 100%; border-radius: 8px;">
+            </div>`
+          ).join('');
+          notesModal.classList.add('active');
+        } else {
+          // Fallback to opening as PDF
+          await openPdfModal(resource);
+        }
+      } catch (error) {
+        console.error('Error loading notes:', error);
+        alert('Failed to load notes. Please try again.');
+      }
+    }
+
+    // ===== OPEN LINK MODAL =====
+    function openLinkModal(resource) {
+      if (!resource.link) {
+        alert('Link not available');
+        return;
+      }
+
+      const linkModal = document.getElementById('linkModal');
+      document.getElementById('linkTitle').textContent = resource.title;
+      
+      const linkButton = document.getElementById('linkButton');
+      linkButton.href = resource.link;
+      
+      linkModal.classList.add('active');
+    }
+
+    // ===== CLOSE MODALS =====
+    function closeVideoModal() {
+      const videoModal = document.getElementById('videoModal');
+      const videoPlayer = document.getElementById('videoPlayer');
+      videoPlayer.src = '';
+      videoPlayer.pause();
+      videoModal.classList.remove('active');
     }
 
     function closePdfModal() {
-      currentPdfPages = null;
-      pdfDoc = null;
-      document.getElementById('pdfModal').classList.remove('active');
-    }
-
-    function downloadPdfCurrently() {
+      const pdfModal = document.getElementById('pdfModal');
       if (currentPdfUrl) {
-        window.open(currentPdfUrl, '_blank');
-      } else if (currentPdfPages && currentPdfPages[0]) {
-        // Download first page or open in new window
-        window.open(currentPdfPages[0].imageUrl, '_blank');
+        URL.revokeObjectURL(currentPdfUrl);
+        currentPdfUrl = null;
       }
-    }
-
-    // ===== AUDIO PLAYER =====
-    function openAudioModal(resource) {
-      document.getElementById('audioTitle').textContent = resource.title;
-      document.getElementById('audioPlayer').src = resource.fileUrl;
-      document.getElementById('audioModal').classList.add('active');
+      pdfDoc = null;
+      pageNum = 1;
+      pdfModal.classList.remove('active');
     }
 
     function closeAudioModal() {
-      document.getElementById('audioPlayer').src = '';
-      document.getElementById('audioModal').classList.remove('active');
-    }
-
-    function downloadAudioFile() {
-      const audio = document.getElementById('audioPlayer');
-      if (audio.src) {
-        const a = document.createElement('a');
-        a.href = audio.src;
-        a.download = document.getElementById('audioTitle').textContent;
-        a.click();
-      }
-    }
-
-    // ===== NOTES VIEWER =====
-    function openNotesModal(resource) {
-      document.getElementById('notesTitle').textContent = resource.title;
-      const notesContent = document.getElementById('notesContent');
-      
-      if (resource.fileUrl && resource.fileUrl.startsWith('http')) {
-        // Load from URL
-        fetch(resource.fileUrl)
-          .then(res => res.text())
-          .then(html => {
-            notesContent.innerHTML = html;
-          })
-          .catch(err => {
-            notesContent.innerHTML = '<p>Failed to load notes</p>';
-            console.error('Notes load error:', err);
-          });
-      } else {
-        notesContent.textContent = resource.description || 'No notes available';
-      }
-      
-      document.getElementById('notesModal').classList.add('active');
-    }
-
-    // ===== PAGED NOTES MODAL (for extracted pages) =====
-    function openPagedNotesModal(resource) {
-      document.getElementById('notesTitle').textContent = resource.title;
-      
-      // Store pages data
-      currentNotesPages = resource.pages || [];
-      currentNotesPageIndex = 0;
-      
-      document.getElementById('notesModal').classList.add('active');
-      renderPagedNotesPage(0);
-    }
-
-    function renderPagedNotesPage(index) {
-      if (!currentNotesPages || index < 0 || index >= currentNotesPages.length) {
-        return;
-      }
-
-      currentNotesPageIndex = index;
-      const page = currentNotesPages[index];
-      const notesContent = document.getElementById('notesContent');
-      
-      // Render as image for extracted pages
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.style.width = '100%';
-      img.style.height = 'auto';
-      img.style.maxWidth = '1000px';
-      img.style.margin = '0 auto';
-      img.onload = function() {
-        notesContent.innerHTML = '';
-        notesContent.appendChild(img);
-      };
-      img.onerror = function() {
-        notesContent.innerHTML = '<p>Failed to load notes page</p>';
-      };
-      img.src = page.imageUrl;
+      const audioModal = document.getElementById('audioModal');
+      const audioPlayer = document.getElementById('audioPlayer');
+      audioPlayer.src = '';
+      audioPlayer.pause();
+      audioModal.classList.remove('active');
     }
 
     function closeNotesModal() {
-      currentNotesPages = null;
-      document.getElementById('notesModal').classList.remove('active');
-    }
-
-    // ===== LINK MODAL =====
-    function openLinkModal(resource) {
-      document.getElementById('linkTitle').textContent = resource.title;
-      const linkButton = document.getElementById('linkButton');
-      linkButton.href = resource.fileUrl || resource.link || '#';
-      document.getElementById('linkModal').classList.add('active');
+      const notesModal = document.getElementById('notesModal');
+      document.getElementById('notesContent').innerHTML = '';
+      notesModal.classList.remove('active');
     }
 
     function closeLinkModal() {
-      document.getElementById('linkModal').classList.remove('active');
+      const linkModal = document.getElementById('linkModal');
+      linkModal.classList.remove('active');
     }
 
-    // ===== FAVORITE TOGGLE =====
+    // ===== TOGGLE FAVORITE =====
     async function toggleFavorite(resourceId) {
-      if (!isLoggedIn) {
-        alert('Please login to favorite resources');
-        return;
-      }
-
       try {
         const token = localStorage.getItem('token');
+        if (!token) {
+          alert('Please login to save favorites');
+          return;
+        }
+
         const response = await fetch(`${API_BASE_URL}/api/resources/${resourceId}/favorite`, {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
+          headers: { 'Authorization': `Bearer ${token}` }
         });
 
-        if (response.ok) {
-          const data = await response.json();
-          console.log(data.favorited ? 'Added to favorites' : 'Removed from favorites');
-        }
+        if (!response.ok) throw new Error('Failed to toggle favorite');
+        
+        const data = await response.json();
+        // Refresh resources to show updated favorites
+        loadResources(currentPage);
       } catch (error) {
-        console.error('Favorite toggle error:', error);
+        console.error('Error toggling favorite:', error);
+        alert('Failed to update favorite');
       }
     }
 
-    // ===== UPGRADE PREMIUM =====
-    function upgradePremium() {
-      alert('Premium upgrade feature coming soon!');
-    }
-
-    // ===== TOGGLE NOTIFICATIONS =====
+    // ===== UTILITY FUNCTIONS =====
     function toggleNotifications() {
       alert('Notifications feature coming soon!');
     }
 
-    // ===== TOGGLE HELP =====
     function toggleHelp() {
-      alert('Help: Use the search bar to find resources by title, description, or course. Filter by type (PDF, Video, Notes, Audio, Link) or course. Click "View Now" to open a resource.');
+      alert('Help: Click on any resource card to view or download it. Use the filters to find specific resources. You can navigate PDF pages with arrow keys.');
     }
 
-    // ===== INITIALIZE PAGE ON LOAD =====
+    function upgradePremium() {
+      alert('Premium upgrade coming soon!');
+    }
+
+    // ===== INITIALIZE PAGE =====
     document.addEventListener('DOMContentLoaded', initializePage);
   </script>
 </body>
