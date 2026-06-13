@@ -621,11 +621,12 @@
                     }).promise;
 
                     extractedPages.push({
-                        data: canvas.toDataURL('image/png'),
+                        canvas: canvas,
                         type: 'pdf',
                         pageNum: pageNum
                     });
                 }
+                console.log(`Extracted ${extractedPages.length} PDF pages`);
             } catch (error) {
                 console.error('PDF extraction error:', error);
                 showError('Failed to extract PDF pages: ' + error.message);
@@ -673,7 +674,7 @@
                         ctx.drawImage(canvas, 0, -(pageNum * pageHeight * 2), canvas.width, canvas.height);
 
                         extractedPages.push({
-                            data: croppedCanvas.toDataURL('image/jpg', 0.9),
+                            canvas: croppedCanvas,
                             type: 'notes',
                             pageNum: pageNum + 1
                         });
@@ -683,6 +684,7 @@
                 }
 
                 document.body.removeChild(tempDiv);
+                console.log(`Extracted ${extractedPages.length} DOCX pages`);
             } catch (error) {
                 console.error('DOCX extraction error:', error);
                 showError('Failed to extract DOCX pages: ' + error.message);
@@ -698,16 +700,20 @@
             document.getElementById('pageCount').textContent = extractedPages.length;
 
             const pageGrid = document.getElementById('pageGrid');
-            pageGrid.innerHTML = extractedPages.map((page, idx) => `
-                <div class="page-thumbnail relative bg-gray-100 rounded-lg" id="page-${idx}">
-                    <img src="${page.data}" alt="Page ${page.pageNum}" class="w-full h-full object-cover">
-                    <div class="page-number">${page.pageNum}</div>
-                    <div class="upload-status" id="status-${idx}">
-                        <div class="loading-spinner"></div>
+            pageGrid.innerHTML = extractedPages.map((page, idx) => {
+                // Convert canvas to data URL for preview
+                const previewUrl = page.canvas.toDataURL('image/jpeg', 0.8);
+                return `
+                    <div class="page-thumbnail relative bg-gray-100 rounded-lg" id="page-${idx}">
+                        <img src="${previewUrl}" alt="Page ${page.pageNum}" class="w-full h-full object-cover">
+                        <div class="page-number">${page.pageNum}</div>
+                        <div class="upload-status" id="status-${idx}">
+                            <div class="loading-spinner"></div>
+                        </div>
+                        <div class="upload-badge" id="badge-${idx}">✓</div>
                     </div>
-                    <div class="upload-badge" id="badge-${idx}">✓</div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
 
             uploadPageImages();
         }
@@ -744,6 +750,7 @@
             document.getElementById('progressBar').style.display = 'block';
             uploadedPageUrls = [];
             let uploadedCount = 0;
+            let failedPages = [];
 
             for (let idx = 0; idx < extractedPages.length; idx++) {
                 const page = extractedPages[idx];
@@ -752,7 +759,11 @@
                 statusEl.classList.add('visible');
 
                 try {
-                    const blob = await fetch(page.data).then(r => r.blob());
+                    // Convert canvas to blob
+                    const blob = await new Promise(resolve => {
+                        page.canvas.toBlob(resolve, 'image/jpeg', 0.9);
+                    });
+
                     const formData = new FormData();
                     formData.append('file', blob, `page-${page.pageNum}.jpg`);
 
@@ -774,12 +785,21 @@
                             height: data.height
                         });
                         uploadedCount++;
-                        document.getElementById('uploadedCount').textContent = uploadedCount;
-                        statusEl.classList.remove('visible');
+                        console.log(`Page ${page.pageNum} uploaded successfully`);
+                    } else {
+                        const errorData = await response.json();
+                        console.error(`Failed to upload page ${page.pageNum}:`, errorData);
+                        failedPages.push(page.pageNum);
+                    }
+                    document.getElementById('uploadedCount').textContent = uploadedCount;
+                    statusEl.classList.remove('visible');
+                    
+                    if (response.ok) {
                         badgeEl.classList.add('visible');
                     }
                 } catch (error) {
-                    console.error(`Failed to upload page ${page.pageNum}:`, error);
+                    console.error(`Network error uploading page ${page.pageNum}:`, error);
+                    failedPages.push(page.pageNum);
                     statusEl.classList.remove('visible');
                 }
             }
@@ -790,8 +810,13 @@
                 document.getElementById('successMessage').classList.remove('hidden');
                 document.getElementById('errorMessage').classList.add('hidden');
                 document.getElementById('nextStep2').disabled = false;
+                console.log('All pages uploaded successfully');
             } else if (extractedPages.length > 0) {
-                showError(`Only ${uploadedCount}/${extractedPages.length} pages uploaded successfully`);
+                let errorMsg = `${uploadedCount}/${extractedPages.length} pages uploaded successfully`;
+                if (failedPages.length > 0) {
+                    errorMsg += `. Failed pages: ${failedPages.join(', ')}`;
+                }
+                showError(errorMsg);
                 document.getElementById('nextStep2').disabled = false;
             }
         }
@@ -838,6 +863,7 @@
                     window.location.href = '/resources';
                 }, 2000);
             } catch (error) {
+                console.error('Form submission error:', error);
                 showError(error.message);
                 document.getElementById('submitBtn').disabled = false;
             }
