@@ -16,9 +16,6 @@
     
     <!-- html2canvas for DOCX page conversion -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    
-    <!-- html2pdf for final PDF generation -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
     <style>
         :root {
@@ -51,11 +48,6 @@
         .page-thumbnail:hover {
             transform: scale(1.05);
             box-shadow: 0 4px 12px rgba(39, 110, 241, 0.2);
-        }
-
-        .page-thumbnail.uploading {
-            opacity: 0.6;
-            position: relative;
         }
 
         .page-number {
@@ -168,6 +160,18 @@
 
         .upload-badge.visible {
             display: block;
+        }
+
+        #debugInfo {
+            background: #f3f4f6;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #666;
+            margin-top: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
         }
     </style>
 </head>
@@ -340,6 +344,7 @@
                         </div>
                         <div class="upload-progress-bar mb-4" id="progressBar" style="display:none;"></div>
                         <div class="pdf-preview-grid" id="pageGrid"></div>
+                        <div id="debugInfo" style="display:none;"></div>
                         <button 
                             type="button" 
                             id="changeFileBtn" 
@@ -411,14 +416,6 @@
                         <p class="text-xs text-gray-500 mt-1">Helps others find and understand your resource</p>
                     </div>
 
-                    <!-- Processing Info -->
-                    <div id="processingInfo" class="hidden bg-amber-50 border-l-4 border-amber-600 p-4">
-                        <p class="text-sm text-amber-800">
-                            <i class="fas fa-spinner fa-spin mr-2"></i>
-                            <strong>Processing pages...</strong> Please wait while we extract and upload pages.
-                        </p>
-                    </div>
-
                     <!-- Success Message -->
                     <div id="successMessage" class="hidden success-animation bg-green-50 border-l-4 border-green-600 p-4">
                         <p class="text-sm text-green-800">
@@ -469,6 +466,14 @@
         let extractedPages = [];
         let uploadedPageUrls = [];
         let currentStep = 1;
+
+        function debug(msg) {
+            console.log('[DEBUG]', msg);
+            const debugEl = document.getElementById('debugInfo');
+            if (debugEl && debugEl.style.display !== 'none') {
+                debugEl.innerHTML += msg + '<br>';
+            }
+        }
 
         // ============ STEP NAVIGATION ============
         document.getElementById('nextStep1').addEventListener('click', () => {
@@ -576,20 +581,24 @@
 
         // ============ FILE PROCESSING ============
         async function processFile(file) {
+            debug(`Processing file: ${file.name} (${file.type})`);
             extractedPages = [];
             uploadedPageUrls = [];
             
             const resourceType = document.getElementById('type').value;
 
             if (file.type === 'application/pdf' || resourceType === 'pdf') {
+                debug('Detected PDF, extracting pages...');
                 await extractPDFPages(file);
                 displayPagePreview();
                 document.getElementById('nextStep2').disabled = false;
             } else if (file.name.endsWith('.docx') || resourceType === 'notes') {
+                debug('Detected DOCX, extracting pages...');
                 await extractDocxPages(file);
                 displayPagePreview();
                 document.getElementById('nextStep2').disabled = false;
             } else if (file.type.startsWith('video/') || file.type.startsWith('audio/')) {
+                debug('Detected video/audio file');
                 displaySimpleFilePreview(file);
                 document.getElementById('nextStep2').disabled = false;
             } else {
@@ -606,6 +615,7 @@
             try {
                 const arrayBuffer = await file.arrayBuffer();
                 const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                debug(`PDF has ${pdf.numPages} pages`);
 
                 for (let pageNum = 1; pageNum <= Math.min(pdf.numPages, 200); pageNum++) {
                     const page = await pdf.getPage(pageNum);
@@ -626,8 +636,9 @@
                         pageNum: pageNum
                     });
                 }
-                console.log(`Extracted ${extractedPages.length} PDF pages`);
+                debug(`Extracted ${extractedPages.length} PDF pages`);
             } catch (error) {
+                debug(`PDF extraction error: ${error.message}`);
                 console.error('PDF extraction error:', error);
                 showError('Failed to extract PDF pages: ' + error.message);
             }
@@ -636,9 +647,11 @@
         // ============ DOCX PAGE EXTRACTION ============
         async function extractDocxPages(file) {
             try {
+                debug('Converting DOCX to HTML...');
                 const arrayBuffer = await file.arrayBuffer();
                 const result = await mammoth.convertArrayBuffer(arrayBuffer);
                 const html = result.value;
+                debug(`Mammoth conversion complete. HTML length: ${html.length}`);
 
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = html;
@@ -650,20 +663,28 @@
                 tempDiv.style.position = 'fixed';
                 tempDiv.style.left = '-9999px';
                 tempDiv.style.top = '-9999px';
+                tempDiv.style.fontFamily = 'Arial, sans-serif';
                 document.body.appendChild(tempDiv);
+
+                debug(`Created temp div. ScrollHeight: ${tempDiv.scrollHeight}`);
 
                 const pageHeight = 1100;
                 const totalHeight = tempDiv.scrollHeight;
                 const pageCount = Math.min(Math.ceil(totalHeight / pageHeight), 200);
+                debug(`Will create ${pageCount} pages from height ${totalHeight}`);
 
                 for (let pageNum = 0; pageNum < pageCount; pageNum++) {
                     try {
+                        debug(`Converting page ${pageNum + 1} to canvas...`);
                         const canvas = await html2canvas(tempDiv, {
-                            allowTaint: true,
                             scale: 2,
-                            windowHeight: pageHeight + 40,
-                            logging: false
+                            useCORS: true,
+                            logging: false,
+                            windowHeight: pageHeight + 80,
+                            backgroundColor: '#ffffff'
                         });
+
+                        debug(`Canvas created. Size: ${canvas.width}x${canvas.height}`);
 
                         const croppedCanvas = document.createElement('canvas');
                         croppedCanvas.width = canvas.width;
@@ -678,14 +699,17 @@
                             type: 'notes',
                             pageNum: pageNum + 1
                         });
+                        debug(`Page ${pageNum + 1} extracted`);
                     } catch (e) {
+                        debug(`Error processing page ${pageNum}: ${e.message}`);
                         console.error(`Error processing page ${pageNum}:`, e);
                     }
                 }
 
                 document.body.removeChild(tempDiv);
-                console.log(`Extracted ${extractedPages.length} DOCX pages`);
+                debug(`Extracted ${extractedPages.length} DOCX pages`);
             } catch (error) {
+                debug(`DOCX extraction error: ${error.message}`);
                 console.error('DOCX extraction error:', error);
                 showError('Failed to extract DOCX pages: ' + error.message);
             }
@@ -696,16 +720,18 @@
             document.getElementById('dropContent').classList.add('hidden');
             document.getElementById('filePreview').classList.add('hidden');
             document.getElementById('pagePreviewContainer').classList.remove('hidden');
+            document.getElementById('debugInfo').style.display = 'block';
             document.getElementById('totalPages').textContent = extractedPages.length;
             document.getElementById('pageCount').textContent = extractedPages.length;
 
+            debug(`Displaying ${extractedPages.length} pages`);
+
             const pageGrid = document.getElementById('pageGrid');
             pageGrid.innerHTML = extractedPages.map((page, idx) => {
-                // Convert canvas to data URL for preview
                 const previewUrl = page.canvas.toDataURL('image/jpeg', 0.8);
                 return `
                     <div class="page-thumbnail relative bg-gray-100 rounded-lg" id="page-${idx}">
-                        <img src="${previewUrl}" alt="Page ${page.pageNum}" class="w-full h-full object-cover">
+                        <img src="${previewUrl}" alt="Page ${page.pageNum}" class="w-full h-full object-cover" loading="lazy">
                         <div class="page-number">${page.pageNum}</div>
                         <div class="upload-status" id="status-${idx}">
                             <div class="loading-spinner"></div>
@@ -715,6 +741,7 @@
                 `;
             }).join('');
 
+            debug(`Rendered ${extractedPages.length} preview thumbnails`);
             uploadPageImages();
         }
 
@@ -734,6 +761,8 @@
             fileInput.value = '';
             document.getElementById('dropContent').classList.remove('hidden');
             document.getElementById('pagePreviewContainer').classList.add('hidden');
+            document.getElementById('debugInfo').style.display = 'none';
+            document.getElementById('debugInfo').innerHTML = '';
             document.getElementById('nextStep2').disabled = true;
         });
 
@@ -750,7 +779,8 @@
             document.getElementById('progressBar').style.display = 'block';
             uploadedPageUrls = [];
             let uploadedCount = 0;
-            let failedPages = [];
+
+            debug(`Starting upload of ${extractedPages.length} pages...`);
 
             for (let idx = 0; idx < extractedPages.length; idx++) {
                 const page = extractedPages[idx];
@@ -759,10 +789,11 @@
                 statusEl.classList.add('visible');
 
                 try {
-                    // Convert canvas to blob
                     const blob = await new Promise(resolve => {
                         page.canvas.toBlob(resolve, 'image/jpeg', 0.9);
                     });
+
+                    debug(`Page ${page.pageNum}: blob created (${blob.size} bytes)`);
 
                     const formData = new FormData();
                     formData.append('file', blob, `page-${page.pageNum}.jpg`);
@@ -785,11 +816,10 @@
                             height: data.height
                         });
                         uploadedCount++;
-                        console.log(`Page ${page.pageNum} uploaded successfully`);
+                        debug(`Page ${page.pageNum} uploaded successfully`);
                     } else {
                         const errorData = await response.json();
-                        console.error(`Failed to upload page ${page.pageNum}:`, errorData);
-                        failedPages.push(page.pageNum);
+                        debug(`Page ${page.pageNum} upload failed: ${errorData.error}`);
                     }
                     document.getElementById('uploadedCount').textContent = uploadedCount;
                     statusEl.classList.remove('visible');
@@ -798,25 +828,22 @@
                         badgeEl.classList.add('visible');
                     }
                 } catch (error) {
-                    console.error(`Network error uploading page ${page.pageNum}:`, error);
-                    failedPages.push(page.pageNum);
+                    debug(`Network error on page ${page.pageNum}: ${error.message}`);
+                    console.error(`Upload error for page ${page.pageNum}:`, error);
                     statusEl.classList.remove('visible');
                 }
             }
 
             document.getElementById('progressBar').style.display = 'none';
             
+            debug(`Upload complete: ${uploadedCount}/${extractedPages.length} pages`);
+
             if (uploadedCount === extractedPages.length && extractedPages.length > 0) {
                 document.getElementById('successMessage').classList.remove('hidden');
                 document.getElementById('errorMessage').classList.add('hidden');
                 document.getElementById('nextStep2').disabled = false;
-                console.log('All pages uploaded successfully');
             } else if (extractedPages.length > 0) {
-                let errorMsg = `${uploadedCount}/${extractedPages.length} pages uploaded successfully`;
-                if (failedPages.length > 0) {
-                    errorMsg += `. Failed pages: ${failedPages.join(', ')}`;
-                }
-                showError(errorMsg);
+                showError(`Only ${uploadedCount}/${extractedPages.length} pages uploaded successfully`);
                 document.getElementById('nextStep2').disabled = false;
             }
         }
@@ -834,7 +861,6 @@
                 link: document.getElementById('link').value || undefined
             };
 
-            // Add pages if PDF or notes
             if ((resourceType === 'pdf' || resourceType === 'notes') && uploadedPageUrls.length > 0) {
                 resourceData.pages = uploadedPageUrls;
             }
