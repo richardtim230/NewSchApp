@@ -531,6 +531,12 @@
             }
         }
 
+        function showError(msg) {
+            document.getElementById('errorText').textContent = msg;
+            document.getElementById('errorMessage').classList.remove('hidden');
+            document.getElementById('successMessage').classList.add('hidden');
+        }
+
         // ============ STEP NAVIGATION ============
         document.getElementById('nextStep1').addEventListener('click', () => {
             if (document.getElementById('title').value && document.getElementById('type').value && document.getElementById('course').value) {
@@ -692,7 +698,7 @@
                 debug('✓ PDF.js library loaded');
                 
                 pdfjsLib.GlobalWorkerOptions.workerSrc =
-  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
                 
                 const arrayBuffer = await file.arrayBuffer();
                 const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -970,54 +976,74 @@
             e.preventDefault();
             
             const resourceType = document.getElementById('type').value;
-            const resourceData = {
-                title: document.getElementById('title').value,
-                description: document.getElementById('description').value,
-                type: resourceType,
-                course: document.getElementById('course').value,
-                link: document.getElementById('link').value || undefined
-            };
+            const link = document.getElementById('link').value.trim() || null;
 
+            // Build FormData for multipart submission
+            const formData = new FormData();
+            formData.append('title', document.getElementById('title').value);
+            formData.append('description', document.getElementById('description').value);
+            formData.append('type', resourceType);
+            formData.append('course', document.getElementById('course').value);
+            
+            // Only append link if it exists
+            if (link) {
+                formData.append('link', link);
+            }
+
+            // If PDF or Notes, attach extracted pages metadata
             if ((resourceType === 'pdf' || resourceType === 'notes') && uploadedPageUrls.length > 0) {
-                resourceData.pages = uploadedPageUrls;
+                formData.append('pages', JSON.stringify(uploadedPageUrls));
+            }
+
+            // If a file was selected (for video/audio), append it
+            if (selectedFile && (resourceType === 'video' || resourceType === 'audio')) {
+                formData.append('file', selectedFile);
             }
 
             document.getElementById('submitBtn').disabled = true;
+            document.getElementById('submitBtn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Publishing...';
 
             try {
                 const response = await fetch(`${API_BASE_URL}/resources`, {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
+                        'Authorization': `Bearer ${token}`
                     },
-                    body: JSON.stringify(resourceData)
+                    body: formData
                 });
 
                 if (!response.ok) {
                     const error = await response.json();
-                    throw new Error(error.error || 'Upload failed');
+                    throw new Error(error.error || error.message || 'Upload failed');
                 }
 
-                document.getElementById('successMessage').classList.remove('hidden');
-                document.getElementById('errorMessage').classList.add('hidden');
+                const result = await response.json();
                 
+                // Success
+                document.getElementById('errorMessage').classList.add('hidden');
+                showError('');
+                alert('✓ Resource published successfully!');
+                
+                // Reset form
+                document.getElementById('resourceForm').reset();
+                selectedFile = null;
+                extractedPages = [];
+                uploadedPageUrls = [];
+                currentStep = 1;
+                updateSteps();
+                
+                // Redirect to resources page after 2 seconds
                 setTimeout(() => {
                     window.location.href = '/resources';
                 }, 2000);
+
             } catch (error) {
-                console.error('Form submission error:', error);
-                showError(error.message);
+                console.error('Submit error:', error);
+                showError(error.message || 'Failed to publish resource');
                 document.getElementById('submitBtn').disabled = false;
+                document.getElementById('submitBtn').innerHTML = '<i class="fas fa-check"></i> Publish Resource';
             }
         });
-
-        // ============ ERROR HANDLING ============
-        function showError(message) {
-            document.getElementById('errorText').textContent = message;
-            document.getElementById('errorMessage').classList.remove('hidden');
-            document.getElementById('successMessage').classList.add('hidden');
-        }
 
         // ============ LOGOUT ============
         document.getElementById('logoutBtn').addEventListener('click', () => {
