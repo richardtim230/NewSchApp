@@ -584,27 +584,47 @@
             debug(`Processing file: ${file.name} (${file.type})`);
             extractedPages = [];
             uploadedPageUrls = [];
+            document.getElementById('debugInfo').innerHTML = '';
             
             const resourceType = document.getElementById('type').value;
 
-            if (file.type === 'application/pdf' || resourceType === 'pdf') {
-                debug('Detected PDF, extracting pages...');
-                await extractPDFPages(file);
-                displayPagePreview();
-                document.getElementById('nextStep2').disabled = false;
-            } else if (file.name.endsWith('.docx') || resourceType === 'notes') {
-                debug('Detected DOCX, extracting pages...');
-                await extractDocxPages(file);
-                displayPagePreview();
-                document.getElementById('nextStep2').disabled = false;
-            } else if (file.type.startsWith('video/') || file.type.startsWith('audio/')) {
-                debug('Detected video/audio file');
-                displaySimpleFilePreview(file);
-                document.getElementById('nextStep2').disabled = false;
-            } else {
-                alert('Please upload a PDF, DOCX, video, or audio file');
+            try {
+                if (file.type === 'application/pdf' || resourceType === 'pdf') {
+                    debug('Detected PDF, extracting pages...');
+                    await extractPDFPages(file);
+                    if (extractedPages.length > 0) {
+                        displayPagePreview();
+                        document.getElementById('nextStep2').disabled = false;
+                        debug(`✓ PDF processing complete: ${extractedPages.length} pages extracted`);
+                    } else {
+                        showError('Failed to extract any pages from PDF. File may be corrupted or encrypted.');
+                        document.getElementById('nextStep2').disabled = true;
+                    }
+                } else if (file.name.endsWith('.docx') || resourceType === 'notes') {
+                    debug('Detected DOCX, extracting pages...');
+                    await extractDocxPages(file);
+                    if (extractedPages.length > 0) {
+                        displayPagePreview();
+                        document.getElementById('nextStep2').disabled = false;
+                        debug(`✓ DOCX processing complete: ${extractedPages.length} pages extracted`);
+                    } else {
+                        showError('Failed to extract any pages from DOCX. File may be corrupted or empty.');
+                        document.getElementById('nextStep2').disabled = true;
+                    }
+                } else if (file.type.startsWith('video/') || file.type.startsWith('audio/')) {
+                    debug('Detected video/audio file');
+                    displaySimpleFilePreview(file);
+                    document.getElementById('nextStep2').disabled = false;
+                } else {
+                    showError('Invalid file type. Please upload a PDF, DOCX, video, or audio file');
+                    document.getElementById('nextStep2').disabled = true;
+                    return;
+                }
+            } catch (error) {
+                debug(`Critical error during processing: ${error.message}`);
+                console.error('File processing error:', error);
+                showError(`Failed to process file: ${error.message}`);
                 document.getElementById('nextStep2').disabled = true;
-                return;
             }
         }
 
@@ -617,34 +637,40 @@
                 const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
                 debug(`PDF has ${pdf.numPages} pages`);
 
-                for (let pageNum = 1; pageNum <= Math.min(pdf.numPages, 200); pageNum++) {
-                    const page = await pdf.getPage(pageNum);
-                    const viewport = page.getViewport({ scale: 2 });
-                    const canvas = document.createElement('canvas');
-                    const context = canvas.getContext('2d');
-                    canvas.width = viewport.width;
-                    canvas.height = viewport.height;
+                const pagesToProcess = Math.min(pdf.numPages, 200);
+                for (let pageNum = 1; pageNum <= pagesToProcess; pageNum++) {
+                    try {
+                        const page = await pdf.getPage(pageNum);
+                        const viewport = page.getViewport({ scale: 2 });
+                        const canvas = document.createElement('canvas');
+                        const context = canvas.getContext('2d');
+                        canvas.width = viewport.width;
+                        canvas.height = viewport.height;
 
-                    await page.render({
-                        canvasContext: context,
-                        viewport: viewport
-                    }).promise;
+                        await page.render({
+                            canvasContext: context,
+                            viewport: viewport
+                        }).promise;
 
-                    extractedPages.push({
-                        canvas: canvas,
-                        type: 'pdf',
-                        pageNum: pageNum
-                    });
+                        extractedPages.push({
+                            canvas: canvas,
+                            type: 'pdf',
+                            pageNum: pageNum
+                        });
+                        debug(`✓ Page ${pageNum}/${pagesToProcess} extracted`);
+                    } catch (pageError) {
+                        debug(`⚠ Error extracting page ${pageNum}: ${pageError.message}`);
+                    }
                 }
-                debug(`Extracted ${extractedPages.length} PDF pages`);
+                debug(`✓ Extracted ${extractedPages.length}/${pagesToProcess} PDF pages successfully`);
             } catch (error) {
                 debug(`PDF extraction error: ${error.message}`);
                 console.error('PDF extraction error:', error);
-                showError('Failed to extract PDF pages: ' + error.message);
+                throw error;
             }
         }
 
-        // ============ DOCX PAGE EXTRACTION ============
+        // ============ DOCX PAGE EXTRACTION (FIXED) ============
         async function extractDocxPages(file) {
             try {
                 debug('Converting DOCX to HTML...');
@@ -652,6 +678,10 @@
                 const result = await mammoth.convertArrayBuffer(arrayBuffer);
                 const html = result.value;
                 debug(`Mammoth conversion complete. HTML length: ${html.length}`);
+
+                if (!html || html.trim().length === 0) {
+                    throw new Error('DOCX file contains no text');
+                }
 
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = html;
@@ -664,6 +694,7 @@
                 tempDiv.style.left = '-9999px';
                 tempDiv.style.top = '-9999px';
                 tempDiv.style.fontFamily = 'Arial, sans-serif';
+                tempDiv.style.wordWrap = 'break-word';
                 document.body.appendChild(tempDiv);
 
                 debug(`Created temp div. ScrollHeight: ${tempDiv.scrollHeight}`);
@@ -671,47 +702,62 @@
                 const pageHeight = 1100;
                 const totalHeight = tempDiv.scrollHeight;
                 const pageCount = Math.min(Math.ceil(totalHeight / pageHeight), 200);
-                debug(`Will create ${pageCount} pages from height ${totalHeight}`);
+                debug(`Will create ${pageCount} pages from height ${totalHeight}px`);
 
                 for (let pageNum = 0; pageNum < pageCount; pageNum++) {
                     try {
-                        debug(`Converting page ${pageNum + 1} to canvas...`);
-                        const canvas = await html2canvas(tempDiv, {
+                        debug(`Converting page ${pageNum + 1}/${pageCount} to canvas...`);
+                        
+                        // Create a wrapper to clip each page
+                        const pageWrapper = document.createElement('div');
+                        pageWrapper.style.width = '800px';
+                        pageWrapper.style.height = pageHeight + 'px';
+                        pageWrapper.style.overflow = 'hidden';
+                        pageWrapper.style.position = 'fixed';
+                        pageWrapper.style.left = '-9999px';
+                        pageWrapper.style.top = '-9999px';
+                        pageWrapper.style.backgroundColor = 'white';
+                        
+                        // Clone and position the content
+                        const clone = tempDiv.cloneNode(true);
+                        clone.style.position = 'relative';
+                        clone.style.top = -(pageNum * pageHeight) + 'px';
+                        clone.style.left = '0';
+                        clone.style.margin = '0';
+                        pageWrapper.appendChild(clone);
+                        document.body.appendChild(pageWrapper);
+
+                        const canvas = await html2canvas(pageWrapper, {
                             scale: 2,
                             useCORS: true,
                             logging: false,
-                            windowHeight: pageHeight + 80,
-                            backgroundColor: '#ffffff'
+                            backgroundColor: '#ffffff',
+                            windowWidth: 800,
+                            windowHeight: pageHeight
                         });
+
+                        document.body.removeChild(pageWrapper);
 
                         debug(`Canvas created. Size: ${canvas.width}x${canvas.height}`);
 
-                        const croppedCanvas = document.createElement('canvas');
-                        croppedCanvas.width = canvas.width;
-                        const cropHeight = Math.min(pageHeight * 2, canvas.height - (pageNum * pageHeight * 2));
-                        croppedCanvas.height = cropHeight;
-
-                        const ctx = croppedCanvas.getContext('2d');
-                        ctx.drawImage(canvas, 0, -(pageNum * pageHeight * 2), canvas.width, canvas.height);
-
                         extractedPages.push({
-                            canvas: croppedCanvas,
+                            canvas: canvas,
                             type: 'notes',
                             pageNum: pageNum + 1
                         });
-                        debug(`Page ${pageNum + 1} extracted`);
+                        debug(`✓ Page ${pageNum + 1}/${pageCount} extracted`);
                     } catch (e) {
-                        debug(`Error processing page ${pageNum}: ${e.message}`);
-                        console.error(`Error processing page ${pageNum}:`, e);
+                        debug(`⚠ Error processing page ${pageNum + 1}: ${e.message}`);
+                        console.error(`Error processing page ${pageNum + 1}:`, e);
                     }
                 }
 
                 document.body.removeChild(tempDiv);
-                debug(`Extracted ${extractedPages.length} DOCX pages`);
+                debug(`✓ Extracted ${extractedPages.length}/${pageCount} DOCX pages successfully`);
             } catch (error) {
                 debug(`DOCX extraction error: ${error.message}`);
                 console.error('DOCX extraction error:', error);
-                showError('Failed to extract DOCX pages: ' + error.message);
+                throw error;
             }
         }
 
@@ -816,34 +862,36 @@
                             height: data.height
                         });
                         uploadedCount++;
-                        debug(`Page ${page.pageNum} uploaded successfully`);
+                        debug(`✓ Page ${page.pageNum} uploaded successfully`);
+                        badgeEl.classList.add('visible');
                     } else {
                         const errorData = await response.json();
-                        debug(`Page ${page.pageNum} upload failed: ${errorData.error}`);
+                        debug(`✗ Page ${page.pageNum} upload failed: ${errorData.error}`);
                     }
+                    
                     document.getElementById('uploadedCount').textContent = uploadedCount;
                     statusEl.classList.remove('visible');
-                    
-                    if (response.ok) {
-                        badgeEl.classList.add('visible');
-                    }
                 } catch (error) {
-                    debug(`Network error on page ${page.pageNum}: ${error.message}`);
+                    debug(`✗ Network error on page ${page.pageNum}: ${error.message}`);
                     console.error(`Upload error for page ${page.pageNum}:`, error);
                     statusEl.classList.remove('visible');
                 }
             }
 
             document.getElementById('progressBar').style.display = 'none';
-            
             debug(`Upload complete: ${uploadedCount}/${extractedPages.length} pages`);
 
-            if (uploadedCount === extractedPages.length && extractedPages.length > 0) {
-                document.getElementById('successMessage').classList.remove('hidden');
-                document.getElementById('errorMessage').classList.add('hidden');
+            // FIXED: Show status even if some uploads failed
+            if (uploadedCount > 0) {
+                if (uploadedCount === extractedPages.length) {
+                    document.getElementById('successMessage').classList.remove('hidden');
+                    document.getElementById('errorMessage').classList.add('hidden');
+                } else {
+                    showError(`Only ${uploadedCount}/${extractedPages.length} pages uploaded. Some uploads may have failed.`);
+                }
                 document.getElementById('nextStep2').disabled = false;
             } else if (extractedPages.length > 0) {
-                showError(`Only ${uploadedCount}/${extractedPages.length} pages uploaded successfully`);
+                showError(`All page uploads failed. Please check your connection and try again.`);
                 document.getElementById('nextStep2').disabled = false;
             }
         }
