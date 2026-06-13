@@ -178,7 +178,7 @@
       height: 100%;
       display: flex;
       flex-direction: column;
-      background: white;
+      background: #1f2937;
     }
 
     .pdf-controls {
@@ -187,14 +187,15 @@
       justify-content: space-between;
       gap: 16px;
       padding: 16px 24px;
-      background: #f3f4f6;
-      border-bottom: 1px solid #e5e7eb;
+      background: #111827;
+      border-bottom: 1px solid #374151;
       flex-wrap: wrap;
+      flex-shrink: 0;
     }
 
     .pdf-controls button {
       padding: 10px 18px;
-      background: #3b82f6;
+      background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
       color: white;
       border: none;
       border-radius: 8px;
@@ -205,11 +206,32 @@
       display: flex;
       align-items: center;
       gap: 6px;
+      position: relative;
     }
 
-    .pdf-controls button:hover {
-      background: #2563eb;
+    .pdf-controls button:hover:not(:disabled) {
+      background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
       transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+    }
+
+    .pdf-controls button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .loading-spinner-btn {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top: 2px solid white;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
     }
 
     .pdf-page-info {
@@ -218,31 +240,62 @@
       gap: 12px;
       font-size: 14px;
       font-weight: 600;
-      color: #374151;
+      color: #e5e7eb;
+      white-space: nowrap;
     }
 
     .pdf-page-info input {
       width: 60px;
       padding: 8px 12px;
-      border: 1px solid #d1d5db;
+      border: 1px solid #4b5563;
       border-radius: 6px;
       text-align: center;
       font-size: 14px;
+      background: #1f2937;
+      color: #e5e7eb;
     }
 
-    #pdfCanvas {
-      width: 100%;
-      flex: 1;
-      display: block;
+    .pdf-page-info input:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
     }
 
     .pdf-canvas-container {
       flex: 1;
       overflow: auto;
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
-      background: #f9fafb;
+      background: #111827;
+      padding: 20px;
+    }
+
+    #pdfCanvas {
+      max-width: 100%;
+      height: auto;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+      border-radius: 4px;
+      background: white;
+      filter: brightness(1.1) contrast(1.1);
+    }
+
+    .pdf-zoom-controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .pdf-zoom-controls button {
+      padding: 8px 12px !important;
+      font-size: 12px !important;
+    }
+
+    .pdf-zoom-info {
+      color: #e5e7eb;
+      font-size: 13px;
+      min-width: 50px;
+      text-align: right;
     }
 
     /* ===== AUDIO ===== */
@@ -286,11 +339,17 @@
       display: flex;
       align-items: center;
       gap: 8px;
+      position: relative;
     }
 
-    .audio-button-group button:hover {
+    .audio-button-group button:hover:not(:disabled) {
       transform: translateY(-3px);
       box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+    }
+
+    .audio-button-group button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
     }
 
     /* ===== NOTES ===== */
@@ -354,18 +413,22 @@
       box-shadow: 0 12px 32px rgba(59, 130, 246, 0.4);
     }
 
-    .loading-spinner {
-      display: inline-block;
-      width: 40px;
-      height: 40px;
-      border: 4px solid rgba(59, 130, 246, 0.3);
-      border-top: 4px solid #3b82f6;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
+    .loading-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      z-index: 100;
     }
 
-    @keyframes spin {
-      to { transform: rotate(360deg); }
+    .loading-overlay.show {
+      display: flex;
     }
 
     /* Responsive adjustments */
@@ -394,6 +457,10 @@
         font-size: 12px;
       }
 
+      .pdf-canvas-container {
+        padding: 12px;
+      }
+
       .audio-player {
         padding: 24px;
       }
@@ -405,6 +472,11 @@
 
       .link-preview {
         padding: 40px 24px;
+      }
+
+      .pdf-page-info {
+        flex-direction: column;
+        gap: 8px;
       }
     }
   </style>
@@ -595,22 +667,33 @@
       <div class="modal-body" style="padding: 0; flex-direction: column;">
         <div class="pdf-viewer">
           <div class="pdf-controls">
-            <button onclick="previousPage()" title="Previous page">
-              <i class="fas fa-chevron-left"></i> Previous
+            <button id="prevBtn" onclick="previousPage()" title="Previous page (Arrow Left)">
+              <i class="fas fa-chevron-up"></i> Previous
             </button>
             <div class="pdf-page-info">
               <span>Page</span>
               <input type="number" id="pageNumInput" min="1" value="1" onchange="goToPage(this.value)">
               <span>of <span id="pageCount">-</span></span>
             </div>
-            <button onclick="nextPage()" title="Next page">
-              Next <i class="fas fa-chevron-right"></i>
+            <div class="pdf-zoom-controls">
+              <button id="zoomOutBtn" onclick="zoomOut()" title="Zoom Out">
+                <i class="fas fa-search-minus"></i>
+              </button>
+              <div class="pdf-zoom-info">
+                <span id="zoomLevel">100</span>%
+              </div>
+              <button id="zoomInBtn" onclick="zoomIn()" title="Zoom In">
+                <i class="fas fa-search-plus"></i>
+              </button>
+            </div>
+            <button id="nextBtn" onclick="nextPage()" title="Next page (Arrow Right)">
+              Next <i class="fas fa-chevron-down"></i>
             </button>
-            <button onclick="downloadPdfCurrently()" title="Download PDF">
+            <button id="downloadBtn" onclick="downloadPdfCurrently()" title="Download PDF">
               <i class="fas fa-download"></i> Download
             </button>
           </div>
-          <div class="pdf-canvas-container">
+          <div class="pdf-canvas-container" id="pdfCanvasContainer">
             <canvas id="pdfCanvas"></canvas>
           </div>
         </div>
@@ -637,7 +720,7 @@
             Your browser does not support the audio element.
           </audio>
           <div class="audio-button-group">
-            <button onclick="downloadAudioFile()">
+            <button id="downloadAudioBtn" onclick="downloadAudioFile()">
               <i class="fas fa-download"></i> Download Audio
             </button>
           </div>
@@ -711,6 +794,8 @@
     let pageNum = 1;
     let currentPdfUrl = null;
     let currentResourceTitle = '';
+    let isLoadingPdf = false;
+    let pdfZoomLevel = 100;
 
     // ===== INITIALIZATION =====
     async function initializePage() {
@@ -752,12 +837,34 @@
           closeLinkModal();
         }
         if (e.key === 'ArrowRight') {
-          if (document.getElementById('pdfModal').classList.contains('active')) {
+          if (document.getElementById('pdfModal').classList.contains('active') && !isLoadingPdf) {
             nextPage();
           }
         }
         if (e.key === 'ArrowLeft') {
-          if (document.getElementById('pdfModal').classList.contains('active')) {
+          if (document.getElementById('pdfModal').classList.contains('active') && !isLoadingPdf) {
+            previousPage();
+          }
+        }
+        if (e.key === 'ArrowDown') {
+          if (document.getElementById('pdfModal').classList.contains('active') && !isLoadingPdf) {
+            nextPage();
+          }
+        }
+        if (e.key === 'ArrowUp') {
+          if (document.getElementById('pdfModal').classList.contains('active') && !isLoadingPdf) {
+            previousPage();
+          }
+        }
+      });
+
+      // Mouse wheel scroll for PDF
+      document.getElementById('pdfCanvasContainer')?.addEventListener('wheel', (e) => {
+        if (document.getElementById('pdfModal').classList.contains('active') && !isLoadingPdf) {
+          e.preventDefault();
+          if (e.deltaY > 0) {
+            nextPage();
+          } else {
             previousPage();
           }
         }
@@ -1045,18 +1152,23 @@
       document.getElementById('pdfTitle').textContent = resource.title;
       currentResourceTitle = resource.title;
       
+      // Disable buttons during loading
+      setLoadingState(true);
+      
       try {
-        // Show loading state
+        // Show loading state on canvas
         const canvas = document.getElementById('pdfCanvas');
         const ctx = canvas.getContext('2d');
         canvas.width = 400;
         canvas.height = 300;
-        ctx.fillStyle = '#f3f4f6';
+        ctx.fillStyle = '#1f2937';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = '#9ca3af';
-        ctx.font = '16px Arial';
+        ctx.font = 'bold 18px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText('Loading PDF...', 200, 150);
+        ctx.fillText('Loading PDF...', 200, 130);
+        ctx.font = '14px Arial';
+        ctx.fillText('Please wait', 200, 160);
 
         // Fetch the PDF from the download endpoint
         const response = await fetch(`${API_BASE_URL}/api/resources/${resource._id}/download`);
@@ -1076,6 +1188,8 @@
           document.getElementById('pageCount').textContent = pdfDoc.numPages;
           document.getElementById('pageNumInput').max = pdfDoc.numPages;
           pageNum = 1;
+          pdfZoomLevel = 100;
+          document.getElementById('zoomLevel').textContent = '100';
           await renderPdfPage(1);
           pdfModal.classList.add('active');
         } else {
@@ -1084,16 +1198,41 @@
       } catch (error) {
         console.error('Error loading PDF:', error);
         alert('Failed to load PDF: ' + error.message);
+      } finally {
+        setLoadingState(false);
       }
+    }
+
+    // ===== SET LOADING STATE =====
+    function setLoadingState(loading) {
+      isLoadingPdf = loading;
+      const buttons = ['prevBtn', 'nextBtn', 'downloadBtn', 'zoomInBtn', 'zoomOutBtn'];
+      
+      buttons.forEach(btnId => {
+        const btn = document.getElementById(btnId);
+        if (btn) {
+          btn.disabled = loading;
+          if (loading) {
+            btn.innerHTML = `<span class="loading-spinner-btn"></span>`;
+          } else {
+            if (btnId === 'prevBtn') btn.innerHTML = `<i class="fas fa-chevron-up"></i> Previous`;
+            else if (btnId === 'nextBtn') btn.innerHTML = `Next <i class="fas fa-chevron-down"></i>`;
+            else if (btnId === 'downloadBtn') btn.innerHTML = `<i class="fas fa-download"></i> Download`;
+            else if (btnId === 'zoomInBtn') btn.innerHTML = `<i class="fas fa-search-plus"></i>`;
+            else if (btnId === 'zoomOutBtn') btn.innerHTML = `<i class="fas fa-search-minus"></i>`;
+          }
+        }
+      });
     }
 
     // ===== RENDER PDF PAGE =====
     async function renderPdfPage(num) {
+      setLoadingState(true);
       try {
         if (!pdfDoc) return;
         
         const page = await pdfDoc.getPage(num);
-        const scale = window.innerWidth < 768 ? 1.5 : 2;
+        const scale = (pdfZoomLevel / 100) * (window.innerWidth < 768 ? 2 : 3);
         const viewport = page.getViewport({ scale });
         
         const canvas = document.getElementById('pdfCanvas');
@@ -1101,35 +1240,56 @@
         canvas.width = viewport.width;
         canvas.height = viewport.height;
         
-        await page.render({
+        const renderContext = {
           canvasContext: context,
           viewport: viewport
-        }).promise;
+        };
+        
+        await page.render(renderContext).promise;
         
         pageNum = num;
         document.getElementById('pageNumInput').value = num;
       } catch (error) {
         console.error('Error rendering PDF page:', error);
         alert('Error rendering page: ' + error.message);
+      } finally {
+        setLoadingState(false);
+      }
+    }
+
+    // ===== PDF ZOOM =====
+    async function zoomIn() {
+      if (pdfZoomLevel < 300) {
+        pdfZoomLevel += 25;
+        document.getElementById('zoomLevel').textContent = pdfZoomLevel;
+        await renderPdfPage(pageNum);
+      }
+    }
+
+    async function zoomOut() {
+      if (pdfZoomLevel > 50) {
+        pdfZoomLevel -= 25;
+        document.getElementById('zoomLevel').textContent = pdfZoomLevel;
+        await renderPdfPage(pageNum);
       }
     }
 
     // ===== PDF NAVIGATION =====
     async function nextPage() {
-      if (pdfDoc && pageNum < pdfDoc.numPages) {
+      if (pdfDoc && pageNum < pdfDoc.numPages && !isLoadingPdf) {
         await renderPdfPage(pageNum + 1);
       }
     }
 
     async function previousPage() {
-      if (pageNum > 1) {
+      if (pageNum > 1 && !isLoadingPdf) {
         await renderPdfPage(pageNum - 1);
       }
     }
 
     async function goToPage(pageNumber) {
       const num = parseInt(pageNumber, 10);
-      if (pdfDoc && num > 0 && num <= pdfDoc.numPages) {
+      if (pdfDoc && num > 0 && num <= pdfDoc.numPages && !isLoadingPdf) {
         await renderPdfPage(num);
       } else {
         alert('Invalid page number');
@@ -1248,6 +1408,8 @@
       }
       pdfDoc = null;
       pageNum = 1;
+      pdfZoomLevel = 100;
+      setLoadingState(false);
       pdfModal.classList.remove('active');
     }
 
@@ -1301,7 +1463,7 @@
     }
 
     function toggleHelp() {
-      alert('Help: Click on any resource card to view or download it. Use the filters to find specific resources. You can navigate PDF pages with arrow keys.');
+      alert('Help: Click on any resource card to view or download it. Use the filters to find specific resources. For PDFs: Use arrow keys or scroll to navigate pages, use +/- buttons to zoom, or click page number to jump to a specific page.');
     }
 
     function upgradePremium() {
