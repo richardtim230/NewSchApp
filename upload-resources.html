@@ -2,11 +2,24 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=0.90">
+    <meta name="viewport" content="width=device-width, initial-scale=0.85">
     <title>Upload Resources | ExamGuide</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="icon" href="logo.png">
+    
+    <!-- PDF.js for PDF extraction -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.js"></script>
+    
+    <!-- Mammoth.js for DOCX extraction -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.0.0-beta.10/mammoth.browser.min.js"></script>
+    
+    <!-- html2canvas for DOCX page conversion -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
+    <!-- html2pdf for final PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
     <style>
         :root {
             --eg-primary: #276EF1;
@@ -26,13 +39,74 @@
             transform: scale(1.01);
         }
 
-        .upload-progress {
+        .page-thumbnail {
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid #e5e7eb;
+            position: relative;
+            overflow: hidden;
+            aspect-ratio: 3/4;
+        }
+
+        .page-thumbnail:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(39, 110, 241, 0.2);
+        }
+
+        .page-thumbnail.uploading {
+            opacity: 0.6;
+            position: relative;
+        }
+
+        .page-number {
+            position: absolute;
+            bottom: 4px;
+            right: 4px;
+            background: rgba(39, 110, 241, 0.9);
+            color: white;
+            font-size: 0.75rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: bold;
+            z-index: 10;
+        }
+
+        .upload-progress-bar {
+            background: linear-gradient(90deg, #276EF1, #d4af37);
+            height: 4px;
+            border-radius: 2px;
             animation: pulse 2s infinite;
         }
 
         @keyframes pulse {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.7; }
+        }
+
+        .pdf-preview-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 12px;
+            max-height: 450px;
+            overflow-y: auto;
+            padding: 12px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            background: #f9fafb;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #e5e7eb;
+            border-top: 3px solid #276EF1;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
 
         .resource-type-card {
@@ -50,16 +124,6 @@
             background: #e0e7ff;
         }
 
-        .course-pill {
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .course-pill.selected {
-            background: #276EF1;
-            color: white;
-        }
-
         .success-animation {
             animation: slideDown 0.5s ease;
         }
@@ -73,6 +137,37 @@
                 opacity: 1;
                 transform: translateY(0);
             }
+        }
+
+        .upload-status {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.3);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 5;
+        }
+
+        .upload-status.visible {
+            display: flex;
+        }
+
+        .upload-badge {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            background: #10b981;
+            color: white;
+            font-size: 0.6rem;
+            padding: 1px 4px;
+            border-radius: 3px;
+            z-index: 15;
+            display: none;
+        }
+
+        .upload-badge.visible {
+            display: block;
         }
     </style>
 </head>
@@ -96,7 +191,7 @@
         </div>
     </header>
 
-    <main class="max-w-4xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+    <main class="max-w-6xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
         <!-- Page Title -->
         <div class="mb-8">
             <h2 class="text-3xl font-bold text-gray-900 mb-2">Upload Learning Resources</h2>
@@ -106,20 +201,20 @@
         <!-- Upload Form -->
         <div class="bg-white rounded-lg shadow-lg overflow-hidden">
             <!-- Form Steps -->
-            <div class="flex items-center justify-between bg-gradient-to-r from-indigo-50 to-blue-50 px-6 py-4 border-b">
-                <div class="flex items-center gap-2" id="step1">
-                    <span class="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600 text-white font-bold">1</span>
-                    <span class="font-medium text-gray-900">Basic Info</span>
+            <div class="flex items-center justify-between bg-gradient-to-r from-indigo-50 to-blue-50 px-6 py-4 border-b overflow-x-auto">
+                <div class="flex items-center gap-2 whitespace-nowrap" id="step1">
+                    <span class="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600 text-white font-bold flex-shrink-0">1</span>
+                    <span class="font-medium text-gray-900 hidden sm:inline">Basic Info</span>
                 </div>
-                <div class="h-1 flex-1 mx-4 bg-gray-300"></div>
-                <div class="flex items-center gap-2" id="step2">
-                    <span class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-300 text-gray-600 font-bold">2</span>
-                    <span class="font-medium text-gray-600">File Upload</span>
+                <div class="h-1 flex-1 mx-2 sm:mx-4 bg-gray-300"></div>
+                <div class="flex items-center gap-2 whitespace-nowrap" id="step2">
+                    <span class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-300 text-gray-600 font-bold flex-shrink-0">2</span>
+                    <span class="font-medium text-gray-600 hidden sm:inline">File Upload</span>
                 </div>
-                <div class="h-1 flex-1 mx-4 bg-gray-300"></div>
-                <div class="flex items-center gap-2" id="step3">
-                    <span class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-300 text-gray-600 font-bold">3</span>
-                    <span class="font-medium text-gray-600">Details</span>
+                <div class="h-1 flex-1 mx-2 sm:mx-4 bg-gray-300"></div>
+                <div class="flex items-center gap-2 whitespace-nowrap" id="step3">
+                    <span class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-300 text-gray-600 font-bold flex-shrink-0">3</span>
+                    <span class="font-medium text-gray-600 hidden sm:inline">Publish</span>
                 </div>
             </div>
 
@@ -147,27 +242,27 @@
                         </label>
                         <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
                             <button type="button" class="resource-type-card p-4 border-2 border-gray-300 rounded-lg text-center hover:border-indigo-600" data-type="pdf">
-                                <i class="fas fa-file-pdf text-2xl text-red-600 mb-2"></i>
+                                <i class="fas fa-file-pdf text-2xl text-red-600 mb-2 block"></i>
                                 <p class="text-sm font-medium">PDF</p>
                             </button>
                             <button type="button" class="resource-type-card p-4 border-2 border-gray-300 rounded-lg text-center hover:border-indigo-600" data-type="notes">
-                                <i class="fas fa-sticky-note text-2xl text-yellow-600 mb-2"></i>
-                                <p class="text-sm font-medium">Notes</p>
+                                <i class="fas fa-sticky-note text-2xl text-yellow-600 mb-2 block"></i>
+                                <p class="text-sm font-medium">Notes (DOCX)</p>
                             </button>
                             <button type="button" class="resource-type-card p-4 border-2 border-gray-300 rounded-lg text-center hover:border-indigo-600" data-type="video">
-                                <i class="fas fa-video text-2xl text-purple-600 mb-2"></i>
-                                <p class="text-sm font-medium">Video</p>
+                                <i class="fas fa-video text-2xl text-purple-600 mb-2 block"></i>
+                                <p class="text-sm font-medium">Video Link</p>
                             </button>
                             <button type="button" class="resource-type-card p-4 border-2 border-gray-300 rounded-lg text-center hover:border-indigo-600" data-type="audio">
-                                <i class="fas fa-music text-2xl text-blue-600 mb-2"></i>
+                                <i class="fas fa-music text-2xl text-blue-600 mb-2 block"></i>
                                 <p class="text-sm font-medium">Audio</p>
                             </button>
                             <button type="button" class="resource-type-card p-4 border-2 border-gray-300 rounded-lg text-center hover:border-indigo-600" data-type="link">
-                                <i class="fas fa-link text-2xl text-green-600 mb-2"></i>
+                                <i class="fas fa-link text-2xl text-green-600 mb-2 block"></i>
                                 <p class="text-sm font-medium">Link</p>
                             </button>
                             <button type="button" class="resource-type-card p-4 border-2 border-gray-300 rounded-lg text-center hover:border-indigo-600" data-type="other">
-                                <i class="fas fa-file text-2xl text-gray-600 mb-2"></i>
+                                <i class="fas fa-file text-2xl text-gray-600 mb-2 block"></i>
                                 <p class="text-sm font-medium">Other</p>
                             </button>
                         </div>
@@ -209,7 +304,8 @@
                 <div id="fileUploadStep" class="space-y-6 hidden">
                     <div class="bg-blue-50 border-l-4 border-blue-600 p-4">
                         <p class="text-sm text-blue-800">
-                            <strong>File Requirements:</strong> Max 200MB. Supported: PDF, DOC, DOCX, PPT, PPTX, XLS, XLSX, ZIP, RAR, MP4, MP3, and more.
+                            <strong>For PDF & DOCX:</strong> Pages are extracted as images and uploaded individually for better viewing. <br>
+                            <strong>Max:</strong> 200MB per file, 200 pages per document.
                         </p>
                     </div>
 
@@ -229,22 +325,39 @@
                             >
                                 Browse Files
                             </button>
+                            <p class="text-xs text-gray-500 mt-4">PDF, DOCX, MP4, MP3, or external links</p>
                         </div>
-                        <input type="file" id="fileInput" name="file" class="hidden" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip,.rar,.mp4,.mp3,.txt,.csv">
+                        <input type="file" id="fileInput" name="file" class="hidden" accept=".pdf,.docx,.mp4,.mp3">
                     </div>
 
-                    <!-- File Preview -->
+                    <!-- Page Preview Grid (Hidden by default) -->
+                    <div id="pagePreviewContainer" class="hidden">
+                        <div class="flex items-center justify-between mb-4">
+                            <h4 class="font-semibold text-gray-900">Extracted Pages (<span id="pageCount">0</span>)</h4>
+                            <div class="text-sm text-gray-600">
+                                <span id="uploadedCount">0</span>/<span id="totalPages">0</span> uploaded
+                            </div>
+                        </div>
+                        <div class="upload-progress-bar mb-4" id="progressBar" style="display:none;"></div>
+                        <div class="pdf-preview-grid" id="pageGrid"></div>
+                        <button 
+                            type="button" 
+                            id="changeFileBtn" 
+                            class="mt-4 px-4 py-2 text-sm text-indigo-600 hover:text-indigo-700 font-medium border border-indigo-600 rounded-lg"
+                        >
+                            Change File
+                        </button>
+                    </div>
+
+                    <!-- File Preview (for video/audio) -->
                     <div id="filePreview" class="hidden bg-gray-50 rounded-lg p-6">
                         <div class="flex items-center gap-4">
                             <i class="fas fa-file text-4xl text-indigo-600"></i>
                             <div class="flex-1">
                                 <p class="font-semibold text-gray-900" id="fileName"></p>
                                 <p class="text-sm text-gray-600" id="fileSize"></p>
-                                <div class="mt-2 bg-gray-300 rounded-full h-2">
-                                    <div id="uploadProgress" class="bg-indigo-600 h-2 rounded-full" style="width: 0%"></div>
-                                </div>
                             </div>
-                            <button type="button" id="changeFileBtn" class="text-sm text-indigo-600 hover:text-indigo-700 font-medium">
+                            <button type="button" id="changeFileBtnSimple" class="text-sm text-indigo-600 hover:text-indigo-700 font-medium">
                                 Change
                             </button>
                         </div>
@@ -260,7 +373,7 @@
                             placeholder="https://example.com/resource"
                             class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-600 focus:border-transparent"
                         >
-                        <p class="text-xs text-gray-500 mt-1">Leave empty if uploading a file</p>
+                        <p class="text-xs text-gray-500 mt-1">For video links, YouTube, Vimeo, etc.</p>
                     </div>
 
                     <div class="flex gap-4">
@@ -274,18 +387,19 @@
                         <button 
                             type="button" 
                             id="nextStep2" 
-                            class="flex-1 px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition"
+                            class="flex-1 px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled
                         >
-                            Next: Details →
+                            Next: Publish →
                         </button>
                     </div>
                 </div>
 
-                <!-- Step 3: Details -->
+                <!-- Step 3: Details & Publish -->
                 <div id="detailsStep" class="space-y-6 hidden">
                     <div>
                         <label for="description" class="block text-sm font-semibold text-gray-900 mb-2">
-                            Description
+                            Description (Optional)
                         </label>
                         <textarea 
                             id="description" 
@@ -294,13 +408,30 @@
                             rows="5"
                             class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-600 focus:border-transparent resize-none"
                         ></textarea>
-                        <p class="text-xs text-gray-500 mt-1">Helps others find your resource</p>
+                        <p class="text-xs text-gray-500 mt-1">Helps others find and understand your resource</p>
+                    </div>
+
+                    <!-- Processing Info -->
+                    <div id="processingInfo" class="hidden bg-amber-50 border-l-4 border-amber-600 p-4">
+                        <p class="text-sm text-amber-800">
+                            <i class="fas fa-spinner fa-spin mr-2"></i>
+                            <strong>Processing pages...</strong> Please wait while we extract and upload pages.
+                        </p>
                     </div>
 
                     <!-- Success Message -->
                     <div id="successMessage" class="hidden success-animation bg-green-50 border-l-4 border-green-600 p-4">
                         <p class="text-sm text-green-800">
-                            <strong>✓ File uploaded successfully!</strong> Your resource is being processed.
+                            <i class="fas fa-check-circle mr-2"></i>
+                            <strong>All pages uploaded successfully!</strong> Your resource is ready to publish.
+                        </p>
+                    </div>
+
+                    <!-- Error Message -->
+                    <div id="errorMessage" class="hidden bg-red-50 border-l-4 border-red-600 p-4">
+                        <p class="text-sm text-red-800">
+                            <i class="fas fa-exclamation-circle mr-2"></i>
+                            <strong>Upload Error:</strong> <span id="errorText"></span>
                         </p>
                     </div>
 
@@ -308,14 +439,14 @@
                         <button 
                             type="button" 
                             id="prevStep2" 
-                            class="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-900 font-semibold rounded-lg hover:bg-gray-50 transition"
+                            class="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-900 font-semibold rounded-lg hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             ← Back
                         </button>
                         <button 
                             type="submit" 
                             id="submitBtn" 
-                            class="flex-1 px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition flex items-center justify-center gap-2"
+                            class="flex-1 px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <i class="fas fa-check"></i>
                             Publish Resource
@@ -324,29 +455,22 @@
                 </div>
             </form>
         </div>
-
-        <!-- Recent Uploads -->
-        <div class="mt-12 bg-white rounded-lg shadow-lg p-8">
-            <h3 class="text-xl font-bold text-gray-900 mb-6">Your Recent Uploads</h3>
-            <div id="recentUploads" class="space-y-4">
-                <p class="text-gray-600 text-center py-8">No uploads yet. Start by creating your first resource!</p>
-            </div>
-        </div>
     </main>
 
     <script>
         const API_BASE_URL = 'https://examguide.onrender.com/api';
-        let selectedFile = null;
-        let currentStep = 1;
-        const formData = new FormData();
-
-        // Get auth token
         const token = localStorage.getItem('token');
+        
         if (!token) {
             window.location.href = '/login.html';
         }
 
-        // Step Navigation
+        let selectedFile = null;
+        let extractedPages = [];
+        let uploadedPageUrls = [];
+        let currentStep = 1;
+
+        // ============ STEP NAVIGATION ============
         document.getElementById('nextStep1').addEventListener('click', () => {
             if (document.getElementById('title').value && document.getElementById('type').value && document.getElementById('course').value) {
                 currentStep = 2;
@@ -407,7 +531,7 @@
             });
         }
 
-        // Resource Type Selection
+        // ============ RESOURCE TYPE SELECTION ============
         document.querySelectorAll('.resource-type-card').forEach(card => {
             card.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -417,17 +541,17 @@
             });
         });
 
-        // File Upload Handlers
+        // ============ FILE UPLOAD HANDLERS ============
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
         const browseBtn = document.getElementById('browseBtn');
 
         browseBtn.addEventListener('click', () => fileInput.click());
 
-        fileInput.addEventListener('change', (e) => {
+        fileInput.addEventListener('change', async (e) => {
             if (e.target.files[0]) {
                 selectedFile = e.target.files[0];
-                displayFilePreview(selectedFile);
+                await processFile(selectedFile);
             }
         });
 
@@ -440,67 +564,293 @@
             dropZone.classList.remove('dragover');
         });
 
-        dropZone.addEventListener('drop', (e) => {
+        dropZone.addEventListener('drop', async (e) => {
             e.preventDefault();
             dropZone.classList.remove('dragover');
             if (e.dataTransfer.files[0]) {
                 selectedFile = e.dataTransfer.files[0];
                 fileInput.files = e.dataTransfer.files;
-                displayFilePreview(selectedFile);
+                await processFile(selectedFile);
             }
         });
 
-        function displayFilePreview(file) {
+        // ============ FILE PROCESSING ============
+        async function processFile(file) {
+            extractedPages = [];
+            uploadedPageUrls = [];
+            
+            const resourceType = document.getElementById('type').value;
+
+            if (file.type === 'application/pdf' || resourceType === 'pdf') {
+                await extractPDFPages(file);
+                displayPagePreview();
+                document.getElementById('nextStep2').disabled = false;
+            } else if (file.name.endsWith('.docx') || resourceType === 'notes') {
+                await extractDocxPages(file);
+                displayPagePreview();
+                document.getElementById('nextStep2').disabled = false;
+            } else if (file.type.startsWith('video/') || file.type.startsWith('audio/')) {
+                displaySimpleFilePreview(file);
+                document.getElementById('nextStep2').disabled = false;
+            } else {
+                alert('Please upload a PDF, DOCX, video, or audio file');
+                document.getElementById('nextStep2').disabled = true;
+                return;
+            }
+        }
+
+        // ============ PDF PAGE EXTRACTION ============
+        async function extractPDFPages(file) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.js';
+            
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+                for (let pageNum = 1; pageNum <= Math.min(pdf.numPages, 200); pageNum++) {
+                    const page = await pdf.getPage(pageNum);
+                    const viewport = page.getViewport({ scale: 2 });
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    canvas.width = viewport.width;
+                    canvas.height = viewport.height;
+
+                    await page.render({
+                        canvasContext: context,
+                        viewport: viewport
+                    }).promise;
+
+                    extractedPages.push({
+                        data: canvas.toDataURL('image/png'),
+                        type: 'pdf',
+                        pageNum: pageNum
+                    });
+                }
+            } catch (error) {
+                console.error('PDF extraction error:', error);
+                showError('Failed to extract PDF pages: ' + error.message);
+            }
+        }
+
+        // ============ DOCX PAGE EXTRACTION ============
+        async function extractDocxPages(file) {
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const result = await mammoth.convertArrayBuffer(arrayBuffer);
+                const html = result.value;
+
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = html;
+                tempDiv.style.width = '800px';
+                tempDiv.style.padding = '40px';
+                tempDiv.style.fontSize = '14px';
+                tempDiv.style.lineHeight = '1.6';
+                tempDiv.style.backgroundColor = 'white';
+                tempDiv.style.position = 'fixed';
+                tempDiv.style.left = '-9999px';
+                tempDiv.style.top = '-9999px';
+                document.body.appendChild(tempDiv);
+
+                const pageHeight = 1100;
+                const totalHeight = tempDiv.scrollHeight;
+                const pageCount = Math.min(Math.ceil(totalHeight / pageHeight), 200);
+
+                for (let pageNum = 0; pageNum < pageCount; pageNum++) {
+                    try {
+                        const canvas = await html2canvas(tempDiv, {
+                            allowTaint: true,
+                            scale: 2,
+                            windowHeight: pageHeight + 40,
+                            logging: false
+                        });
+
+                        const croppedCanvas = document.createElement('canvas');
+                        croppedCanvas.width = canvas.width;
+                        const cropHeight = Math.min(pageHeight * 2, canvas.height - (pageNum * pageHeight * 2));
+                        croppedCanvas.height = cropHeight;
+
+                        const ctx = croppedCanvas.getContext('2d');
+                        ctx.drawImage(canvas, 0, -(pageNum * pageHeight * 2), canvas.width, canvas.height);
+
+                        extractedPages.push({
+                            data: croppedCanvas.toDataURL('image/jpg', 0.9),
+                            type: 'notes',
+                            pageNum: pageNum + 1
+                        });
+                    } catch (e) {
+                        console.error(`Error processing page ${pageNum}:`, e);
+                    }
+                }
+
+                document.body.removeChild(tempDiv);
+            } catch (error) {
+                console.error('DOCX extraction error:', error);
+                showError('Failed to extract DOCX pages: ' + error.message);
+            }
+        }
+
+        // ============ FILE PREVIEW DISPLAY ============
+        function displayPagePreview() {
             document.getElementById('dropContent').classList.add('hidden');
+            document.getElementById('filePreview').classList.add('hidden');
+            document.getElementById('pagePreviewContainer').classList.remove('hidden');
+            document.getElementById('totalPages').textContent = extractedPages.length;
+            document.getElementById('pageCount').textContent = extractedPages.length;
+
+            const pageGrid = document.getElementById('pageGrid');
+            pageGrid.innerHTML = extractedPages.map((page, idx) => `
+                <div class="page-thumbnail relative bg-gray-100 rounded-lg" id="page-${idx}">
+                    <img src="${page.data}" alt="Page ${page.pageNum}" class="w-full h-full object-cover">
+                    <div class="page-number">${page.pageNum}</div>
+                    <div class="upload-status" id="status-${idx}">
+                        <div class="loading-spinner"></div>
+                    </div>
+                    <div class="upload-badge" id="badge-${idx}">✓</div>
+                </div>
+            `).join('');
+
+            uploadPageImages();
+        }
+
+        function displaySimpleFilePreview(file) {
+            document.getElementById('dropContent').classList.add('hidden');
+            document.getElementById('pagePreviewContainer').classList.add('hidden');
             document.getElementById('filePreview').classList.remove('hidden');
             document.getElementById('fileName').textContent = file.name;
             document.getElementById('fileSize').textContent = `${(file.size / 1024 / 1024).toFixed(2)} MB`;
         }
 
+        // ============ CHANGE FILE ============
         document.getElementById('changeFileBtn').addEventListener('click', () => {
+            selectedFile = null;
+            extractedPages = [];
+            uploadedPageUrls = [];
+            fileInput.value = '';
+            document.getElementById('dropContent').classList.remove('hidden');
+            document.getElementById('pagePreviewContainer').classList.add('hidden');
+            document.getElementById('nextStep2').disabled = true;
+        });
+
+        document.getElementById('changeFileBtnSimple').addEventListener('click', () => {
             selectedFile = null;
             fileInput.value = '';
             document.getElementById('dropContent').classList.remove('hidden');
             document.getElementById('filePreview').classList.add('hidden');
+            document.getElementById('nextStep2').disabled = true;
         });
 
-        // Form Submit
+        // ============ UPLOAD PAGES TO CLOUDINARY ============
+        async function uploadPageImages() {
+            document.getElementById('progressBar').style.display = 'block';
+            uploadedPageUrls = [];
+            let uploadedCount = 0;
+
+            for (let idx = 0; idx < extractedPages.length; idx++) {
+                const page = extractedPages[idx];
+                const statusEl = document.getElementById(`status-${idx}`);
+                const badgeEl = document.getElementById(`badge-${idx}`);
+                statusEl.classList.add('visible');
+
+                try {
+                    const blob = await fetch(page.data).then(r => r.blob());
+                    const formData = new FormData();
+                    formData.append('file', blob, `page-${page.pageNum}.jpg`);
+
+                    const response = await fetch(`${API_BASE_URL}/resources/upload-page`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: formData
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        uploadedPageUrls.push({
+                            url: data.url,
+                            publicId: data.publicId,
+                            pageNumber: page.pageNum,
+                            width: data.width,
+                            height: data.height
+                        });
+                        uploadedCount++;
+                        document.getElementById('uploadedCount').textContent = uploadedCount;
+                        statusEl.classList.remove('visible');
+                        badgeEl.classList.add('visible');
+                    }
+                } catch (error) {
+                    console.error(`Failed to upload page ${page.pageNum}:`, error);
+                    statusEl.classList.remove('visible');
+                }
+            }
+
+            document.getElementById('progressBar').style.display = 'none';
+            
+            if (uploadedCount === extractedPages.length && extractedPages.length > 0) {
+                document.getElementById('successMessage').classList.remove('hidden');
+                document.getElementById('errorMessage').classList.add('hidden');
+                document.getElementById('nextStep2').disabled = false;
+            } else if (extractedPages.length > 0) {
+                showError(`Only ${uploadedCount}/${extractedPages.length} pages uploaded successfully`);
+                document.getElementById('nextStep2').disabled = false;
+            }
+        }
+
+        // ============ FORM SUBMIT ============
         document.getElementById('resourceForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            const formDataToSend = new FormData();
-            formDataToSend.append('title', document.getElementById('title').value);
-            formDataToSend.append('description', document.getElementById('description').value);
-            formDataToSend.append('type', document.getElementById('type').value);
-            formDataToSend.append('course', document.getElementById('course').value);
-            formDataToSend.append('link', document.getElementById('link').value);
-            
-            if (selectedFile) {
-                formDataToSend.append('file', selectedFile);
+            const resourceType = document.getElementById('type').value;
+            const resourceData = {
+                title: document.getElementById('title').value,
+                description: document.getElementById('description').value,
+                type: resourceType,
+                course: document.getElementById('course').value,
+                link: document.getElementById('link').value || undefined
+            };
+
+            // Add pages if PDF or notes
+            if ((resourceType === 'pdf' || resourceType === 'notes') && uploadedPageUrls.length > 0) {
+                resourceData.pages = uploadedPageUrls;
             }
+
+            document.getElementById('submitBtn').disabled = true;
 
             try {
                 const response = await fetch(`${API_BASE_URL}/resources`, {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${token}`
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
                     },
-                    body: formDataToSend
+                    body: JSON.stringify(resourceData)
                 });
 
-                if (!response.ok) throw new Error('Upload failed');
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Upload failed');
+                }
 
                 document.getElementById('successMessage').classList.remove('hidden');
+                document.getElementById('errorMessage').classList.add('hidden');
                 
                 setTimeout(() => {
                     window.location.href = '/resources';
                 }, 2000);
             } catch (error) {
-                alert('Error uploading resource: ' + error.message);
+                showError(error.message);
+                document.getElementById('submitBtn').disabled = false;
             }
         });
 
-        // Logout
+        // ============ ERROR HANDLING ============
+        function showError(message) {
+            document.getElementById('errorText').textContent = message;
+            document.getElementById('errorMessage').classList.remove('hidden');
+            document.getElementById('successMessage').classList.add('hidden');
+        }
+
+        // ============ LOGOUT ============
         document.getElementById('logoutBtn').addEventListener('click', () => {
             localStorage.removeItem('token');
             window.location.href = '/login.html';
