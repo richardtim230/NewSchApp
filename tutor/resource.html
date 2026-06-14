@@ -132,6 +132,7 @@
             <option value="document">Document</option>
             <option value="audio">Audio</option>
             <option value="presentation">Presentation</option>
+            <option value="link">Link</option>
           </select>
         </div>
       </div>
@@ -312,15 +313,8 @@
         </button>
       </div>
       <div class="modal-body">
-        <div class="link-preview">
-          <div class="link-preview-icon">
-            <i class="fas fa-external-link-alt"></i>
-          </div>
-          <p style="font-size: 18px; font-weight: 600; color: #374151;">External Link</p>
-          <p>You will be redirected to an external website. Please verify you trust this destination.</p>
-          <a id="linkButton" href="#" target="_blank" rel="noopener noreferrer">
-            <i class="fas fa-external-link"></i> Open External Link
-          </a>
+        <div class="link-preview" id="linkPreviewContainer">
+          <!-- Link preview content loaded here -->
         </div>
       </div>
     </div>
@@ -362,6 +356,49 @@
     // ===== GET RANDOM THUMBNAIL =====
     function getRandomThumbnail() {
       return THUMBNAIL_IMAGES[Math.floor(Math.random() * THUMBNAIL_IMAGES.length)];
+    }
+
+    // ===== EXTRACT VIDEO ID FROM YOUTUBE URL =====
+    function extractYouTubeVideoId(url) {
+      if (!url) return null;
+      
+      const patterns = [
+        /(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/,
+        /(?:https?:\/\/)?(?:www\.)?youtu\.be\/([a-zA-Z0-9_-]{11})/,
+        /(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/
+      ];
+
+      for (let pattern of patterns) {
+        const match = url.match(pattern);
+        if (match) return match[1];
+      }
+      return null;
+    }
+
+    // ===== GET LINK DOMAIN =====
+    function getLinkDomain(url) {
+      try {
+        const urlObj = new URL(url);
+        return urlObj.hostname.replace('www.', '');
+      } catch {
+        return 'External Link';
+      }
+    }
+
+    // ===== GET LINK ICON =====
+    function getLinkIcon(url) {
+      if (!url) return 'external-link-alt';
+      
+      if (url.includes('youtube.com') || url.includes('youtu.be')) return 'youtube';
+      if (url.includes('vimeo.com')) return 'vimeo';
+      if (url.includes('github.com')) return 'github';
+      if (url.includes('linkedin.com')) return 'linkedin';
+      if (url.includes('twitter.com') || url.includes('x.com')) return 'twitter';
+      if (url.includes('instagram.com')) return 'instagram';
+      if (url.includes('facebook.com')) return 'facebook';
+      if (url.includes('drive.google.com') || url.includes('docs.google.com')) return 'google-drive';
+      
+      return 'external-link-alt';
     }
 
     // ===== INITIALIZATION =====
@@ -561,7 +598,7 @@
               <i class="fas fa-${getFileIcon(resource.type)}"></i>
             </div>
             <div class="play-button" onclick="openResource(${JSON.stringify(resource).replace(/"/g, '&quot;')})">
-              <i class="fas fa-${resource.type === 'video' ? 'play' : resource.type === 'pdf' ? 'file-pdf' : resource.type === 'audio' ? 'volume-up' : 'file'}"></i>
+              <i class="fas fa-${resource.type === 'video' ? 'play' : resource.type === 'pdf' ? 'file-pdf' : resource.type === 'audio' ? 'volume-up' : resource.type === 'link' ? 'external-link-alt' : 'file'}"></i>
             </div>
           </div>
           <div class="resource-content">
@@ -587,7 +624,7 @@
             </div>
             <div class="resource-footer">
               <button class="resource-btn primary" onclick="openResource(${JSON.stringify(resource).replace(/"/g, '&quot;')})">
-                <i class="fas fa-${resource.type === 'video' ? 'play-circle' : 'eye'}"></i> View Now
+                <i class="fas fa-${resource.type === 'video' ? 'play-circle' : resource.type === 'link' ? 'external-link-alt' : 'eye'}"></i> View Now
               </button>
               <button class="resource-btn secondary" onclick="toggleFavorite('${resource._id}')">
                 <i class="fas fa-bookmark"></i>
@@ -605,7 +642,8 @@
         'video': 'video',
         'audio': 'music',
         'document': 'file-word',
-        'presentation': 'presentation'
+        'presentation': 'presentation',
+        'link': 'external-link-alt'
       };
       return icons[type] || 'file';
     }
@@ -616,7 +654,8 @@
         'video': 'video',
         'audio': 'music',
         'document': 'file-word',
-        'presentation': 'file-powerpoint'
+        'presentation': 'file-powerpoint',
+        'link': 'external-link-alt'
       };
       return icons[type] || 'file';
     }
@@ -961,7 +1000,7 @@
       }
     }
 
-    // ===== OPEN LINK MODAL =====
+    // ===== OPEN LINK MODAL - ENHANCED FOR YOUTUBE AND EXTERNAL LINKS =====
     function openLinkModal(resource) {
       if (!resource.link) {
         alert('Link not available');
@@ -969,11 +1008,59 @@
       }
 
       const linkModal = document.getElementById('linkModal');
+      const linkPreviewContainer = document.getElementById('linkPreviewContainer');
+      
       document.getElementById('linkTitle').textContent = resource.title;
       
-      const linkButton = document.getElementById('linkButton');
-      linkButton.href = resource.link;
+      const url = resource.link;
+      const youtubeVideoId = extractYouTubeVideoId(url);
+      const domain = getLinkDomain(url);
+      const icon = getLinkIcon(url);
       
+      let previewHTML = '';
+      
+      if (youtubeVideoId) {
+        // YouTube iframe embed
+        previewHTML = `
+          <div class="link-preview youtube-preview">
+            <div class="youtube-container">
+              <iframe 
+                width="100%" 
+                height="100%" 
+                src="https://www.youtube.com/embed/${youtubeVideoId}?autoplay=0" 
+                title="YouTube video player" 
+                frameborder="0" 
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                allowfullscreen>
+              </iframe>
+            </div>
+            <div style="margin-top: 20px; padding: 0 20px;">
+              <a href="${url}" target="_blank" rel="noopener noreferrer" class="link-open-btn">
+                <i class="fas fa-external-link"></i> Open Full Video on YouTube
+              </a>
+            </div>
+          </div>
+        `;
+      } else {
+        // Generic external link preview
+        previewHTML = `
+          <div class="link-preview">
+            <div class="link-preview-icon">
+              <i class="fas fa-${icon}"></i>
+            </div>
+            <p style="font-size: 18px; font-weight: 600; color: #374151;">External Resource</p>
+            <p style="color: #6b7280; margin-bottom: 16px; word-break: break-all;">
+              <strong>Domain:</strong> ${domain}
+            </p>
+            <p style="color: #6b7280; margin-bottom: 20px;">You will be redirected to an external website. Please verify you trust this destination.</p>
+            <a href="${url}" target="_blank" rel="noopener noreferrer" class="link-open-btn">
+              <i class="fas fa-external-link"></i> Open External Link
+            </a>
+          </div>
+        `;
+      }
+      
+      linkPreviewContainer.innerHTML = previewHTML;
       linkModal.classList.add('active');
     }
 
@@ -1008,7 +1095,6 @@
 
     function closeNotesModal() {
       const notesModal = document.getElementById('notesModal');
-      document.getElementById('notesContent').innerHTML = '';
       notesModal.classList.remove('active');
     }
 
@@ -1017,45 +1103,284 @@
       linkModal.classList.remove('active');
     }
 
-    // ===== TOGGLE FAVORITE =====
-    async function toggleFavorite(resourceId) {
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-          alert('Please login to save favorites');
-          return;
-        }
-
-        const response = await fetch(`${API_BASE_URL}/api/resources/${resourceId}/favorite`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if (!response.ok) throw new Error('Failed to toggle favorite');
-        
-        const data = await response.json();
-        loadResources(currentPage);
-      } catch (error) {
-        console.error('Error toggling favorite:', error);
-        alert('Failed to update favorite');
-      }
+    // ===== TOGGLE FAVORITE (PLACEHOLDER) =====
+    function toggleFavorite(resourceId) {
+      console.log('Toggle favorite for resource:', resourceId);
+      // Implement your favorite toggle logic here
     }
 
-    // ===== UTILITY FUNCTIONS =====
-    function toggleNotifications() {
-      alert('Notifications feature coming soon!');
-    }
-
-    function toggleHelp() {
-      alert('Help: Click on any resource card to view or download it. Use the filters to find specific resources. Navigate PDF pages with arrow keys or scroll wheel. Use ↑↓ or scroll to navigate pages.');
-    }
-
+    // ===== UPGRADE PREMIUM (PLACEHOLDER) =====
     function upgradePremium() {
-      alert('Premium upgrade coming soon!');
+      console.log('Upgrade to premium');
+      // Implement your upgrade logic here
     }
 
-    // ===== INITIALIZE PAGE =====
+    // ===== TOGGLE NOTIFICATIONS (PLACEHOLDER) =====
+    function toggleNotifications() {
+      console.log('Toggle notifications');
+      // Implement your notifications logic here
+    }
+
+    // ===== TOGGLE HELP (PLACEHOLDER) =====
+    function toggleHelp() {
+      console.log('Toggle help');
+      // Implement your help logic here
+    }
+
+    // ===== INITIALIZE PAGE ON LOAD =====
     document.addEventListener('DOMContentLoaded', initializePage);
   </script>
+
+  <style>
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 16px;
+      width: 90%;
+      max-width: 900px;
+      max-height: 90vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      animation: slideUp 0.3s ease;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 24px;
+      border-bottom: 1px solid #e5e7eb;
+      background: white;
+    }
+
+    .modal-header h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    .modal-close-btn {
+      background: none;
+      border: none;
+      font-size: 24px;
+      color: #9ca3af;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .modal-close-btn:hover {
+      color: #ef4444;
+    }
+
+    .modal-body {
+      flex: 1;
+      overflow: auto;
+      padding: 24px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .video-container,
+    .audio-player,
+    .pdf-viewer {
+      width: 100%;
+      height: 100%;
+    }
+
+    .youtube-container {
+      position: relative;
+      width: 100%;
+      padding-bottom: 56.25%;
+      height: 0;
+      overflow: hidden;
+      border-radius: 12px;
+    }
+
+    .youtube-container iframe {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+      border-radius: 12px;
+    }
+
+    .link-preview {
+      width: 100%;
+      max-width: 600px;
+      text-align: center;
+      padding: 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .link-preview-icon {
+      font-size: 60px;
+      color: #3b82f6;
+      margin-bottom: 24px;
+    }
+
+    .link-open-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+      color: white;
+      text-decoration: none;
+      border-radius: 10px;
+      font-weight: 700;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
+
+    .link-open-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(59, 130, 246, 0.4);
+    }
+
+    .pdf-controls {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 12px;
+      background: #f9fafb;
+      border-bottom: 1px solid #e5e7eb;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .pdf-controls button {
+      padding: 8px 16px;
+      background: white;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 13px;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .pdf-controls button:hover {
+      background: #3b82f6;
+      color: white;
+      border-color: #3b82f6;
+    }
+
+    .pdf-page-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .pdf-page-info input {
+      width: 60px;
+      padding: 6px 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 13px;
+      text-align: center;
+    }
+
+    .pdf-canvas-container {
+      flex: 1;
+      overflow: auto;
+      display: flex;
+      justify-content: center;
+      background: #f3f4f6;
+      padding: 20px;
+    }
+
+    .pdf-canvas-wrapper {
+      display: flex;
+      justify-content: center;
+    }
+
+    .pdf-canvas-wrapper canvas {
+      border-radius: 8px;
+      background: white;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .youtube-preview {
+      max-width: 100%;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(30px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    @media (max-width: 768px) {
+      .modal-content {
+        width: 95%;
+        max-height: 95vh;
+      }
+
+      .modal-header {
+        padding: 16px;
+      }
+
+      .modal-header h2 {
+        font-size: 16px;
+      }
+
+      .modal-body {
+        padding: 16px;
+      }
+
+      .link-preview {
+        padding: 20px;
+      }
+
+      .pdf-controls {
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .pdf-controls button {
+        width: 100%;
+        justify-content: center;
+      }
+
+      .pdf-page-info {
+        width: 100%;
+        justify-content: center;
+      }
+    }
+  </style>
 </body>
 </html>
