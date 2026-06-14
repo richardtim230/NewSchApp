@@ -472,6 +472,36 @@
       transform: translate(-50%, -50%) scale(1.1);
     }
 
+    .resource-type-badge {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: rgba(59, 130, 246, 0.9);
+      color: white;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      z-index: 4;
+    }
+
+    .resource-type-badge.link {
+      background: rgba(34, 197, 94, 0.9);
+    }
+
+    .resource-type-badge.video {
+      background: rgba(239, 68, 68, 0.9);
+    }
+
+    .resource-type-badge.pdf {
+      background: rgba(168, 85, 247, 0.9);
+    }
+
+    .resource-type-badge.audio {
+      background: rgba(59, 130, 246, 0.9);
+    }
+
     /* Responsive adjustments */
     @media (max-width: 768px) {
       .modal-header {
@@ -599,6 +629,7 @@
             <option value="document">Document</option>
             <option value="audio">Audio</option>
             <option value="presentation">Presentation</option>
+            <option value="link">External Link</option>
           </select>
         </div>
       </div>
@@ -678,10 +709,8 @@
         </button>
       </div>
       <div class="modal-body">
-        <div class="video-container">
-          <video id="videoPlayer" controls style="width: 100%; height: 100%;">
-            Your browser does not support the video tag.
-          </video>
+        <div class="video-container" id="videoContainer">
+          <!-- Video or iframe loaded dynamically -->
         </div>
       </div>
     </div>
@@ -784,7 +813,7 @@
             <i class="fas fa-external-link-alt"></i>
           </div>
           <p style="font-size: 18px; font-weight: 600; color: #374151;">External Link</p>
-          <p>You will be redirected to an external website. Please verify you trust this destination.</p>
+          <p id="linkPreviewText">You will be redirected to an external website. Please verify you trust this destination.</p>
           <a id="linkButton" href="#" target="_blank" rel="noopener noreferrer">
             <i class="fas fa-external-link"></i> Open External Link
           </a>
@@ -829,6 +858,20 @@
     // ===== GET RANDOM THUMBNAIL =====
     function getRandomThumbnail() {
       return THUMBNAIL_IMAGES[Math.floor(Math.random() * THUMBNAIL_IMAGES.length)];
+    }
+
+    // ===== GET RESOURCE TYPE ICON =====
+    function getResourceIcon(type) {
+      const icons = {
+        'pdf': 'fa-file-pdf',
+        'video': 'fa-play-circle',
+        'audio': 'fa-music',
+        'document': 'fa-file-word',
+        'presentation': 'fa-presentation',
+        'link': 'fa-external-link-alt',
+        'notes': 'fa-sticky-note'
+      };
+      return icons[type] || 'fa-file';
     }
 
     // ===== INITIALIZATION =====
@@ -998,8 +1041,6 @@
           renderResources(allResources);
           renderPagination(data.meta);
         }
-        
-        currentPage = page;
       } catch (error) {
         console.error('Error loading resources:', error);
         showEmptyState();
@@ -1009,503 +1050,395 @@
     // ===== RENDER RESOURCES =====
     function renderResources(resources) {
       const grid = document.getElementById('resourcesGrid');
-      const emptyState = document.getElementById('emptyState');
-      
-      if (resources.length === 0) {
-        emptyState.style.display = 'block';
-        grid.innerHTML = '';
-        return;
-      }
-      
-      emptyState.style.display = 'none';
-      grid.innerHTML = resources.map(resource => {
-        const randomThumb = getRandomThumbnail();
-        return `
-        <div class="resource-card">
+      grid.innerHTML = '';
+      document.getElementById('emptyState').style.display = 'none';
+
+      resources.forEach(resource => {
+        const resourceType = resource.type || 'file';
+        const card = document.createElement('div');
+        card.className = 'resource-card';
+        
+        // Determine icon based on resource type or if it has a link
+        let icon = getResourceIcon(resourceType);
+        if (resource.link && !resource.fileId) {
+          icon = getResourceIcon('link');
+        }
+
+        const thumbnail = `
           <div class="resource-thumbnail">
-            <img src="${randomThumb}" alt="${resource.title}" onerror="this.style.display='none'">
-            <div>
-              <i class="fas fa-${getFileIcon(resource.type)}"></i>
+            <img src="${getRandomThumbnail()}" alt="${resource.title}" onerror="this.style.display='none'">
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);"></div>
+            <i class="fas ${icon}" style="z-index: 3;"></i>
+            <div class="play-button" onclick="openResource(event, '${resource._id}')">
+              <i class="fas fa-play"></i>
             </div>
-            <div class="play-button" onclick="openResource(${JSON.stringify(resource).replace(/"/g, '&quot;')})">
-              <i class="fas fa-${resource.type === 'video' ? 'play' : resource.type === 'pdf' ? 'file-pdf' : resource.type === 'audio' ? 'volume-up' : 'file'}"></i>
+            <div class="resource-type-badge ${resourceType.toLowerCase()}">
+              ${resourceType}
             </div>
           </div>
-          <div class="resource-content">
-            <h3 class="resource-title">${resource.title}</h3>
-            <div class="resource-instructor">
-              <i class="fas fa-user-circle"></i>
-              ${resource.uploadedBy?.fullname || 'Unknown'}
-            </div>
-            <p class="resource-description">${resource.description || 'No description provided'}</p>
+        `;
+
+        const content = `
+          <div class="resource-info">
+            <h3 class="resource-title" title="${resource.title}">${resource.title}</h3>
+            <p class="resource-description">${resource.description || 'No description available'}</p>
             <div class="resource-meta">
-              <div class="resource-meta-item">
-                <i class="fas fa-${getFileTypeIcon(resource.type)}"></i>
-                ${resource.type}
-              </div>
-              <div class="resource-meta-item">
-                <i class="fas fa-download"></i>
-                ${resource.downloads || 0}
-              </div>
-              <div class="resource-meta-item">
-                <i class="fas fa-star"></i>
-                ${resource.ratingAvg || 'N/A'}
-              </div>
+              <span class="meta-item">
+                <i class="fas fa-book"></i> ${resource.course || 'General'}
+              </span>
+              <span class="meta-item">
+                <i class="fas fa-download"></i> ${resource.downloads || 0}
+              </span>
             </div>
             <div class="resource-footer">
-              <button class="resource-btn primary" onclick="openResource(${JSON.stringify(resource).replace(/"/g, '&quot;')})">
-                <i class="fas fa-${resource.type === 'video' ? 'play-circle' : 'eye'}"></i> View Now
-              </button>
-              <button class="resource-btn secondary" onclick="toggleFavorite('${resource._id}')">
-                <i class="fas fa-bookmark"></i>
+              <div class="resource-rating">
+                <i class="fas fa-star"></i>
+                ${resource.ratingAvg ? resource.ratingAvg.toFixed(1) : 'N/A'}
+              </div>
+              <button class="resource-btn" onclick="openResource(event, '${resource._id}')">
+                <i class="fas fa-eye"></i> View
               </button>
             </div>
           </div>
-        </div>
-      `}).join('');
-    }
+        `;
 
-    // ===== HELPER FUNCTIONS =====
-    function getFileIcon(type) {
-      const icons = {
-        'pdf': 'file-pdf',
-        'video': 'video',
-        'audio': 'music',
-        'document': 'file-word',
-        'presentation': 'presentation'
-      };
-      return icons[type] || 'file';
-    }
-
-    function getFileTypeIcon(type) {
-      const icons = {
-        'pdf': 'file-pdf',
-        'video': 'video',
-        'audio': 'music',
-        'document': 'file-word',
-        'presentation': 'file-powerpoint'
-      };
-      return icons[type] || 'file';
-    }
-
-    // ===== SHOW EMPTY STATE =====
-    function showEmptyState() {
-      document.getElementById('emptyState').style.display = 'block';
-      document.getElementById('resourcesGrid').innerHTML = '';
-      document.getElementById('paginationContainer').innerHTML = '';
-    }
-
-    // ===== RENDER PAGINATION =====
-    function renderPagination(meta) {
-      const container = document.getElementById('paginationContainer');
-      if (!meta || meta.pages <= 1) {
-        container.innerHTML = '';
-        return;
-      }
-
-      let html = '<div class="pagination-buttons">';
-      
-      for (let i = 1; i <= meta.pages; i++) {
-        if (i === meta.page) {
-          html += `<button class="pagination-btn active">${i}</button>`;
-        } else {
-          html += `<button class="pagination-btn" onclick="loadResources(${i})">${i}</button>`;
-        }
-      }
-      
-      html += '</div>';
-      container.innerHTML = html;
-    }
-
-    // ===== BUTTON LOADING STATE =====
-    function setButtonLoading(buttonId, isLoading) {
-      const btn = document.getElementById(buttonId);
-      if (!btn) return;
-
-      if (isLoading) {
-        btn.disabled = true;
-        const originalHTML = btn.innerHTML;
-        btn.dataset.originalHTML = originalHTML;
-        btn.innerHTML = `<span class="btn-spinner"></span> Loading...`;
-      } else {
-        btn.disabled = false;
-        btn.innerHTML = btn.dataset.originalHTML || btn.innerHTML;
-      }
+        card.innerHTML = thumbnail + content;
+        grid.appendChild(card);
+      });
     }
 
     // ===== OPEN RESOURCE =====
-    function openResource(resource) {
-      if (!resource) {
-        alert('Resource not available');
-        return;
-      }
+    async function openResource(event, resourceId) {
+      if (event) event.preventDefault();
+      
+      try {
+        const resource = allResources.find(r => r._id === resourceId);
+        if (!resource) {
+          alert('Resource not found');
+          return;
+        }
 
-      switch (resource.type) {
-        case 'video':
-          openVideoModal(resource);
-          break;
-        case 'pdf':
-        case 'document':
-          openPdfModal(resource);
-          break;
-        case 'audio':
-          openAudioModal(resource);
-          break;
-        case 'notes':
-          openNotesModal(resource);
-          break;
-        case 'presentation':
-          openPdfModal(resource);
-          break;
-        case 'link':
-          openLinkModal(resource);
-          break;
-        default:
-          alert('Unsupported resource type: ' + resource.type);
+        const resourceType = resource.type || 'file';
+
+        // Handle external links
+        if (resource.link && !resource.fileId) {
+          openLinkResource(resource);
+          return;
+        }
+
+        // Handle file-based resources
+        switch(resourceType) {
+          case 'video':
+            openVideoResource(resource);
+            break;
+          case 'pdf':
+            openPdfResource(resource);
+            break;
+          case 'audio':
+            openAudioResource(resource);
+            break;
+          case 'notes':
+          case 'document':
+            openNotesResource(resource);
+            break;
+          default:
+            if (resource.link) {
+              openLinkResource(resource);
+            } else if (resource.fileId) {
+              downloadFile(resource);
+            } else {
+              alert('Unable to open this resource');
+            }
+        }
+      } catch (error) {
+        console.error('Error opening resource:', error);
+        alert('Error opening resource');
       }
     }
 
-    // ===== OPEN VIDEO MODAL =====
-    function openVideoModal(resource) {
-      if (!resource._id) {
-        alert('Resource ID not available');
-        return;
-      }
-
-      const videoModal = document.getElementById('videoModal');
+    // ===== OPEN VIDEO RESOURCE =====
+    function openVideoResource(resource) {
       document.getElementById('videoTitle').textContent = resource.title;
       
-      const videoUrl = `${API_BASE_URL}/api/resources/${resource._id}/download`;
-      const videoPlayer = document.getElementById('videoPlayer');
-      
-      videoPlayer.src = videoUrl;
-      videoPlayer.type = resource.fileMime || 'video/mp4';
-      
-      videoModal.classList.add('active');
+      const container = document.getElementById('videoContainer');
+      container.innerHTML = '';
+
+      if (resource.link) {
+        // Handle YouTube and other embedded video links
+        let embedUrl = resource.link;
+        
+        // Convert YouTube URLs to embed format
+        if (embedUrl.includes('youtube.com') || embedUrl.includes('youtu.be')) {
+          const videoId = embedUrl.includes('youtube.com') 
+            ? embedUrl.split('v=')[1]?.split('&')[0]
+            : embedUrl.split('youtu.be/')[1]?.split('?')[0];
+          if (videoId) {
+            embedUrl = `https://www.youtube.com/embed/${videoId}`;
+          }
+        }
+        
+        // Handle Vimeo links
+        if (embedUrl.includes('vimeo.com')) {
+          const videoId = embedUrl.split('vimeo.com/')[1]?.split('?')[0];
+          if (videoId) {
+            embedUrl = `https://player.vimeo.com/video/${videoId}`;
+          }
+        }
+
+        const iframe = document.createElement('iframe');
+        iframe.src = embedUrl;
+        iframe.allowFullscreen = true;
+        iframe.style.width = '100%';
+        iframe.style.height = '100%';
+        iframe.style.border = 'none';
+        container.appendChild(iframe);
+      } else if (resource.fileId) {
+        // Handle local video files
+        const video = document.createElement('video');
+        video.controls = true;
+        video.style.width = '100%';
+        video.style.height = '100%';
+        video.src = `${API_BASE_URL}/api/resources/${resource._id}/download`;
+        container.appendChild(video);
+      }
+
+      document.getElementById('videoModal').classList.add('active');
     }
 
-    // ===== OPEN PDF MODAL =====
-    async function openPdfModal(resource) {
-      if (!resource._id) {
-        alert('Resource ID not available');
-        return;
-      }
-
-      if (isLoadingPdf) {
-        alert('PDF is still loading. Please wait...');
-        return;
-      }
-
-      const pdfModal = document.getElementById('pdfModal');
+    // ===== OPEN PDF RESOURCE =====
+    async function openPdfResource(resource) {
       document.getElementById('pdfTitle').textContent = resource.title;
       currentResourceTitle = resource.title;
       
+      if (resource.link) {
+        currentPdfUrl = resource.link;
+      } else if (resource.fileId) {
+        currentPdfUrl = `${API_BASE_URL}/api/resources/${resource._id}/download`;
+      }
+
+      if (!currentPdfUrl) {
+        alert('PDF URL not available');
+        return;
+      }
+
+      pageNum = 1;
+      isLoadingPdf = true;
+      
       try {
-        isLoadingPdf = true;
-        
-        // Show loading spinner and disable buttons
-        setButtonLoading('prevBtn', true);
-        setButtonLoading('nextBtn', true);
-        setButtonLoading('downloadBtn', true);
-
-        // Show loading state
-        const canvas = document.getElementById('pdfCanvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = 400;
-        canvas.height = 300;
-        ctx.fillStyle = '#e5e7eb';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = '#9ca3af';
-        ctx.font = 'bold 16px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('Loading PDF...', 200, 150);
-
-        pdfModal.classList.add('active');
-
-        // Fetch the PDF from the download endpoint
-        const response = await fetch(`${API_BASE_URL}/api/resources/${resource._id}/download`);
-        
-        if (!response.ok) {
-          throw new Error('Failed to load PDF');
-        }
-
-        const blob = await response.blob();
-        const pdfUrl = URL.createObjectURL(blob);
-        
-        currentPdfUrl = pdfUrl;
-        
-        // Load PDF with pdf.js
-        if (typeof pdfjsLib !== 'undefined') {
-          pdfDoc = await pdfjsLib.getDocument(pdfUrl).promise;
-          document.getElementById('pageCount').textContent = pdfDoc.numPages;
-          document.getElementById('pageNumInput').max = pdfDoc.numPages;
-          pageNum = 1;
-          await renderPdfPage(1);
-        } else {
-          throw new Error('PDF.js not loaded');
-        }
-
-        isLoadingPdf = false;
-        setButtonLoading('prevBtn', false);
-        setButtonLoading('nextBtn', false);
-        setButtonLoading('downloadBtn', false);
-
+        const pdf = await pdfjsLib.getDocument(currentPdfUrl).promise;
+        pdfDoc = pdf;
+        document.getElementById('pageCount').textContent = pdf.numPages;
+        document.getElementById('pageNumInput').max = pdf.numPages;
+        await renderPage(1);
+        document.getElementById('pdfModal').classList.add('active');
       } catch (error) {
         console.error('Error loading PDF:', error);
-        alert('Failed to load PDF: ' + error.message);
+        alert('Error loading PDF. The file may be corrupted or unavailable.');
+      } finally {
         isLoadingPdf = false;
-        setButtonLoading('prevBtn', false);
-        setButtonLoading('nextBtn', false);
-        setButtonLoading('downloadBtn', false);
-        pdfModal.classList.remove('active');
       }
     }
 
     // ===== RENDER PDF PAGE =====
-    async function renderPdfPage(num) {
-      try {
-        if (!pdfDoc || isLoadingPdf) return;
-        
-        isLoadingPdf = true;
-        setButtonLoading('prevBtn', true);
-        setButtonLoading('nextBtn', true);
+    async function renderPage(pageNumber) {
+      if (!pdfDoc || isLoadingPdf) return;
 
-        const page = await pdfDoc.getPage(num);
-        
-        // Higher scale for better quality
-        const scale = 3;
+      isLoadingPdf = true;
+      pageNum = Math.max(1, Math.min(pageNumber, pdfDoc.numPages));
+
+      try {
+        const page = await pdfDoc.getPage(pageNum);
+        const scale = 2;
         const viewport = page.getViewport({ scale });
-        
         const canvas = document.getElementById('pdfCanvas');
         const context = canvas.getContext('2d');
+
         canvas.width = viewport.width;
         canvas.height = viewport.height;
-        
+
         await page.render({
           canvasContext: context,
           viewport: viewport
         }).promise;
-        
-        pageNum = num;
-        document.getElementById('pageNumInput').value = num;
 
-        // Scroll canvas into view
-        const container = document.getElementById('pdfCanvasContainer');
-        if (container) {
-          container.scrollTop = 0;
-        }
-
-        isLoadingPdf = false;
-        setButtonLoading('prevBtn', false);
-        setButtonLoading('nextBtn', false);
-
+        document.getElementById('pageNumInput').value = pageNum;
+        document.getElementById('prevBtn').disabled = pageNum <= 1;
+        document.getElementById('nextBtn').disabled = pageNum >= pdfDoc.numPages;
       } catch (error) {
         console.error('Error rendering PDF page:', error);
+      } finally {
         isLoadingPdf = false;
-        setButtonLoading('prevBtn', false);
-        setButtonLoading('nextBtn', false);
       }
     }
 
     // ===== PDF NAVIGATION =====
-    async function nextPage() {
-      if (pdfDoc && pageNum < pdfDoc.numPages && !isLoadingPdf) {
-        await renderPdfPage(pageNum + 1);
+    function nextPage() {
+      if (pdfDoc && pageNum < pdfDoc.numPages) {
+        renderPage(pageNum + 1);
       }
     }
 
-    async function previousPage() {
-      if (pageNum > 1 && !isLoadingPdf) {
-        await renderPdfPage(pageNum - 1);
+    function previousPage() {
+      if (pageNum > 1) {
+        renderPage(pageNum - 1);
       }
     }
 
-    async function goToPage(pageNumber) {
+    function goToPage(pageNumber) {
       const num = parseInt(pageNumber, 10);
-      if (pdfDoc && num > 0 && num <= pdfDoc.numPages && !isLoadingPdf) {
-        await renderPdfPage(num);
-      } else if (num <= 0 || num > pdfDoc.numPages) {
-        alert('Invalid page number');
+      if (num > 0 && num <= pdfDoc.numPages) {
+        renderPage(num);
       }
     }
 
-    // ===== DOWNLOAD PDF =====
-    function downloadPdfCurrently() {
-      if (!currentPdfUrl) {
-        alert('PDF not loaded');
-        return;
-      }
-      
-      setButtonLoading('downloadBtn', true);
-      
-      const a = document.createElement('a');
-      a.href = currentPdfUrl;
-      a.download = `${currentResourceTitle || 'document'}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-
-      setTimeout(() => {
-        setButtonLoading('downloadBtn', false);
-      }, 1000);
-    }
-
-    // ===== OPEN AUDIO MODAL =====
-    function openAudioModal(resource) {
-      if (!resource._id) {
-        alert('Resource ID not available');
-        return;
-      }
-
-      const audioModal = document.getElementById('audioModal');
+    // ===== OPEN AUDIO RESOURCE =====
+    function openAudioResource(resource) {
       document.getElementById('audioTitle').textContent = resource.title;
       
-      setButtonLoading('downloadAudioBtn', true);
-      
-      const audioUrl = `${API_BASE_URL}/api/resources/${resource._id}/download`;
       const audioPlayer = document.getElementById('audioPlayer');
-      audioPlayer.src = audioUrl;
-      audioPlayer.type = resource.fileMime || 'audio/mpeg';
       
-      audioModal.classList.add('active');
-
-      setTimeout(() => {
-        setButtonLoading('downloadAudioBtn', false);
-      }, 1500);
-    }
-
-    // ===== DOWNLOAD AUDIO =====
-    function downloadAudioFile() {
-      const audioPlayer = document.getElementById('audioPlayer');
-      if (!audioPlayer.src) {
-        alert('Audio not loaded');
-        return;
+      if (resource.link) {
+        audioPlayer.src = resource.link;
+      } else if (resource.fileId) {
+        audioPlayer.src = `${API_BASE_URL}/api/resources/${resource._id}/download`;
       }
 
-      setButtonLoading('downloadAudioBtn', true);
-      
-      const a = document.createElement('a');
-      a.href = audioPlayer.src;
-      a.download = `${document.getElementById('audioTitle').textContent || 'audio'}.mp3`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-
-      setTimeout(() => {
-        setButtonLoading('downloadAudioBtn', false);
-      }, 1000);
+      document.getElementById('audioModal').classList.add('active');
     }
 
-    // ===== OPEN NOTES MODAL =====
-    async function openNotesModal(resource) {
-      if (!resource._id) {
-        alert('Resource ID not available');
-        return;
-      }
-
-      const notesModal = document.getElementById('notesModal');
+    // ===== OPEN NOTES RESOURCE =====
+    function openNotesResource(resource) {
       document.getElementById('notesTitle').textContent = resource.title;
       
-      try {
-        // If notes are stored as pages array
-        if (resource.pages && resource.pages.length > 0) {
-          const notesContent = document.getElementById('notesContent');
-          notesContent.innerHTML = '<div style="text-align: center;"><div class="loading-spinner" style="margin: 40px auto;"></div></div>';
-          
-          notesContent.innerHTML = resource.pages.map((page, idx) => 
-            `<div style="page-break-after: always; margin-bottom: 20px;">
-              <img src="${page.url}" alt="Page ${page.pageNumber}" style="width: 100%; border-radius: 8px;">
-            </div>`
-          ).join('');
-          notesModal.classList.add('active');
-        } else {
-          // Fallback to opening as PDF
-          await openPdfModal(resource);
-        }
-      } catch (error) {
-        console.error('Error loading notes:', error);
-        alert('Failed to load notes. Please try again.');
+      const notesContent = document.getElementById('notesContent');
+      
+      if (resource.link) {
+        // If link is provided, try to fetch and display
+        fetch(resource.link)
+          .then(r => r.text())
+          .then(html => {
+            notesContent.innerHTML = html;
+          })
+          .catch(err => {
+            notesContent.innerHTML = `<p>Unable to load notes. <a href="${resource.link}" target="_blank">Open externally</a></p>`;
+          });
+      } else if (resource.fileId) {
+        notesContent.innerHTML = `<p>Loading notes...</p>`;
+        fetch(`${API_BASE_URL}/api/resources/${resource._id}/download`)
+          .then(r => r.text())
+          .then(html => {
+            notesContent.innerHTML = html;
+          })
+          .catch(err => {
+            notesContent.innerHTML = `<p>Error loading notes file</p>`;
+          });
       }
+
+      document.getElementById('notesModal').classList.add('active');
     }
 
-    // ===== OPEN LINK MODAL =====
-    function openLinkModal(resource) {
-      if (!resource.link) {
-        alert('Link not available');
-        return;
-      }
-
-      const linkModal = document.getElementById('linkModal');
+    // ===== OPEN LINK RESOURCE =====
+    function openLinkResource(resource) {
       document.getElementById('linkTitle').textContent = resource.title;
-      
-      const linkButton = document.getElementById('linkButton');
-      linkButton.href = resource.link;
-      
-      linkModal.classList.add('active');
+      document.getElementById('linkPreviewText').textContent = 
+        `You will be redirected to: ${resource.link || 'external resource'}`;
+      document.getElementById('linkButton').href = resource.link;
+      document.getElementById('linkModal').classList.add('active');
     }
 
     // ===== CLOSE MODALS =====
     function closeVideoModal() {
-      const videoModal = document.getElementById('videoModal');
-      const videoPlayer = document.getElementById('videoPlayer');
-      videoPlayer.src = '';
-      videoPlayer.pause();
-      videoModal.classList.remove('active');
+      document.getElementById('videoModal').classList.remove('active');
+      const container = document.getElementById('videoContainer');
+      container.innerHTML = '';
     }
 
     function closePdfModal() {
-      const pdfModal = document.getElementById('pdfModal');
-      if (currentPdfUrl) {
-        URL.revokeObjectURL(currentPdfUrl);
-        currentPdfUrl = null;
-      }
+      document.getElementById('pdfModal').classList.remove('active');
       pdfDoc = null;
       pageNum = 1;
-      isLoadingPdf = false;
-      pdfModal.classList.remove('active');
     }
 
     function closeAudioModal() {
-      const audioModal = document.getElementById('audioModal');
+      document.getElementById('audioModal').classList.remove('active');
       const audioPlayer = document.getElementById('audioPlayer');
-      audioPlayer.src = '';
       audioPlayer.pause();
-      audioModal.classList.remove('active');
+      audioPlayer.src = '';
     }
 
     function closeNotesModal() {
-      const notesModal = document.getElementById('notesModal');
-      document.getElementById('notesContent').innerHTML = '';
-      notesModal.classList.remove('active');
+      document.getElementById('notesModal').classList.remove('active');
     }
 
     function closeLinkModal() {
-      const linkModal = document.getElementById('linkModal');
-      linkModal.classList.remove('active');
+      document.getElementById('linkModal').classList.remove('active');
     }
 
-    // ===== TOGGLE FAVORITE =====
-    async function toggleFavorite(resourceId) {
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-          alert('Please login to save favorites');
-          return;
-        }
-
-        const response = await fetch(`${API_BASE_URL}/api/resources/${resourceId}/favorite`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if (!response.ok) throw new Error('Failed to toggle favorite');
-        
-        const data = await response.json();
-        loadResources(currentPage);
-      } catch (error) {
-        console.error('Error toggling favorite:', error);
-        alert('Failed to update favorite');
+    // ===== DOWNLOAD FUNCTIONS =====
+    function downloadFile(resource) {
+      if (resource.fileId) {
+        const link = document.createElement('a');
+        link.href = `${API_BASE_URL}/api/resources/${resource._id}/download`;
+        link.download = resource.title || 'resource';
+        link.click();
+      } else if (resource.link) {
+        window.open(resource.link, '_blank');
       }
+    }
+
+    function downloadPdfCurrently() {
+      if (currentPdfUrl) {
+        const link = document.createElement('a');
+        link.href = currentPdfUrl;
+        link.download = currentResourceTitle || 'document.pdf';
+        link.click();
+      }
+    }
+
+    function downloadAudioFile() {
+      const audioPlayer = document.getElementById('audioPlayer');
+      if (audioPlayer.src) {
+        const link = document.createElement('a');
+        link.href = audioPlayer.src;
+        link.download = document.getElementById('audioTitle').textContent || 'audio';
+        link.click();
+      }
+    }
+
+    // ===== PAGINATION =====
+    function renderPagination(meta) {
+      const container = document.getElementById('paginationContainer');
+      container.innerHTML = '';
+
+      if (!meta || meta.pages <= 1) return;
+
+      const prevBtn = document.createElement('button');
+      prevBtn.textContent = 'Previous';
+      prevBtn.disabled = meta.page <= 1;
+      prevBtn.onclick = () => {
+        if (meta.page > 1) loadResources(meta.page - 1);
+      };
+      container.appendChild(prevBtn);
+
+      const pageInfo = document.createElement('span');
+      pageInfo.textContent = `Page ${meta.page} of ${meta.pages}`;
+      pageInfo.style.padding = '10px 20px';
+      container.appendChild(pageInfo);
+
+      const nextBtn = document.createElement('button');
+      nextBtn.textContent = 'Next';
+      nextBtn.disabled = meta.page >= meta.pages;
+      nextBtn.onclick = () => {
+        if (meta.page < meta.pages) loadResources(meta.page + 1);
+      };
+      container.appendChild(nextBtn);
+    }
+
+    // ===== EMPTY STATE =====
+    function showEmptyState() {
+      document.getElementById('resourcesGrid').innerHTML = '';
+      document.getElementById('emptyState').style.display = 'block';
+      document.getElementById('paginationContainer').innerHTML = '';
     }
 
     // ===== UTILITY FUNCTIONS =====
@@ -1514,15 +1447,19 @@
     }
 
     function toggleHelp() {
-      alert('Help: Click on any resource card to view or download it. Use the filters to find specific resources. Navigate PDF pages with arrow keys or scroll wheel. Use ↑↓ or scroll to navigate pages.');
+      alert('Help feature coming soon!');
     }
 
     function upgradePremium() {
       alert('Premium upgrade coming soon!');
     }
 
-    // ===== INITIALIZE PAGE =====
-    document.addEventListener('DOMContentLoaded', initializePage);
+    // ===== INITIALIZE ON PAGE LOAD =====
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initializePage);
+    } else {
+      initializePage();
+    }
   </script>
 </body>
 </html>
