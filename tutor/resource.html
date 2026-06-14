@@ -145,8 +145,8 @@
       object-fit: contain;
     }
 
-    /* YouTube Container */
-    .youtube-container {
+    /* YouTube/Embed Container */
+    .embed-container {
       width: 100%;
       aspect-ratio: 16 / 9;
       border-radius: 12px;
@@ -154,7 +154,7 @@
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
 
-    .youtube-container iframe {
+    .embed-container iframe {
       width: 100%;
       height: 100%;
       border: none;
@@ -179,9 +179,24 @@
       margin-bottom: 24px;
     }
 
+    .link-preview-title {
+      font-size: 22px;
+      font-weight: 800;
+      margin-bottom: 16px;
+      color: #fff;
+    }
+
+    .link-preview-domain {
+      font-size: 14px;
+      color: #999;
+      margin-bottom: 20px;
+    }
+
     .link-preview p {
       margin: 0 0 12px 0;
       color: #ddd;
+      font-size: 15px;
+      line-height: 1.6;
     }
 
     .link-open-btn {
@@ -198,6 +213,8 @@
       transition: all 0.3s ease;
       box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
       margin-top: 20px;
+      border: none;
+      cursor: pointer;
     }
 
     .link-open-btn:hover {
@@ -355,7 +372,7 @@
         padding: 20px;
       }
 
-      .youtube-container {
+      .embed-container {
         aspect-ratio: 16 / 9;
       }
 
@@ -551,18 +568,18 @@
     </div>
   </div>
 
-  <!-- ===== YOUTUBE/LINK VIDEO MODAL ===== -->
-  <div id="youtubeModal" class="modal-overlay">
+  <!-- ===== EMBED MODAL (YouTube, Vimeo, etc.) ===== -->
+  <div id="embedModal" class="modal-overlay">
     <div class="modal-content">
       <div class="modal-header">
-        <h2 id="youtubeTitle">Video Player</h2>
-        <button class="modal-close-btn" onclick="closeYoutubeModal()" title="Close (Esc)">
+        <h2 id="embedTitle">Video Player</h2>
+        <button class="modal-close-btn" onclick="closeEmbedModal()" title="Close (Esc)">
           <i class="fas fa-times"></i>
         </button>
       </div>
       <div class="modal-body" style="padding: 20px; background: #000;">
-        <div class="youtube-container">
-          <iframe id="youtubePlayer" allowfullscreen></iframe>
+        <div class="embed-container">
+          <iframe id="embedPlayer" allowfullscreen></iframe>
         </div>
       </div>
     </div>
@@ -722,6 +739,22 @@
       return null;
     }
 
+    // ===== EXTRACT VIDEO ID FROM VIMEO URL =====
+    function extractVimeoVideoId(url) {
+      if (!url) return null;
+      
+      const patterns = [
+        /(?:https?:\/\/)?(?:www\.)?vimeo\.com\/(\d+)/,
+        /(?:https?:\/\/)?player\.vimeo\.com\/video\/(\d+)/
+      ];
+
+      for (let pattern of patterns) {
+        const match = url.match(pattern);
+        if (match) return match[1];
+      }
+      return null;
+    }
+
     // ===== GET LINK DOMAIN =====
     function getLinkDomain(url) {
       try {
@@ -782,7 +815,7 @@
         if (e.key === 'Escape') {
           closePdfModal();
           closeVideoModal();
-          closeYoutubeModal();
+          closeEmbedModal();
           closeAudioModal();
           closeNotesModal();
           closeLinkModal();
@@ -1084,7 +1117,7 @@
       }
     }
 
-    // ===== OPEN VIDEO MODAL =====
+    // ===== OPEN VIDEO MODAL (for uploaded video files) =====
     function openVideoModal(resource) {
       if (!resource._id) {
         alert('Resource ID not available');
@@ -1101,6 +1134,34 @@
       videoPlayer.type = resource.fileMime || 'video/mp4';
       
       videoModal.classList.add('active');
+    }
+
+    // ===== OPEN EMBED MODAL (for YouTube, Vimeo, etc.) =====
+    function openEmbedModal(resource) {
+      const embedModal = document.getElementById('embedModal');
+      document.getElementById('embedTitle').textContent = resource.title;
+      
+      const embedPlayer = document.getElementById('embedPlayer');
+      
+      // Check if it's YouTube
+      const youtubeId = extractYouTubeVideoId(resource.link);
+      if (youtubeId) {
+        embedPlayer.src = `https://www.youtube.com/embed/${youtubeId}?rel=0&autoplay=1`;
+        embedModal.classList.add('active');
+        return;
+      }
+
+      // Check if it's Vimeo
+      const vimeoId = extractVimeoVideoId(resource.link);
+      if (vimeoId) {
+        embedPlayer.src = `https://player.vimeo.com/video/${vimeoId}`;
+        embedModal.classList.add('active');
+        return;
+      }
+
+      // For other embeddable links
+      embedPlayer.src = resource.link;
+      embedModal.classList.add('active');
     }
 
     // ===== OPEN PDF MODAL =====
@@ -1279,12 +1340,18 @@
       const audioModal = document.getElementById('audioModal');
       document.getElementById('audioTitle').textContent = resource.title;
       
+      setButtonLoading('downloadAudioBtn', true);
+      
       const audioUrl = `${API_BASE_URL}/api/resources/${resource._id}/download`;
       const audioPlayer = document.getElementById('audioPlayer');
       audioPlayer.src = audioUrl;
       audioPlayer.type = resource.fileMime || 'audio/mpeg';
       
       audioModal.classList.add('active');
+
+      setTimeout(() => {
+        setButtonLoading('downloadAudioBtn', false);
+      }, 1500);
     }
 
     // ===== DOWNLOAD AUDIO =====
@@ -1341,52 +1408,43 @@
       }
     }
 
-    // ===== OPEN LINK MODAL - ENHANCED FOR YOUTUBE AND EXTERNAL LINKS =====
+    // ===== OPEN LINK MODAL =====
     function openLinkModal(resource) {
       if (!resource.link) {
         alert('Link not available');
         return;
       }
 
-      const url = resource.link;
-      const youtubeVideoId = extractYouTubeVideoId(url);
+      const linkModal = document.getElementById('linkModal');
+      const linkPreviewContainer = document.getElementById('linkPreviewContainer');
       
-      // If it's a YouTube link, use YouTube modal
-      if (youtubeVideoId) {
-        const youtubeModal = document.getElementById('youtubeModal');
-        document.getElementById('youtubeTitle').textContent = resource.title;
-        const youtubePlayer = document.getElementById('youtubePlayer');
-        youtubePlayer.src = `https://www.youtube.com/embed/${youtubeVideoId}?autoplay=0&modestbranding=1&rel=0`;
-        youtubeModal.classList.add('active');
-      } else {
-        // Use generic link modal
-        const linkModal = document.getElementById('linkModal');
-        const linkPreviewContainer = document.getElementById('linkPreviewContainer');
-        
-        document.getElementById('linkTitle').textContent = resource.title;
-        
-        const domain = getLinkDomain(url);
-        const icon = getLinkIcon(url);
-        
-        const previewHTML = `
-          <div class="link-preview">
-            <div class="link-preview-icon">
-              <i class="fas fa-${icon}"></i>
-            </div>
-            <p style="font-size: 18px; font-weight: 600; color: #fff; margin-bottom: 12px;">External Resource</p>
-            <p style="color: #ddd; margin-bottom: 8px;">
-              <strong>Domain:</strong> ${domain}
-            </p>
-            <p style="color: #ddd; margin-bottom: 20px;">You will be redirected to an external website. Please verify you trust this destination.</p>
-            <a href="${url}" target="_blank" rel="noopener noreferrer" class="link-open-btn">
-              <i class="fas fa-external-link"></i> Open External Link
-            </a>
-          </div>
-        `;
-        
-        linkPreviewContainer.innerHTML = previewHTML;
-        linkModal.classList.add('active');
+      document.getElementById('linkTitle').textContent = resource.title;
+      
+      // Check if it's a video link (YouTube or Vimeo)
+      if (resource.link.includes('youtube.com') || resource.link.includes('youtu.be') || 
+          resource.link.includes('vimeo.com')) {
+        // Open in embed modal instead
+        openEmbedModal(resource);
+        return;
       }
+
+      // Generate link preview
+      const linkDomain = getLinkDomain(resource.link);
+      const linkIcon = getLinkIcon(resource.link);
+      
+      linkPreviewContainer.innerHTML = `
+        <div class="link-preview-icon">
+          <i class="fas fa-${linkIcon}"></i>
+        </div>
+        <div class="link-preview-title">${resource.title}</div>
+        <div class="link-preview-domain">${linkDomain}</div>
+        <p>Click the button below to open this external resource in a new window.</p>
+        <a href="${resource.link}" target="_blank" rel="noopener noreferrer" class="link-open-btn">
+          <i class="fas fa-external-link-alt"></i> Open External Link
+        </a>
+      `;
+      
+      linkModal.classList.add('active');
     }
 
     // ===== CLOSE MODALS =====
@@ -1398,11 +1456,11 @@
       videoModal.classList.remove('active');
     }
 
-    function closeYoutubeModal() {
-      const youtubeModal = document.getElementById('youtubeModal');
-      const youtubePlayer = document.getElementById('youtubePlayer');
-      youtubePlayer.src = '';
-      youtubeModal.classList.remove('active');
+    function closeEmbedModal() {
+      const embedModal = document.getElementById('embedModal');
+      const embedPlayer = document.getElementById('embedPlayer');
+      embedPlayer.src = '';
+      embedModal.classList.remove('active');
     }
 
     function closePdfModal() {
@@ -1435,28 +1493,32 @@
       linkModal.classList.remove('active');
     }
 
-    // ===== TOGGLE FAVORITE (PLACEHOLDER) =====
+    // ===== TOGGLE FAVORITE =====
     function toggleFavorite(resourceId) {
-      console.log('Toggle favorite for resource:', resourceId);
+      console.log('Toggling favorite for resource:', resourceId);
+      // Add your favorite toggle logic here
     }
 
-    // ===== UPGRADE PREMIUM (PLACEHOLDER) =====
+    // ===== UPGRADE PREMIUM =====
     function upgradePremium() {
-      console.log('Upgrade to premium');
+      console.log('Upgrade to premium clicked');
+      // Add your premium upgrade logic here
     }
 
-    // ===== TOGGLE NOTIFICATIONS (PLACEHOLDER) =====
+    // ===== TOGGLE NOTIFICATIONS =====
     function toggleNotifications() {
-      console.log('Toggle notifications');
+      console.log('Toggle notifications clicked');
+      // Add your notifications logic here
     }
 
-    // ===== TOGGLE HELP (PLACEHOLDER) =====
+    // ===== TOGGLE HELP =====
     function toggleHelp() {
-      console.log('Toggle help');
+      console.log('Toggle help clicked');
+      // Add your help logic here
     }
 
     // ===== INITIALIZE PAGE ON LOAD =====
-    document.addEventListener('DOMContentLoaded', initializePage);
+    window.addEventListener('load', initializePage);
   </script>
 </body>
 </html>
