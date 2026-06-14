@@ -359,14 +359,15 @@
       margin: 20px 0;
     }
 
-    /* ===== LINK ===== */
+    /* ===== EXTERNAL LINK ===== */
     .link-preview {
       width: 100%;
-      max-width: 800px;
+      max-width: 900px;
       text-align: center;
       background: white;
       padding: 60px 40px;
       border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
     }
 
     .link-preview-icon {
@@ -379,6 +380,18 @@
       color: #6b7280;
       margin: 16px 0;
       font-size: 16px;
+    }
+
+    .link-preview-url {
+      display: block;
+      padding: 16px;
+      background: #f3f4f6;
+      border-radius: 8px;
+      color: #374151;
+      font-size: 14px;
+      word-break: break-all;
+      margin: 20px 0;
+      font-family: monospace;
     }
 
     .link-preview a {
@@ -397,6 +410,33 @@
     .link-preview a:hover {
       transform: translateY(-4px);
       box-shadow: 0 12px 32px rgba(59, 130, 246, 0.4);
+    }
+
+    .link-type-badge {
+      display: inline-block;
+      padding: 8px 16px;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: white;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+
+    /* ===== YOUTUBE EMBED ===== */
+    .youtube-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+    }
+
+    .youtube-container iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
     }
 
     .loading-spinner {
@@ -470,36 +510,6 @@
       opacity: 1;
       background: rgba(59, 130, 246, 1);
       transform: translate(-50%, -50%) scale(1.1);
-    }
-
-    .resource-type-badge {
-      position: absolute;
-      top: 12px;
-      right: 12px;
-      background: rgba(59, 130, 246, 0.9);
-      color: white;
-      padding: 6px 12px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 700;
-      text-transform: uppercase;
-      z-index: 4;
-    }
-
-    .resource-type-badge.link {
-      background: rgba(34, 197, 94, 0.9);
-    }
-
-    .resource-type-badge.video {
-      background: rgba(239, 68, 68, 0.9);
-    }
-
-    .resource-type-badge.pdf {
-      background: rgba(168, 85, 247, 0.9);
-    }
-
-    .resource-type-badge.audio {
-      background: rgba(59, 130, 246, 0.9);
     }
 
     /* Responsive adjustments */
@@ -710,7 +720,9 @@
       </div>
       <div class="modal-body">
         <div class="video-container" id="videoContainer">
-          <!-- Video or iframe loaded dynamically -->
+          <video id="videoPlayer" controls style="width: 100%; height: 100%;">
+            Your browser does not support the video tag.
+          </video>
         </div>
       </div>
     </div>
@@ -809,13 +821,18 @@
       </div>
       <div class="modal-body">
         <div class="link-preview">
-          <div class="link-preview-icon">
+          <div class="link-type-badge" id="linkTypeBadge">External Link</div>
+          <div class="link-preview-icon" id="linkPreviewIcon">
             <i class="fas fa-external-link-alt"></i>
           </div>
-          <p style="font-size: 18px; font-weight: 600; color: #374151;">External Link</p>
-          <p id="linkPreviewText">You will be redirected to an external website. Please verify you trust this destination.</p>
+          <p style="font-size: 18px; font-weight: 600; color: #374151;" id="linkPreviewTitle">External Resource</p>
+          <p>Opening this link will take you to an external website.</p>
+          <div class="link-preview-url" id="linkPreviewUrl"></div>
+          <p style="font-size: 14px; color: #9ca3af;">
+            <i class="fas fa-shield-alt"></i> Please verify you trust this destination before proceeding.
+          </p>
           <a id="linkButton" href="#" target="_blank" rel="noopener noreferrer">
-            <i class="fas fa-external-link"></i> Open External Link
+            <i class="fas fa-external-link"></i> Open Resource
           </a>
         </div>
       </div>
@@ -860,18 +877,39 @@
       return THUMBNAIL_IMAGES[Math.floor(Math.random() * THUMBNAIL_IMAGES.length)];
     }
 
+    // ===== EXTRACT YOUTUBE ID =====
+    function extractYouTubeId(url) {
+      const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+      const match = url.match(regExp);
+      return match && match[2].length === 11 ? match[2] : null;
+    }
+
     // ===== GET RESOURCE TYPE ICON =====
-    function getResourceIcon(type) {
-      const icons = {
-        'pdf': 'fa-file-pdf',
-        'video': 'fa-play-circle',
-        'audio': 'fa-music',
-        'document': 'fa-file-word',
-        'presentation': 'fa-presentation',
-        'link': 'fa-external-link-alt',
-        'notes': 'fa-sticky-note'
+    function getResourceTypeIcon(type, link) {
+      if (link && type === 'link') {
+        if (link.includes('youtube') || link.includes('youtu.be')) {
+          return '<i class="fab fa-youtube"></i>';
+        } else if (link.includes('vimeo')) {
+          return '<i class="fab fa-vimeo"></i>';
+        } else if (link.includes('drive.google.com')) {
+          return '<i class="fab fa-google-drive"></i>';
+        } else if (link.includes('onedrive') || link.includes('microsoft')) {
+          return '<i class="fas fa-cloud"></i>';
+        } else {
+          return '<i class="fas fa-link"></i>';
+        }
+      }
+
+      const iconMap = {
+        'pdf': '<i class="fas fa-file-pdf"></i>',
+        'video': '<i class="fas fa-video"></i>',
+        'audio': '<i class="fas fa-music"></i>',
+        'document': '<i class="fas fa-file-word"></i>',
+        'presentation': '<i class="fas fa-file-powerpoint"></i>',
+        'notes': '<i class="fas fa-sticky-note"></i>',
+        'link': '<i class="fas fa-link"></i>'
       };
-      return icons[type] || 'fa-file';
+      return iconMap[type] || '<i class="fas fa-file"></i>';
     }
 
     // ===== INITIALIZATION =====
@@ -1050,307 +1088,232 @@
     // ===== RENDER RESOURCES =====
     function renderResources(resources) {
       const grid = document.getElementById('resourcesGrid');
+      const emptyState = document.getElementById('emptyState');
+      
       grid.innerHTML = '';
-      document.getElementById('emptyState').style.display = 'none';
+      emptyState.style.display = resources.length === 0 ? 'block' : 'none';
 
       resources.forEach(resource => {
-        const resourceType = resource.type || 'file';
         const card = document.createElement('div');
         card.className = 'resource-card';
         
-        // Determine icon based on resource type or if it has a link
-        let icon = getResourceIcon(resourceType);
-        if (resource.link && !resource.fileId) {
-          icon = getResourceIcon('link');
-        }
+        const typeIcon = getResourceTypeIcon(resource.type, resource.link);
+        const thumbnail = getRandomThumbnail();
 
-        const thumbnail = `
+        card.innerHTML = `
           <div class="resource-thumbnail">
-            <img src="${getRandomThumbnail()}" alt="${resource.title}" onerror="this.style.display='none'">
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);"></div>
-            <i class="fas ${icon}" style="z-index: 3;"></i>
+            <img src="${thumbnail}" alt="${resource.title}" onerror="this.style.display='none'">
+            <div>${typeIcon}</div>
             <div class="play-button" onclick="openResource(event, '${resource._id}')">
               <i class="fas fa-play"></i>
             </div>
-            <div class="resource-type-badge ${resourceType.toLowerCase()}">
-              ${resourceType}
-            </div>
           </div>
-        `;
-
-        const content = `
           <div class="resource-info">
-            <h3 class="resource-title" title="${resource.title}">${resource.title}</h3>
-            <p class="resource-description">${resource.description || 'No description available'}</p>
+            <h3 class="resource-title">${resource.title}</h3>
+            <p class="resource-course">${resource.course}</p>
             <div class="resource-meta">
-              <span class="meta-item">
-                <i class="fas fa-book"></i> ${resource.course || 'General'}
-              </span>
-              <span class="meta-item">
-                <i class="fas fa-download"></i> ${resource.downloads || 0}
-              </span>
+              <span><i class="fas fa-eye"></i> ${resource.downloads || 0}</span>
+              <span><i class="fas fa-star"></i> ${(resource.ratings?.length || 0)} ratings</span>
             </div>
-            <div class="resource-footer">
-              <div class="resource-rating">
-                <i class="fas fa-star"></i>
-                ${resource.ratingAvg ? resource.ratingAvg.toFixed(1) : 'N/A'}
-              </div>
-              <button class="resource-btn" onclick="openResource(event, '${resource._id}')">
-                <i class="fas fa-eye"></i> View
-              </button>
-            </div>
+            <button class="resource-btn" onclick="openResource(event, '${resource._id}')">
+              <i class="fas fa-play"></i> Open
+            </button>
           </div>
         `;
 
-        card.innerHTML = thumbnail + content;
         grid.appendChild(card);
       });
     }
 
     // ===== OPEN RESOURCE =====
     async function openResource(event, resourceId) {
-      if (event) event.preventDefault();
-      
+      event.preventDefault();
+      event.stopPropagation();
+
       try {
-        const resource = allResources.find(r => r._id === resourceId);
-        if (!resource) {
-          alert('Resource not found');
-          return;
-        }
+        const response = await fetch(`${API_BASE_URL}/api/resources/${resourceId}`);
+        if (!response.ok) throw new Error('Failed to fetch resource');
 
-        const resourceType = resource.type || 'file';
+        const resource = await response.json();
 
-        // Handle external links
-        if (resource.link && !resource.fileId) {
+        if (resource.type === 'video' || (resource.link && (resource.link.includes('youtube') || resource.link.includes('youtu.be')))) {
+          openVideoResource(resource);
+        } else if (resource.type === 'pdf' && resource.fileId) {
+          openPdfResource(resource);
+        } else if (resource.type === 'audio' && resource.fileId) {
+          openAudioResource(resource);
+        } else if (resource.type === 'notes') {
+          openNotesResource(resource);
+        } else if (resource.link) {
           openLinkResource(resource);
-          return;
-        }
-
-        // Handle file-based resources
-        switch(resourceType) {
-          case 'video':
-            openVideoResource(resource);
-            break;
-          case 'pdf':
-            openPdfResource(resource);
-            break;
-          case 'audio':
-            openAudioResource(resource);
-            break;
-          case 'notes':
-          case 'document':
-            openNotesResource(resource);
-            break;
-          default:
-            if (resource.link) {
-              openLinkResource(resource);
-            } else if (resource.fileId) {
-              downloadFile(resource);
-            } else {
-              alert('Unable to open this resource');
-            }
+        } else {
+          alert('Resource type not supported');
         }
       } catch (error) {
         console.error('Error opening resource:', error);
-        alert('Error opening resource');
+        alert('Failed to open resource');
       }
     }
 
     // ===== OPEN VIDEO RESOURCE =====
     function openVideoResource(resource) {
       document.getElementById('videoTitle').textContent = resource.title;
-      
-      const container = document.getElementById('videoContainer');
-      container.innerHTML = '';
 
-      if (resource.link) {
-        // Handle YouTube and other embedded video links
-        let embedUrl = resource.link;
+      if (resource.link && (resource.link.includes('youtube') || resource.link.includes('youtu.be'))) {
+        // YouTube video
+        const youtubeId = extractYouTubeId(resource.link);
+        const videoContainer = document.getElementById('videoContainer');
         
-        // Convert YouTube URLs to embed format
-        if (embedUrl.includes('youtube.com') || embedUrl.includes('youtu.be')) {
-          const videoId = embedUrl.includes('youtube.com') 
-            ? embedUrl.split('v=')[1]?.split('&')[0]
-            : embedUrl.split('youtu.be/')[1]?.split('?')[0];
-          if (videoId) {
-            embedUrl = `https://www.youtube.com/embed/${videoId}`;
-          }
-        }
-        
-        // Handle Vimeo links
-        if (embedUrl.includes('vimeo.com')) {
-          const videoId = embedUrl.split('vimeo.com/')[1]?.split('?')[0];
-          if (videoId) {
-            embedUrl = `https://player.vimeo.com/video/${videoId}`;
-          }
-        }
-
-        const iframe = document.createElement('iframe');
-        iframe.src = embedUrl;
-        iframe.allowFullscreen = true;
-        iframe.style.width = '100%';
-        iframe.style.height = '100%';
-        iframe.style.border = 'none';
-        container.appendChild(iframe);
+        videoContainer.innerHTML = `
+          <iframe 
+            width="100%" 
+            height="100%" 
+            src="https://www.youtube.com/embed/${youtubeId}?autoplay=1" 
+            frameborder="0" 
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+            allowfullscreen
+          ></iframe>
+        `;
       } else if (resource.fileId) {
-        // Handle local video files
-        const video = document.createElement('video');
-        video.controls = true;
-        video.style.width = '100%';
-        video.style.height = '100%';
-        video.src = `${API_BASE_URL}/api/resources/${resource._id}/download`;
-        container.appendChild(video);
+        // Direct video file
+        const videoPlayer = document.getElementById('videoPlayer');
+        videoPlayer.src = `${API_BASE_URL}/api/resources/${resource._id}/download`;
+        videoPlayer.play();
       }
 
       document.getElementById('videoModal').classList.add('active');
     }
 
     // ===== OPEN PDF RESOURCE =====
-    async function openPdfResource(resource) {
+    function openPdfResource(resource) {
       document.getElementById('pdfTitle').textContent = resource.title;
       currentResourceTitle = resource.title;
-      
-      if (resource.link) {
-        currentPdfUrl = resource.link;
-      } else if (resource.fileId) {
-        currentPdfUrl = `${API_BASE_URL}/api/resources/${resource._id}/download`;
-      }
-
-      if (!currentPdfUrl) {
-        alert('PDF URL not available');
-        return;
-      }
-
+      currentPdfUrl = `${API_BASE_URL}/api/resources/${resource._id}/download`;
       pageNum = 1;
       isLoadingPdf = true;
-      
+
+      loadPdf(currentPdfUrl);
+      document.getElementById('pdfModal').classList.add('active');
+    }
+
+    // ===== LOAD PDF =====
+    async function loadPdf(url) {
       try {
-        const pdf = await pdfjsLib.getDocument(currentPdfUrl).promise;
+        isLoadingPdf = true;
+        const pdf = await pdfjsLib.getDocument(url).promise;
         pdfDoc = pdf;
         document.getElementById('pageCount').textContent = pdf.numPages;
-        document.getElementById('pageNumInput').max = pdf.numPages;
-        await renderPage(1);
-        document.getElementById('pdfModal').classList.add('active');
+        pageNum = 1;
+        renderPage(1);
       } catch (error) {
         console.error('Error loading PDF:', error);
-        alert('Error loading PDF. The file may be corrupted or unavailable.');
+        alert('Failed to load PDF');
       } finally {
         isLoadingPdf = false;
       }
     }
 
     // ===== RENDER PDF PAGE =====
-    async function renderPage(pageNumber) {
-      if (!pdfDoc || isLoadingPdf) return;
+    function renderPage(pageNumber) {
+      if (!pdfDoc) return;
 
-      isLoadingPdf = true;
       pageNum = Math.max(1, Math.min(pageNumber, pdfDoc.numPages));
+      document.getElementById('pageNumInput').value = pageNum;
 
-      try {
-        const page = await pdfDoc.getPage(pageNum);
+      pdfDoc.getPage(pageNum).then(page => {
         const scale = 2;
         const viewport = page.getViewport({ scale });
         const canvas = document.getElementById('pdfCanvas');
-        const context = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d');
 
         canvas.width = viewport.width;
         canvas.height = viewport.height;
 
-        await page.render({
-          canvasContext: context,
-          viewport: viewport
-        }).promise;
-
-        document.getElementById('pageNumInput').value = pageNum;
-        document.getElementById('prevBtn').disabled = pageNum <= 1;
-        document.getElementById('nextBtn').disabled = pageNum >= pdfDoc.numPages;
-      } catch (error) {
-        console.error('Error rendering PDF page:', error);
-      } finally {
-        isLoadingPdf = false;
-      }
+        page.render({ canvasContext: ctx, viewport }).promise.then(() => {
+          document.getElementById('prevBtn').disabled = pageNum === 1;
+          document.getElementById('nextBtn').disabled = pageNum === pdfDoc.numPages;
+        });
+      });
     }
 
     // ===== PDF NAVIGATION =====
-    function nextPage() {
-      if (pdfDoc && pageNum < pdfDoc.numPages) {
-        renderPage(pageNum + 1);
-      }
+    function previousPage() {
+      if (pageNum > 1) renderPage(pageNum - 1);
     }
 
-    function previousPage() {
-      if (pageNum > 1) {
-        renderPage(pageNum - 1);
-      }
+    function nextPage() {
+      if (pdfDoc && pageNum < pdfDoc.numPages) renderPage(pageNum + 1);
     }
 
     function goToPage(pageNumber) {
-      const num = parseInt(pageNumber, 10);
-      if (num > 0 && num <= pdfDoc.numPages) {
-        renderPage(num);
-      }
+      renderPage(parseInt(pageNumber) || 1);
     }
 
     // ===== OPEN AUDIO RESOURCE =====
     function openAudioResource(resource) {
       document.getElementById('audioTitle').textContent = resource.title;
-      
       const audioPlayer = document.getElementById('audioPlayer');
-      
-      if (resource.link) {
-        audioPlayer.src = resource.link;
-      } else if (resource.fileId) {
-        audioPlayer.src = `${API_BASE_URL}/api/resources/${resource._id}/download`;
-      }
-
+      audioPlayer.src = `${API_BASE_URL}/api/resources/${resource._id}/download`;
+      audioPlayer.play();
       document.getElementById('audioModal').classList.add('active');
     }
 
     // ===== OPEN NOTES RESOURCE =====
     function openNotesResource(resource) {
       document.getElementById('notesTitle').textContent = resource.title;
-      
       const notesContent = document.getElementById('notesContent');
-      
-      if (resource.link) {
-        // If link is provided, try to fetch and display
-        fetch(resource.link)
-          .then(r => r.text())
-          .then(html => {
-            notesContent.innerHTML = html;
-          })
-          .catch(err => {
-            notesContent.innerHTML = `<p>Unable to load notes. <a href="${resource.link}" target="_blank">Open externally</a></p>`;
-          });
-      } else if (resource.fileId) {
-        notesContent.innerHTML = `<p>Loading notes...</p>`;
-        fetch(`${API_BASE_URL}/api/resources/${resource._id}/download`)
-          .then(r => r.text())
-          .then(html => {
-            notesContent.innerHTML = html;
-          })
-          .catch(err => {
-            notesContent.innerHTML = `<p>Error loading notes file</p>`;
-          });
-      }
-
+      notesContent.innerHTML = `<p>${resource.description || 'No notes available'}</p>`;
       document.getElementById('notesModal').classList.add('active');
     }
 
     // ===== OPEN LINK RESOURCE =====
     function openLinkResource(resource) {
       document.getElementById('linkTitle').textContent = resource.title;
-      document.getElementById('linkPreviewText').textContent = 
-        `You will be redirected to: ${resource.link || 'external resource'}`;
+      document.getElementById('linkPreviewTitle').textContent = resource.title;
+      document.getElementById('linkPreviewUrl').textContent = resource.link;
       document.getElementById('linkButton').href = resource.link;
+
+      // Set link type badge
+      const badge = document.getElementById('linkTypeBadge');
+      const icon = document.getElementById('linkPreviewIcon');
+
+      if (resource.link.includes('youtube') || resource.link.includes('youtu.be')) {
+        badge.textContent = 'YouTube Video';
+        badge.style.background = 'linear-gradient(135deg, #ff0000 0%, #cc0000 100%)';
+        icon.innerHTML = '<i class="fab fa-youtube" style="color: #ff0000;"></i>';
+      } else if (resource.link.includes('vimeo')) {
+        badge.textContent = 'Vimeo Video';
+        badge.style.background = 'linear-gradient(135deg, #1ab7ea 0%, #0a98e0 100%)';
+        icon.innerHTML = '<i class="fab fa-vimeo" style="color: #1ab7ea;"></i>';
+      } else if (resource.link.includes('drive.google.com')) {
+        badge.textContent = 'Google Drive';
+        badge.style.background = 'linear-gradient(135deg, #1f73e6 0%, #1557b0 100%)';
+        icon.innerHTML = '<i class="fab fa-google-drive" style="color: #1f73e6;"></i>';
+      } else if (resource.link.includes('onedrive') || resource.link.includes('microsoft')) {
+        badge.textContent = 'OneDrive';
+        badge.style.background = 'linear-gradient(135deg, #0078d4 0%, #005a9e 100%)';
+        icon.innerHTML = '<i class="fas fa-cloud" style="color: #0078d4;"></i>';
+      } else if (resource.link.endsWith('.pdf')) {
+        badge.textContent = 'PDF Link';
+        badge.style.background = 'linear-gradient(135deg, #d62d20 0%, #a02015 100%)';
+        icon.innerHTML = '<i class="fas fa-file-pdf" style="color: #d62d20;"></i>';
+      } else {
+        badge.textContent = 'External Link';
+        badge.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+        icon.innerHTML = '<i class="fas fa-external-link-alt" style="color: #10b981;"></i>';
+      }
+
       document.getElementById('linkModal').classList.add('active');
     }
 
     // ===== CLOSE MODALS =====
     function closeVideoModal() {
       document.getElementById('videoModal').classList.remove('active');
-      const container = document.getElementById('videoContainer');
-      container.innerHTML = '';
+      const videoPlayer = document.getElementById('videoPlayer');
+      videoPlayer.pause();
+      videoPlayer.src = '';
+      const videoContainer = document.getElementById('videoContainer');
+      videoContainer.innerHTML = '<video id="videoPlayer" controls style="width: 100%; height: 100%;"> Your browser does not support the video tag. </video>';
     }
 
     function closePdfModal() {
@@ -1375,91 +1338,62 @@
     }
 
     // ===== DOWNLOAD FUNCTIONS =====
-    function downloadFile(resource) {
-      if (resource.fileId) {
-        const link = document.createElement('a');
-        link.href = `${API_BASE_URL}/api/resources/${resource._id}/download`;
-        link.download = resource.title || 'resource';
-        link.click();
-      } else if (resource.link) {
-        window.open(resource.link, '_blank');
-      }
-    }
-
     function downloadPdfCurrently() {
       if (currentPdfUrl) {
-        const link = document.createElement('a');
-        link.href = currentPdfUrl;
-        link.download = currentResourceTitle || 'document.pdf';
-        link.click();
+        const a = document.createElement('a');
+        a.href = currentPdfUrl;
+        a.download = `${currentResourceTitle}.pdf`;
+        a.click();
       }
     }
 
     function downloadAudioFile() {
       const audioPlayer = document.getElementById('audioPlayer');
       if (audioPlayer.src) {
-        const link = document.createElement('a');
-        link.href = audioPlayer.src;
-        link.download = document.getElementById('audioTitle').textContent || 'audio';
-        link.click();
+        const a = document.createElement('a');
+        a.href = audioPlayer.src;
+        a.download = 'audio.mp3';
+        a.click();
       }
     }
 
-    // ===== PAGINATION =====
+    // ===== SHOW EMPTY STATE =====
+    function showEmptyState() {
+      document.getElementById('emptyState').style.display = 'block';
+      document.getElementById('resourcesGrid').innerHTML = '';
+    }
+
+    // ===== RENDER PAGINATION =====
     function renderPagination(meta) {
       const container = document.getElementById('paginationContainer');
       container.innerHTML = '';
 
       if (!meta || meta.pages <= 1) return;
 
-      const prevBtn = document.createElement('button');
-      prevBtn.textContent = 'Previous';
-      prevBtn.disabled = meta.page <= 1;
-      prevBtn.onclick = () => {
-        if (meta.page > 1) loadResources(meta.page - 1);
-      };
-      container.appendChild(prevBtn);
-
-      const pageInfo = document.createElement('span');
-      pageInfo.textContent = `Page ${meta.page} of ${meta.pages}`;
-      pageInfo.style.padding = '10px 20px';
-      container.appendChild(pageInfo);
-
-      const nextBtn = document.createElement('button');
-      nextBtn.textContent = 'Next';
-      nextBtn.disabled = meta.page >= meta.pages;
-      nextBtn.onclick = () => {
-        if (meta.page < meta.pages) loadResources(meta.page + 1);
-      };
-      container.appendChild(nextBtn);
+      for (let i = 1; i <= meta.pages; i++) {
+        const btn = document.createElement('button');
+        btn.textContent = i;
+        btn.className = `pagination-btn ${i === meta.page ? 'active' : ''}`;
+        btn.onclick = () => loadResources(i);
+        container.appendChild(btn);
+      }
     }
 
-    // ===== EMPTY STATE =====
-    function showEmptyState() {
-      document.getElementById('resourcesGrid').innerHTML = '';
-      document.getElementById('emptyState').style.display = 'block';
-      document.getElementById('paginationContainer').innerHTML = '';
-    }
-
-    // ===== UTILITY FUNCTIONS =====
+    // ===== PLACEHOLDER FUNCTIONS =====
     function toggleNotifications() {
       alert('Notifications feature coming soon!');
     }
 
     function toggleHelp() {
-      alert('Help feature coming soon!');
+      alert('Help & Support:\n\n1. Use search to find resources\n2. Filter by course and type\n3. Click a resource card to view it');
     }
 
     function upgradePremium() {
       alert('Premium upgrade coming soon!');
     }
 
-    // ===== INITIALIZE ON PAGE LOAD =====
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', initializePage);
-    } else {
-      initializePage();
-    }
+    // ===== INITIALIZE PAGE =====
+    document.addEventListener('DOMContentLoaded', initializePage);
   </script>
 </body>
 </html>
