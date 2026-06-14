@@ -346,7 +346,7 @@ forms.register.addEventListener('submit', async function(e) {
                     closeModal();
                     forms.login.classList.add('active');
                     forms.register.classList.remove('active');
-                    messageBox.innerHTML = '<div class="message success">Your account was created successfully. Please check your email for a verification link before logging in.</div>';
+                    messageBox.innerHTML = '<div class="message success">Your account was created successfully.</div>';
                 }, 1800);
             } else {
                 showStatusModal("error", "Registration Failed", result.message || "Could not register. Try again.");
