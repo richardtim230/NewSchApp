@@ -8,6 +8,20 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
     
+    <!-- MathJax v3 -->
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['\\(', '\\)'], ['$', '$']],
+                displayMath: [['$$','$$'], ['\\[','\\]'], ['\\begin{bmatrix}', '\\end{bmatrix}']],
+                packages: {'[+]': ['noerrors']}
+            },
+            options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre'] },
+            svg: { fontCache: 'global' }
+        };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" id="MathJax-script" async></script>
+    
     <script>
         tailwind.config = {
             theme: {
@@ -184,6 +198,35 @@
         }
         .relative-search {
             position: relative;
+        }
+        /* Fix inline math rendering */
+        #question-text {
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+            display: inline;
+            margin: 0;
+        }
+
+        #question-text mjx-container {
+            display: inline !important;
+            margin: 0 0.15em !important;
+        }
+
+        #question-text svg[role="img"] {
+            display: inline !important;
+            vertical-align: middle !important;
+            margin: 0 0.15em !important;
+        }
+
+        /* Option cards with math */
+        .option-card span {
+            display: inline;
+            word-break: break-word;
+        }
+
+        .option-card mjx-container {
+            display: inline !important;
+            margin: 0 0.1em !important;
         }
     </style>
 </head>
@@ -453,7 +496,7 @@
                     <div class="absolute top-0 left-0 right-0 h-[3px] bg-pqOrange"></div>
                     <div class="p-4 pb-5">
                         <div class="text-pqOrange text-[9.5px] font-bold tracking-[0.15em] uppercase mb-2.5" id="question-number">Question 1</div>
-                        <p id="question-text" class="text-[13.5px] text-gray-800 font-medium leading-relaxed mb-4">Select an exam to start practicing</p>
+                        <p id="question-text" class="text-[13.5px] text-gray-800 font-medium leading-relaxed mb-4 inline">Select an exam to start practicing</p>
                         
                         <div id="options-container" class="space-y-2">
                             <!-- Options populated here -->
@@ -582,7 +625,7 @@
 
         // ============ AUTH ============
         function getToken() {
-            return localStorage.getItem("student_jwt_token") || "token";
+            return localStorage.getItem("student_jwt_token") || "";
         }
 
         function isAuthenticated() {
@@ -862,19 +905,47 @@
         }
 
         // ============ QUESTIONS ============
+        function normalizeQuestionMath(html) {
+            if (!html || typeof html !== 'string') return html;
+            let s = html.replace(/\\\\/g, '\\');
+            if (/\\\(|\\\[|\$\$?/.test(s)) return s;
+            const cmdRegex = /\\(?:frac|sqrt|sum|int|lim|left|right|cdot|times|pi|alpha|beta|gamma|theta|log|ln)(?:\{[^}]*\}|\^[^{\s]+|\_[^{\s]+)*/g;
+            s = s.replace(cmdRegex, function(m) { return `\\(${m}\\)`; });
+            const expRegex = /([A-Za-z0-9])\^(?:\{[^}]+\}|\d+)/g;
+            s = s.replace(expRegex, function(m) { return `\\(${m}\\)`; });
+            const subRegex = /([A-Za-z0-9])_(?:\{[^}]+\}|\d+)/g;
+            s = s.replace(subRegex, function(m) { return `\\(${m}\\)`; });
+            return s;
+        }
+
         function renderQuestion() {
             if (currentQuestionIndex >= examQuestions.length) return;
 
             const question = examQuestions[currentQuestionIndex];
-
-            document.getElementById('exam-title').textContent = currentExamSet?.title || 'Exam';
+            let questionHtml = normalizeQuestionMath(question.question || '');
+            
+            // Remove extra <p> tags that cause line breaks
+            questionHtml = questionHtml
+                .replace(/<p>\s*<\/p>/g, '')
+                .replace(/<\/p>\s*<p>/g, ' ')
+                .replace(/<p>/g, '')
+                .replace(/<\/p>/g, '');
+            
+            document.getElementById('exam-title').textContent = `${currentExamSet?.subject || 'Exam'} - ${currentExamSet?.title || ''}`.trim();
             document.getElementById('question-number').textContent = `Question ${currentQuestionIndex + 1} of ${examQuestions.length}`;
-            document.getElementById('question-text').innerHTML = question.question || '';
+            document.getElementById('question-text').innerHTML = questionHtml || '';
 
             renderOptions(question);
             resetAnswerStatus();
             updateNavigation();
             updateQuestionPalette();
+
+            // Trigger MathJax typeset
+            if (window.MathJax && MathJax.typesetPromise) {
+                MathJax.typesetPromise([document.getElementById('question-text')]).catch((err) => {
+                    console.warn("MathJax typeset error:", err && err.message);
+                });
+            }
 
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
@@ -895,10 +966,17 @@
                     optionDiv.classList.add('selected');
                 }
 
+                let optHtml = normalizeQuestionMath(option.text || '');
+                optHtml = optHtml
+                    .replace(/<p>\s*<\/p>/g, '')
+                    .replace(/<\/p>\s*<p>/g, ' ')
+                    .replace(/<p>/g, '')
+                    .replace(/<\/p>/g, '');
+
                 optionDiv.innerHTML = `
                     <label class="flex items-center cursor-pointer">
-                        <input type="radio" name="question-option" value="${option.key}" class="w-5 h-5 text-pqOrange" ${savedAnswer === option.key ? 'checked' : ''}>
-                        <span class="ml-4 text-[13px] text-gray-800 font-medium">${label}. ${option.text || ''}</span>
+                        <input type="radio" name="question-option" value="${option.key}" class="w-5 h-5 text-pqOrange flex-shrink-0" ${savedAnswer === option.key ? 'checked' : ''}>
+                        <span class="ml-4 text-[13px] text-gray-800 font-medium inline">${label}. ${optHtml}</span>
                     </label>
                 `;
 
@@ -908,6 +986,13 @@
 
                 container.appendChild(optionDiv);
             });
+
+            // Trigger MathJax typeset for options
+            if (window.MathJax && MathJax.typesetPromise) {
+                MathJax.typesetPromise([container]).catch((err) => {
+                    console.warn("MathJax typeset error for options:", err && err.message);
+                });
+            }
         }
 
         function selectOption(questionId, optionKey, element) {
@@ -1070,7 +1155,6 @@
                 studentData = await fetchStudentProfile();
                 if (studentData) {
                     const firstName = studentData.firstName || studentData.name?.split(' ')[0] || 'Student';
-                    const initials = firstName.charAt(0).toUpperCase();
                     
                     // Update profile avatar
                     document.getElementById('profile-avatar').src = 
