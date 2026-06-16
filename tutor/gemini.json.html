@@ -914,136 +914,83 @@
         .replace(/<\/p>\s*<p>/g, ' ')
         .replace(/<\/?p>/g, '');
 }
-async function renderMath(element) {
-    if (!window.MathJax) return;
 
-    try {
-        await MathJax.typesetClear([element]);
-        await MathJax.typesetPromise([element]);
-    } catch (err) {
-        console.error(err);
-    }
-}
-        async function renderQuestion() {
-    if (currentQuestionIndex >= examQuestions.length) return;
+        function renderQuestion() {
+            if (currentQuestionIndex >= examQuestions.length) return;
 
-    const question = examQuestions[currentQuestionIndex);
+            const question = examQuestions[currentQuestionIndex];
+            let questionHtml = normalizeQuestionMath(question.question || '');
+            
+            // Remove extra <p> tags that cause line breaks
+            questionHtml = questionHtml
+                .replace(/<p>\s*<\/p>/g, '')
+                .replace(/<\/p>\s*<p>/g, ' ')
+                .replace(/<p>/g, '')
+                .replace(/<\/p>/g, '');
+            
+            document.getElementById('exam-title').textContent = `${currentExamSet?.subject || 'Exam'} - ${currentExamSet?.title || ''}`.trim();
+            document.getElementById('question-number').textContent = `Question ${currentQuestionIndex + 1} of ${examQuestions.length}`;
+            document.getElementById('question-text').innerHTML = questionHtml || '';
 
-    // Clean and normalize content
-    let questionHtml = normalizeQuestionMath(question.question || '');
+            renderOptions(question);
+            resetAnswerStatus();
+            updateNavigation();
+            updateQuestionPalette();
 
-    questionHtml = questionHtml
-        .replace(/<p>\s*<\/p>/gi, '')
-        .replace(/<\/p>\s*<p>/gi, ' ')
-        .replace(/<\/?p>/gi, '')
-        .trim();
+            // Trigger MathJax typeset
+            if (window.MathJax && MathJax.typesetPromise) {
+                MathJax.typesetPromise([document.getElementById('question-text')]).catch((err) => {
+                    console.warn("MathJax typeset error:", err && err.message);
+                });
+            }
 
-    // Update exam info
-    document.getElementById('exam-title').textContent =
-        `${currentExamSet?.subject || 'Exam'}${currentExamSet?.title ? ' - ' + currentExamSet.title : ''}`;
-
-    document.getElementById('question-number').textContent =
-        `Question ${currentQuestionIndex + 1} of ${examQuestions.length}`;
-
-    const questionElement = document.getElementById('question-text');
-
-    // Clear previous MathJax output
-    if (window.MathJax?.typesetClear) {
-        MathJax.typesetClear([questionElement]);
-    }
-
-    questionElement.innerHTML = questionHtml;
-
-    // Render options
-    renderOptions(question);
-
-    resetAnswerStatus();
-    updateNavigation();
-    updateQuestionPalette();
-
-    // Re-render MathJax for question and options
-    if (window.MathJax?.typesetPromise) {
-        try {
-            await MathJax.typesetPromise([
-                questionElement,
-                document.getElementById('options-container')
-            ]);
-        } catch (err) {
-            console.warn('MathJax rendering error:', err);
-        }
-    }
-
-    window.scrollTo({
-        top: 0,
-        behavior: 'smooth'
-    });
-}
-
-        async function renderOptions(question) {
-    const container = document.getElementById('options-container');
-
-    // Clear previous MathJax rendering
-    if (window.MathJax?.typesetClear) {
-        MathJax.typesetClear([container]);
-    }
-
-    container.innerHTML = '';
-
-    if (!Array.isArray(question.options)) return;
-
-    const savedAnswer = userAnswers[question._id];
-
-    question.options.forEach((option, index) => {
-        const label = String.fromCharCode(65 + index);
-
-        const optionDiv = document.createElement('div');
-        optionDiv.className =
-            'option-card bg-pqOptionBg border border-gray-200/40 rounded-xl p-4';
-
-        if (savedAnswer === option.key) {
-            optionDiv.classList.add('selected');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        let optHtml = normalizeQuestionMath(option.text || '');
+        function renderOptions(question) {
+            const container = document.getElementById('options-container');
+            container.innerHTML = '';
 
-        optHtml = optHtml
-            .replace(/<p>\s*<\/p>/gi, '')
-            .replace(/<\/p>\s*<p>/gi, ' ')
-            .replace(/<\/?p>/gi, '')
-            .trim();
+            if (!Array.isArray(question.options)) return;
 
-        optionDiv.innerHTML = `
-            <label class="flex items-start cursor-pointer w-full">
-                <input
-                    type="radio"
-                    name="question-option"
-                    value="${option.key}"
-                    class="w-5 h-5 mt-0.5 text-pqOrange flex-shrink-0"
-                    ${savedAnswer === option.key ? 'checked' : ''}
-                >
+            question.options.forEach((option, index) => {
+                const label = String.fromCharCode(65 + index);
+                const optionDiv = document.createElement('div');
+                optionDiv.className = 'option-card bg-pqOptionBg border border-gray-200/40 rounded-xl p-4';
+                
+                const savedAnswer = userAnswers[question._id];
+                if (savedAnswer === option.key) {
+                    optionDiv.classList.add('selected');
+                }
 
-                <span class="ml-4 text-[13px] text-gray-800 font-medium leading-relaxed flex-1">
-                    <strong>${label}.</strong> ${optHtml}
-                </span>
-            </label>
-        `;
+                let optHtml = normalizeQuestionMath(option.text || '');
+                optHtml = optHtml
+                    .replace(/<p>\s*<\/p>/g, '')
+                    .replace(/<\/p>\s*<p>/g, ' ')
+                    .replace(/<p>/g, '')
+                    .replace(/<\/p>/g, '');
 
-        optionDiv.addEventListener('click', () => {
-            selectOption(question._id, option.key, optionDiv);
-        });
+                optionDiv.innerHTML = `
+                    <label class="flex items-center cursor-pointer">
+                        <input type="radio" name="question-option" value="${option.key}" class="w-5 h-5 text-pqOrange flex-shrink-0" ${savedAnswer === option.key ? 'checked' : ''}>
+                        <span class="ml-4 text-[13px] text-gray-800 font-medium inline">${label}. ${optHtml}</span>
+                    </label>
+                `;
 
-        container.appendChild(optionDiv);
-    });
+                optionDiv.addEventListener('click', () => {
+                    selectOption(question._id, option.key, optionDiv);
+                });
 
-    // Render all math after options are inserted
-    if (window.MathJax?.typesetPromise) {
-        try {
-            await MathJax.typesetPromise([container]);
-        } catch (err) {
-            console.warn('MathJax typeset error:', err);
+                container.appendChild(optionDiv);
+            });
+
+            // Trigger MathJax typeset for options
+            if (window.MathJax && MathJax.typesetPromise) {
+                MathJax.typesetPromise([container]).catch((err) => {
+                    console.warn("MathJax typeset error for options:", err && err.message);
+                });
+            }
         }
-    }
-}
 
         function selectOption(questionId, optionKey, element) {
             userAnswers[questionId] = optionKey;
