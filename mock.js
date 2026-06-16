@@ -239,7 +239,7 @@ forms.login.addEventListener('submit', async function(e) {
         let loginData = await loginResponse.json();
 
         if (loginResponse.ok) {
-            localStorage.setItem('token', 'student_jwt_token', loginData.token);
+            localStorage.setItem('token', loginData.token);
             // Get user role and redirect accordingly
             try {
                 let profileResp = await fetch("https://examguide.onrender.com/api/auth/me", {
