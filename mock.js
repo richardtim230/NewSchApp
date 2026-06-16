@@ -238,38 +238,91 @@ forms.login.addEventListener('submit', async function(e) {
         });
         let loginData = await loginResponse.json();
 
-        if (loginResponse.ok) {
-            localStorage.setItem('student_jwt_token', loginData.token);
-            // Get user role and redirect accordingly
-            try {
-                let profileResp = await fetch("https://examguide.onrender.com/api/auth/me", {
-                    headers: { 'Authorization': 'Bearer ' + loginData.token }
-                });
-                let profileData = await profileResp.json();
-                if (profileResp.ok && profileData.user) {
-                    const user = profileData.user;
-                    const role = user.role;
-                    let roleMsg = "Welcome!";
-                    switch (role) {
-                        case 'superadmin': roleMsg = "Welcome, Superadmin!"; break;
-                        case 'admin': roleMsg = "Welcome, Admin!"; break;
-                        case 'uploader': roleMsg = "Welcome, Uploader!"; break;
-                        case 'pq-uploader': roleMsg = "Welcome, PQ-Uploader!"; break;
-                        case 'blogger': roleMsg = "Welcome, Blogger!"; break;
-                        default: roleMsg = "Welcome, Student!";
-                    }
-                    showStatusModal("success", "Login Successful", roleMsg, false);
-                    setTimeout(() => { window.location.href = (role === 'superadmin') ? "supaadmin.html" : "s-dashboard"; }, 1300);
-                    await setLoginLoading(false);
-                    return;
-                }
-            } catch {
-                showStatusModal("success", "Login Successful", "You have been logged in!", false);
-                setTimeout(() => { window.location.href = "s-dashboard"; }, 1200);
+if (loginResponse.ok) {
+
+    // Save token using both keys
+    localStorage.setItem('student_jwt_token', loginData.token);
+    localStorage.setItem('token', loginData.token);
+
+    // Optionally save user data if returned
+    if (loginData.user) {
+        localStorage.setItem('studentData', JSON.stringify(loginData.user));
+    }
+
+    // Get user role and redirect accordingly
+    try {
+        let profileResp = await fetch("https://examguide.onrender.com/api/auth/me", {
+            headers: {
+                'Authorization': 'Bearer ' + loginData.token
             }
+        });
+
+        let profileData = await profileResp.json();
+
+        if (profileResp.ok && profileData.user) {
+            const user = profileData.user;
+
+            // Save full profile for later use
+            localStorage.setItem('studentData', JSON.stringify(user));
+
+            const role = user.role;
+            let roleMsg = "Welcome!";
+
+            switch (role) {
+                case 'superadmin':
+                    roleMsg = "Welcome, Superadmin!";
+                    break;
+                case 'admin':
+                    roleMsg = "Welcome, Admin!";
+                    break;
+                case 'uploader':
+                    roleMsg = "Welcome, Uploader!";
+                    break;
+                case 'pq-uploader':
+                    roleMsg = "Welcome, PQ-Uploader!";
+                    break;
+                case 'blogger':
+                    roleMsg = "Welcome, Blogger!";
+                    break;
+                default:
+                    roleMsg = "Welcome, Student!";
+            }
+
+            showStatusModal(
+                "success",
+                "Login Successful",
+                roleMsg,
+                false
+            );
+
+            setTimeout(() => {
+                window.location.href =
+                    role === 'superadmin'
+                        ? "supaadmin.html"
+                        : "s-dashboard";
+            }, 1300);
+
             await setLoginLoading(false);
             return;
         }
+    } catch (err) {
+        console.error(err);
+
+        showStatusModal(
+            "success",
+            "Login Successful",
+            "You have been logged in!",
+            false
+        );
+
+        setTimeout(() => {
+            window.location.href = "s-dashboard";
+        }, 1200);
+    }
+
+    await setLoginLoading(false);
+    return;
+}
         showStatusModal("error","Login Failed",loginData.message || "Login failed");
     } catch (err) {
         showStatusModal("error","Network Error","Network or server error. Please try again.");
