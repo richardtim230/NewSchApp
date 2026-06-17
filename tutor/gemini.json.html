@@ -1807,11 +1807,11 @@ function calculateCGPA() {
 (function(){
   'use strict';
 
-  /* Helper to set header safely */
-  function setExamHeaderText(courseCode, examTitle) {
+  function updateExamHeader(courseCode, examTitle) {
     try {
+      // Ensure element exists (may be re-created by app)
       var header = document.getElementById('exam-title');
-      if (!header) return false;
+      if (!header) return;
       var short = courseCode || examTitle || '';
       var parts = [];
       if (courseCode) parts.push(courseCode);
@@ -1821,95 +1821,79 @@ function calculateCGPA() {
       if (mobile) mobile.textContent = short || mobile.textContent;
       // persist
       try { localStorage.setItem('currentExamHeader', JSON.stringify({ courseCode: courseCode || '', examTitle: examTitle || '' })); } catch(e){}
-      return true;
-    } catch (e) { console.warn('setExamHeaderText', e); return false; }
+    } catch (err) {
+      console.warn('updateExamHeader error', err);
+    }
   }
 
-  /* Best-effort readers */
-  function fromDropdown() {
+  function getSelectedFromDropdown() {
     var sel = document.getElementById('course-select');
     if (!sel) return null;
-    var opt = sel.options[sel.selectedIndex];
+    var opt = sel.options[sel.selectedIndex] || null;
     if (!opt) return null;
-    var code = (opt.dataset && (opt.dataset.code || opt.dataset.courseCode)) ? (opt.dataset.code || opt.dataset.courseCode) : (opt.value || '');
-    var title = (opt.dataset && (opt.dataset.title || opt.dataset.examTitle)) ? (opt.dataset.title || opt.dataset.examTitle) : (opt.text || '');
-    return { code: (code||'').trim(), title: (title||'').trim() };
+    var code = (opt.dataset && (opt.dataset.code || opt.dataset.courseCode)) ? (opt.dataset.code || opt.dataset.courseCode) : (opt.value || opt.text);
+    var title = (opt.dataset && (opt.dataset.title || opt.dataset.examTitle)) ? (opt.dataset.title || opt.dataset.examTitle) : opt.text;
+    return { code: (code || '').trim(), title: (title || '').trim() };
   }
 
-  function fromExamsListActive() {
+  function getSelectedFromExamsList() {
     var list = document.getElementById('exams-list');
     if (!list) return null;
     var active = list.querySelector('[data-selected="true"], .active, .selected');
-    if (!active) return null;
-    var code = active.dataset && (active.dataset.courseCode || active.dataset.code) ? (active.dataset.courseCode || active.dataset.code) : '';
-    var title = active.dataset && (active.dataset.title || active.dataset.examTitle) ? (active.dataset.title || active.dataset.examTitle) : (active.textContent || '');
-    return { code: (code||'').trim(), title: (title||'').trim() };
-  }
-
-  function fromMobileTitle() {
-    var mobile = document.getElementById('mobile-page-title');
-    if (!mobile) return null;
-    var t = (mobile.textContent || '').trim();
-    if (!t) return null;
-    // If format "CODE - EXAM" or "CODE - EXAM" extract left side before '-'
-    var m = t.match(/^(.+?)\s*-\s*(EXAM|Exam|study|Study)?/i);
-    if (m && m[1]) return { code: m[1].trim(), title: t };
-    return { code: t, title: t };
-  }
-
-  function fromSearchInput() {
-    var s = document.getElementById('course-search-input');
-    if (s && s.value && s.value.trim()) {
-      var v = s.value.trim();
-      return { code: v, title: v };
+    if (active) {
+      var code = active.dataset && (active.dataset.courseCode || active.dataset.code) ? (active.dataset.courseCode || active.dataset.code) : '';
+      var title = active.dataset && (active.dataset.title || active.dataset.examTitle) ? (active.dataset.title || active.dataset.examTitle) : (active.textContent || '');
+      return { code: (code || '').trim(), title: (title || '').trim() };
     }
     return null;
   }
 
-  function fromLocalStorage() {
-    try {
-      var saved = localStorage.getItem('currentExamHeader');
-      if (!saved) return null;
-      var p = JSON.parse(saved);
-      if (p && (p.courseCode || p.examTitle)) return { code: p.courseCode || '', title: p.examTitle || '' };
-    } catch (e) {}
-    return null;
-  }
-
-  /* Choose best source in priority order and set header */
-  function applyBestHeader() {
-    var src = fromExamsListActive() || fromDropdown() || fromSearchInput() || fromMobileTitle() || fromLocalStorage();
-    var code = (src && src.code) ? src.code : '';
-    var title = (src && src.title) ? src.title : '';
-    setExamHeaderText(code, title);
-  }
-
-  /* Retry setting header multiple times to survive overwrites from other scripts */
-  function applyWithRetries(times, delay) {
-    times = times || 6;
-    delay = delay || 150;
-    for (var i=0;i<times;i++){
-      (function(i){
-        setTimeout(function(){ applyBestHeader(); }, i*delay);
-      })(i);
+  function updateExamHeaderFromUI() {
+    // prefer exams-list selection, then dropdown, then search input, then stored value
+    var li = getSelectedFromExamsList();
+    var dd = getSelectedFromDropdown();
+    var courseCode = '', examTitle = '';
+    if (li && (li.code || li.title)) {
+      courseCode = li.code || '';
+      examTitle = li.title || '';
+    } else if (dd && (dd.code || dd.title)) {
+      courseCode = dd.code || '';
+      examTitle = dd.title || '';
+    } else {
+      var search = document.getElementById('course-search-input');
+      if (search && search.value.trim()) {
+        courseCode = search.value.trim();
+        examTitle = search.value.trim();
+      } else {
+        try {
+          var saved = localStorage.getItem('currentExamHeader');
+          if (saved) {
+            var p = JSON.parse(saved);
+            courseCode = p.courseCode || '';
+            examTitle = p.examTitle || '';
+          }
+        } catch(e){}
+      }
     }
+    updateExamHeader(courseCode, examTitle);
+    window.__currentExamHeader = { courseCode: courseCode || '', examTitle: examTitle || '' };
   }
 
-  /* Event hooks */
-  // Continue button: update shortly after click
+  // Continue button click -> update after short delay (lets other handlers run)
   var continueBtn = document.getElementById('continue-btn');
-  if (continueBtn) continueBtn.addEventListener('click', function(){ setTimeout(applyWithRetries, 80, 6, 140); });
+  if (continueBtn) continueBtn.addEventListener('click', function(){ setTimeout(updateExamHeaderFromUI, 140); });
 
-  // Click on exams list: if items carry data attributes use them immediately
+  // Exam list clicks -> immediate update if data attrs present
   var examsList = document.getElementById('exams-list');
   if (examsList) {
     examsList.addEventListener('click', function(ev){
       var el = ev.target;
       while (el && el !== examsList) {
         if (el.dataset && (el.dataset.courseCode || el.dataset.code || el.dataset.title || el.dataset.examTitle)) {
-          var code = (el.dataset.courseCode || el.dataset.code || '') .trim();
-          var title = (el.dataset.title || el.dataset.examTitle || el.textContent || '') .trim();
-          setExamHeaderText(code, title);
+          var code = el.dataset.courseCode || el.dataset.code || '';
+          var title = el.dataset.title || el.dataset.examTitle || el.textContent || '';
+          updateExamHeader(code.trim(), title.trim());
+          window.__currentExamHeader = { courseCode: code.trim(), examTitle: title.trim() };
           return;
         }
         el = el.parentElement;
@@ -1917,74 +1901,93 @@ function calculateCGPA() {
     }, false);
   }
 
-  // If app uses startSelectedExam / switchView, wrap them so we reapply after they run
+  // Wrap startSelectedExam if exists so we update after it runs
   try {
     if (typeof window.startSelectedExam === 'function') {
-      var origStart = window.startSelectedExam;
+      var orig = window.startSelectedExam;
       window.startSelectedExam = function(){
-        var res = origStart.apply(this, arguments);
-        // reapply after a short delay (and retries)
-        setTimeout(applyWithRetries, 100, 6, 140);
-        if (res && typeof res.then === 'function') res.then(function(){ applyWithRetries(4,120); }).catch(function(){ applyWithRetries(4,120); });
+        var res;
+        try { res = orig.apply(this, arguments); } catch(e) { setTimeout(updateExamHeaderFromUI,120); throw e; }
+        if (res && typeof res.then === 'function') {
+          res.then(function(){ updateExamHeaderFromUI(); }).catch(function(){ updateExamHeaderFromUI(); });
+        } else {
+          setTimeout(updateExamHeaderFromUI,120);
+        }
         return res;
       };
     }
-  } catch(e){}
+  } catch(e){ console.warn('wrap startSelectedExam failed', e); }
 
+  // Wrap switchView if exists (common navigation function) so we reapply header after view change
   try {
     if (typeof window.switchView === 'function') {
       var origSwitch = window.switchView;
-      window.switchView = function(){
-        var rv = origSwitch.apply(this, arguments);
-        setTimeout(applyWithRetries, 80, 6, 120);
-        return rv;
+      window.switchView = function(viewName, title){
+        var res;
+        try { res = origSwitch.apply(this, arguments); } catch(e) { setTimeout(updateExamHeaderFromUI, 100); throw e; }
+        setTimeout(updateExamHeaderFromUI, 120);
+        return res;
       };
     }
-  } catch(e){}
+  } catch(e){ console.warn('wrap switchView failed', e); }
 
-  // Observe mobile title changes and re-sync
-  var mobile = document.getElementById('mobile-page-title');
-  if (mobile && window.MutationObserver) {
-    new MutationObserver(function(muts){
-      applyWithRetries(4,120);
-    }).observe(mobile, { characterData: true, childList: true, subtree: true });
-  }
+  // Fallback: listen for clicks on any element with an onclick attr that contains "switchView"
+  document.addEventListener('click', function(ev){
+    var node = ev.target;
+    while (node && node !== document) {
+      var onclick = node.getAttribute && node.getAttribute('onclick');
+      if (onclick && onclick.indexOf('switchView') !== -1) {
+        setTimeout(updateExamHeaderFromUI, 120);
+        break;
+      }
+      node = node.parentElement;
+    }
+  }, true);
 
-  // Observe body for #exam-title being added or replaced and reapply
+  // MutationObserver: if #exam-title is replaced or added, reapply the header
   if (window.MutationObserver) {
-    var obs = new MutationObserver(function(muts){
-      for (var m of muts) {
-        if (m.type === 'childList' && m.addedNodes && m.addedNodes.length) {
+    var bodyObserver = new MutationObserver(function(mutations){
+      for (var m of mutations) {
+        if (m.type === 'childList') {
+          // if a node added contains #exam-title or view-study, attempt update
           for (var n of m.addedNodes) {
             try {
               if (!(n instanceof HTMLElement)) continue;
-              if (n.id === 'exam-title' || (n.querySelector && n.querySelector('#exam-title'))) {
-                setTimeout(applyWithRetries, 60, 6, 140);
+              if (n.querySelector && (n.querySelector('#exam-title') || n.id === 'exam-title' || n.querySelector('#view-study'))) {
+                setTimeout(updateExamHeaderFromUI, 60);
                 return;
               }
             } catch(e){}
           }
-        }
-        if (m.type === 'attributes' && m.target && m.target.id === 'view-study') {
-          // view changed
-          setTimeout(applyWithRetries, 60, 6, 140);
+        } else if (m.type === 'attributes' && (m.target && m.target.id === 'view-study')) {
+          // view-study attribute change (visibility)
+          var vs = document.getElementById('view-study');
+          if (vs && !vs.classList.contains('hidden')) setTimeout(updateExamHeaderFromUI, 80);
         }
       }
     });
-    obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'aria-hidden'] });
+    bodyObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'aria-hidden'] });
   }
 
-  // On load: try to set header from saved or current UI
-  document.addEventListener('DOMContentLoaded', function(){ applyWithRetries(6,120); });
+  // On initial load restore stored header and try to apply from UI
+  document.addEventListener('DOMContentLoaded', function(){
+    try {
+      var saved = localStorage.getItem('currentExamHeader');
+      if (saved) {
+        var p = JSON.parse(saved);
+        if (p && (p.courseCode || p.examTitle)) updateExamHeader(p.courseCode || '', p.examTitle || '');
+      }
+    } catch(e){}
+    setTimeout(updateExamHeaderFromUI, 220);
+  });
 
   // Expose helper
   window.setExamHeader = function(courseCode, examTitle){
-    setExamHeaderText(courseCode||'', examTitle||'');
-    applyWithRetries(3,140);
+    updateExamHeader(courseCode, examTitle);
+    window.__currentExamHeader = { courseCode: courseCode || '', examTitle: examTitle || '' };
   };
 
 })();
-
 
 
 
