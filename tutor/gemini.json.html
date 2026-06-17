@@ -1801,70 +1801,106 @@ function calculateCGPA() {
 }
 
         
-document.addEventListener('DOMContentLoaded', function () {
+
+(function () {
+  'use strict';
+
   function updateExamHeader(courseCode, examTitle) {
     try {
       var header = document.getElementById('exam-title');
       if (!header) return;
-      // Build header text: "Exam - CODE : Title" (fall back to supplied strings)
-      var parts = [];
-      if (courseCode) parts.push(courseCode);
-      if (examTitle && examTitle !== courseCode) parts.push(examTitle);
-      header.textContent = parts.length ? ('Exam - ' + parts.join(' · ')) : 'Exam -';
-      // Also update mobile header if present
+      var short = courseCode || examTitle || '';
+      var longParts = [];
+      if (courseCode) longParts.push(courseCode);
+      if (examTitle && examTitle !== courseCode) longParts.push(examTitle);
+      header.textContent = longParts.length ? ('Exam - ' + longParts.join(' · ')) : 'Exam -';
       var mobile = document.getElementById('mobile-page-title');
-      if (mobile) {
-        // Use short text for mobile: prefer courseCode then examTitle
-        mobile.textContent = courseCode || examTitle || mobile.textContent;
-      }
+      if (mobile) mobile.textContent = short || mobile.textContent;
+      // Persist for reloads
+      try { localStorage.setItem('currentExamHeader', JSON.stringify({ courseCode: courseCode || '', examTitle: examTitle || '' })); } catch (e) {}
     } catch (err) {
-      // fail silently - do not break other scripts
       console.warn('updateExamHeader error', err);
     }
   }
 
-  // Hook the "Continue" button which starts the selected exam
+  function getSelectedFromDropdown() {
+    var sel = document.getElementById('course-select');
+    if (!sel) return null;
+    var opt = sel.options[sel.selectedIndex] || null;
+    if (!opt) return null;
+    // Prefer dataset attributes if provided, otherwise value/text
+    var code = (opt.dataset && (opt.dataset.code || opt.dataset.courseCode)) ? (opt.dataset.code || opt.dataset.courseCode) : (opt.value || opt.text);
+    var title = (opt.dataset && (opt.dataset.title || opt.dataset.examTitle)) ? (opt.dataset.title || opt.dataset.examTitle) : opt.text;
+    return { code: (code || '').trim(), title: (title || '').trim() };
+  }
+
+  function getSelectedFromExamsList() {
+    var list = document.getElementById('exams-list');
+    if (!list) return null;
+    // If list items use a selected/active class, try to find it; otherwise return null
+    var active = list.querySelector('[data-selected="true"], .active, .selected');
+    if (active) {
+      var code = active.dataset && (active.dataset.courseCode || active.dataset.code) ? (active.dataset.courseCode || active.dataset.code) : (active.dataset.title || active.textContent || '');
+      var title = active.dataset && (active.dataset.title || active.dataset.examTitle) ? (active.dataset.title || active.dataset.examTitle) : (active.textContent || '');
+      return { code: (code || '').trim(), title: (title || '').trim() };
+    }
+    return null;
+  }
+
+  function updateExamHeaderFromUI() {
+    var dd = getSelectedFromDropdown();
+    var li = getSelectedFromExamsList();
+    var courseCode = '';
+    var examTitle = '';
+    if (li && (li.code || li.title)) {
+      courseCode = li.code || '';
+      examTitle = li.title || '';
+    } else if (dd && (dd.code || dd.title)) {
+      courseCode = dd.code || '';
+      examTitle = dd.title || '';
+    } else {
+      // fallback: use search input content
+      var search = document.getElementById('course-search-input');
+      if (search && search.value.trim()) {
+        courseCode = search.value.trim();
+        examTitle = search.value.trim();
+      } else {
+        // If we have a previously saved header, use that
+        try {
+          var saved = localStorage.getItem('currentExamHeader');
+          if (saved) {
+            var p = JSON.parse(saved);
+            courseCode = p.courseCode || '';
+            examTitle = p.examTitle || '';
+          }
+        } catch (e) {}
+      }
+    }
+    updateExamHeader(courseCode, examTitle);
+    // expose globally
+    window.__currentExamHeader = { courseCode: courseCode, examTitle: examTitle };
+  }
+
+  // 1) Hook continue button
   var continueBtn = document.getElementById('continue-btn');
   if (continueBtn) {
     continueBtn.addEventListener('click', function () {
-      // Try to read selected course & exam title from the UI
-      var courseSelect = document.getElementById('course-select');
-      var searchInput = document.getElementById('course-search-input');
-      var courseCode = '';
-      var examTitle = '';
-
-      if (courseSelect && courseSelect.value) {
-        // If options include dataset attributes use them (safer), otherwise use text/value
-        var opt = courseSelect.options[courseSelect.selectedIndex];
-        courseCode = (opt && opt.dataset && opt.dataset.code) ? opt.dataset.code.trim() : (opt ? opt.value.trim() : '');
-        examTitle = (opt && opt.dataset && opt.dataset.title) ? opt.dataset.title.trim() : (opt ? opt.text.trim() : '');
-      }
-
-      // Fallback to search input if nothing selected
-      if ((!courseCode || courseCode === '') && searchInput && searchInput.value) {
-        courseCode = searchInput.value.trim();
-        examTitle = searchInput.value.trim();
-      }
-
-      // Final cleanup: if examTitle equals courseCode, only show code
-      updateExamHeader(courseCode, examTitle);
-      // Expose final values to global scope in case startSelectedExam() or other in-page scripts need them
-      window.__currentExamHeader = { courseCode: courseCode, examTitle: examTitle };
+      // allow page logic to run first (startSelectedExam may run), call update slightly after
+      setTimeout(updateExamHeaderFromUI, 150);
     });
   }
 
-  // If exams are displayed as a clickable list inside #exams-list, detect clicks and update header.
+  // 2) Listen for clicks inside exams list (items may supply dataset attributes)
   var examsList = document.getElementById('exams-list');
   if (examsList) {
     examsList.addEventListener('click', function (ev) {
       var el = ev.target;
-      // Support elements with data attributes: data-course-code, data-title
       while (el && el !== examsList) {
-        if (el.dataset && (el.dataset.courseCode || el.dataset.title || el.dataset.examId)) {
-          var c = el.dataset.courseCode || '';
-          var t = el.dataset.title || el.textContent || '';
-          updateExamHeader(c.trim(), t.trim());
-          window.__currentExamHeader = { courseCode: c.trim(), examTitle: t.trim() };
+        if (el.dataset && (el.dataset.courseCode || el.dataset.code || el.dataset.title || el.dataset.examTitle)) {
+          var code = el.dataset.courseCode || el.dataset.code || '';
+          var title = el.dataset.title || el.dataset.examTitle || el.textContent || '';
+          updateExamHeader(code.trim(), title.trim());
+          window.__currentExamHeader = { courseCode: code.trim(), examTitle: title.trim() };
           break;
         }
         el = el.parentElement;
@@ -1872,25 +1908,72 @@ document.addEventListener('DOMContentLoaded', function () {
     }, false);
   }
 
-  // If there's already a saved current exam in localStorage (or server-rendered JS assigns it), display it
+  // 3) Monkey-patch startSelectedExam if it exists so we run after it.
   try {
-    var saved = null;
-    if (window.localStorage) {
-      saved = localStorage.getItem('currentExamHeader');
-      if (saved) {
-        var parsed = JSON.parse(saved);
-        if (parsed && (parsed.courseCode || parsed.examTitle)) {
-          updateExamHeader(parsed.courseCode || '', parsed.examTitle || '');
+    if (typeof window.startSelectedExam === 'function') {
+      var originalStart = window.startSelectedExam;
+      window.startSelectedExam = function () {
+        var res;
+        try {
+          res = originalStart.apply(this, arguments);
+        } catch (e) {
+          // still attempt update even if original throws
+          setTimeout(updateExamHeaderFromUI, 120);
+          throw e;
         }
-      }
+        // If original returns a Promise, update after it resolves; otherwise schedule shortly after
+        if (res && typeof res.then === 'function') {
+          res.then(function () { updateExamHeaderFromUI(); }).catch(function () { updateExamHeaderFromUI(); });
+        } else {
+          setTimeout(updateExamHeaderFromUI, 120);
+        }
+        return res;
+      };
     }
-  } catch (e) {
-    // ignore parse errors
+  } catch (err) {
+    console.warn('wrap startSelectedExam failed', err);
   }
 
-  // Make the helper available globally so other scripts can call it directly:
-  window.setExamHeader = updateExamHeader;
-});
+  // 4) Observe #view-study becoming visible (some apps toggle "hidden" class)
+  var viewStudy = document.getElementById('view-study');
+  if (viewStudy && window.MutationObserver) {
+    var mo = new MutationObserver(function (mutations) {
+      mutations.forEach(function (m) {
+        if (m.type === 'attributes' && m.attributeName === 'class') {
+          var hidden = viewStudy.classList.contains('hidden') || viewStudy.getAttribute('aria-hidden') === 'true';
+          if (!hidden) {
+            // view became visible
+            setTimeout(updateExamHeaderFromUI, 80);
+          }
+        }
+      });
+    });
+    mo.observe(viewStudy, { attributes: true, attributeFilter: ['class', 'style', 'aria-hidden'] });
+  }
+
+  // 5) On load restore header from localStorage (if any)
+  document.addEventListener('DOMContentLoaded', function () {
+    try {
+      var saved = localStorage.getItem('currentExamHeader');
+      if (saved) {
+        var p = JSON.parse(saved);
+        if (p && (p.courseCode || p.examTitle)) {
+          updateExamHeader(p.courseCode || '', p.examTitle || '');
+        }
+      }
+    } catch (e) {}
+    // Also run a quick attempt in case the UI already has a selection
+    setTimeout(updateExamHeaderFromUI, 200);
+  });
+
+  // Expose utility globally for other scripts to call directly
+  window.setExamHeader = function (courseCode, examTitle) {
+    updateExamHeader(courseCode, examTitle);
+    window.__currentExamHeader = { courseCode: courseCode || '', examTitle: examTitle || '' };
+  };
+
+})();
+
 
 
 // Study Planner
