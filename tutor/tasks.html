@@ -7,9 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
-<script async type="application/javascript" src="https://a.magsrv.com/ad-provider.js"></script> 
- <ins class="eas6a97888e17" data-zoneid="5953434"></ins> 
- <script>(AdProvider = window.AdProvider || []).push({"serve": {}});</script>
+    
     <script>
         tailwind.config = {
             theme: {
@@ -141,6 +139,9 @@
             color: #6b7280;
             white-space: nowrap;
             border-bottom: 2px solid transparent;
+            cursor: pointer;
+            background: none;
+            border: none;
         }
 
         .filter-tab.active {
@@ -227,6 +228,17 @@
             color: #166534;
             border-left: 4px solid #16a34a;
         }
+
+        .nav-active-desktop {
+            background-color: #0d2b52 !important;
+            border-left-width: 3.5px !important;
+            border-color: #ff5622 !important;
+            color: #ffffff !important;
+        }
+
+        .nav-active-desktop svg {
+            color: #ff5622 !important;
+        }
     </style>
 </head>
 <body class="bg-pqLightBg text-gray-800 antialiased min-h-screen font-sans overflow-x-hidden">
@@ -244,7 +256,7 @@
     <!-- Top Navbar (Mobile) -->
     <nav class="fixed top-0 left-0 right-0 z-40 bg-pqBlue border-b border-white/5 shadow-md h-12 flex items-center justify-between px-3 md:hidden">
         <div class="flex items-center gap-2.5">
-            <button data-drawer-target="drawer-navigation" data-drawer-show="drawer-navigation" aria-controls="drawer-navigation" type="button" class="p-1.5 text-white/90 hover:text-white bg-white/10 rounded-lg transition-all">
+            <button id="mobile-menu-btn" class="p-1.5 text-white/90 hover:text-white bg-white/10 rounded-lg transition-all">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"></path>
                 </svg>
@@ -281,19 +293,19 @@
             <div class="px-4 mb-1.5 text-[9px] text-gray-500 font-bold tracking-[0.18em] uppercase">MAIN</div>
             <ul class="space-y-0.5">
                 <li>
-                    <button onclick="switchView('home','Dashboard')" id="desk-nav-home"
+                    <button onclick="goToDashboard()" id="desk-nav-home"
                         class="w-full flex items-center px-4 py-2 text-[12.5px] font-medium text-gray-300 hover:bg-white/5 hover:text-white rounded-lg transition-all">
                         <i class="fas fa-home w-4 mr-3 text-gray-400"></i> Dashboard
                     </button>
                 </li>
                 <li>
-                    <button onclick="switchView('select','Past Questions')" id="desk-nav-select"
+                    <button onclick="goToPractice()" id="desk-nav-select"
                         class="w-full flex items-center px-4 py-2 text-[12.5px] font-medium text-gray-300 hover:bg-white/5 hover:text-white rounded-lg transition-all">
                         <i class="fas fa-book w-4 mr-3 text-gray-400"></i> Practice Questions
                     </button>
                 </li>
                 <li>
-                    <button id="desk-nav-tasks" class="w-full flex items-center px-4 py-2 text-[12.5px] font-medium text-white bg-white/10 rounded-lg transition-all border-l-[3.5px] border-pqOrange">
+                    <button id="desk-nav-tasks" class="w-full flex items-center px-4 py-2 text-[12.5px] font-medium text-white bg-white/10 rounded-lg transition-all border-l-[3.5px] border-pqOrange nav-active-desktop">
                         <i class="fas fa-tasks w-4 mr-3 text-pqOrange"></i> Task Center
                     </button>
                 </li>
@@ -483,34 +495,57 @@
         // ============================================
         
         let currentUserId = null;
+        let currentUserData = null;
         let currentFilter = 'all';
         let tasks = [];
+        let authToken = null;
 
-        // API Base URL - adjust to your backend
+        // API Base URL
         const API_BASE_URL = 'https://examguide.onrender.com/api';
 
         // ============================================
-        // LOAD USER PROFILE (SAME AS DASHBOARD)
+        // MOBILE MENU TOGGLE
+        // ============================================
+        
+        document.getElementById('mobile-menu-btn')?.addEventListener('click', function() {
+            const drawer = document.getElementById('drawer-navigation');
+            drawer.classList.toggle('-translate-x-full');
+        });
+
+        // Close drawer when clicking on links
+        document.querySelectorAll('#drawer-navigation button').forEach(btn => {
+            btn.addEventListener('click', function() {
+                if (window.innerWidth < 768) {
+                    document.getElementById('drawer-navigation').classList.add('-translate-x-full');
+                }
+            });
+        });
+
+        // ============================================
+        // AUTHENTICATION & USER LOADING
         // ============================================
         
         async function loadUserProfile() {
             try {
-                // Get token from storage (same as dashboard)
-                const token = localStorage.getItem('token') || 
-                             sessionStorage.getItem('token') || 
-                             localStorage.getItem('authToken');
+                // Get token from storage (check multiple keys)
+                authToken = localStorage.getItem('token') || 
+                           sessionStorage.getItem('token') || 
+                           localStorage.getItem('authToken');
 
-                if (!token) {
-                    console.error('No token found');
-                    showToast('Authentication required. Please login first.', 'error');
+                if (!authToken) {
+                    console.error('No auth token found');
+                    showToast('Please log in first', 'error');
                     setTimeout(() => window.location.href = '../', 2000);
                     return false;
                 }
 
-                // Fetch current user profile
+                console.log('Auth token found:', authToken.substring(0, 20) + '...');
+
+                // Fetch user profile
                 const response = await fetch(`${API_BASE_URL}/auth/me`, {
+                    method: 'GET',
                     headers: {
-                        'Authorization': `Bearer ${token}`,
+                        'Authorization': `Bearer ${authToken}`,
                         'Content-Type': 'application/json'
                     }
                 });
@@ -521,6 +556,9 @@
 
                 const user = await response.json();
                 currentUserId = user._id;
+                currentUserData = user;
+
+                console.log('User loaded:', user.fullname, user._id);
 
                 // Update profile display
                 document.getElementById('profile-name').textContent = user.fullname || user.name || 'Student';
@@ -528,11 +566,10 @@
                 document.getElementById('profile-avatar').src = 
                     `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullname || user.name || 'Student')}&background=ffffff&color=002046&bold=true`;
 
-                console.log('User loaded:', user._id, user.fullname);
-                return token;
+                return true;
             } catch (e) {
                 console.error('Failed to load user profile:', e);
-                showToast(`Error loading profile: ${e.message}`, 'error');
+                showToast(`Error: ${e.message}`, 'error');
                 return false;
             }
         }
@@ -541,15 +578,16 @@
         // TASK FETCHING & MANAGEMENT
         // ============================================
         
-        async function fetchTasks(token) {
-            if (!currentUserId || !token) return;
+        async function fetchTasks() {
+            if (!currentUserId || !authToken) return;
 
             try {
                 showLoadingSpinner(true);
                 
                 const response = await fetch(`${API_BASE_URL}/tasks/user/${currentUserId}`, {
+                    method: 'GET',
                     headers: {
-                        'Authorization': `Bearer ${token}`,
+                        'Authorization': `Bearer ${authToken}`,
                         'Content-Type': 'application/json'
                     }
                 });
@@ -688,16 +726,15 @@
 
         async function updateTaskStatus() {
             const taskId = document.getElementById('modal-action-btn').dataset.taskId;
-            const token = localStorage.getItem('token') || sessionStorage.getItem('token') || localStorage.getItem('authToken');
             
-            if (!taskId || !token) return;
+            if (!taskId || !authToken) return;
 
             try {
                 showLoadingSpinner(true);
                 const response = await fetch(`${API_BASE_URL}/tasks/${taskId}`, {
                     method: 'PATCH',
                     headers: {
-                        'Authorization': `Bearer ${token}`,
+                        'Authorization': `Bearer ${authToken}`,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({ status: 'done' })
@@ -762,8 +799,9 @@
         }
 
         function showLoadingSpinner(show) {
-            document.getElementById('loading-spinner').classList.toggle('hidden', !show);
-            document.getElementById('loading-spinner').style.display = show ? 'flex' : 'none';
+            const spinner = document.getElementById('loading-spinner');
+            spinner.classList.toggle('hidden', !show);
+            spinner.style.display = show ? 'flex' : 'none';
         }
 
         function showToast(message, type = 'error') {
@@ -777,8 +815,12 @@
             }, 4000);
         }
 
-        function switchView(view, title) {
-            document.getElementById('mobile-page-title').textContent = title;
+        function goToDashboard() {
+            window.location.href = 'gemini.json.html';
+        }
+
+        function goToPractice() {
+            window.location.href = 'gemini.json.html';
         }
 
         function openExternalPage(url) {
@@ -808,11 +850,11 @@
         // ============================================
         
         document.addEventListener('DOMContentLoaded', async function() {
-            const token = await loadUserProfile();
-            if (token) {
-                await fetchTasks(token);
+            const userLoaded = await loadUserProfile();
+            if (userLoaded) {
+                await fetchTasks();
                 // Refresh tasks every 30 seconds
-                setInterval(() => fetchTasks(token), 30000);
+                setInterval(() => fetchTasks(), 30000);
             }
         });
     </script>
