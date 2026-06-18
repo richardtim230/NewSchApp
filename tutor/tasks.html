@@ -184,26 +184,6 @@
             transition: width 0.5s ease;
         }
 
-        .sidebar-overlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 40;
-            display: none;
-        }
-
-        .sidebar-overlay.active {
-            display: block;
-        }
-
-        .drawer-nav {
-            transition: transform 0.3s ease;
-        }
-
-        .drawer-nav.open {
-            transform: translateX(0);
-        }
-
         .empty-state {
             display: flex;
             flex-direction: column;
@@ -245,20 +225,6 @@
             color: #166534;
             border-left: 4px solid #16a34a;
         }
-
-        .debug-info {
-            position: fixed;
-            bottom: 20px;
-            left: 20px;
-            background: rgba(0, 0, 0, 0.8);
-            color: #0f0;
-            padding: 12px 16px;
-            border-radius: 8px;
-            font-family: monospace;
-            font-size: 11px;
-            max-width: 300px;
-            z-index: 99;
-        }
     </style>
 </head>
 <body class="bg-pqLightBg text-gray-800 antialiased min-h-screen font-sans overflow-x-hidden">
@@ -273,34 +239,23 @@
         <p class="mt-3 text-pqBlue text-sm font-bold tracking-wide animate-pulse">Loading tasks...</p>
     </div>
 
-    <!-- Debug Info -->
-    <div id="debug-info" class="debug-info hidden">
-        <div>Status: <span id="debug-status">initializing</span></div>
-        <div>User ID: <span id="debug-userid">—</span></div>
-        <div>Tasks: <span id="debug-tasks">0</span></div>
-        <div>API: <span id="debug-api" style="word-break: break-all;"></span></div>
-    </div>
-
-    <!-- Sidebar Overlay (Mobile) -->
-    <div id="sidebar-overlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
-
     <!-- Top Navbar (Mobile) -->
     <nav class="fixed top-0 left-0 right-0 z-40 bg-pqBlue border-b border-white/5 shadow-md h-12 flex items-center justify-between px-3 md:hidden">
         <div class="flex items-center gap-2.5">
-            <button onclick="toggleSidebar()" class="p-1.5 text-white/90 hover:text-white bg-white/10 rounded-lg transition-all">
+            <button data-drawer-target="drawer-navigation" data-drawer-show="drawer-navigation" aria-controls="drawer-navigation" type="button" class="p-1.5 text-white/90 hover:text-white bg-white/10 rounded-lg transition-all">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"></path>
                 </svg>
             </button>
-            <span class="text-[16px] font-bold text-white tracking-wide">Task Center</span>
+            <span id="mobile-page-title" class="text-[16px] font-bold text-white tracking-wide">Task Center</span>
         </div>
         <div class="w-7 h-7 rounded-full bg-white flex items-center justify-center p-0.5 shadow-inner">
             <img src="https://ui-avatars.com/api/?name=OAU&background=ffffff&color=002046&bold=true&font-size=0.45" alt="OAU" class="rounded-full">
         </div>
     </nav>
 
-    <!-- Sidebar (Desktop & Mobile) -->
-    <div id="drawer-navigation" class="drawer-nav fixed top-0 left-0 z-50 md:z-30 h-screen p-0 overflow-y-auto -translate-x-full md:translate-x-0 bg-pqDarkBg w-[260px] border-r border-white/5">
+    <!-- Sidebar -->
+    <div id="drawer-navigation" class="fixed top-0 left-0 z-50 md:z-30 h-screen p-0 overflow-y-auto transition-transform -translate-x-full md:translate-x-0 bg-pqDarkBg w-[260px] border-r border-white/5">
         
         <div class="px-4 pt-5 pb-3 bg-pqBlue border-b border-white/5">
             <h2 class="text-[18px] font-extrabold text-white flex items-center tracking-wide">
@@ -324,13 +279,13 @@
             <div class="px-4 mb-1.5 text-[9px] text-gray-500 font-bold tracking-[0.18em] uppercase">MAIN</div>
             <ul class="space-y-0.5">
                 <li>
-                    <button onclick="openExternalPage('gemini.json.html')" id="desk-nav-home"
+                    <button onclick="switchView('home','Dashboard')" id="desk-nav-home"
                         class="w-full flex items-center px-4 py-2 text-[12.5px] font-medium text-gray-300 hover:bg-white/5 hover:text-white rounded-lg transition-all">
                         <i class="fas fa-home w-4 mr-3 text-gray-400"></i> Dashboard
                     </button>
                 </li>
                 <li>
-                    <button onclick="openExternalPage('gemini.json.html')" id="desk-nav-select"
+                    <button onclick="switchView('select','Past Questions')" id="desk-nav-select"
                         class="w-full flex items-center px-4 py-2 text-[12.5px] font-medium text-gray-300 hover:bg-white/5 hover:text-white rounded-lg transition-all">
                         <i class="fas fa-book w-4 mr-3 text-gray-400"></i> Practice Questions
                     </button>
@@ -519,156 +474,83 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/flowbite@2.5.0/dist/flowbite.turbo.min.js"></script>
     <script>
         // ============================================
-        // CONFIGURATION - ADJUST THESE VALUES
+        // GLOBAL STATE & CONFIGURATION
         // ============================================
-        
-        // Check your environment and set the correct API URL
-        const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        
-        // Set your backend URL here
-        let API_BASE_URL = 'https://examguide.onrender.com/api';
-        
-        // For local development, use:
-        // const API_BASE_URL = 'http://localhost:5000/api';
-        
-        console.log('Environment:', isDevelopment ? 'Development' : 'Production');
-        console.log('API URL:', API_BASE_URL);
-        
-        // Get auth token - adjust based on your auth system
-        let authToken = localStorage.getItem('authToken') || sessionStorage.getItem('authToken') || localStorage.getItem('token');
-        
-        console.log('Auth Token Found:', !!authToken);
         
         let currentUserId = null;
         let currentFilter = 'all';
         let tasks = [];
 
+        // API Base URL - adjust to your backend
+        const API_BASE_URL = 'https://examguide.onrender.com/api';
+
         // ============================================
-        // DEBUG UTILITIES
+        // LOAD USER PROFILE (SAME AS DASHBOARD)
         // ============================================
         
-        function updateDebugInfo(status, data = {}) {
-            document.getElementById('debug-status').textContent = status;
-            if (data.userId) document.getElementById('debug-userid').textContent = data.userId;
-            if (data.tasks) document.getElementById('debug-tasks').textContent = data.tasks;
-            if (data.api) document.getElementById('debug-api').textContent = data.api;
-        }
-
-        function showDebugInfo(show = true) {
-            document.getElementById('debug-info').classList.toggle('hidden', !show);
-        }
-
-        // Show debug info on load
-        showDebugInfo(true);
-        updateDebugInfo('Initializing...');
-
-        // ============================================
-        // AUTHENTICATION & USER INITIALIZATION
-        // ============================================
-        
-        async function initializeUser() {
+        async function loadUserProfile() {
             try {
-                updateDebugInfo('Fetching user...', { api: API_BASE_URL });
-                
-                if (!authToken) {
-                    console.warn('No auth token found. Check localStorage/sessionStorage');
-                    updateDebugInfo('No auth token', { api: API_BASE_URL });
-                    showToast('No authentication token found. Please log in first.', 'error');
+                // Get token from storage (same as dashboard)
+                const token = localStorage.getItem('token') || 
+                             sessionStorage.getItem('token') || 
+                             localStorage.getItem('authToken');
+
+                if (!token) {
+                    console.error('No token found');
+                    showToast('Authentication required. Please login first.', 'error');
+                    setTimeout(() => window.location.href = '../', 2000);
                     return false;
                 }
 
-                // Try to get user info
+                // Fetch current user profile
                 const response = await fetch(`${API_BASE_URL}/auth/me`, {
-                    method: 'GET',
                     headers: {
-                        'Authorization': `Bearer ${authToken}`,
+                        'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     }
                 });
 
-                console.log('Auth/me response:', response.status, response.statusText);
-
                 if (!response.ok) {
-                    // If auth/me doesn't exist, try to get from local storage or use dummy user
-                    console.warn('Failed to fetch user from /auth/me:', response.status);
-                    
-                    // Try alternative: check if we have user info stored
-                    const storedUser = localStorage.getItem('user');
-                    if (storedUser) {
-                        const user = JSON.parse(storedUser);
-                        currentUserId = user._id;
-                        document.getElementById('profile-name').textContent = user.fullname || user.name || 'Student';
-                        document.getElementById('profile-email').textContent = user.email || '—';
-                        updateDebugInfo('User loaded from storage', { userId: currentUserId });
-                        return true;
-                    }
-                    
-                    throw new Error(`Failed to authenticate: ${response.status}`);
+                    throw new Error(`Failed to fetch user: ${response.status}`);
                 }
 
                 const user = await response.json();
                 currentUserId = user._id;
+
+                // Update profile display
                 document.getElementById('profile-name').textContent = user.fullname || user.name || 'Student';
                 document.getElementById('profile-email').textContent = user.email || '—';
-                
-                updateDebugInfo('User authenticated', { userId: currentUserId });
-                return true;
+                document.getElementById('profile-avatar').src = 
+                    `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullname || user.name || 'Student')}&background=ffffff&color=002046&bold=true`;
+
+                console.log('User loaded:', user._id, user.fullname);
+                return token;
             } catch (e) {
-                console.error('Failed to initialize user:', e);
-                updateDebugInfo('Auth error', { api: e.message });
-                showToast(`Authentication Error: ${e.message}`, 'error');
+                console.error('Failed to load user profile:', e);
+                showToast(`Error loading profile: ${e.message}`, 'error');
                 return false;
             }
         }
 
         // ============================================
-        // SIDEBAR MANAGEMENT
-        // ============================================
-        
-        function toggleSidebar() {
-            const drawer = document.getElementById('drawer-navigation');
-            const overlay = document.getElementById('sidebar-overlay');
-            
-            drawer.classList.toggle('open');
-            overlay.classList.toggle('active');
-        }
-
-        document.querySelectorAll('#drawer-navigation button').forEach(btn => {
-            btn.addEventListener('click', function() {
-                if (window.innerWidth < 768) {
-                    toggleSidebar();
-                }
-            });
-        });
-
-        // ============================================
         // TASK FETCHING & MANAGEMENT
         // ============================================
         
-        async function fetchTasks() {
-            if (!currentUserId) {
-                console.warn('No user ID available');
-                return;
-            }
+        async function fetchTasks(token) {
+            if (!currentUserId || !token) return;
 
             try {
                 showLoadingSpinner(true);
-                updateDebugInfo('Fetching tasks...', { userId: currentUserId });
                 
-                const url = `${API_BASE_URL}/tasks/user/${currentUserId}`;
-                console.log('Fetching from:', url);
-                
-                const response = await fetch(url, {
-                    method: 'GET',
+                const response = await fetch(`${API_BASE_URL}/tasks/user/${currentUserId}`, {
                     headers: {
-                        'Authorization': `Bearer ${authToken}`,
+                        'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     }
                 });
-
-                console.log('Tasks response:', response.status, response.statusText);
 
                 if (!response.ok) {
                     throw new Error(`Failed to fetch tasks: ${response.status}`);
@@ -677,12 +559,10 @@
                 tasks = await response.json();
                 console.log('Tasks loaded:', tasks.length);
                 
-                updateDebugInfo('Tasks loaded', { tasks: tasks.length });
                 renderTasks();
                 updateStats();
             } catch (e) {
                 console.error('Error fetching tasks:', e);
-                updateDebugInfo('Error loading tasks', { tasks: 'Error' });
                 showToast(`Failed to load tasks: ${e.message}`, 'error');
             } finally {
                 showLoadingSpinner(false);
@@ -806,14 +686,16 @@
 
         async function updateTaskStatus() {
             const taskId = document.getElementById('modal-action-btn').dataset.taskId;
-            if (!taskId) return;
+            const token = localStorage.getItem('token') || sessionStorage.getItem('token') || localStorage.getItem('authToken');
+            
+            if (!taskId || !token) return;
 
             try {
                 showLoadingSpinner(true);
                 const response = await fetch(`${API_BASE_URL}/tasks/${taskId}`, {
                     method: 'PATCH',
                     headers: {
-                        'Authorization': `Bearer ${authToken}`,
+                        'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({ status: 'done' })
@@ -879,6 +761,7 @@
 
         function showLoadingSpinner(show) {
             document.getElementById('loading-spinner').classList.toggle('hidden', !show);
+            document.getElementById('loading-spinner').style.display = show ? 'flex' : 'none';
         }
 
         function showToast(message, type = 'error') {
@@ -892,6 +775,24 @@
             }, 4000);
         }
 
+        function switchView(view, title) {
+            document.getElementById('mobile-page-title').textContent = title;
+        }
+
+        function openExternalPage(url) {
+            window.location.href = url;
+        }
+
+        function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                localStorage.removeItem('token');
+                localStorage.removeItem('authToken');
+                sessionStorage.removeItem('token');
+                window.location.href = '../';
+            }
+        }
+
+        // Close modals on outside click
         document.getElementById('taskDetailModal')?.addEventListener('click', function(e) {
             if (e.target === this) closeTaskModal();
         });
@@ -900,34 +801,18 @@
             if (e.target === this) closeCompletionModal();
         });
 
-        function openExternalPage(url) {
-            window.location.href = url;
-        }
-
-        function logout() {
-            if (confirm('Are you sure you want to logout?')) {
-                localStorage.removeItem('authToken');
-                sessionStorage.removeItem('authToken');
-                localStorage.removeItem('token');
-                window.location.href = '../';
-            }
-        }
-
         // ============================================
         // PAGE INITIALIZATION
         // ============================================
         
         document.addEventListener('DOMContentLoaded', async function() {
-            const userInitialized = await initializeUser();
-            if (userInitialized) {
-                await fetchTasks();
+            const token = await loadUserProfile();
+            if (token) {
+                await fetchTasks(token);
+                // Refresh tasks every 30 seconds
+                setInterval(() => fetchTasks(token), 30000);
             }
         });
-
-        // Refresh tasks every 30 seconds
-        setInterval(() => {
-            if (currentUserId) fetchTasks();
-        }, 30000);
     </script>
 </body>
 </html>
