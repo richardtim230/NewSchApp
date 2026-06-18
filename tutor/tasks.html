@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OAU ExamGuard - Task Center</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        pqBlue: '#002046',       
+                        pqDarkBg: '#001633',     
+                        pqActiveBlue: '#0d2b52', 
+                        pqOrange: '#ff5622',     
+                        pqLightBg: '#f4f7fa',    
+                        pqCardBg: '#ffffff',     
+                        pqOptionBg: '#f1f5f9',
+                        pqGreen: '#4caf50'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        body::-webkit-scrollbar {
+            display: none;
+        }
+
+        .nav-active-mobile {
+            color: #ff5622 !important;
+        }
+        .nav-active-mobile-bar {
+            display: block !important;
+        }
+        .nav-active-desktop {
+            background-color: #0d2b52 !important;
+            border-left-width: 3.5px !important;
+            border-color: #ff5622 !important;
+            color: #ffffff !important;
+        }
+        .nav-active-desktop svg {
+            color: #ff5622 !important;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #ff5622;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .task-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+            cursor: pointer;
+            background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
+        }
+
+        .task-card:hover {
+            transform: translateY(-6px);
+            box-shadow: 0 20px 40px rgba(0, 32, 70, 0.08), 0 0 1px rgba(255, 86, 34, 0.1);
+            background: linear-gradient(135deg, #ffffff 0%, #f5f7fa 100%);
+        }
+
+        .task-card.completed {
+            opacity: 0.75;
+            background: linear-gradient(135deg, #f9fafb 0%, #f0f2f5 100%);
+        }
+
+        .task-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #ff5622 0%, rgba(255, 86, 34, 0) 100%);
+        }
+
+        .task-status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-available {
+            background: #ecfdf5;
+            color: #065f46;
+            border: 1px solid #d1fae5;
+        }
+
+        .status-completed {
+            background: #eff6ff;
+            color: #0c4a6e;
+            border: 1px solid #bfdbfe;
+        }
+
+        .status-locked {
+            background: #fef3c7;
+            color: #92400e;
+            border: 1px solid #fcd34d;
+        }
+
+        .status-in-progress {
+            background: #fef3c7;
+            color: #92400e;
+            border: 1px solid #fcd34d;
+        }
+
+        .points-display {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: linear-gradient(135deg, #ff5622, #ff7c52);
+            color: white;
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 700;
+            box-shadow: 0 4px 12px rgba(255, 86, 34, 0.25);
+        }
+
+        .difficulty-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
+        .difficulty-easy {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .difficulty-medium {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .difficulty-hard {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .filter-tab {
+            transition: all 0.3s ease;
+            position: relative;
+            padding-bottom: 8px;
+            font-weight: 600;
+            font-size: 13px;
+            color: #6b7280;
+            white-space: nowrap;
+            border-bottom: 2px solid transparent;
+        }
+
+        .filter-tab.active {
+            color: #ff5622;
+            border-bottom-color: #ff5622;
+        }
+
+        .filter-tab:hover {
+            color: #ff5622;
+        }
+
+        .stat-card {
+            background: white;
+            border: 1px solid #e5e7eb;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            border-color: #ff5622;
+            box-shadow: 0 4px 12px rgba(255, 86, 34, 0.1);
+        }
+
+        .modal-overlay {
+            backdrop-filter: blur(6px);
+            background: rgba(0, 0, 0, 0.5);
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(40px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .modal-content {
+            animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .leaderboard-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 0;
+            border-bottom: 1px solid #f3f4f6;
+            transition: all 0.3s ease;
+        }
+
+        .leaderboard-item:last-child {
+            border-bottom: none;
+        }
+
+        .leaderboard-item:hover {
+            background: #f9fafb;
+            padding-left: 8px;
+            padding-right: 8px;
+            border-radius: 8px;
+        }
+
+        .leaderboard-item.current-user {
+            background: linear-gradient(135deg, rgba(255, 86, 34, 0.05), rgba(0, 32, 70, 0.05));
+            padding: 14px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 86, 34, 0.2);
+            margin-bottom: 8px;
+        }
+
+        .rank-number {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #002046, #0d2b52);
+            color: #ff5622;
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .rank-number.top-3 {
+            background: linear-gradient(135deg, #ff5622, #ff7c52);
+            color: white;
+            box-shadow: 0 4px 12px rgba(255, 86, 34, 0.3);
+        }
+
+        .achievement-badge {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            padding: 12px;
+            border-radius: 12px;
+            background: white;
+            border: 1px solid #e5e7eb;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+
+        .achievement-badge.unlocked {
+            background: linear-gradient(135deg, #ecfdf5, #f0fdf4);
+            border-color: #d1fae5;
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.15);
+        }
+
+        .achievement-icon {
+            font-size: 32px;
+            animation: none;
+        }
+
+        .achievement-badge.unlocked .achievement-icon {
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-4px); }
+        }
+
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+            text-align: center;
+        }
+
+        .empty-state-icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+            opacity: 0.6;
+        }
+
+        @media (max-width: 768px) {
+            .task-card:hover {
+                transform: translateY(-4px);
+            }
+        }
+
+        .progress-bar {
+            height: 6px;
+            background: #e5e7eb;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff5622, #ff7c52);
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+
+        /* Sidebar overlay for mobile */
+        .sidebar-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 40;
+            display: none;
+        }
+
+        .sidebar-overlay.active {
+            display: block;
+        }
+
+        /* Drawer animation */
+        .drawer-nav {
+            transition: transform 0.3s ease;
+        }
+
+        .drawer-nav.open {
+            transform: translateX(0);
+        }
+    </style>
+</head>
+<body class="bg-pqLightBg text-gray-800 antialiased min-h-screen font-sans overflow-x-hidden">
+
+    <!-- Loading Spinner Overlay -->
+    <div id="loading-spinner" class="fixed inset-0 z-[60] bg-pqLightBg/90 backdrop-blur-sm hidden flex-col items-center justify-center transition-opacity duration-300">
+        <div class="relative w-14 h-14">
+            <div class="absolute inset-0 rounded-full border-[3px] border-gray-200"></div>
+            <div class="absolute inset-0 rounded-full border-[3px] border-pqOrange border-t-transparent animate-spin"></div>
+            <div class="absolute inset-0 flex items-center justify-center text-sm">⚡</div>
+        </div>
+        <p class="mt-3 text-pqBlue text-sm font-bold tracking-wide animate-pulse">Loading tasks...</p>
+    </div>
+
+    <!-- Sidebar Overlay (Mobile) -->
+    <div id="sidebar-overlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+    <!-- Top Navbar (Mobile) -->
+    <nav class="fixed top-0 left-0 right-0 z-40 bg-pqBlue border-b border-white/5 shadow-md h-12 flex items-center justify-between px-3 md:hidden">
+        <div class="flex items-center gap-2.5">
+            <button onclick="toggleSidebar()" class="p-1.5 text-white/90 hover:text-white bg-white/10 rounded-lg transition-all">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"></path>
+                </svg>
+            </button>
+            <span class="text-[16px] font-bold text-white tracking-wide">Task Center</span>
+        </div>
+        <div class="w-7 h-7 rounded-full bg-white flex items-center justify-center p-0.5 shadow-inner">
+            <img src="https://ui-avatars.com/api/?name=OAU&background=ffffff&color=002046&bold=true&font-size=0.45" alt="OAU" class="rounded-full">
+        </div>
+    </nav>
+
+    <!-- Sidebar (Desktop & Mobile) -->
+    <div id="drawer-navigation" class="drawer-nav fixed top-0 left-0 z-50 md:z-30 h-screen p-0 overflow-y-auto -translate-x-full md:translate-x-0 bg-pqDarkBg w-[260px] border-r border-white/5">
+        
+        <div class="px-4 pt-5 pb-3 bg-pqBlue border-b border-white/5">
+            <h2 class="text-[18px] font-extrabold text-white flex items-center tracking-wide">
+                OAU ExamGuard<span class="ml-1.5 text-base">🎓</span>
+            </h2>
+            <p class="text-[10px] text-gray-400 font-medium mt-0.5">OAU Past Questions Portal</p>
+        </div>
+
+        <div class="px-4 py-3 border-b border-white/5 flex items-center gap-2.5 bg-pqDarkBg">
+            <div class="relative">
+                <img class="w-9 h-9 rounded-full bg-white p-0.5 object-cover" id="profile-avatar" src="https://ui-avatars.com/api/?name=Student&background=ffffff&color=002046&bold=true" alt="profile">
+                <span class="absolute bottom-0 right-0 w-2 h-2 bg-pqOrange border-2 border-pqDarkBg rounded-full"></span>
+            </div>
+            <div class="leading-tight">
+                <div class="text-[13px] font-bold text-white" id="profile-name">Loading...</div>
+                <div class="text-[10px] text-gray-400 font-light truncate max-w-[150px]" id="profile-email">—</div>
+            </div>
+        </div>
+
+        <div class="py-3">
+            <div class="px-4 mb-1.5 text-[9px] text-gray-500 font-bold tracking-[0.18em] uppercase">MAIN</div>
+            <ul class="space-y-0.5">
+                <li>
+                    <button onclick="openExternalPage('../tutor/gemini.json.html')" id="desk-nav-home"
+                        class="w-full flex items-center px-4 py-2 text-[12.5px] font-medium text-gray-300 hover:bg-white/5 hover:text-white rounded-lg transition-all">
+                        <i class="fas fa-home w-4 mr-3 text-gray-400"></i> Dashboard
+                    </button>
+                </li>
+                <li>
+                    <button onclick="openExternalPage('../tutor/gemini.json.html')" id="desk-nav-select"
+                        class="w-full flex items-center px-4 py-2 text-[12.5px] font-medium text-gray-300 hover:bg-white/5 hover:text-white rounded-lg transition-all">
+                        <i class="fas fa-book w-4 mr-3 text-gray-400"></i> Practice Questions
+                    </button>
+                </li>
+                <li>
+                    <button id="desk-nav-tasks" class="w-full flex items-center px-4 py-2 text-[12.5px] font-medium text-white bg-white/10 rounded-lg transition-all border-l-[3.5px] border-pqOrange">
+                        <i class="fas fa-tasks w-4 mr-3 text-pqOrange"></i> Task Center
+                    </button>
+                </li>
+                <li>
+                    <button onclick="openExternalPage('../resources')"
+                        class="w-full flex items-center px-4 py-2 text-[12.5px] font-medium text-gray-300 hover:bg-white/5 hover:text-white rounded-lg transition-all">
+                        <i class="fas fa-book-open w-4 mr-3 text-gray-400"></i> Study Resources
+                    </button>
+                </li>
+            </ul>
+
+            <div class="px-4 mt-5 mb-1.5 text-[9px] text-gray-500 font-bold tracking-[0.18em] uppercase">ACCOUNT</div>
+            <ul class="space-y-0.5">
+                <li>
+                    <button onclick="logout()"
+                        class="w-full flex items-center px-4 py-2 text-[12.5px] font-medium text-gray-300 hover:bg-red-500/10 hover:text-red-300 rounded-lg transition-all border-t border-white/5">
+                        <i class="fas fa-sign-out-alt w-4 mr-3 text-gray-400"></i> Logout
+                    </button>
+                </li>
+            </ul>
+
+            <div class="px-4 pt-4 pb-6 text-[9.5px] text-gray-600">
+                © 2025 OAU ExamGuard · All rights reserved.
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div id="main-content-wrapper" class="md:pl-[260px] transition-opacity duration-300">
+        <main class="pt-[64px] md:pt-4 px-3 md:px-6 max-w-full mx-auto space-y-4 pb-24 md:pb-10">
+
+            <!-- Header Stats Card (Mobile & Desktop) -->
+            <div class="bg-gradient-to-br from-[#001736] to-[#003c71] rounded-2xl p-5 shadow-md relative overflow-hidden text-white">
+                <div class="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-white/5 via-transparent to-transparent"></div>
+                
+                <div class="flex items-center gap-2 mb-4 relative z-10">
+                    <div class="bg-white/10 border border-white/10 px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-sm backdrop-blur-md">
+                        <div class="w-1.5 h-1.5 rounded-full bg-pqGreen"></div>
+                        <span class="text-[9px] font-bold tracking-widest text-gray-200">TASK PROGRESS</span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-4 relative z-10">
+                    <div>
+                        <p class="text-[9px] text-gray-300 font-bold uppercase tracking-wider mb-1">Total Points</p>
+                        <p class="text-[28px] font-extrabold leading-none" id="total-points-display">0</p>
+                    </div>
+                    <div>
+                        <p class="text-[9px] text-gray-300 font-bold uppercase tracking-wider mb-1">Tasks Done</p>
+                        <p class="text-[28px] font-extrabold leading-none" id="completed-tasks-display">0</p>
+                    </div>
+                    <div>
+                        <p class="text-[9px] text-gray-300 font-bold uppercase tracking-wider mb-1">Your Rank</p>
+                        <p class="text-[28px] font-extrabold leading-none" id="user-rank-display">#4</p>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-4 border-t border-white/10 relative z-10">
+                    <div class="flex items-center justify-between mb-2">
+                        <p class="text-[10px] text-gray-300 font-bold uppercase tracking-wider">Weekly Progress</p>
+                        <p class="text-[10px] text-gray-300 font-bold">60%</p>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: 60%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filter Tabs -->
+            <div class="flex gap-6 overflow-x-auto pb-3 -mx-3 px-3 md:mx-0 md:px-0 border-b border-gray-200">
+                <button onclick="filterTasks('all')" class="filter-tab active">
+                    All Tasks
+                </button>
+                <button onclick="filterTasks('available')" class="filter-tab">
+                    Available
+                </button>
+                <button onclick="filterTasks('in-progress')" class="filter-tab">
+                    In Progress
+                </button>
+                <button onclick="filterTasks('completed')" class="filter-tab">
+                    Completed
+                </button>
+            </div>
+
+            <!-- Tasks Container -->
+            <div id="tasks-container" class="space-y-3">
+                <!-- Tasks populated here -->
+            </div>
+
+            <!-- Empty State -->
+            <div id="empty-state" class="hidden">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📭</div>
+                    <h3 class="text-lg font-bold text-gray-800">No Tasks Available</h3>
+                    <p class="text-sm text-gray-600 mt-1">Check back later for new tasks</p>
+                </div>
+            </div>
+
+            <!-- Leaderboard Section -->
+            <div class="bg-pqCardBg rounded-2xl shadow-sm border border-gray-100 relative overflow-hidden mt-8">
+                <div class="absolute top-0 left-0 right-0 h-1 bg-pqOrange"></div>
+                <div class="p-5">
+                    <div class="flex items-center justify-between mb-5">
+                        <h3 class="text-pqBlue font-bold text-[15px] flex items-center gap-2">
+                            <i class="fas fa-trophy text-pqOrange"></i> Top Performers
+                        </h3>
+                        <button class="text-pqOrange text-[11px] font-bold hover:underline">View All →</button>
+                    </div>
+                    
+                    <div id="leaderboard-container" class="space-y-0">
+                        <!-- Leaderboard items populated here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Achievements Section -->
+            <div class="bg-pqCardBg rounded-2xl shadow-sm border border-gray-100 relative overflow-hidden mt-6 mb-12">
+                <div class="absolute top-0 left-0 right-0 h-1 bg-pqGreen"></div>
+                <div class="p-5">
+                    <h3 class="text-pqBlue font-bold text-[15px] mb-5 flex items-center gap-2">
+                        <i class="fas fa-star text-pqOrange"></i> Achievements
+                    </h3>
+                    
+                    <div id="achievements-container" class="grid grid-cols-3 gap-3">
+                        <!-- Achievements populated here -->
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Task Detail Modal -->
+    <div id="taskDetailModal" class="fixed inset-0 z-50 hidden items-end justify-center md:items-center md:justify-center bg-black/50 modal-overlay md:p-4">
+        <div class="bg-white w-full md:max-w-md rounded-t-[24px] md:rounded-2xl modal-content overflow-hidden max-h-[90vh] md:max-h-auto overflow-y-auto">
+            
+            <!-- Modal Header -->
+            <div class="bg-pqBlue px-6 py-5 flex items-center justify-between text-white sticky top-0 z-10">
+                <div>
+                    <h2 class="text-lg font-bold" id="modal-task-title">Task Title</h2>
+                    <p class="text-xs text-gray-300 mt-0.5" id="modal-task-category">Category</p>
+                </div>
+                <button onclick="closeTaskModal()" class="w-10 h-10 rounded-lg bg-white/10 hover:bg-white/20 transition flex items-center justify-center">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="p-6 space-y-5">
+                
+                <!-- Description -->
+                <div>
+                    <p class="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-2">Description</p>
+                    <p class="text-[13px] text-gray-700 leading-relaxed" id="modal-task-description">Task description goes here</p>
+                </div>
+
+                <!-- Difficulty & Status -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Difficulty</p>
+                        <span class="difficulty-badge" id="modal-task-difficulty">Easy</span>
+                    </div>
+                    <div>
+                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Status</p>
+                        <span class="task-status-badge status-available" id="modal-task-status">Available</span>
+                    </div>
+                </div>
+
+                <!-- Requirements -->
+                <div>
+                    <p class="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-3">Requirements</p>
+                    <ul id="modal-task-requirements" class="space-y-2">
+                        <!-- Requirements populated here -->
+                    </ul>
+                </div>
+
+                <!-- Points Reward -->
+                <div class="bg-pqOrange/10 border border-pqOrange/20 rounded-xl p-4">
+                    <p class="text-[10px] text-gray-600 font-bold uppercase tracking-widest mb-1">Points Reward</p>
+                    <p class="text-[32px] font-extrabold text-pqOrange" id="modal-task-points">0</p>
+                </div>
+
+                <!-- Completion Time -->
+                <div class="bg-gray-50 rounded-xl p-4">
+                    <p class="text-[10px] text-gray-600 font-bold uppercase tracking-widest mb-1">Estimated Time</p>
+                    <p class="text-[13px] font-bold text-gray-800" id="modal-task-time">30 minutes</p>
+                </div>
+
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="bg-gray-50 px-6 py-4 border-t border-gray-100 flex gap-3 sticky bottom-0">
+                <button onclick="closeTaskModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 rounded-lg transition-all text-[13px]">
+                    Cancel
+                </button>
+                <button id="modal-action-btn" onclick="startTask()" class="flex-1 bg-pqOrange hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition-all text-[13px]">
+                    Start Task
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Task Completion Modal -->
+    <div id="completionModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 modal-overlay p-4">
+        <div class="bg-white w-full max-w-sm rounded-2xl modal-content overflow-hidden">
+            <div class="relative bg-gradient-to-br from-pqBlue to-pqActiveBlue p-8 text-center text-white">
+                <div class="text-5xl mb-4">✓</div>
+                <h2 class="text-2xl font-bold mb-2">Task Completed!</h2>
+                <p class="text-gray-200 text-sm">You've successfully completed the task</p>
+            </div>
+
+            <div class="p-8 space-y-6">
+                <div class="text-center">
+                    <p class="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-2">Points Earned</p>
+                    <p class="text-4xl font-extrabold text-pqOrange mb-4" id="earned-points">0</p>
+                    <div class="inline-block points-display">
+                        <i class="fas fa-star"></i>
+                        <span id="earned-points-badge">0 points</span>
+                    </div>
+                </div>
+
+                <div class="border-t border-gray-100 pt-4">
+                    <div class="flex justify-between items-center mb-2">
+                        <p class="text-[12px] font-bold text-gray-600 uppercase">Total Balance</p>
+                        <p class="text-[13px] font-bold text-pqBlue" id="total-balance">890</p>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: 60%"></div>
+                    </div>
+                    <p class="text-[10px] text-gray-600 mt-2">Keep grinding! 250 points to next rank</p>
+                </div>
+
+                <button onclick="closeCompletionModal()" class="w-full bg-pqOrange hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition-all">
+                    Continue
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Sample Tasks Data
+        const tasksData = [
+            {
+                id: 1,
+                title: "Complete Your Profile",
+                category: "Profile Setup",
+                description: "Fill in all your profile information including bio, profile picture, academic details, and study goals.",
+                points: 50,
+                difficulty: "easy",
+                status: "available",
+                requirements: ["Upload profile picture", "Complete bio section", "Add academic year", "Verify email address"],
+                completionTime: "5 mins"
+            },
+            {
+                id: 2,
+                title: "Attend 5 Practice Exams",
+                category: "Practice",
+                description: "Complete 5 full-length practice exams to master your exam techniques and build confidence.",
+                points: 150,
+                difficulty: "medium",
+                status: "available",
+                requirements: ["Attempt 5 exams", "Score minimum 60%", "Complete within time limit", "Review answers"],
+                completionTime: "2-3 hours"
+            },
+            {
+                id: 3,
+                title: "Invite 3 Friends",
+                category: "Referral",
+                description: "Refer 3 friends to OAU ExamGuard and help them join the community.",
+                points: 100,
+                difficulty: "easy",
+                status: "in-progress",
+                requirements: ["Send 3 invitations", "Friends must join platform", "Complete registration"],
+                completionTime: "Ongoing"
+            },
+            {
+                id: 4,
+                title: "Study Streak - 7 Days",
+                category: "Habit Building",
+                description: "Study for at least 30 minutes every day for 7 consecutive days to build consistent study habits.",
+                points: 200,
+                difficulty: "hard",
+                status: "available",
+                requirements: ["Study minimum 30 mins daily", "Maintain 7-day streak", "No missed days"],
+                completionTime: "7 days"
+            },
+            {
+                id: 5,
+                title: "Master a Course Topic",
+                category: "Learning",
+                description: "Complete all practice questions for a specific course topic and score 90% or higher.",
+                points: 120,
+                difficulty: "medium",
+                status: "completed",
+                requirements: ["Select a topic", "Answer all questions", "Score 90% or above"],
+                completionTime: "1-2 hours"
+            },
+            {
+                id: 6,
+                title: "Write Study Summary",
+                category: "Content",
+                description: "Create and share a helpful study summary or notes for other students in the community.",
+                points: 80,
+                difficulty: "medium",
+                status: "completed",
+                requirements: ["Write comprehensive notes", "Cover key concepts", "Minimum 500 words"],
+                completionTime: "45 mins"
+            },
+            {
+                id: 7,
+                title: "Help 10 Students",
+                category: "Community",
+                description: "Answer 10 questions from other students and help them understand difficult concepts.",
+                points: 75,
+                difficulty: "easy",
+                status: "available",
+                requirements: ["Answer 10+ questions", "Get community upvotes", "Maintain quality"],
+                completionTime: "2-3 hours"
+            },
+            {
+                id: 8,
+                title: "Download Study Guide",
+                category: "Resources",
+                description: "Download and review the comprehensive study guide for your current course.",
+                points: 40,
+                difficulty: "easy",
+                status: "available",
+                requirements: ["Access materials", "Download guide", "Review contents"],
+                completionTime: "10 mins"
+            }
+        ];
+
+        // Leaderboard Data
+        const leaderboardData = [
+            { rank: 1, name: "Chioma Eze", points: 2850 },
+            { rank: 2, name: "Tunde Okafor", points: 2720 },
+            { rank: 3, name: "Amara Ibrahim", points: 2580 },
+            { rank: 4, name: "You", points: 890, isUser: true },
+            { rank: 5, name: "David Chen", points: 845 }
+        ];
+
+        // Achievements Data
+        const achievementsData = [
+            { id: 1, name: "First Task", icon: "🎯", unlocked: true },
+            { id: 2, name: "5 Tasks", icon: "🌟", unlocked: true },
+            { id: 3, name: "100 Points", icon: "💯", unlocked: true },
+            { id: 4, name: "500 Points", icon: "🔥", unlocked: false },
+            { id: 5, name: "7-Day Streak", icon: "📅", unlocked: false },
+            { id: 6, name: "Helper", icon: "🤝", unlocked: false }
+        ];
+
+        let currentFilter = 'all';
+        let userPoints = 890;
+        let completedTasks = 2;
+        let userRank = 4;
+
+        // Toggle Sidebar
+        function toggleSidebar() {
+            const drawer = document.getElementById('drawer-navigation');
+            const overlay = document.getElementById('sidebar-overlay');
+            
+            drawer.classList.toggle('open');
+            overlay.classList.toggle('active');
+        }
+
+        // Close sidebar when clicking on a link
+        document.querySelectorAll('#drawer-navigation button').forEach(btn => {
+            btn.addEventListener('click', function() {
+                if (window.innerWidth < 768) {
+                    toggleSidebar();
+                }
+            });
+        });
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            renderTasks();
+            renderLeaderboard();
+            renderAchievements();
+            updateStats();
+        });
+
+        function renderTasks() {
+            const container = document.getElementById('tasks-container');
+            const emptyState = document.getElementById('empty-state');
+            
+            let filteredTasks = tasksData;
+            if (currentFilter !== 'all') {
+                filteredTasks = tasksData.filter(t => t.status === currentFilter);
+            }
+
+            if (filteredTasks.length === 0) {
+                container.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            container.innerHTML = filteredTasks.map(task => `
+                <div onclick="openTaskModal(${task.id})" class="task-card bg-white rounded-2xl shadow-sm border border-gray-100 p-5 ${task.status === 'completed' ? 'completed' : ''}">
+                    <div class="flex items-start justify-between gap-3 mb-3">
+                        <div>
+                            <h3 class="text-[14px] font-bold text-pqBlue">${task.title}</h3>
+                            <p class="text-[10px] text-gray-500 font-medium mt-1 uppercase">${task.category}</p>
+                        </div>
+                        <span class="task-status-badge status-${task.status}">
+                            ${task.status.replace('-', ' ')}
+                        </span>
+                    </div>
+
+                    <p class="text-[12px] text-gray-600 mb-4 line-clamp-2">${task.description}</p>
+
+                    <div class="flex items-center justify-between pt-4 border-t border-gray-100">
+                        <span class="difficulty-badge difficulty-${task.difficulty}">${task.difficulty}</span>
+                        <span class="points-display">${task.points} <i class="fas fa-star"></i></span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderLeaderboard() {
+            const container = document.getElementById('leaderboard-container');
+            container.innerHTML = leaderboardData.map(entry => `
+                <div class="leaderboard-item ${entry.isUser ? 'current-user' : ''}">
+                    <div class="rank-number ${entry.rank <= 3 ? 'top-3' : ''}">#${entry.rank}</div>
+                    <div class="flex-1">
+                        <p class="text-[13px] font-bold text-gray-800">${entry.name}</p>
+                        <p class="text-[11px] text-gray-500">${entry.points} points</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-[13px] font-bold text-pqOrange">${entry.points}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderAchievements() {
+            const container = document.getElementById('achievements-container');
+            container.innerHTML = achievementsData.map(achievement => `
+                <div class="achievement-badge ${achievement.unlocked ? 'unlocked' : ''}">
+                    <div class="achievement-icon">${achievement.icon}</div>
+                    <p class="text-[11px] font-bold text-gray-700">${achievement.name}</p>
+                    <p class="text-[9px] text-gray-500">${achievement.unlocked ? '✓ Unlocked' : 'Locked'}</p>
+                </div>
+            `).join('');
+        }
+
+        function filterTasks(filter) {
+            currentFilter = filter;
+            document.querySelectorAll('.filter-tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+            renderTasks();
+        }
+
+        function openTaskModal(taskId) {
+            const task = tasksData.find(t => t.id === taskId);
+            if (!task) return;
+
+            document.getElementById('modal-task-title').textContent = task.title;
+            document.getElementById('modal-task-category').textContent = task.category;
+            document.getElementById('modal-task-description').textContent = task.description;
+            document.getElementById('modal-task-difficulty').textContent = task.difficulty;
+            document.getElementById('modal-task-difficulty').className = `difficulty-badge difficulty-${task.difficulty}`;
+            document.getElementById('modal-task-points').textContent = task.points;
+            document.getElementById('modal-task-time').textContent = task.completionTime;
+            document.getElementById('modal-task-status').textContent = task.status.replace('-', ' ');
+            document.getElementById('modal-task-status').className = `task-status-badge status-${task.status}`;
+
+            const requirementsHTML = task.requirements.map(req => `
+                <li class="flex gap-2 items-start text-[12px] text-gray-700">
+                    <span class="text-pqOrange font-bold mt-0.5">✓</span>
+                    <span>${req}</span>
+                </li>
+            `).join('');
+            document.getElementById('modal-task-requirements').innerHTML = requirementsHTML;
+
+            const actionBtn = document.getElementById('modal-action-btn');
+            if (task.status === 'completed') {
+                actionBtn.textContent = '✓ Completed';
+                actionBtn.disabled = true;
+                actionBtn.className = 'flex-1 bg-gray-300 text-gray-800 font-bold py-3 rounded-lg text-[13px] cursor-not-allowed opacity-60';
+            } else {
+                actionBtn.textContent = 'Start Task';
+                actionBtn.disabled = false;
+                actionBtn.className = 'flex-1 bg-pqOrange hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition-all text-[13px]';
+            }
+
+            document.getElementById('taskDetailModal').classList.remove('hidden');
+            document.getElementById('taskDetailModal').style.display = 'flex';
+        }
+
+        function closeTaskModal() {
+            document.getElementById('taskDetailModal').classList.add('hidden');
+            document.getElementById('taskDetailModal').style.display = 'none';
+        }
+
+        function startTask() {
+            setTimeout(() => {
+                closeTaskModal();
+                completeTask();
+            }, 400);
+        }
+
+        function completeTask() {
+            const points = 150;
+            userPoints += points;
+            completedTasks += 1;
+            
+            document.getElementById('earned-points').textContent = points;
+            document.getElementById('earned-points-badge').textContent = `${points} points`;
+            document.getElementById('total-balance').textContent = userPoints;
+            document.getElementById('completionModal').classList.remove('hidden');
+            document.getElementById('completionModal').style.display = 'flex';
+            
+            updateStats();
+        }
+
+        function closeCompletionModal() {
+            document.getElementById('completionModal').classList.add('hidden');
+            document.getElementById('completionModal').style.display = 'none';
+        }
+
+        function updateStats() {
+            document.getElementById('total-points-display').textContent = userPoints;
+            document.getElementById('completed-tasks-display').textContent = completedTasks;
+            document.getElementById('user-rank-display').textContent = `#${userRank}`;
+        }
+
+        // Close modals on outside click
+        document.getElementById('taskDetailModal').addEventListener('click', function(e) {
+            if (e.target === this) closeTaskModal();
+        });
+
+        document.getElementById('completionModal').addEventListener('click', function(e) {
+            if (e.target === this) closeCompletionModal();
+        });
+
+        // Utility functions
+        function openExternalPage(url) {
+            window.location.href = url;
+        }
+
+        function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                window.location.href = '../';
+            }
+        }
+    </script>
+</body>
+</html>
