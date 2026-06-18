@@ -130,31 +130,6 @@
             box-shadow: 0 4px 12px rgba(255, 86, 34, 0.25);
         }
 
-        .difficulty-badge {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 6px;
-            font-size: 10px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.4px;
-        }
-
-        .difficulty-easy {
-            background: #dcfce7;
-            color: #166534;
-        }
-
-        .difficulty-medium {
-            background: #fef3c7;
-            color: #92400e;
-        }
-
-        .difficulty-hard {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
         .filter-tab {
             transition: all 0.3s ease;
             position: relative;
@@ -229,17 +204,6 @@
             transform: translateX(0);
         }
 
-        .skeleton-card {
-            background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
-            background-size: 200% 100%;
-            animation: loading 1.5s infinite;
-        }
-
-        @keyframes loading {
-            0% { background-position: 200% 0; }
-            100% { background-position: -200% 0; }
-        }
-
         .empty-state {
             display: flex;
             flex-direction: column;
@@ -257,6 +221,44 @@
             0%, 100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7); }
             50% { box-shadow: 0 0 0 10px rgba(76, 175, 80, 0); }
         }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            padding: 16px 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 100;
+            animation: slideUp 0.3s ease;
+        }
+
+        .toast.error {
+            background: #fee2e2;
+            color: #991b1b;
+            border-left: 4px solid #dc2626;
+        }
+
+        .toast.success {
+            background: #dcfce7;
+            color: #166534;
+            border-left: 4px solid #16a34a;
+        }
+
+        .debug-info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #0f0;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 11px;
+            max-width: 300px;
+            z-index: 99;
+        }
     </style>
 </head>
 <body class="bg-pqLightBg text-gray-800 antialiased min-h-screen font-sans overflow-x-hidden">
@@ -269,6 +271,14 @@
             <div class="absolute inset-0 flex items-center justify-center text-sm">⚡</div>
         </div>
         <p class="mt-3 text-pqBlue text-sm font-bold tracking-wide animate-pulse">Loading tasks...</p>
+    </div>
+
+    <!-- Debug Info -->
+    <div id="debug-info" class="debug-info hidden">
+        <div>Status: <span id="debug-status">initializing</span></div>
+        <div>User ID: <span id="debug-userid">—</span></div>
+        <div>Tasks: <span id="debug-tasks">0</span></div>
+        <div>API: <span id="debug-api" style="word-break: break-all;"></span></div>
     </div>
 
     <!-- Sidebar Overlay (Mobile) -->
@@ -314,13 +324,13 @@
             <div class="px-4 mb-1.5 text-[9px] text-gray-500 font-bold tracking-[0.18em] uppercase">MAIN</div>
             <ul class="space-y-0.5">
                 <li>
-                    <button onclick="openExternalPage('../tutor/gemini.json.html')" id="desk-nav-home"
+                    <button onclick="openExternalPage('gemini.json.html')" id="desk-nav-home"
                         class="w-full flex items-center px-4 py-2 text-[12.5px] font-medium text-gray-300 hover:bg-white/5 hover:text-white rounded-lg transition-all">
                         <i class="fas fa-home w-4 mr-3 text-gray-400"></i> Dashboard
                     </button>
                 </li>
                 <li>
-                    <button onclick="openExternalPage('../tutor/gemini.json.html')" id="desk-nav-select"
+                    <button onclick="openExternalPage('gemini.json.html')" id="desk-nav-select"
                         class="w-full flex items-center px-4 py-2 text-[12.5px] font-medium text-gray-300 hover:bg-white/5 hover:text-white rounded-lg transition-all">
                         <i class="fas fa-book w-4 mr-3 text-gray-400"></i> Practice Questions
                     </button>
@@ -510,32 +520,113 @@
     </div>
 
     <script>
-        // API Configuration
-        const API_BASE_URL = 'https://examguide.onrender.com/api'; // Adjust based on your backend URL
-        let authToken = localStorage.getItem('authToken'); // Adjust based on your auth storage
+        // ============================================
+        // CONFIGURATION - ADJUST THESE VALUES
+        // ============================================
+        
+        // Check your environment and set the correct API URL
+        const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        
+        // Set your backend URL here
+        let API_BASE_URL = 'https://examguide.onrender.com/api';
+        
+        // For local development, use:
+        // const API_BASE_URL = 'http://localhost:5000/api';
+        
+        console.log('Environment:', isDevelopment ? 'Development' : 'Production');
+        console.log('API URL:', API_BASE_URL);
+        
+        // Get auth token - adjust based on your auth system
+        let authToken = localStorage.getItem('authToken') || sessionStorage.getItem('authToken') || localStorage.getItem('token');
+        
+        console.log('Auth Token Found:', !!authToken);
+        
         let currentUserId = null;
         let currentFilter = 'all';
         let tasks = [];
 
-        // Get current user ID from auth or profile endpoint
+        // ============================================
+        // DEBUG UTILITIES
+        // ============================================
+        
+        function updateDebugInfo(status, data = {}) {
+            document.getElementById('debug-status').textContent = status;
+            if (data.userId) document.getElementById('debug-userid').textContent = data.userId;
+            if (data.tasks) document.getElementById('debug-tasks').textContent = data.tasks;
+            if (data.api) document.getElementById('debug-api').textContent = data.api;
+        }
+
+        function showDebugInfo(show = true) {
+            document.getElementById('debug-info').classList.toggle('hidden', !show);
+        }
+
+        // Show debug info on load
+        showDebugInfo(true);
+        updateDebugInfo('Initializing...');
+
+        // ============================================
+        // AUTHENTICATION & USER INITIALIZATION
+        // ============================================
+        
         async function initializeUser() {
             try {
-                // Assuming you have a user endpoint that returns current user
-                const response = await fetch(`${API_BASE_URL}/auth/me`, {
-                    headers: { 'Authorization': `Bearer ${authToken}` }
-                });
-                if (response.ok) {
-                    const user = await response.json();
-                    currentUserId = user._id;
-                    document.getElementById('profile-name').textContent = user.fullname || 'Student';
-                    document.getElementById('profile-email').textContent = user.email || '—';
+                updateDebugInfo('Fetching user...', { api: API_BASE_URL });
+                
+                if (!authToken) {
+                    console.warn('No auth token found. Check localStorage/sessionStorage');
+                    updateDebugInfo('No auth token', { api: API_BASE_URL });
+                    showToast('No authentication token found. Please log in first.', 'error');
+                    return false;
                 }
+
+                // Try to get user info
+                const response = await fetch(`${API_BASE_URL}/auth/me`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                console.log('Auth/me response:', response.status, response.statusText);
+
+                if (!response.ok) {
+                    // If auth/me doesn't exist, try to get from local storage or use dummy user
+                    console.warn('Failed to fetch user from /auth/me:', response.status);
+                    
+                    // Try alternative: check if we have user info stored
+                    const storedUser = localStorage.getItem('user');
+                    if (storedUser) {
+                        const user = JSON.parse(storedUser);
+                        currentUserId = user._id;
+                        document.getElementById('profile-name').textContent = user.fullname || user.name || 'Student';
+                        document.getElementById('profile-email').textContent = user.email || '—';
+                        updateDebugInfo('User loaded from storage', { userId: currentUserId });
+                        return true;
+                    }
+                    
+                    throw new Error(`Failed to authenticate: ${response.status}`);
+                }
+
+                const user = await response.json();
+                currentUserId = user._id;
+                document.getElementById('profile-name').textContent = user.fullname || user.name || 'Student';
+                document.getElementById('profile-email').textContent = user.email || '—';
+                
+                updateDebugInfo('User authenticated', { userId: currentUserId });
+                return true;
             } catch (e) {
-                console.error('Failed to get user:', e);
+                console.error('Failed to initialize user:', e);
+                updateDebugInfo('Auth error', { api: e.message });
+                showToast(`Authentication Error: ${e.message}`, 'error');
+                return false;
             }
         }
 
-        // Toggle Sidebar
+        // ============================================
+        // SIDEBAR MANAGEMENT
+        // ============================================
+        
         function toggleSidebar() {
             const drawer = document.getElementById('drawer-navigation');
             const overlay = document.getElementById('sidebar-overlay');
@@ -544,7 +635,6 @@
             overlay.classList.toggle('active');
         }
 
-        // Close sidebar when clicking on a link
         document.querySelectorAll('#drawer-navigation button').forEach(btn => {
             btn.addEventListener('click', function() {
                 if (window.innerWidth < 768) {
@@ -553,30 +643,52 @@
             });
         });
 
-        // Fetch user tasks
+        // ============================================
+        // TASK FETCHING & MANAGEMENT
+        // ============================================
+        
         async function fetchTasks() {
-            if (!currentUserId) return;
+            if (!currentUserId) {
+                console.warn('No user ID available');
+                return;
+            }
 
             try {
                 showLoadingSpinner(true);
-                const response = await fetch(`${API_BASE_URL}/tasks/user/${currentUserId}`, {
-                    headers: { 'Authorization': `Bearer ${authToken}` }
+                updateDebugInfo('Fetching tasks...', { userId: currentUserId });
+                
+                const url = `${API_BASE_URL}/tasks/user/${currentUserId}`;
+                console.log('Fetching from:', url);
+                
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
                 });
 
-                if (!response.ok) throw new Error('Failed to fetch tasks');
+                console.log('Tasks response:', response.status, response.statusText);
+
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch tasks: ${response.status}`);
+                }
 
                 tasks = await response.json();
+                console.log('Tasks loaded:', tasks.length);
+                
+                updateDebugInfo('Tasks loaded', { tasks: tasks.length });
                 renderTasks();
                 updateStats();
             } catch (e) {
                 console.error('Error fetching tasks:', e);
-                showError('Failed to load tasks');
+                updateDebugInfo('Error loading tasks', { tasks: 'Error' });
+                showToast(`Failed to load tasks: ${e.message}`, 'error');
             } finally {
                 showLoadingSpinner(false);
             }
         }
 
-        // Render tasks based on filter
         function renderTasks() {
             const container = document.getElementById('tasks-container');
             const emptyState = document.getElementById('empty-state');
@@ -589,7 +701,7 @@
             if (filteredTasks.length === 0) {
                 container.innerHTML = '';
                 emptyState.classList.remove('hidden');
-                const msg = currentFilter === 'all' ? 'Check back later for new tasks' : `No ${currentFilter} tasks`;
+                const msg = currentFilter === 'all' ? 'No tasks available. Check back later!' : `No ${currentFilter} tasks`;
                 document.getElementById('empty-state-message').textContent = msg;
                 return;
             }
@@ -599,7 +711,7 @@
                 <div onclick="openTaskModal('${task._id}')" class="task-card bg-white rounded-2xl shadow-sm border border-gray-100 p-5 ${task.status === 'done' ? 'completed' : ''}">
                     <div class="flex items-start justify-between gap-3 mb-3">
                         <div>
-                            <h3 class="text-[14px] font-bold text-pqBlue">${task.title}</h3>
+                            <h3 class="text-[14px] font-bold text-pqBlue">${escapeHtml(task.title)}</h3>
                             <p class="text-[10px] text-gray-500 font-medium mt-1 uppercase">${task.activityType}</p>
                         </div>
                         <span class="task-status-badge status-${task.status}">
@@ -607,7 +719,7 @@
                         </span>
                     </div>
 
-                    <p class="text-[12px] text-gray-600 mb-4 line-clamp-2">${task.description || 'No description'}</p>
+                    <p class="text-[12px] text-gray-600 mb-4 line-clamp-2">${escapeHtml(task.description || 'No description')}</p>
 
                     <div class="flex items-center justify-between pt-4 border-t border-gray-100">
                         <span class="text-[10px] text-gray-500 font-medium">
@@ -619,7 +731,6 @@
             `).join('');
         }
 
-        // Update stats
         function updateStats() {
             const totalPoints = tasks.reduce((sum, t) => sum + (t.status === 'done' ? t.points : 0), 0);
             const completedCount = tasks.filter(t => t.status === 'done').length;
@@ -633,7 +744,6 @@
             document.getElementById('progress-fill').style.width = completionRate + '%';
         }
 
-        // Filter tasks
         function filterTasks(filter) {
             currentFilter = filter;
             document.querySelectorAll('.filter-tab').forEach(tab => tab.classList.remove('active'));
@@ -641,7 +751,6 @@
             renderTasks();
         }
 
-        // Open task modal
         async function openTaskModal(taskId) {
             const task = tasks.find(t => t._id === taskId);
             if (!task) return;
@@ -653,7 +762,6 @@
             document.getElementById('modal-task-status').className = `task-status-badge status-${task.status}`;
             document.getElementById('modal-task-points').innerHTML = `${task.points} <i class="fas fa-star"></i>`;
 
-            // Due date section
             if (task.dueDate) {
                 document.getElementById('due-date-section').classList.remove('hidden');
                 document.getElementById('modal-task-due').textContent = formatDate(task.dueDate);
@@ -661,7 +769,6 @@
                 document.getElementById('due-date-section').classList.add('hidden');
             }
 
-            // Meta section
             if (task.meta && Object.keys(task.meta).length > 0) {
                 document.getElementById('meta-section').classList.remove('hidden');
                 const metaContent = document.getElementById('meta-content');
@@ -675,17 +782,15 @@
                 document.getElementById('meta-section').classList.add('hidden');
             }
 
-            // Store current task ID for updating
             document.getElementById('modal-action-btn').dataset.taskId = taskId;
             
-            // Update button based on status
             const actionBtn = document.getElementById('modal-action-btn');
             if (task.status === 'done') {
                 actionBtn.textContent = '✓ Completed';
                 actionBtn.disabled = true;
                 actionBtn.className = 'w-full bg-gray-300 text-gray-800 font-bold py-3 rounded-lg text-[13px] cursor-not-allowed opacity-60';
             } else {
-                actionBtn.textContent = task.status === 'active' ? 'Mark as Done' : 'Activate Task';
+                actionBtn.textContent = 'Mark as Done';
                 actionBtn.disabled = false;
                 actionBtn.className = 'w-full bg-pqOrange hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition-all text-[13px]';
             }
@@ -699,7 +804,6 @@
             document.getElementById('taskDetailModal').style.display = 'none';
         }
 
-        // Update task status
         async function updateTaskStatus() {
             const taskId = document.getElementById('modal-action-btn').dataset.taskId;
             if (!taskId) return;
@@ -719,7 +823,6 @@
 
                 const updatedTask = await response.json();
                 
-                // Update local tasks array
                 const taskIndex = tasks.findIndex(t => t._id === taskId);
                 if (taskIndex !== -1) {
                     tasks[taskIndex] = updatedTask;
@@ -729,15 +832,15 @@
                 showCompletionModal(updatedTask.points);
                 renderTasks();
                 updateStats();
+                showToast('Task marked as done! 🎉', 'success');
             } catch (e) {
                 console.error('Error updating task:', e);
-                showError('Failed to update task');
+                showToast(`Failed to update task: ${e.message}`, 'error');
             } finally {
                 showLoadingSpinner(false);
             }
         }
 
-        // Show completion modal
         function showCompletionModal(points) {
             document.getElementById('earned-points').textContent = points;
             document.getElementById('earned-points-badge').textContent = `${points} points`;
@@ -750,7 +853,10 @@
             document.getElementById('completionModal').style.display = 'none';
         }
 
-        // Utility functions
+        // ============================================
+        // UTILITY FUNCTIONS
+        // ============================================
+        
         function formatDate(dateStr) {
             const date = new Date(dateStr);
             return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
@@ -760,18 +866,32 @@
             return str.charAt(0).toUpperCase() + str.slice(1);
         }
 
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+
         function showLoadingSpinner(show) {
             document.getElementById('loading-spinner').classList.toggle('hidden', !show);
-            document.getElementById('loading-spinner').style.display = show ? 'flex' : 'none';
         }
 
-        function showError(message) {
-            // You can add a toast notification here
-            console.error(message);
-            alert(message);
+        function showToast(message, type = 'error') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.remove();
+            }, 4000);
         }
 
-        // Close modals on outside click
         document.getElementById('taskDetailModal')?.addEventListener('click', function(e) {
             if (e.target === this) closeTaskModal();
         });
@@ -780,7 +900,6 @@
             if (e.target === this) closeCompletionModal();
         });
 
-        // Utility functions
         function openExternalPage(url) {
             window.location.href = url;
         }
@@ -788,14 +907,21 @@
         function logout() {
             if (confirm('Are you sure you want to logout?')) {
                 localStorage.removeItem('authToken');
+                sessionStorage.removeItem('authToken');
+                localStorage.removeItem('token');
                 window.location.href = '../';
             }
         }
 
-        // Initialize on page load
+        // ============================================
+        // PAGE INITIALIZATION
+        // ============================================
+        
         document.addEventListener('DOMContentLoaded', async function() {
-            await initializeUser();
-            await fetchTasks();
+            const userInitialized = await initializeUser();
+            if (userInitialized) {
+                await fetchTasks();
+            }
         });
 
         // Refresh tasks every 30 seconds
