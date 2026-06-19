@@ -1,4 +1,4 @@
-const BACKEND = "https://examguard-jmvj.onrender.com";
+const BACKEND = "https://examguide.onrender.com";
 const POSTS_API = BACKEND + "/api/posts";
 const PROFILE_API = BACKEND + "/api/users/me";
 const MESSAGES_API = BACKEND + "/api/messages";
