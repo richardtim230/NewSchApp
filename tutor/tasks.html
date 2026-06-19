@@ -7,11 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
-    <script async type="application/javascript" src="https://a.magsrv.com/ad-provider.js"></script> 
- <ins class="eas6a97888e14" data-zoneid="5954604"></ins> 
- <script>(AdProvider = window.AdProvider || []).push({"serve": {}});</script>
-   <script src="https://pl29801448.effectivecpmnetwork.com/2d/44/b0/2d44b0229f55dcd4d8d815af9b45a1fc.js"></script>
-
+    
     <script>
         tailwind.config = {
             theme: {
@@ -443,7 +439,7 @@
                         ⏳ Watch for <span id="countdown-seconds">0</span>s more to unlock your points
                     </div>
 
-                    <a id="modal-external-link-btn" href="#" target="_blank" class="hidden w-full text-center bg-pqBlue hover:bg-pqActiveBlue text-white font-bold py-3 rounded-lg transition-all text-[13px] items-center justify-center gap-2 shadow-sm">
+                    <a id="modal-external-link-btn" href="#" class="hidden w-full text-center bg-pqBlue hover:bg-pqActiveBlue text-white font-bold py-3 rounded-lg transition-all text-[13px] items-center justify-center gap-2 shadow-sm">
                         Open Destination Link <i class="fas fa-external-link-alt text-[11px]"></i>
                     </a>
                 </div>
@@ -525,7 +521,6 @@
             drawer.classList.toggle('-translate-x-full');
         });
 
-        // Close drawer when clicking on links
         document.querySelectorAll('#drawer-navigation button').forEach(btn => {
             btn.addEventListener('click', function() {
                 if (window.innerWidth < 768) {
@@ -534,7 +529,6 @@
             });
         });
 
-        // Touch-outside-to-close handler for mobile layouts
         document.addEventListener('click', function(e) {
             const drawer = document.getElementById('drawer-navigation');
             const menuBtn = document.getElementById('mobile-menu-btn');
@@ -607,8 +601,6 @@
                 currentUserId = user._id;
                 currentUserData = user;
 
-                console.log('User loaded:', user.fullname, user._id);
-
                 document.getElementById('profile-name').textContent = user.fullname || user.name || 'Student';
                 document.getElementById('profile-email').textContent = user.email || '—';
                 document.getElementById('profile-avatar').src = 
@@ -644,10 +636,20 @@
                 }
 
                 tasks = await response.json();
-                console.log('Tasks loaded (Silent:', isSilent, '):', tasks.length);
                 
                 renderTasks();
                 updateStats();
+
+                // Intercept parameter checklist validation hooks on initial network loads
+                if (!isSilent) {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const verifiedTaskId = urlParams.get('verifiedTask');
+                    if (verifiedTaskId) {
+                        openTaskModal(verifiedTaskId);
+                        // Clean up URL parameters dynamically so it doesn't loop open on refreshes
+                        window.history.replaceState({}, document.title, window.location.pathname);
+                    }
+                }
             } catch (e) {
                 console.error('Error fetching tasks:', e);
                 showToast(`Failed to load tasks: ${e.message}`, 'error');
@@ -721,7 +723,7 @@
         }
 
         // ============================================
-        // TASK MODAL CONTROLLER & TIMER TRACKING
+        // TASK MODAL CONTROLLER & AD VERIFICATION GATES
         // ============================================
         async function openTaskModal(taskId) {
             resetMediaState();
@@ -752,6 +754,7 @@
             timerBanner.classList.add('hidden');
             externalLinkBtn.classList.add('hidden');
             externalLinkBtn.style.display = 'none';
+            externalLinkBtn.removeAttribute('target'); // Reset targets
 
             const targetUrl = task.meta?.url;
             const youtubeId = extractYouTubeId(targetUrl);
@@ -766,11 +769,14 @@
                     initYouTubePlayer(youtubeId, 0, true);
                 } else if (targetUrl) {
                     externalLinkBtn.href = targetUrl;
+                    externalLinkBtn.target = "_blank";
+                    externalLinkBtn.textContent = 'Open Destination Link';
                     externalLinkBtn.classList.remove('hidden');
                     externalLinkBtn.style.display = 'flex';
                 }
             } else {
                 if (youtubeId) {
+                    // YouTube Tracking Configuration
                     ytWrapper.classList.remove('hidden');
                     timerBanner.classList.remove('hidden');
                     timerBanner.className = "text-center text-[12px] font-bold text-pqOrange bg-orange-50 border border-pqOrange/20 py-2.5 rounded-lg transition-all animate-pulse";
@@ -786,14 +792,35 @@
 
                     initYouTubePlayer(youtubeId, watchTimeRemaining, false);
                 } else if (targetUrl) {
-                    externalLinkBtn.href = targetUrl;
-                    externalLinkBtn.classList.remove('hidden');
-                    externalLinkBtn.style.display = 'flex';
+                    // Check if ad viewing completion is present in localStorage handshake flag
+                    const isAdVerified = localStorage.getItem(`verified_ad_click_${task._id}`) === "true";
 
-                    actionBtn.textContent = 'Mark as Done';
-                    actionBtn.disabled = false;
-                    actionBtn.className = 'w-full bg-pqOrange hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition-all text-[13px]';
+                    if (!isAdVerified) {
+                        // AD GATE UNCOMPLETED STATE
+                        externalLinkBtn.href = `view-ads.html?taskId=${task._id}`;
+                        externalLinkBtn.innerHTML = 'Unlock Activation Link via Ad Portal 🚀';
+                        externalLinkBtn.className = 'w-full text-center bg-gradient-to-r from-pqOrange to-orange-600 text-white font-bold py-3.5 rounded-lg transition-all text-[13px] flex items-center justify-center gap-2 shadow-sm animate-pulse';
+                        externalLinkBtn.classList.remove('hidden');
+                        externalLinkBtn.style.display = 'flex';
+
+                        actionBtn.textContent = '🔒 Verify Task via Ad Portal First';
+                        actionBtn.disabled = true;
+                        actionBtn.className = 'w-full bg-gray-200 text-gray-400 font-bold py-3 rounded-lg text-[13px] cursor-not-allowed';
+                    } else {
+                        // AD GATE COMPLETED STATE
+                        externalLinkBtn.href = targetUrl;
+                        externalLinkBtn.target = "_blank"; // Safely route real destination links to a new window tab
+                        externalLinkBtn.innerHTML = 'Get Activation Link 🔗';
+                        externalLinkBtn.className = 'w-full text-center bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-lg transition-all text-[13px] flex items-center justify-center gap-2 shadow-sm';
+                        externalLinkBtn.classList.remove('hidden');
+                        externalLinkBtn.style.display = 'flex';
+
+                        actionBtn.textContent = 'Claim Your Points! 🎉';
+                        actionBtn.disabled = false;
+                        actionBtn.className = 'w-full bg-pqOrange hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition-all text-[13px] shadow-md';
+                    }
                 } else {
+                    // Default Fallback
                     actionBtn.textContent = 'Mark as Done';
                     actionBtn.disabled = false;
                     actionBtn.className = 'w-full bg-pqOrange hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition-all text-[13px]';
@@ -896,6 +923,9 @@
 
                 const updatedTask = await response.json();
                 
+                // Clear the temporary local ad verified tracking token out of cache cleanly
+                localStorage.removeItem(`verified_ad_click_${taskId}`);
+
                 const taskIndex = tasks.findIndex(t => t._id === taskId);
                 if (taskIndex !== -1) {
                     tasks[taskIndex] = updatedTask;
@@ -927,7 +957,7 @@
         }
 
         // ============================================
-        // DUMMY IMPLEMENTATIONS & TOAST UTILS
+        // MISC TEXT LAYOUT UTILS & FORMATTERS
         // ============================================
         function formatDate(dateStr) {
             const date = new Date(dateStr);
@@ -995,7 +1025,7 @@
             const userLoaded = await loadUserProfile();
             if (userLoaded) {
                 await fetchTasks(false);
-                // Background updates run silently without showing visual spinners
+                // Background updates run silently underneath without locking view spinners
                 setInterval(() => fetchTasks(true), 30000);
             }
         });
