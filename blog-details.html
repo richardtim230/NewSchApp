@@ -111,9 +111,11 @@
             
             <div class="flex items-center gap-4">
                 <a href="news.html" class="text-sm font-bold text-gray-500 hover:text-pqBlue hidden sm:block">Back to Feed</a>
-                <a href="login.html" class="bg-pqBlue hover:bg-pqActiveBlue text-white px-5 py-2 rounded-full text-xs font-bold transition shadow-sm">
-                    Portal Login
-                </a>
+                <div id="user-section">
+                    <a href="login.html" class="bg-pqBlue hover:bg-pqActiveBlue text-white px-5 py-2 rounded-full text-xs font-bold transition shadow-sm">
+                        Portal Login
+                    </a>
+                </div>
             </div>
         </div>
     </header>
@@ -145,7 +147,7 @@
             
             <!-- Left Interaction Sidebar (Desktop) -->
             <aside class="hidden lg:flex lg:col-span-1 flex-col items-center gap-4 sticky top-28 h-max">
-                <button class="w-10 h-10 rounded-full bg-white border border-gray-200 text-gray-400 hover:text-pqOrange hover:border-pqOrange shadow-sm flex items-center justify-center transition-all group">
+                <button class="w-10 h-10 rounded-full bg-white border border-gray-200 text-gray-400 hover:text-pqOrange hover:border-pqOrange shadow-sm flex items-center justify-center transition-all">
                     <i class="far fa-heart text-lg group-hover:scale-110 transition-transform"></i>
                 </button>
                 <span class="text-[10px] font-bold text-gray-500 -mt-2 mb-2" id="like-count">--</span>
@@ -158,7 +160,7 @@
                 <button class="w-10 h-10 rounded-full bg-white border border-gray-200 text-gray-400 hover:text-[#25D366] hover:border-[#25D366] shadow-sm flex items-center justify-center transition-all">
                     <i class="fab fa-whatsapp text-lg"></i>
                 </button>
-                <button class="w-10 h-10 rounded-full bg-white border border-gray-200 text-gray-400 hover:text-pqBlue hover:border-pqBlue shadow-sm flex items-center justify-center transition-all" onclick="navigator.clipboard.writeText(window.location.href); alert('Link copied!');">
+                <button class="w-10 h-10 rounded-full bg-white border border-gray-200 text-gray-400 hover:text-pqBlue hover:border-pqBlue shadow-sm flex items-center justify-center transition-all" onclick="copyToClipboard()">
                     <i class="far fa-copy"></i>
                 </button>
             </aside>
@@ -198,7 +200,7 @@
 
                 <!-- State: Content Rendered -->
                 <article id="article-content" class="hidden">
-                    <span id="article-category-badge" class="bg-orange-50 text-pqOrange text-[10px] font-extrabold uppercase tracking-widest px-3 py-1.5 rounded-full mb-4 inline-block border border-orange-100">
+                    <span id="article-category-badge" class="bg-orange-50 text-pqOrange text-[10px] font-extrabold uppercase tracking-widest px-3 py-1.5 rounded-full mb-4 inline-block border border-orange-200">
                         Loading...
                     </span>
                     
@@ -209,7 +211,7 @@
                     <!-- Author & Meta -->
                     <div class="flex items-center justify-between border-y border-gray-100 py-4 mb-8">
                         <div class="flex items-center gap-3">
-                            <img id="author-avatar" src="https://ui-avatars.com/api/?name=User&background=f4f7fa&color=002046" class="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm" alt="Author">
+                            <img id="author-avatar" src="https://ui-avatars.com/api/?name=User&background=f4f7fa&color=002046" class="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm">
                             <div>
                                 <div class="font-bold text-sm text-pqBlue" id="author-name">Fetching Author...</div>
                                 <div class="text-[11px] text-gray-500 font-medium flex items-center gap-2 mt-0.5">
@@ -223,7 +225,7 @@
 
                     <!-- Featured Image -->
                     <div class="relative w-full aspect-video rounded-2xl overflow-hidden mb-10 shadow-md group bg-gray-100">
-                        <img id="article-image" src="" alt="Featured image" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 opacity-0 transition-opacity" onload="this.classList.remove('opacity-0')">
+                        <img id="article-image" src="" alt="Featured image" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 opacity-0" onload="this.style.opacity=1">
                     </div>
 
                     <!-- Injected HTML Body -->
@@ -331,12 +333,42 @@
     <script>
         // API Endpoints Config
         const API_BASE = "https://examguide.onrender.com/api";
-        const POSTS_API = API_BASE + "/public/posts";
-        const USER_API = API_BASE + "/users/";
+        const POSTS_API = API_BASE + "/posts";
+        const USER_API = "https://examguide.onrender.com/api/users/";
 
         // Utility: Extract URL Parameter
         const urlParams = new URLSearchParams(window.location.search);
         const articleId = urlParams.get('id');
+
+        // Check if user is logged in and update header
+        async function checkLoggedInUser() {
+            try {
+                const token = localStorage.getItem('token');
+                if (!token) return;
+                
+                const res = await fetch(`${USER_API}profile`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (!res.ok) return;
+                
+                const userData = await res.json();
+                const user = userData.user || userData;
+                const userName = user.fullname || user.username || user.name;
+                const avatar = user.profilePicture || `https://ui-avatars.com/api/?name=${userName}&background=002046&color=ffffff`;
+                
+                // Update header
+                const userSection = document.getElementById('user-section');
+                userSection.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <img src="${avatar}" class="w-8 h-8 rounded-full border border-gray-200" alt="Profile">
+                        <a href="profile.html" class="text-sm font-bold text-pqBlue hover:text-pqOrange transition-colors hidden sm:block">${userName}</a>
+                    </div>
+                `;
+            } catch (error) {
+                console.log("User not logged in or session expired");
+            }
+        }
 
         // Reading Progress Bar Logic
         window.addEventListener('scroll', () => {
@@ -353,17 +385,30 @@
             return new Date(dateStr).toLocaleDateString(undefined, options);
         }
 
+        // Copy to clipboard
+        function copyToClipboard() {
+            const url = window.location.href;
+            navigator.clipboard.writeText(url).then(() => {
+                alert("Article link copied to clipboard!");
+            });
+        }
+
         // Fetch Author Data
         async function fetchAuthorName(userId) {
             if (!userId) return { name: "Anonymous Scholar", avatar: "https://ui-avatars.com/api/?name=A&background=f4f7fa&color=002046" };
             try {
-                const res = await fetch(USER_API + userId);
+                const res = await fetch(`${USER_API}${userId}`);
                 if (!res.ok) throw new Error();
                 const data = await res.json();
-                const name = data.user?.fullname || data.user?.username || "Scholar";
-                const avatar = data.user?.profilePicture || `https://ui-avatars.com/api/?name=${name}&background=f4f7fa&color=002046`;
+                
+                // Handle different possible response structures
+                const user = data.user || data;
+                const name = user.fullname || user.username || user.name || "Scholar";
+                const avatar = user.profilePicture || user.avatar || `https://ui-avatars.com/api/?name=${name}&background=f4f7fa&color=002046`;
+                
                 return { name, avatar };
-            } catch {
+            } catch (error) {
+                console.error("Error fetching author:", error);
                 return { name: "Anonymous Scholar", avatar: "https://ui-avatars.com/api/?name=A&background=f4f7fa&color=002046" };
             }
         }
@@ -390,8 +435,8 @@
                 const filtered = articles.filter(a => (a._id || a.id) !== articleId).slice(0, 3);
 
                 container.innerHTML = filtered.map(article => `
-                    <a href="article.html?id=${article._id || article.id}" class="flex gap-3 group items-center">
-                        <img src="${article.imageUrl || article.image || 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=150&q=80'}" class="w-16 h-16 rounded-xl object-cover group-hover:opacity-80 transition-opacity border border-gray-100">
+                    <a href="blog-details.html?id=${article._id || article.id}" class="flex gap-3 group items-center">
+                        <img src="${article.imageUrl || article.image || 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=150&q=80'}" class="w-16 h-16 rounded-xl object-cover">
                         <div class="flex-1">
                             <h4 class="text-xs font-bold text-pqBlue group-hover:text-pqOrange transition-colors line-clamp-2 leading-snug">${article.title}</h4>
                             <span class="text-[10px] text-gray-400 block mt-1">${formatDate(article.date)}</span>
@@ -400,6 +445,7 @@
                 `).join('');
 
             } catch (error) {
+                console.error("Error fetching related articles:", error);
                 document.getElementById('related-loading').classList.add('hidden');
             }
         }
@@ -418,7 +464,7 @@
             }
 
             try {
-                // Determine exact endpoint. Adjust if your API uses /post/:id or just /:id
+                // Fetch article
                 const res = await fetch(`${POSTS_API}/${articleId}`);
                 if (!res.ok) throw new Error("Not found");
                 
@@ -459,18 +505,20 @@
                 // Likes/Views fake counter for UI richness (replace with real metrics if API provides)
                 document.getElementById('like-count').textContent = Math.floor(Math.random() * 50) + 12;
 
-                // Fetch Author
+                // Fetch Author - Get author ID properly
                 const authorId = article.author?.toString() || article.authorId || article.author;
-                const authorData = await fetchAuthorName(authorId);
-                
-                // Main Article Author
-                document.getElementById('author-name').textContent = authorData.name;
-                document.getElementById('author-avatar').src = authorData.avatar;
+                if (authorId) {
+                    const authorData = await fetchAuthorName(authorId);
+                    
+                    // Main Article Author
+                    document.getElementById('author-name').textContent = authorData.name;
+                    document.getElementById('author-avatar').src = authorData.avatar;
 
-                // Sidebar Author Widget
-                document.getElementById('sidebar-author-name').textContent = authorData.name;
-                document.getElementById('sidebar-author-avatar').src = authorData.avatar;
-                document.getElementById('author-bio-widget').classList.remove('hidden');
+                    // Sidebar Author Widget
+                    document.getElementById('sidebar-author-name').textContent = authorData.name;
+                    document.getElementById('sidebar-author-avatar').src = authorData.avatar;
+                    document.getElementById('author-bio-widget').classList.remove('hidden');
+                }
 
                 // Trigger Related Posts Fetch
                 fetchRelatedArticles(article.category);
@@ -484,7 +532,10 @@
         }
 
         // Boot
-        document.addEventListener('DOMContentLoaded', initArticle);
+        document.addEventListener('DOMContentLoaded', () => {
+            checkLoggedInUser();
+            initArticle();
+        });
 
     </script>
     <script src="https://pl29802065.effectivecpmnetwork.com/56/c7/b7/56c7b7ad73280296d83c32e80d4aafb0.js"></script>
