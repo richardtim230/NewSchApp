@@ -583,6 +583,33 @@
       pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     }
 
+    // =========================
+// CACHE CONFIG
+// =========================
+
+const CACHE = {
+    resources: "examguard_resources_cache",
+    courses: "examguard_courses_cache",
+    profile: "examguard_profile_cache",
+    timestamp: "examguard_resources_timestamp",
+    ttl: 1000 * 60 * 15 // 15 minutes
+};
+
+function saveCache(key, data){
+    localStorage.setItem(key, JSON.stringify(data));
+}
+
+function getCache(key){
+    const data = localStorage.getItem(key);
+    return data ? JSON.parse(data) : null;
+}
+
+function isCacheFresh(){
+    const time = localStorage.getItem(CACHE.timestamp);
+    if(!time) return false;
+
+    return (Date.now() - Number(time)) < CACHE.ttl;
+}
     const API_BASE_URL = 'https://examguide.onrender.com';
     let currentPage = 1;
     const itemsPerPage = 20;
@@ -621,17 +648,63 @@
       return resource.link && resource.link.startsWith('http') && !resource.fileId;
     }
 
-    async function initializePage() {
-      try {
-        await fetchStudentProfile();
-        await loadCourses();
-        await loadResources();
-        setupEventListeners();
-      } catch (error) {
-        console.error('Initialization error:', error);
-        showEmptyState();
-      }
+    async function initializePage(){
+
+    setupEventListeners();
+
+    // Load cached data immediately
+    loadCachedResources();
+
+    // Background updates
+    fetchStudentProfile();
+    loadCourses();
+    loadResources();
+}
+
+    function showSkeletons(){
+
+    const grid = document.getElementById("resourcesGrid");
+
+    grid.innerHTML = "";
+
+    for(let i=0;i<8;i++){
+
+        grid.innerHTML += `
+        <div class="animate-pulse bg-white dark:bg-gray-800 rounded-xl p-4">
+
+            <div class="h-40 rounded-lg bg-gray-200 dark:bg-gray-700 mb-4"></div>
+
+            <div class="h-5 bg-gray-200 dark:bg-gray-700 rounded mb-2"></div>
+
+            <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-2/3 mb-4"></div>
+
+            <div class="h-10 bg-gray-200 dark:bg-gray-700 rounded"></div>
+
+        </div>
+        `;
     }
+
+}
+    function loadCachedResources(){
+
+    const cached = getCache(CACHE.resources);
+
+    if(cached && cached.length){
+
+        allResources = cached;
+
+        renderResources(cached);
+
+        document.getElementById("resourcesCount").textContent =
+            cached.length;
+
+    }else{
+
+        showSkeletons();
+
+    }
+
+}
 
     function setupEventListeners() {
       document.getElementById('searchInput').addEventListener('input', (e) => { currentFilters.q = e.target.value; loadResources(1); });
@@ -687,35 +760,106 @@
       }
     }
 
-    async function loadCourses() {
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/resources/courses`);
-        if (!response.ok) throw new Error('Failed to load courses');
-        const courses = await response.json();
-        const courseFilter = document.getElementById('courseFilter');
-        courses.forEach(course => {
-          const option = document.createElement('option');
-          option.value = course; option.textContent = course;
-          courseFilter.appendChild(option);
-        });
-      } catch (error) { console.error('Error loading courses:', error); }
+    async function loadCourses(){
+
+    const select = document.getElementById("courseFilter");
+
+    const cached = getCache(CACHE.courses);
+
+    if(cached){
+
+        populateCourses(cached);
+
     }
 
-    async function loadResources(page = 1) {
-      try {
-        const params = new URLSearchParams({ page, limit: itemsPerPage, q: currentFilters.q, course: currentFilters.course, type: currentFilters.type });
-        const response = await fetch(`${API_BASE_URL}/api/resources?${params}`);
-        if (!response.ok) throw new Error('Failed to load resources');
-        
+    try{
+
+        const res = await fetch(`${API_BASE_URL}/api/resources/courses`);
+
+        const courses = await res.json();
+
+        populateCourses(courses);
+
+        saveCache(CACHE.courses,courses);
+
+    }catch(e){}
+
+}
+
+function populateCourses(courses){
+
+    const select=document.getElementById("courseFilter");
+
+    select.innerHTML=`<option value="">All Courses</option>`;
+
+    courses.forEach(course=>{
+
+        select.innerHTML+=
+        `<option value="${course}">${course}</option>`;
+
+    });
+
+}
+    async function loadResources(page = 1){
+
+    try{
+
+        const params = new URLSearchParams({
+
+            page,
+
+            limit: itemsPerPage,
+
+            q: currentFilters.q,
+
+            course: currentFilters.course,
+
+            type: currentFilters.type
+
+        });
+
+        const response = await fetch(
+            `${API_BASE_URL}/api/resources?${params}`
+        );
+
+        if(!response.ok)
+            throw new Error();
+
         const data = await response.json();
+
         allResources = data.items || [];
-        document.getElementById('resourcesCount').textContent = data.meta?.total || '0';
-        
-        if (allResources.length === 0) showEmptyState();
-        else { renderResources(allResources); renderPagination(data.meta); }
-        currentPage = page;
-      } catch (error) { showEmptyState(); }
+
+        renderResources(allResources);
+
+        renderPagination(data.meta);
+
+        document.getElementById("resourcesCount").textContent =
+            data.meta.total;
+
+        saveCache(CACHE.resources, allResources);
+
+        localStorage.setItem(
+            CACHE.timestamp,
+            Date.now()
+        );
+
+    }catch(err){
+
+        const cached = getCache(CACHE.resources);
+
+        if(cached){
+
+            renderResources(cached);
+
+        }else{
+
+            showEmptyState();
+
+        }
+
     }
+
+}
 
     function renderResources(resources) {
       const grid = document.getElementById('resourcesGrid');
