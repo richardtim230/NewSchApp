@@ -280,18 +280,17 @@
     </div>
 
     <script src="https://pl29802065.effectivecpmnetwork.com/56/c7/b7/56c7b7ad73280296d83c32e80d4aafb0.js"></script>
-
-    <script>
+<script>
     // API Configuration
     const API_BASE = "https://examguide.onrender.com/api";
     const TAXONOMY_API = API_BASE + "/taxonomy";
     const POSTS_API = API_BASE + "/posts";
     const USER_API = "https://examguide.onrender.com/api/users/";
 
-    // State - defaulting to a specific category structure to fetch scholarship relevant data if standard tags are used
+    // State 
     let taxonomy = { categories: [], subjects: [], topics: [] };
     let allArticles = [];
-    let currentCategory = 'Scholarships'; // Assumes backend categorizes them under 'Scholarships'
+    let currentCategory = 'Scholarships'; // Default base
     let currentPage = 1;
     const articlesPerPage = 6;
     let authorCache = {};
@@ -312,7 +311,7 @@
         }
     }
 
-    // Fetch taxonomy (categories, subjects, topics)
+    // Fetch taxonomy
     async function fetchTaxonomy() {
         try {
             const res = await fetch(`${TAXONOMY_API}/all`);
@@ -321,22 +320,23 @@
             renderCategories();
         } catch (error) {
             console.error("Taxonomy fetch error:", error);
+            // Render defaults even if fetch fails
+            renderCategories();
         }
     }
 
     // Render category buttons customized for Scholarships
     function renderCategories() {
         const scroll = document.getElementById('categoriesScroll');
-        // Reset and inject scholarship specific base filters
         scroll.innerHTML = '<button class="bg-pqBlue text-white px-5 py-2 rounded-full text-xs font-bold whitespace-nowrap shadow-md" onclick="filterByCategory(\'Scholarships\')">All Grants</button>';
         
-        // If your taxonomy returns scholarship sub-categories, loop them, else we append some static ones for visual consistency
         const defaultFilters = ['Undergraduate', 'Postgraduate', 'International', 'Fully Funded'];
         const categoriesToRender = (taxonomy.categories && taxonomy.categories.length > 0) ? taxonomy.categories : defaultFilters;
 
         categoriesToRender.forEach(cat => {
-            // Optional: Filter out generic news categories if reading from a mixed DB
-            if(cat.toLowerCase() === 'general' || cat.toLowerCase() === 'news') return; 
+            // Strictly exclude normal news categories from the scholarship page
+            const lowerCat = cat.toLowerCase();
+            if(lowerCat === 'general' || lowerCat === 'news' || lowerCat === 'campus updates') return; 
 
             const btn = document.createElement('button');
             btn.className = "bg-white text-gray-600 border border-gray-200 hover:border-pqOrange hover:text-pqOrange px-5 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors";
@@ -348,7 +348,6 @@
 
     // Filter articles by category
     window.filterByCategory = function(category) {
-        // Highlight active state (simple visual swap)
         const buttons = document.getElementById('categoriesScroll').children;
         Array.from(buttons).forEach(btn => {
             if(btn.textContent.trim() === category || (category === 'Scholarships' && btn.textContent.trim() === 'All Grants')) {
@@ -366,18 +365,42 @@
     // Fetch articles from backend
     async function fetchAndRenderArticles() {
         try {
-            let url = `${POSTS_API}/filter?limit=${articlesPerPage * currentPage}`;
-            if (currentCategory) {
-                url += `&category=${encodeURIComponent(currentCategory)}`;
-            }
+            // Note: If your backend has a dedicated query parameter for post types (e.g., &type=scholarship), add it here.
+            let url = `${POSTS_API}/filter?limit=${articlesPerPage * (currentPage + 1)}`; // Fetch a bit extra to account for client-side dropping
+            
+            // Use current category, but if it's the default, explicitly ask the backend for 'Scholarships'
+            const queryCategory = currentCategory === 'All Grants' ? 'Scholarships' : currentCategory;
+            url += `&category=${encodeURIComponent(queryCategory)}`;
             
             const res = await fetch(url);
             if (!res.ok) throw new Error("Could not fetch scholarships");
-            allArticles = await res.json();
+            let rawArticles = await res.json();
             
-            if (!Array.isArray(allArticles)) {
-                allArticles = [];
+            if (!Array.isArray(rawArticles)) {
+                rawArticles = [];
             }
+            
+            // --- STRICT CLIENT-SIDE FILTERING ---
+            // This forces out normal posts if the backend returns everything
+            const allowedKeywords = ['scholarship', 'grant', 'funding', 'undergraduate', 'postgraduate', 'fully funded', 'bursary', 'international'];
+            
+            allArticles = rawArticles.filter(article => {
+                const cat = (article.category || '').toLowerCase();
+                const tags = (article.tags || []).map(t => t.toLowerCase());
+                
+                // 1. Is it a scholarship related post?
+                const isScholarshipPost = allowedKeywords.some(keyword => cat.includes(keyword) || tags.includes(keyword));
+                
+                // 2. If a specific sub-category is clicked (e.g., Undergraduate), enforce that too
+                if (currentCategory && currentCategory !== 'Scholarships' && currentCategory !== 'All Grants') {
+                    return isScholarshipPost && (cat.includes(currentCategory.toLowerCase()) || tags.includes(currentCategory.toLowerCase()));
+                }
+                
+                return isScholarshipPost;
+            });
+
+            // Trim down to exact limit after filtering
+            allArticles = allArticles.slice(0, articlesPerPage * currentPage);
             
             renderArticles();
             renderTrending();
@@ -393,7 +416,7 @@
         const grid = document.getElementById('articlesGrid');
         
         if (!allArticles || allArticles.length === 0) {
-            grid.innerHTML = '<div class="col-span-full text-center text-gray-400 py-16">No scholarships available for this filter.</div>';
+            grid.innerHTML = '<div class="col-span-full text-center text-gray-400 py-16">No scholarships available for this filter right now.</div>';
             return;
         }
 
@@ -408,10 +431,9 @@
             if (!authorNames[uid]) authorNames[uid] = await fetchAuthorName(uid);
         }));
 
-        // Render remaining articles (skip first featured)
+        // Render remaining articles
         const startIdx = 1;
-        const endIdx = Math.min(startIdx + articlesPerPage, allArticles.length);
-        const articlesToShow = allArticles.slice(startIdx, endIdx);
+        const articlesToShow = allArticles.slice(startIdx);
 
         grid.innerHTML = '';
         articlesToShow.forEach(article => {
@@ -461,14 +483,14 @@
         document.getElementById('featuredDate').textContent = "Deadline: " + date;
     }
 
-    // Render trending scholarships (sidebar)
+    // Render trending scholarships
     async function renderTrending() {
         if (!allArticles || allArticles.length === 0) {
             document.getElementById('trendingList').innerHTML = '<div class="text-gray-400 text-sm">No trending grants currently.</div>';
             return;
         }
 
-        const trendingArticles = allArticles.slice(0, 4); // Top 4
+        const trendingArticles = allArticles.slice(0, 4); 
         let html = '';
 
         for (let i = 0; i < trendingArticles.length; i++) {
@@ -498,7 +520,6 @@
         const topicsWidget = document.getElementById('topicsWidget');
         topicsWidget.innerHTML = '';
 
-        // Mimicking destination/types extract from topic field or hardcoded fallback
         const allTopics = new Set();
         allArticles.forEach(a => {
             if (a.topic) allTopics.add(a.topic);
@@ -537,6 +558,7 @@
     fetchTaxonomy();
     fetchAndRenderArticles();
     </script>
+
 
 </body>
 </html>
