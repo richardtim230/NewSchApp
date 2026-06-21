@@ -433,6 +433,32 @@
                     <p class="text-[13px] font-bold text-gray-800" id="modal-task-due">—</p>
                 </div>
 
+                <div id="reading-task-section"
+     class="hidden space-y-3">
+
+    <img id="reading-cover"
+         class="w-full rounded-xl h-44 object-cover border"
+         src="">
+
+    <div class="bg-blue-50 border border-blue-100 rounded-xl p-4">
+        <p class="text-xs font-bold text-blue-900 uppercase">
+            Reading Requirement
+        </p>
+
+        <p class="text-sm text-blue-700 mt-2">
+            Read this article for at least
+            <span id="required-read-time">0</span>
+            seconds to earn points.
+        </p>
+    </div>
+
+    <a id="open-article-btn"
+       target="_blank"
+       class="w-full flex items-center justify-center gap-2 bg-pqBlue text-white py-3 rounded-xl font-semibold">
+       Read Article
+    </a>
+
+</div>
                 <div id="modal-dynamic-content" class="space-y-3 pt-2">
                     <div id="yt-player-wrapper" class="hidden overflow-hidden rounded-xl bg-black aspect-video w-full border border-gray-200 shadow-inner">
                         <div id="yt-player"></div>
@@ -441,6 +467,14 @@
                     <div id="video-timer-banner" class="hidden text-center text-[12px] font-bold text-pqOrange bg-orange-50 border border-pqOrange/20 py-2.5 rounded-lg transition-all animate-pulse">
                         ⏳ Watch for <span id="countdown-seconds">0</span>s more to unlock your points
                     </div>
+                    <div id="reading-timer-banner"
+     class="hidden text-center text-[12px] font-bold text-pqOrange bg-orange-50 border border-pqOrange/20 py-2.5 rounded-lg">
+    ⏳ Read for
+    <span id="reading-countdown">
+        0
+    </span>
+    seconds more
+</div>
 
                     <a id="modal-external-link-btn" href="#" class="hidden w-full text-center bg-pqBlue hover:bg-pqActiveBlue text-white font-bold py-3 rounded-lg transition-all text-[13px] items-center justify-center gap-2 shadow-sm">
                         Open Destination Link <i class="fas fa-external-link-alt text-[11px]"></i>
@@ -497,6 +531,9 @@
         let currentFilter = 'all';
         let tasks = [];
         let authToken = null;
+        let readingTimer = null;
+let readingSecondsRemaining = 0;
+let readingTaskVerified = false;
 
         // YOUTUBE TRACKING & MEDIA HANDLING STATE
         let ytPlayerInstance = null;
@@ -733,6 +770,18 @@
             
             const task = tasks.find(t => t._id === taskId);
             if (!task) return;
+            const readingSection =
+    document.getElementById(
+        "reading-task-section"
+    );
+
+const readingBanner =
+    document.getElementById(
+        "reading-timer-banner"
+    );
+
+readingSection.classList.add("hidden");
+readingBanner.classList.add("hidden");
 
             document.getElementById('modal-task-title').textContent = task.title;
             document.getElementById('modal-task-type').textContent = task.activityType;
@@ -761,6 +810,8 @@
 
             const targetUrl = task.meta?.url;
             const youtubeId = extractYouTubeId(targetUrl);
+            const isReadingTask =
+    task.activityType === "Reading Task";
 
             if (task.status === 'done') {
                 actionBtn.textContent = '✓ Completed';
@@ -778,6 +829,77 @@
                     externalLinkBtn.style.display = 'flex';
                 }
             } else {
+                if (isReadingTask) {
+
+    readingSection.classList.remove("hidden");
+
+    document.getElementById(
+        "required-read-time"
+    ).textContent =
+        task.meta?.minimumReadTime || 60;
+
+    document.getElementById(
+        "reading-cover"
+    ).src =
+        task.meta?.image ||
+        "https://placehold.co/800x400";
+
+    document.getElementById(
+        "open-article-btn"
+    ).href =
+        `/blog/${task.meta.postId}`;
+
+    readingSecondsRemaining =
+        task.meta?.minimumReadTime || 60;
+
+    document.getElementById(
+        "reading-countdown"
+    ).textContent =
+        readingSecondsRemaining;
+
+    readingBanner.classList.remove("hidden");
+
+    actionBtn.disabled = true;
+
+    actionBtn.textContent =
+        "🔒 Read Article First";
+
+    readingTimer = setInterval(() => {
+
+        readingSecondsRemaining--;
+
+        document.getElementById(
+            "reading-countdown"
+        ).textContent =
+            readingSecondsRemaining;
+
+        if (
+            readingSecondsRemaining <= 0
+        ) {
+
+            clearInterval(
+                readingTimer
+            );
+
+            readingTaskVerified =
+                true;
+
+            readingBanner.innerHTML =
+                "✅ Reading verified";
+
+            actionBtn.disabled =
+                false;
+
+            actionBtn.textContent =
+                "Claim Your Points 🎉";
+
+            actionBtn.className =
+                "w-full bg-pqOrange hover:bg-orange-600 text-white font-bold py-3 rounded-lg";
+        }
+
+    }, 1000);
+
+            }else
                 if (youtubeId) {
                     // YouTube Tracking Configuration
                     ytWrapper.classList.remove('hidden');
@@ -903,6 +1025,12 @@
 
         function closeTaskModal() {
             resetMediaState();
+            if (readingTimer) {
+    clearInterval(readingTimer);
+    readingTimer = null;
+}
+
+readingTaskVerified = false;
             document.getElementById('taskDetailModal').classList.add('hidden');
             document.getElementById('taskDetailModal').style.display = 'none';
         }
