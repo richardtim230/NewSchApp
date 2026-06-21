@@ -317,7 +317,7 @@
         </div>
     </nav>
 
-    <div id="drawer-navigation" class="fixed top-0 left-0 z-50 md:z-30 h-screen p-0 overflow-y-auto transition-transform -translate-x-full md:translate-x-0 bg-pqDarkBg w-[260px] border-r border-white/10">
+    <div id="drawer-navigation" class="fixed top-0 left-0 z-50 md:z-30 h-screen p-0 overflow-y-auto transition-transform -translate-x-full md:translate-x-0 bg-pqDarkBg w-[260px] border-r border-white/[0.05]">
         
         <div class="px-4 pt-5 pb-3 bg-pqBlue border-b border-white/5">
             <h2 class="text-[18px] font-extrabold text-white flex items-center tracking-wide">
@@ -427,7 +427,7 @@
                     </div>
                 </div>
 
-                <div class="flex gap-6 overflow-x-auto pb-3 -mx-3 px-3 md:mx-0 md:px-0 border-b border-gray-200 mt-6 md:mt-8">
+                <div class="flex gap-6 overflow-x-auto pb-3 -mx-3 px-3 md:mx-0 md:px-0 border-b border-gray-200 mt-10 md:mt-12">
                     <button onclick="filterTasks('all', event)" class="filter-tab active">
                         All Tasks
                     </button>
@@ -991,6 +991,9 @@
             if (!task) return;
 
             currentTaskBeingViewed = task;
+            
+            // Store task ID in button's data attribute for claim functionality
+            document.getElementById('modal-action-btn').dataset.taskId = taskId;
 
             const readingSection = document.getElementById("reading-task-section");
             const readingBanner = document.getElementById("reading-timer-banner");
@@ -1007,7 +1010,6 @@
             document.getElementById('modal-task-status').textContent = task.status;
             document.getElementById('modal-task-status').className = `task-status-badge status-${task.status}`;
             document.getElementById('modal-task-points').innerHTML = `${task.points} <i class="fas fa-star"></i>`;
-            document.getElementById('modal-action-btn').dataset.taskId = taskId;
 
             if (task.dueDate) {
                 document.getElementById('due-date-section').classList.remove('hidden');
@@ -1037,14 +1039,25 @@
                     initYouTubePlayer(youtubeId, 0, true);
                 }
             } else {
-                actionBtn.textContent = 'Mark as Done';
                 actionBtn.disabled = false;
+                actionBtn.classList.remove('opacity-60');
                 actionBtn.className = 'w-full bg-pqOrange hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition-all text-[13px]';
+                actionBtn.textContent = 'Mark as Done';
                 
                 if (isReadingTask) {
                     readingSection.classList.remove("hidden");
                     document.getElementById("required-read-time").textContent = task.meta?.readTime || 60;
                     document.getElementById("reading-cover").src = task.image || "https://placehold.co/800x400";
+                    const isAdVerified = localStorage.getItem(`verified_ad_click_${task._id}`) === "true";
+                    
+                    if (isAdVerified) {
+                        readingBanner.classList.remove("hidden");
+                        startReadingTimer(task);
+                    }
+                } else if (youtubeId) {
+                    ytWrapper.classList.remove('hidden');
+                    const watchTime = task.meta?.watchTime || 30;
+                    initYouTubePlayer(youtubeId, watchTime, false);
                 }
             }
 
@@ -1052,20 +1065,79 @@
             document.getElementById('taskDetailModal').style.display = 'flex';
         }
 
-        // Initialize on page load
-        async function initPage() {
+        function initYouTubePlayer(videoId, watchTimeRequired, isViewOnly) {
+            if (!videoId) return;
+            
+            watchTimeRemaining = watchTimeRequired;
+            
+            ytPlayerInstance = new YT.Player('yt-player', {
+                height: '100%',
+                width: '100%',
+                videoId: videoId,
+                playerVars: {
+                    autoplay: 1,
+                    controls: 1,
+                    rel: 0
+                },
+                events: {
+                    'onReady': (event) => {
+                        if (!isViewOnly && watchTimeRequired > 0) {
+                            startVideoCountdown();
+                        }
+                    }
+                }
+            });
+        }
+
+        function startVideoCountdown() {
+            if (videoCountdownInterval) clearInterval(videoCountdownInterval);
+            
+            videoCountdownInterval = setInterval(() => {
+                if (watchTimeRemaining > 0) {
+                    watchTimeRemaining--;
+                    document.getElementById('countdown-seconds').textContent = watchTimeRemaining;
+                    
+                    if (watchTimeRemaining === 0) {
+                        clearInterval(videoCountdownInterval);
+                        isVideoRequirementMet = true;
+                        document.getElementById('video-timer-banner').classList.add('hidden');
+                        showToast('Video requirement met! You can now claim points.', 'success');
+                    }
+                }
+            }, 1000);
+        }
+
+        function startReadingTimer(task) {
+            const requiredTime = parseInt(task.meta?.readTime) || 60;
+            readingSecondsRemaining = requiredTime;
+            readingTaskVerified = false;
+
+            if (readingTimer) clearInterval(readingTimer);
+            
+            readingTimer = setInterval(() => {
+                readingSecondsRemaining--;
+                document.getElementById('reading-countdown').textContent = readingSecondsRemaining;
+                
+                if (readingSecondsRemaining <= 0) {
+                    clearInterval(readingTimer);
+                    readingTaskVerified = true;
+                    document.getElementById('reading-timer-banner').classList.add('hidden');
+                    showToast('Reading requirement met! You can now claim points.', 'success');
+                }
+            }, 1000);
+        }
+
+        // ============================================
+        // INITIALIZATION
+        // ============================================
+        (async function init() {
+            showSkeletonLoader(true);
             const profileLoaded = await loadUserProfile();
             if (profileLoaded) {
                 await fetchTasks();
             }
-        }
-
-        // Call init when page loads
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initPage);
-        } else {
-            initPage();
-        }
+            showSkeletonLoader(false);
+        })();
     </script>
 </body>
 </html>
