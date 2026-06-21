@@ -8,9 +8,9 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
     <script src="https://pl29802067.effectivecpmnetwork.com/1e/bc/f6/1ebcf67ad079b5eeaeafa58b4bc61866.js"></script>
-<script async type="application/javascript" src="https://a.magsrv.com/ad-provider.js"></script> 
- <ins class="eas6a97888e14" data-zoneid="5954604"></ins> 
- <script>(AdProvider = window.AdProvider || []).push({"serve": {}});</script>
+    <script async type="application/javascript" src="https://a.magsrv.com/ad-provider.js"></script> 
+    <ins class="eas6a97888e14" data-zoneid="5954604"></ins> 
+    <script>(AdProvider = window.AdProvider || []).push({"serve": {}});</script>
     <script>
         tailwind.config = {
             theme: {
@@ -322,7 +322,7 @@
             </ul>
 
             <div class="px-4 pt-4 pb-6 text-[9.5px] text-gray-600">
-                © 2025 OAU ExamGuard · All rights reserved.
+                © 2026 OAU ExamGuard · All rights reserved.
             </div>
         </div>
     </div>
@@ -381,8 +381,7 @@
                 </button>
             </div>
 
-            <div id="tasks-container" class="space-y-3">
-                </div>
+            <div id="tasks-container" class="space-y-3"></div>
 
             <div id="empty-state" class="hidden">
                 <div class="empty-state">
@@ -567,6 +566,9 @@
             const wrapper = document.getElementById('yt-player-wrapper');
             if (wrapper) wrapper.innerHTML = '<div id="yt-player"></div>';
             
+            const externalLinkBtn = document.getElementById('modal-external-link-btn');
+            if (externalLinkBtn) externalLinkBtn.onclick = null;
+            
             isVideoRequirementMet = false;
         }
 
@@ -626,7 +628,8 @@
             try {
                 if (!isSilent) showLoadingSpinner(true);
                 
-                const response = await fetch(`${API_BASE_URL}/tasks/user/${currentUserId}`, {
+                // 1. Fetch Standard Assigned User Tasks
+                const userTasksResponse = await fetch(`${API_BASE_URL}/tasks/user/${currentUserId}`, {
                     method: 'GET',
                     headers: {
                         'Authorization': `Bearer ${authToken}`,
@@ -634,22 +637,75 @@
                     }
                 });
 
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch tasks: ${response.status}`);
+                if (!userTasksResponse.ok) {
+                    throw new Error(`Failed to fetch user tasks: ${userTasksResponse.status}`);
                 }
 
-                tasks = await response.json();
+                let standardTasks = await userTasksResponse.json();
+                
+                // 2. Fetch Blog Article Tasks
+                let visibleArticles = [];
+                try {
+                    const articleTasksResponse = await fetch(`${API_BASE_URL}/public/article-tasks?limit=100`, {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Bearer ${authToken}`
+                        }
+                    });
+
+                    if (articleTasksResponse.ok) {
+                        const rawArticles = await articleTasksResponse.json();
+                        const completedArticlesList = currentUserData?.completedArticles || [];
+
+                        // Normalize and filter properties
+                        rawArticles.forEach(article => {
+                            article._id = article.postId; // Align identifier keys for layout matching
+                            article.points = 5;           // Hard-enforce the 5 credit points assignment
+
+                            if (completedArticlesList.includes(article.postId)) {
+                                article.status = 'done';
+                            } else {
+                                article.status = 'active';
+                            }
+                        });
+
+                        // Handle Daily Randomization Logic Matrix (Max 5 uncompleted posts per day at random)
+                        const todayString = new Date().toISOString().split('T')[0];
+                        const randomCacheKey = `examguard_random_articles_${currentUserId}`;
+                        let articlePoolMetadata = JSON.parse(localStorage.getItem(randomCacheKey) || '{}');
+
+                        let targetedIds = [];
+                        if (articlePoolMetadata.date === todayString && Array.isArray(articlePoolMetadata.ids)) {
+                            targetedIds = articlePoolMetadata.ids;
+                        } else {
+                            const uncompletedPool = rawArticles.filter(art => art.status !== 'done');
+                            const shuffledPool = uncompletedPool.sort(() => 0.5 - Math.random());
+                            targetedIds = shuffledPool.slice(0, 5).map(art => art.postId);
+
+                            localStorage.setItem(randomCacheKey, JSON.stringify({
+                                date: todayString,
+                                ids: targetedIds
+                            }));
+                        }
+
+                        // Render both today's active items AND any item already earned historically
+                        visibleArticles = rawArticles.filter(art => targetedIds.includes(art.postId) || art.status === 'done');
+                    }
+                } catch (articleErr) {
+                    console.error("Failed handling automatic article task retrieval pipeline:", articleErr);
+                }
+
+                // Combine both pools into tracking space
+                tasks = [...standardTasks, ...visibleArticles];
                 
                 renderTasks();
                 updateStats();
 
-                // Intercept parameter checklist validation hooks on initial network loads
                 if (!isSilent) {
                     const urlParams = new URLSearchParams(window.location.search);
                     const verifiedTaskId = urlParams.get('verifiedTask');
                     if (verifiedTaskId) {
                         openTaskModal(verifiedTaskId);
-                        // Clean up URL parameters dynamically so it doesn't loop open on refreshes
                         window.history.replaceState({}, document.title, window.location.pathname);
                     }
                 }
@@ -734,6 +790,8 @@
             const task = tasks.find(t => t._id === taskId);
             if (!task) return;
 
+            const isArticleTask = task.activityType === 'article';
+
             document.getElementById('modal-task-title').textContent = task.title;
             document.getElementById('modal-task-type').textContent = task.activityType;
             document.getElementById('modal-task-description').textContent = task.description || 'No description provided';
@@ -757,7 +815,7 @@
             timerBanner.classList.add('hidden');
             externalLinkBtn.classList.add('hidden');
             externalLinkBtn.style.display = 'none';
-            externalLinkBtn.removeAttribute('target'); // Reset targets
+            externalLinkBtn.removeAttribute('target'); 
 
             const targetUrl = task.meta?.url;
             const youtubeId = extractYouTubeId(targetUrl);
@@ -771,15 +829,56 @@
                     ytWrapper.classList.remove('hidden');
                     initYouTubePlayer(youtubeId, 0, true);
                 } else if (targetUrl) {
-                    externalLinkBtn.href = targetUrl;
+                    externalLinkBtn.href = isArticleTask ? `https://oau.examguard.com.ng${targetUrl}` : targetUrl;
                     externalLinkBtn.target = "_blank";
-                    externalLinkBtn.textContent = 'Open Destination Link';
+                    externalLinkBtn.textContent = 'Open Content Link';
                     externalLinkBtn.classList.remove('hidden');
                     externalLinkBtn.style.display = 'flex';
                 }
             } else {
-                if (youtubeId) {
-                    // YouTube Tracking Configuration
+                if (isArticleTask) {
+                    // Automatic Post Verification Setup Pipeline
+                    externalLinkBtn.href = `https://oau.examguard.com.ng${targetUrl}`;
+                    externalLinkBtn.target = "_blank";
+                    externalLinkBtn.innerHTML = 'Read Article & Start Timer 📖';
+                    externalLinkBtn.className = 'w-full text-center bg-gradient-to-r from-pqBlue to-pqActiveBlue text-white font-bold py-3.5 rounded-lg transition-all text-[13px] flex items-center justify-center gap-2 shadow-sm';
+                    externalLinkBtn.classList.remove('hidden');
+                    externalLinkBtn.style.display = 'flex';
+
+                    timerBanner.classList.remove('hidden');
+                    timerBanner.className = "text-center text-[12px] font-bold text-pqOrange bg-orange-50 border border-pqOrange/20 py-2.5 rounded-lg transition-all animate-pulse";
+                    
+                    watchTimeRemaining = parseInt(task.meta?.readTime) || 60;
+                    document.getElementById('countdown-seconds').textContent = watchTimeRemaining;
+
+                    actionBtn.textContent = '🔒 Read Article to Unlock Points';
+                    actionBtn.disabled = true;
+                    actionBtn.className = 'w-full bg-gray-200 text-gray-400 font-bold py-3 rounded-lg text-[13px] cursor-not-allowed';
+
+                    externalLinkBtn.onclick = function() {
+                        if (!videoCountdownInterval) {
+                            videoCountdownInterval = setInterval(() => {
+                                if (watchTimeRemaining > 0) {
+                                    watchTimeRemaining--;
+                                    document.getElementById('countdown-seconds').textContent = watchTimeRemaining;
+                                    isVideoRequirementMet = false;
+                                } else {
+                                    clearInterval(videoCountdownInterval);
+                                    videoCountdownInterval = null;
+                                    isVideoRequirementMet = true;
+                                    
+                                    timerBanner.className = "text-center text-[12px] font-bold text-green-600 bg-green-50 border border-green-200 py-2.5 rounded-lg transition-all";
+                                    timerBanner.innerHTML = "✅ Reading verification complete! Points are now unlocked.";
+
+                                    actionBtn.textContent = 'Claim Your Points! 🎉';
+                                    actionBtn.disabled = false;
+                                    actionBtn.className = 'w-full bg-pqOrange hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition-all text-[13px] shadow-md';
+                                }
+                            }, 1000);
+                        }
+                    };
+
+                } else if (youtubeId) {
                     ytWrapper.classList.remove('hidden');
                     timerBanner.classList.remove('hidden');
                     timerBanner.className = "text-center text-[12px] font-bold text-pqOrange bg-orange-50 border border-pqOrange/20 py-2.5 rounded-lg transition-all animate-pulse";
@@ -795,11 +894,9 @@
 
                     initYouTubePlayer(youtubeId, watchTimeRemaining, false);
                 } else if (targetUrl) {
-                    // Check if ad viewing completion is present in localStorage handshake flag
                     const isAdVerified = localStorage.getItem(`verified_ad_click_${task._id}`) === "true";
 
                     if (!isAdVerified) {
-                        // AD GATE UNCOMPLETED STATE
                         externalLinkBtn.href = `view-ads?taskId=${task._id}`;
                         externalLinkBtn.innerHTML = 'Unlock Activation Link via Ad Portal 🚀';
                         externalLinkBtn.className = 'w-full text-center bg-gradient-to-r from-pqOrange to-orange-600 text-white font-bold py-3.5 rounded-lg transition-all text-[13px] flex items-center justify-center gap-2 shadow-sm animate-pulse';
@@ -810,9 +907,8 @@
                         actionBtn.disabled = true;
                         actionBtn.className = 'w-full bg-gray-200 text-gray-400 font-bold py-3 rounded-lg text-[13px] cursor-not-allowed';
                     } else {
-                        // AD GATE COMPLETED STATE
                         externalLinkBtn.href = targetUrl;
-                        externalLinkBtn.target = "_blank"; // Safely route real destination links to a new window tab
+                        externalLinkBtn.target = "_blank"; 
                         externalLinkBtn.innerHTML = 'Get Activation Link 🔗';
                         externalLinkBtn.className = 'w-full text-center bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-lg transition-all text-[13px] flex items-center justify-center gap-2 shadow-sm';
                         externalLinkBtn.classList.remove('hidden');
@@ -823,7 +919,6 @@
                         actionBtn.className = 'w-full bg-pqOrange hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition-all text-[13px] shadow-md';
                     }
                 } else {
-                    // Default Fallback
                     actionBtn.textContent = 'Mark as Done';
                     actionBtn.disabled = false;
                     actionBtn.className = 'w-full bg-pqOrange hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition-all text-[13px]';
@@ -889,7 +984,7 @@
                             const actionBtn = document.getElementById('modal-action-btn');
                             actionBtn.textContent = 'Claim Your Points! 🎉';
                             actionBtn.disabled = false;
-                            actionBtn.className = 'w-full bg-pqOrange hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition-all text-[13px] shadow-md animate-bounce';
+                            actionBtn.className = 'w-full bg-pqOrange hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition-all text-[13px] shadow-md';
                         }
                     }, 1000);
                 }
@@ -911,31 +1006,59 @@
             const taskId = document.getElementById('modal-action-btn').dataset.taskId;
             if (!taskId || !authToken) return;
 
+            const selectedTask = tasks.find(t => t._id === taskId);
+            const isArticleTask = selectedTask && selectedTask.activityType === 'article';
+
             try {
                 showLoadingSpinner(true);
-                const response = await fetch(`${API_BASE_URL}/tasks/${taskId}`, {
-                    method: 'PATCH',
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ status: 'done' })
-                });
-
-                if (!response.ok) throw new Error('Failed to update task');
-
-                const updatedTask = await response.json();
+                let response;
                 
-                // Clear the temporary local ad verified tracking token out of cache cleanly
+                // Polymorphic routing strategy to match backend architecture
+                if (isArticleTask) {
+                    response = await fetch(`${API_BASE_URL}/public/article-tasks/${taskId}/complete`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${authToken}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                } else {
+                    response = await fetch(`${API_BASE_URL}/tasks/${taskId}`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Authorization': `Bearer ${authToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ status: 'done' })
+                    });
+                }
+
+                if (!response.ok) throw new Error('Failed to save or register task completion status');
+
+                const responseData = await response.json();
+                let normalizedUpdatedTask;
+
+                if (isArticleTask) {
+                    normalizedUpdatedTask = { ...selectedTask, status: 'done' };
+                    if (currentUserData) {
+                        if (!currentUserData.completedArticles) currentUserData.completedArticles = [];
+                        if (!currentUserData.completedArticles.includes(taskId)) {
+                            currentUserData.completedArticles.push(taskId);
+                        }
+                    }
+                } else {
+                    normalizedUpdatedTask = responseData;
+                }
+                
                 localStorage.removeItem(`verified_ad_click_${taskId}`);
 
                 const taskIndex = tasks.findIndex(t => t._id === taskId);
                 if (taskIndex !== -1) {
-                    tasks[taskIndex] = updatedTask;
+                    tasks[taskIndex] = normalizedUpdatedTask;
                 }
 
                 closeTaskModal();
-                showCompletionModal(updatedTask.points);
+                showCompletionModal(isArticleTask ? 5 : normalizedUpdatedTask.points);
                 renderTasks();
                 updateStats();
                 showToast('Task marked as done! 🎉', 'success');
@@ -1028,7 +1151,6 @@
             const userLoaded = await loadUserProfile();
             if (userLoaded) {
                 await fetchTasks(false);
-                // Background updates run silently underneath without locking view spinners
                 setInterval(() => fetchTasks(true), 30000);
             }
         });
