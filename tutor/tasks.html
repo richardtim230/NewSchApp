@@ -506,10 +506,6 @@
                             seconds to earn points.
                         </p>
                     </div>
-
-                    <a id="open-article-btn" target="_blank" class="w-full flex items-center justify-center gap-2 bg-pqBlue text-white py-3 rounded-xl font-semibold">
-                        Read Article
-                    </a>
                 </div>
 
                 <div id="modal-dynamic-content" class="space-y-3 pt-2">
@@ -524,8 +520,8 @@
                         ⏳ Read for <span id="reading-countdown">0</span> seconds more
                     </div>
 
-                    <a id="modal-external-link-btn" href="#" class="hidden w-full text-center bg-pqBlue hover:bg-pqActiveBlue text-white font-bold py-3 rounded-lg transition-all text-[13px] items-center justify-center gap-2">
-                        Open Destination Link <i class="fas fa-external-link-alt text-[11px]"></i>
+                    <a id="modal-action-link-btn" href="#" class="hidden w-full text-center bg-pqBlue hover:bg-pqActiveBlue text-white font-bold py-3 rounded-lg transition-all text-[13px] flex items-center justify-center gap-2">
+                        Read Article <i class="fas fa-external-link-alt text-[11px]"></i>
                     </a>
                 </div>
 
@@ -582,6 +578,7 @@
         let readingTimer = null;
         let readingSecondsRemaining = 0;
         let readingTaskVerified = false;
+        let currentTaskBeingViewed = null;
 
         // YOUTUBE TRACKING & MEDIA HANDLING STATE
         let ytPlayerInstance = null;
@@ -662,6 +659,7 @@
             clearInterval(readingTimer);
             document.getElementById('taskDetailModal').classList.add('hidden');
             document.getElementById('taskDetailModal').style.display = 'none';
+            currentTaskBeingViewed = null;
         }
 
         function closeCompletionModal() {
@@ -946,11 +944,16 @@
             const task = tasks.find(t => t._id === taskId);
             if (!task) return;
 
+            currentTaskBeingViewed = task;
+
             const readingSection = document.getElementById("reading-task-section");
             const readingBanner = document.getElementById("reading-timer-banner");
+            const actionLinkBtn = document.getElementById('modal-action-link-btn');
 
             readingSection.classList.add("hidden");
             readingBanner.classList.add("hidden");
+            actionLinkBtn.classList.add('hidden');
+            actionLinkBtn.style.display = 'none';
 
             document.getElementById('modal-task-title').textContent = task.title;
             document.getElementById('modal-task-type').textContent = task.activityType;
@@ -968,14 +971,10 @@
 
             const ytWrapper = document.getElementById('yt-player-wrapper');
             const timerBanner = document.getElementById('video-timer-banner');
-            const externalLinkBtn = document.getElementById('modal-external-link-btn');
             const actionBtn = document.getElementById('modal-action-btn');
 
             ytWrapper.classList.add('hidden');
             timerBanner.classList.add('hidden');
-            externalLinkBtn.classList.add('hidden');
-            externalLinkBtn.style.display = 'none';
-            externalLinkBtn.removeAttribute('target');
 
             const targetUrl = task.meta?.url;
             const youtubeId = extractYouTubeId(targetUrl);
@@ -989,43 +988,63 @@
                 if (youtubeId) {
                     ytWrapper.classList.remove('hidden');
                     initYouTubePlayer(youtubeId, 0, true);
-                } else if (targetUrl) {
-                    externalLinkBtn.href = targetUrl;
-                    externalLinkBtn.target = "_blank";
-                    externalLinkBtn.textContent = 'Open Destination Link';
-                    externalLinkBtn.classList.remove('hidden');
-                    externalLinkBtn.style.display = 'flex';
                 }
             } else {
                 if (isReadingTask) {
+                    // READING TASK WITH AD GATE
                     readingSection.classList.remove("hidden");
 
                     document.getElementById("required-read-time").textContent = task.meta?.readTime || 60;
                     document.getElementById("reading-cover").src = task.image || "https://placehold.co/800x400";
-                    document.getElementById("open-article-btn").href = `/blog/${task.postId}`;
 
-                    readingSecondsRemaining = task.meta?.readTime || 60;
-                    document.getElementById("reading-countdown").textContent = readingSecondsRemaining;
-                    readingBanner.classList.remove("hidden");
+                    const isAdVerified = localStorage.getItem(`verified_ad_click_${task._id}`) === "true";
 
-                    actionBtn.disabled = true;
-                    actionBtn.textContent = "🔒 Read Article First";
+                    if (!isAdVerified) {
+                        // AD GATE UNCOMPLETED STATE
+                        actionBtn.textContent = '🔒 Verify Task via Ad Portal First';
+                        actionBtn.disabled = false;
+                        actionBtn.className = 'w-full bg-gradient-to-r from-pqOrange to-orange-600 text-white font-bold py-3 rounded-lg transition-all text-[13px]';
+                        actionBtn.onclick = function() {
+                            window.location.href = `view-ads?taskId=${task._id}`;
+                        };
+                    } else {
+                        // AD GATE COMPLETED STATE - Show article button
+                        readingSection.classList.remove("hidden");
+                        actionLinkBtn.href = `/blog/${task.postId}`;
+                        actionLinkBtn.target = "_blank";
+                        actionLinkBtn.textContent = 'Read Article';
+                        actionLinkBtn.classList.remove('hidden');
+                        actionLinkBtn.style.display = 'flex';
 
-                    readingTimer = setInterval(() => {
-                        readingSecondsRemaining--;
+                        // Start reading timer
+                        readingSecondsRemaining = task.meta?.readTime || 60;
                         document.getElementById("reading-countdown").textContent = readingSecondsRemaining;
+                        readingBanner.classList.remove("hidden");
 
-                        if (readingSecondsRemaining <= 0) {
-                            clearInterval(readingTimer);
-                            readingTaskVerified = true;
-                            readingBanner.innerHTML = "✅ Reading verified";
-                            actionBtn.disabled = false;
-                            actionBtn.textContent = "Claim Your Points 🎉";
-                            actionBtn.className = "w-full bg-pqOrange hover:bg-orange-600 text-white font-bold py-3 rounded-lg";
-                        }
-                    }, 1000);
+                        actionBtn.disabled = true;
+                        actionBtn.textContent = "🔒 Read Article First";
+                        actionBtn.className = 'w-full bg-gray-200 text-gray-400 font-bold py-3 rounded-lg text-[13px] cursor-not-allowed';
+
+                        readingTimer = setInterval(() => {
+                            readingSecondsRemaining--;
+                            document.getElementById("reading-countdown").textContent = readingSecondsRemaining;
+
+                            if (readingSecondsRemaining <= 0) {
+                                clearInterval(readingTimer);
+                                readingTaskVerified = true;
+                                readingBanner.innerHTML = "✅ Reading verified";
+                                actionBtn.disabled = false;
+                                actionBtn.textContent = "Claim Your Points 🎉";
+                                actionBtn.className = "w-full bg-pqOrange hover:bg-orange-600 text-white font-bold py-3 rounded-lg";
+                                actionBtn.onclick = function() {
+                                    updateTaskStatus();
+                                };
+                            }
+                        }, 1000);
+                    }
 
                 } else if (youtubeId) {
+                    // YOUTUBE VIDEO TASK
                     ytWrapper.classList.remove('hidden');
                     timerBanner.classList.remove('hidden');
                     
@@ -1037,37 +1056,44 @@
                     actionBtn.textContent = '🔒 Complete Video to Unlock Points';
                     actionBtn.disabled = true;
                     actionBtn.className = 'w-full bg-gray-200 text-gray-400 font-bold py-3 rounded-lg text-[13px] cursor-not-allowed';
+                    actionBtn.onclick = null;
 
                     initYouTubePlayer(youtubeId, watchTimeRemaining, false);
                 } else if (targetUrl) {
+                    // OTHER EXTERNAL LINK TASK WITH AD GATE
                     const isAdVerified = localStorage.getItem(`verified_ad_click_${task._id}`) === "true";
 
                     if (!isAdVerified) {
-                        externalLinkBtn.href = `view-ads?taskId=${task._id}`;
-                        externalLinkBtn.innerHTML = 'Unlock Activation Link via Ad Portal 🚀';
-                        externalLinkBtn.className = 'w-full text-center bg-gradient-to-r from-pqOrange to-orange-600 text-white font-bold py-3.5 rounded-lg transition-all text-[13px] flex items-center justify-center gap-2';
-                        externalLinkBtn.classList.remove('hidden');
-                        externalLinkBtn.style.display = 'flex';
-
+                        // AD GATE UNCOMPLETED STATE
                         actionBtn.textContent = '🔒 Verify Task via Ad Portal First';
-                        actionBtn.disabled = true;
-                        actionBtn.className = 'w-full bg-gray-200 text-gray-400 font-bold py-3 rounded-lg text-[13px] cursor-not-allowed';
+                        actionBtn.disabled = false;
+                        actionBtn.className = 'w-full bg-gradient-to-r from-pqOrange to-orange-600 text-white font-bold py-3 rounded-lg transition-all text-[13px]';
+                        actionBtn.onclick = function() {
+                            window.location.href = `view-ads?taskId=${task._id}`;
+                        };
                     } else {
-                        externalLinkBtn.href = targetUrl;
-                        externalLinkBtn.target = "_blank";
-                        externalLinkBtn.innerHTML = 'Get Activation Link 🔗';
-                        externalLinkBtn.className = 'w-full text-center bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-lg transition-all text-[13px] flex items-center justify-center gap-2';
-                        externalLinkBtn.classList.remove('hidden');
-                        externalLinkBtn.style.display = 'flex';
+                        // AD GATE COMPLETED STATE
+                        actionLinkBtn.href = targetUrl;
+                        actionLinkBtn.target = "_blank";
+                        actionLinkBtn.innerHTML = 'Open Destination Link <i class="fas fa-external-link-alt text-[11px]"></i>';
+                        actionLinkBtn.classList.remove('hidden');
+                        actionLinkBtn.style.display = 'flex';
 
                         actionBtn.textContent = 'Claim Your Points! 🎉';
                         actionBtn.disabled = false;
                         actionBtn.className = 'w-full bg-pqOrange hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition-all text-[13px] shadow-md';
+                        actionBtn.onclick = function() {
+                            updateTaskStatus();
+                        };
                     }
                 } else {
+                    // Default Fallback
                     actionBtn.textContent = 'Mark as Done';
                     actionBtn.disabled = false;
                     actionBtn.className = 'w-full bg-pqOrange hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition-all text-[13px]';
+                    actionBtn.onclick = function() {
+                        updateTaskStatus();
+                    };
                 }
             }
 
@@ -1126,6 +1152,9 @@
                             document.getElementById('modal-action-btn').disabled = false;
                             document.getElementById('modal-action-btn').textContent = 'Claim Your Points 🎉';
                             document.getElementById('modal-action-btn').className = 'w-full bg-pqOrange hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition-all text-[13px]';
+                            document.getElementById('modal-action-btn').onclick = function() {
+                                updateTaskStatus();
+                            };
                         }
                     }, 1000);
                 }
