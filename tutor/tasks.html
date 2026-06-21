@@ -317,7 +317,7 @@
         </div>
     </nav>
 
-    <div id="drawer-navigation" class="fixed top-0 left-0 z-50 md:z-30 h-screen p-0 overflow-y-auto transition-transform -translate-x-full md:translate-x-0 bg-pqDarkBg w-[260px] border-r border-white/[0.05]">
+    <div id="drawer-navigation" class="fixed top-0 left-0 z-50 md:z-30 h-screen p-0 overflow-y-auto transition-transform -translate-x-full md:translate-x-0 bg-pqDarkBg w-[260px] border-r border-white/5">
         
         <div class="px-4 pt-5 pb-3 bg-pqBlue border-b border-white/5">
             <h2 class="text-[18px] font-extrabold text-white flex items-center tracking-wide">
@@ -353,7 +353,7 @@
                     </button>
                 </li>
                 <li>
-                    <button id="desk-nav-tasks" class="w-full flex items-center px-4 py-2 text-[12.5px] font-medium text-white bg-white/10 rounded-lg transition-all border-l-[3.5px] border-pqOrange">
+                    <button id="desk-nav-tasks" class="w-full flex items-center px-4 py-2 text-[12.5px] font-medium text-white bg-white/10 rounded-lg transition-all border-l-[3.5px] border-pqOrange nav-active-desktop">
                         <i class="fas fa-tasks w-4 mr-3 text-pqOrange"></i> Task Center
                     </button>
                 </li>
@@ -516,12 +516,13 @@
                     <div id="video-timer-banner" class="hidden text-center text-[12px] font-bold text-pqOrange bg-orange-50 border border-pqOrange/20 py-2.5 rounded-lg transition-all animate-pulse">
                         ⏳ Watch for <span id="countdown-seconds">0</span>s more to unlock your points
                     </div>
+
                     <div id="reading-timer-banner" class="hidden text-center text-[12px] font-bold text-pqOrange bg-orange-50 border border-pqOrange/20 py-2.5 rounded-lg">
                         ⏳ Read for <span id="reading-countdown">0</span> seconds more
                     </div>
 
-                    <a id="modal-action-link-btn" href="#" class="hidden w-full text-center bg-pqBlue hover:bg-pqActiveBlue text-white font-bold py-3 rounded-lg transition-all text-[13px] flex items-center justify-center gap-2">
-                        Read Article <i class="fas fa-external-link-alt text-[11px]"></i>
+                    <a id="modal-external-link-btn" href="#" class="hidden w-full text-center bg-pqBlue hover:bg-pqActiveBlue text-white font-bold py-3 rounded-lg transition-all text-[13px] items-center justify-center gap-2 shadow-sm">
+                        Open Destination Link <i class="fas fa-external-link-alt text-[11px]"></i>
                     </a>
                 </div>
 
@@ -598,28 +599,36 @@
         }
 
         // ============================================
+        // MOBILE MENU TOGGLE & OUTSIDE CLICK CLOSE
+        // ============================================
+        document.getElementById('mobile-menu-btn')?.addEventListener('click', function(e) {
+            e.stopPropagation(); 
+            const drawer = document.getElementById('drawer-navigation');
+            drawer.classList.toggle('-translate-x-full');
+        });
+
+        document.querySelectorAll('#drawer-navigation button').forEach(btn => {
+            btn.addEventListener('click', function() {
+                if (window.innerWidth < 768) {
+                    document.getElementById('drawer-navigation').classList.add('-translate-x-full');
+                }
+            });
+        });
+
+        document.addEventListener('click', function(e) {
+            const drawer = document.getElementById('drawer-navigation');
+            const menuBtn = document.getElementById('mobile-menu-btn');
+            
+            if (window.innerWidth < 768 && drawer && !drawer.classList.contains('-translate-x-full')) {
+                if (!drawer.contains(e.target) && !menuBtn?.contains(e.target)) {
+                    drawer.classList.add('-translate-x-full');
+                }
+            }
+        });
+
+        // ============================================
         // UTILITY HELPERS
         // ============================================
-        function escapeHtml(text) {
-            const map = {
-                '&': '&amp;',
-                '<': '&lt;',
-                '>': '&gt;',
-                '"': '&quot;',
-                "'": '&#039;'
-            };
-            return String(text).replace(/[&<>"']/g, m => map[m]);
-        }
-
-        function formatDate(dateString) {
-            const date = new Date(dateString);
-            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        }
-
-        function capitalize(str) {
-            return String(str).charAt(0).toUpperCase() + String(str).slice(1);
-        }
-
         function showLoadingSpinner(show) {
             const spinner = document.getElementById('loading-spinner');
             if (show) {
@@ -647,94 +656,32 @@
             }
         }
 
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return String(text).replace(/[&<>"']/g, m => map[m]);
+        }
+
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+
+        function capitalize(str) {
+            return String(str).charAt(0).toUpperCase() + String(str).slice(1);
+        }
+
         function showToast(message, type = 'success') {
             const toast = document.createElement('div');
             toast.className = `toast ${type}`;
             toast.textContent = message;
             document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 3000);
-        }
-
-        function closeTaskModal() {
-            clearInterval(readingTimer);
-            document.getElementById('taskDetailModal').classList.add('hidden');
-            document.getElementById('taskDetailModal').style.display = 'none';
-            currentTaskBeingViewed = null;
-        }
-
-        function closeCompletionModal() {
-            document.getElementById('completionModal').classList.add('hidden');
-            document.getElementById('completionModal').style.display = 'none';
-        }
-
-        async function updateTaskStatus() {
-            const taskId = document.getElementById('modal-action-btn').dataset.taskId;
-            const task = tasks.find(t => t._id === taskId);
-            
-            if (!task) {
-                showToast('Task not found', 'error');
-                return;
-            }
-
-            try {
-                showLoadingSpinner(true);
-                
-                // Send API request to mark task as done and claim points
-                const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/claim`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        userId: currentUserId,
-                        points: task.points
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Failed to claim points: ${response.status}`);
-                }
-
-                const data = await response.json();
-                const earnedPoints = data.pointsAwarded || task.points;
-                
-                // Update task status locally
-                task.status = 'done';
-                
-                // Update UI with earned points
-                document.getElementById('earned-points').textContent = earnedPoints;
-                document.getElementById('earned-points-badge').textContent = earnedPoints + ' points';
-                
-                // Show completion modal
-                document.getElementById('completionModal').classList.remove('hidden');
-                document.getElementById('completionModal').style.display = 'flex';
-                
-                // Refresh tasks and stats
-                fetchTasks(true);
-                
-                showToast('Points claimed successfully!', 'success');
-            } catch (error) {
-                console.error('Error claiming points:', error);
-                showToast(`Error: ${error.message}`, 'error');
-            } finally {
-                showLoadingSpinner(false);
-            }
-        }
-
-        function goToDashboard() {
-            window.location.href = '../dashboard';
-        }
-
-        function goToPractice() {
-            window.location.href = '../practice';
-        }
-
-        function logout() {
-            localStorage.removeItem('token');
-            sessionStorage.removeItem('token');
-            localStorage.removeItem('authToken');
-            window.location.href = '../';
+            setTimeout(() => toast.remove(), 4000);
         }
 
         function extractYouTubeId(url) {
@@ -760,34 +707,6 @@
             
             isVideoRequirementMet = false;
         }
-
-        // ============================================
-        // MOBILE MENU TOGGLE & OUTSIDE CLICK CLOSE
-        // ============================================
-        document.getElementById('mobile-menu-btn')?.addEventListener('click', function(e) {
-            e.stopPropagation(); 
-            const drawer = document.getElementById('drawer-navigation');
-            drawer.classList.toggle('-translate-x-full');
-        });
-
-        document.querySelectorAll('#drawer-navigation button').forEach(btn => {
-            btn.addEventListener('click', function() {
-                if (window.innerWidth < 768) {
-                    document.getElementById('drawer-navigation').classList.add('-translate-x-full');
-                }
-            });
-        });
-
-        document.addEventListener('click', function(e) {
-            const drawer = document.getElementById('drawer-navigation');
-            const menuBtn = document.getElementById('mobile-menu-btn');
-            
-            if (window.innerWidth < 768 && drawer && !drawer.classList.contains('-translate-x-full')) {
-                if (!drawer.contains(e.target) && !menuBtn?.contains(e.target)) {
-                    drawer.classList.add('-translate-x-full');
-                }
-            }
-        });
 
         // ============================================
         // AUTHENTICATION & USER LOADING
@@ -837,41 +756,6 @@
         }
 
         // ============================================
-        // FETCH RANDOM READING TASKS FROM POSTS
-        // ============================================
-        async function fetchRandomReadingTasks() {
-            try {
-                const response = await fetch(`${API_BASE_URL}/public/article-tasks`, {
-                    method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                if (!response.ok) {
-                    console.warn('Could not fetch article tasks');
-                    return [];
-                }
-
-                const articleTasks = await response.json();
-                
-                // Assign random points between 2-10 to each task
-                const tasksWithRandomPoints = articleTasks.map(task => ({
-                    ...task,
-                    points: Math.floor(Math.random() * 9) + 2,
-                    activityType: 'Reading Task',
-                    status: 'active',
-                    _id: task.taskId || task.postId
-                }));
-
-                return tasksWithRandomPoints;
-            } catch (err) {
-                console.error('Error fetching reading tasks:', err);
-                return [];
-            }
-        }
-
-        // ============================================
         // TASK FETCHING & MANAGEMENT
         // ============================================
         async function fetchTasks(isSilent = false) {
@@ -893,10 +777,6 @@
                 }
 
                 tasks = await response.json();
-                
-                // Fetch and merge reading tasks from posts
-                const readingTasks = await fetchRandomReadingTasks();
-                tasks = [...tasks, ...readingTasks];
                 
                 renderTasks();
                 updateStats();
@@ -991,18 +871,15 @@
             if (!task) return;
 
             currentTaskBeingViewed = task;
-            
-            // Store task ID in button's data attribute for claim functionality
-            document.getElementById('modal-action-btn').dataset.taskId = taskId;
 
             const readingSection = document.getElementById("reading-task-section");
             const readingBanner = document.getElementById("reading-timer-banner");
-            const actionLinkBtn = document.getElementById('modal-action-link-btn');
+            const externalLinkBtn = document.getElementById('modal-external-link-btn');
 
             readingSection.classList.add("hidden");
             readingBanner.classList.add("hidden");
-            actionLinkBtn.classList.add('hidden');
-            actionLinkBtn.style.display = 'none';
+            externalLinkBtn.classList.add('hidden');
+            externalLinkBtn.style.display = 'none';
 
             document.getElementById('modal-task-title').textContent = task.title;
             document.getElementById('modal-task-type').textContent = task.activityType;
@@ -1029,6 +906,9 @@
             const youtubeId = extractYouTubeId(targetUrl);
             const isReadingTask = task.activityType === "Reading Task";
 
+            // Store task ID in button's data attribute for claim functionality
+            document.getElementById('modal-action-btn').dataset.taskId = taskId;
+
             if (task.status === 'done') {
                 actionBtn.textContent = '✓ Completed';
                 actionBtn.disabled = true;
@@ -1037,17 +917,24 @@
                 if (youtubeId) {
                     ytWrapper.classList.remove('hidden');
                     initYouTubePlayer(youtubeId, 0, true);
+                } else if (targetUrl && !isReadingTask) {
+                    externalLinkBtn.href = targetUrl;
+                    externalLinkBtn.target = "_blank";
+                    externalLinkBtn.classList.remove('hidden');
+                    externalLinkBtn.style.display = 'flex';
                 }
             } else {
                 actionBtn.disabled = false;
                 actionBtn.classList.remove('opacity-60');
                 actionBtn.className = 'w-full bg-pqOrange hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition-all text-[13px]';
                 actionBtn.textContent = 'Mark as Done';
-                
+
                 if (isReadingTask) {
+                    // READING TASK
                     readingSection.classList.remove("hidden");
                     document.getElementById("required-read-time").textContent = task.meta?.readTime || 60;
                     document.getElementById("reading-cover").src = task.image || "https://placehold.co/800x400";
+                    
                     const isAdVerified = localStorage.getItem(`verified_ad_click_${task._id}`) === "true";
                     
                     if (isAdVerified) {
@@ -1055,10 +942,34 @@
                         startReadingTimer(task);
                     }
                 } else if (youtubeId) {
+                    // VIDEO TASK
                     ytWrapper.classList.remove('hidden');
-                    const watchTime = task.meta?.watchTime || 30;
-                    initYouTubePlayer(youtubeId, watchTime, false);
+                    timerBanner.classList.remove('hidden');
+                    
+                    let rawDuration = parseInt(task.meta?.duration) || 10;
+                    watchTimeRemaining = rawDuration < 10 ? rawDuration * 60 : rawDuration;
+                    
+                    document.getElementById('countdown-seconds').textContent = watchTimeRemaining;
+
+                    actionBtn.textContent = '🔒 Complete Video to Unlock Points';
+                    actionBtn.disabled = true;
+                    actionBtn.className = 'w-full bg-gray-200 text-gray-400 font-bold py-3 rounded-lg text-[13px] cursor-not-allowed';
+
+                    initYouTubePlayer(youtubeId, watchTimeRemaining, false);
                 }
+            }
+
+            if (task.meta && Object.keys(task.meta).length > 0) {
+                document.getElementById('meta-section').classList.remove('hidden');
+                const metaContent = document.getElementById('meta-content');
+                metaContent.innerHTML = Object.entries(task.meta).map(([key, value]) => `
+                    <div>
+                        <span class="font-bold text-gray-700">${capitalize(key)}:</span>
+                        <span class="text-gray-600">${value}</span>
+                    </div>
+                `).join('');
+            } else {
+                document.getElementById('meta-section').classList.add('hidden');
             }
 
             document.getElementById('taskDetailModal').classList.remove('hidden');
@@ -1066,7 +977,7 @@
         }
 
         function initYouTubePlayer(videoId, watchTimeRequired, isViewOnly) {
-            if (!videoId) return;
+            if (!videoId || !window.YT) return;
             
             watchTimeRemaining = watchTimeRequired;
             
@@ -1075,14 +986,23 @@
                 width: '100%',
                 videoId: videoId,
                 playerVars: {
-                    autoplay: 1,
-                    controls: 1,
-                    rel: 0
+                    'playsinline': 1,
+                    'rel': 0,
+                    'modestbranding': 1
                 },
                 events: {
                     'onReady': (event) => {
                         if (!isViewOnly && watchTimeRequired > 0) {
+                            event.target.playVideo();
                             startVideoCountdown();
+                        }
+                    },
+                    'onStateChange': (e) => {
+                        if (e.data === YT.PlayerState.PLAYING && !isViewOnly && videoCountdownInterval === null) {
+                            startVideoCountdown();
+                        } else if (e.data === YT.PlayerState.PAUSED && !isViewOnly && videoCountdownInterval) {
+                            clearInterval(videoCountdownInterval);
+                            videoCountdownInterval = null;
                         }
                     }
                 }
@@ -1099,8 +1019,17 @@
                     
                     if (watchTimeRemaining === 0) {
                         clearInterval(videoCountdownInterval);
+                        videoCountdownInterval = null;
                         isVideoRequirementMet = true;
-                        document.getElementById('video-timer-banner').classList.add('hidden');
+                        
+                        document.getElementById('video-timer-banner').className = "text-center text-[12px] font-bold text-green-600 bg-green-50 border border-green-200 py-2.5 rounded-lg transition-all";
+                        document.getElementById('video-timer-banner').innerHTML = "✅ Verification complete! Points are now unlocked.";
+
+                        const actionBtn = document.getElementById('modal-action-btn');
+                        actionBtn.textContent = 'Claim Your Points! 🎉';
+                        actionBtn.disabled = false;
+                        actionBtn.className = 'w-full bg-pqOrange hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition-all text-[13px] shadow-md';
+                        
                         showToast('Video requirement met! You can now claim points.', 'success');
                     }
                 }
@@ -1122,22 +1051,117 @@
                     clearInterval(readingTimer);
                     readingTaskVerified = true;
                     document.getElementById('reading-timer-banner').classList.add('hidden');
+                    
+                    const actionBtn = document.getElementById('modal-action-btn');
+                    actionBtn.textContent = 'Claim Your Points! 🎉';
+                    actionBtn.disabled = false;
+                    actionBtn.className = 'w-full bg-pqOrange hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition-all text-[13px] shadow-md';
+                    
                     showToast('Reading requirement met! You can now claim points.', 'success');
                 }
             }, 1000);
         }
 
-        // ============================================
-        // INITIALIZATION
-        // ============================================
-        (async function init() {
-            showSkeletonLoader(true);
-            const profileLoaded = await loadUserProfile();
-            if (profileLoaded) {
-                await fetchTasks();
+        function closeTaskModal() {
+            if (readingTimer) clearInterval(readingTimer);
+            resetMediaState();
+            document.getElementById('taskDetailModal').classList.add('hidden');
+            document.getElementById('taskDetailModal').style.display = 'none';
+            currentTaskBeingViewed = null;
+        }
+
+        async function updateTaskStatus() {
+            const taskId = document.getElementById('modal-action-btn').dataset.taskId;
+            const task = tasks.find(t => t._id === taskId);
+            
+            if (!task) {
+                showToast('Task not found', 'error');
+                return;
             }
-            showSkeletonLoader(false);
-        })();
+
+            try {
+                showLoadingSpinner(true);
+                
+                const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/claim`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        userId: currentUserId,
+                        points: task.points
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Failed to claim points: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const earnedPoints = data.pointsAwarded || task.points;
+                
+                task.status = 'done';
+                localStorage.removeItem(`verified_ad_click_${taskId}`);
+                
+                document.getElementById('earned-points').textContent = earnedPoints;
+                document.getElementById('earned-points-badge').textContent = earnedPoints + ' points';
+                
+                closeTaskModal();
+                document.getElementById('completionModal').classList.remove('hidden');
+                document.getElementById('completionModal').style.display = 'flex';
+                
+                fetchTasks(true);
+                showToast('Points claimed successfully! 🎉', 'success');
+            } catch (error) {
+                console.error('Error claiming points:', error);
+                showToast(`Error: ${error.message}`, 'error');
+            } finally {
+                showLoadingSpinner(false);
+            }
+        }
+
+        function closeCompletionModal() {
+            document.getElementById('completionModal').classList.add('hidden');
+            document.getElementById('completionModal').style.display = 'none';
+        }
+
+        // ============================================
+        // NAVIGATION
+        // ============================================
+        function goToDashboard() { window.location.href = '../dashboard'; }
+        function goToPractice() { window.location.href = '../practice'; }
+
+        function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                localStorage.removeItem('token');
+                localStorage.removeItem('authToken');
+                sessionStorage.removeItem('token');
+                window.location.href = '../';
+            }
+        }
+
+        // ============================================
+        // MODAL CLICK OUTSIDE HANDLERS
+        // ============================================
+        document.getElementById('taskDetailModal')?.addEventListener('click', function(e) {
+            if (e.target === this) closeTaskModal();
+        });
+
+        document.getElementById('completionModal')?.addEventListener('click', function(e) {
+            if (e.target === this) closeCompletionModal();
+        });
+
+        // ============================================
+        // PAGE INITIALIZATION
+        // ============================================
+        document.addEventListener('DOMContentLoaded', async function() {
+            const userLoaded = await loadUserProfile();
+            if (userLoaded) {
+                await fetchTasks(false);
+                setInterval(() => fetchTasks(true), 30000);
+            }
+        });
     </script>
 </body>
 </html>
