@@ -1719,6 +1719,86 @@
         window.location.href = "../mock-icthallb";
     }
 
+      // ============ AUTO-CLEANUP - CLEAR ALL EXCEPT OUR APP ============
+const CLEANUP_INTERVAL_MINUTES = 1;
+const CLEANUP_STORAGE_KEY = 'examguard_cleanup_timestamp';
+
+// Whitelist your app's keys to preserve
+const APP_KEYS_WHITELIST = [
+    'student_jwt_token',
+    'token',
+    'student_data',
+    'exam_answers',
+    'exam_access_code',
+    'exam_course_code',
+    'exam_type',
+    'cbt_count',
+    'theory_count',
+    'dashboard_welcome_seen',
+    'examguard_cleanup_timestamp',
+    'last_cleanup_timestamp'
+];
+
+function clearAllExceptApp() {
+    // Get all current keys
+    const allKeys = Object.keys(localStorage);
+    
+    // Remove only keys that are NOT in our whitelist
+    allKeys.forEach(key => {
+        if (!APP_KEYS_WHITELIST.includes(key)) {
+            localStorage.removeItem(key);
+            console.log(`🗑️ Cleared: ${key}`);
+        }
+    });
+    
+    console.log('✅ Other sites\' data cleared - ExamGuard data preserved');
+}
+
+function setupAutoCleanup(expirationMinutes = CLEANUP_INTERVAL_MINUTES) {
+    const lastCleanup = localStorage.getItem(CLEANUP_STORAGE_KEY);
+    const now = Date.now();
+    const expirationMs = expirationMinutes * 60 * 1000;
+
+    if (!lastCleanup) {
+        localStorage.setItem(CLEANUP_STORAGE_KEY, now.toString());
+        console.log(`⏱️ Cleanup timer started - will clear other sites' data after ${expirationMinutes} min inactivity`);
+        return;
+    }
+
+    const timeSinceLastCleanup = now - parseInt(lastCleanup);
+
+    if (timeSinceLastCleanup > expirationMs) {
+        clearAllExceptApp();
+        localStorage.setItem(CLEANUP_STORAGE_KEY, now.toString());
+        console.log('🧹 Cleared all localStorage from other sites');
+        
+        if (window.location.pathname.includes('/tutor/') || window.location.pathname.includes('/gemini')) {
+            alert('⏰ Session expired. Clearing other sites\' data for security.');
+            // Don't redirect - just clear
+        }
+    }
+}
+
+// Activity tracking
+function resetCleanupTimer() {
+    localStorage.setItem(CLEANUP_STORAGE_KEY, Date.now().toString());
+}
+
+document.addEventListener('mousemove', resetCleanupTimer, { passive: true });
+document.addEventListener('keypress', resetCleanupTimer, { passive: true });
+document.addEventListener('click', resetCleanupTimer, { passive: true });
+document.addEventListener('scroll', resetCleanupTimer, { passive: true });
+document.addEventListener('touchstart', resetCleanupTimer, { passive: true });
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    setupAutoCleanup(CLEANUP_INTERVAL_MINUTES);
+    
+    setInterval(() => {
+        setupAutoCleanup(CLEANUP_INTERVAL_MINUTES);
+    }, 5 * 2 * 1000);
+});  
+
     // ============ API ============
     async function fetchStudentProfile() {
         try {
