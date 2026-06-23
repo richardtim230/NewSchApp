@@ -2,801 +2,430 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>CBT Exam Session - OAU ExamGuard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Creator Dashboard - OAU ExamGuard</title>
     
-    <!-- Fonts & Icons -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
-
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+    <!-- Chart.js for Analytics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <script>
         tailwind.config = {
             theme: {
                 extend: {
                     colors: {
-                        brand: {
-                            blue: '#002046',
-                            active: '#0d2b52',
-                            orange: '#ff5622',
-                            light: '#f4f7fa',
-                            answered: '#10b981',      // Emerald 500
-                            unanswered: '#ef4444',    // Red 500
-                            marked: '#f59e0b',        // Amber 500
-                            current: '#3b82f6'        // Blue 500
-                        }
+                        pqBlue: '#002046',       
+                        pqDarkBg: '#001633',     
+                        pqActiveBlue: '#0d2b52', 
+                        pqOrange: '#ff5622',     
+                        pqLightBg: '#f4f7fa',    
+                        pqCardBg: '#ffffff',     
+                        pqGreen: '#4caf50'
                     },
                     fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                    },
-                    boxShadow: {
-                        'soft': '0 4px 20px rgba(0, 0, 0, 0.05)',
-                        'inner-soft': 'inset 0 2px 4px 0 rgba(0, 0, 0, 0.03)',
+                        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
                     }
                 }
             }
         }
     </script>
-
     <style>
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #f4f7fa; border-radius: 4px; }
+        ::-webkit-scrollbar { width: 6px; height: 4px; }
+        ::-webkit-scrollbar-track { background: #f4f7fa; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-
-        /* Hide Default Radio Buttons */
-        input[type="radio"] {
-            display: none;
-        }
-
-        /* Option Container Styling */
-        .option-label {
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-        }
         
-        .option-label:hover {
-            border-color: #cbd5e1;
-            background-color: #f8fafc;
-        }
-
-        input[type="radio"]:checked + .option-label {
-            border-color: #002046;
-            background-color: #f0f4f8;
-            box-shadow: 0 0 0 1px #002046;
-        }
-
-        input[type="radio"]:checked + .option-label .option-letter {
-            background-color: #002046;
-            color: #ffffff;
-            border-color: #002046;
-        }
-
-        /* Timer Pulse Animation */
-        @keyframes urgent-pulse {
-            0%, 100% { background-color: #ef4444; color: white; transform: scale(1); }
-            50% { background-color: #fee2e2; color: #ef4444; transform: scale(1.02); }
-        }
-        .timer-urgent {
-            animation: urgent-pulse 1s infinite;
-            border-color: #ef4444 !important;
-        }
-
-        /* Prevent Text Selection during exam */
-        .no-select {
-            -webkit-user-select: none;
-            -moz-user-select: none;
-            -ms-user-select: none;
-            user-select: none;
-        }
-
-        /* Calculator/Scratchpad Modal Transition */
-        .modal-backdrop {
-            backdrop-filter: blur(4px);
-            transition: opacity 0.3s ease;
-        }
+        /* Smooth transitions for sidebar */
+        #sidebar { transition: transform 0.3s ease-in-out; }
     </style>
 </head>
-<body class="bg-brand-light text-gray-800 h-screen flex flex-col overflow-hidden font-sans no-select">
+<body class="antialiased text-gray-800 bg-pqLightBg h-screen flex overflow-hidden">
 
-    <!-- Top Navigation Header -->
-    <header class="bg-white border-b border-gray-200 shadow-sm h-16 flex items-center justify-between px-4 lg:px-6 shrink-0 z-30">
-        <!-- Exam Identity -->
-        <div class="flex items-center gap-4 w-1/3">
-            <div class="hidden md:flex items-center justify-center w-10 h-10 bg-brand-blue text-white rounded-lg shadow-inner">
-                <i class="fas fa-laptop-code text-lg"></i>
-            </div>
-            <div>
-                <h1 class="text-sm md:text-base font-black text-brand-blue leading-tight truncate">CSC 201: Introduction to Computer Programming</h1>
-                <p class="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-widest mt-0.5">First Semester Examination</p>
-            </div>
-        </div>
+    <!-- Mobile Sidebar Overlay -->
+    <div id="sidebarOverlay" class="fixed inset-0 bg-gray-900/50 z-40 hidden lg:hidden transition-opacity" onclick="toggleSidebar()"></div>
 
-        <!-- Master Countdown Timer -->
-        <div class="w-1/3 flex justify-center">
-            <div id="master-timer" class="flex items-center gap-2 lg:gap-3 bg-white border-2 border-gray-200 px-4 lg:px-6 py-1.5 lg:py-2 rounded-full shadow-sm transition-colors duration-300">
-                <i class="far fa-clock text-gray-400 text-lg timer-icon"></i>
-                <span id="countdown-display" class="text-lg lg:text-xl font-black tabular-nums tracking-wider text-brand-blue">02:00:00</span>
+    <!-- Sidebar Navigation -->
+    <aside id="sidebar" class="fixed lg:static top-0 left-0 z-50 w-64 h-full bg-white border-r border-gray-200 transform -translate-x-full lg:translate-x-0 flex flex-col shadow-2xl lg:shadow-none">
+        
+        <!-- Logo Area -->
+        <div class="h-16 flex items-center px-6 border-b border-gray-100">
+            <div class="flex items-center gap-3">
+                <span class="text-2xl">🛡️</span>
+                <div class="flex flex-col">
+                    <span class="text-base font-black tracking-tight text-pqBlue leading-none">OAU ExamGuard</span>
+                    <span class="text-[10px] text-pqOrange font-bold tracking-wider uppercase mt-0.5">Creator Studio</span>
+                </div>
             </div>
-        </div>
-
-        <!-- Candidate Identity -->
-        <div class="flex items-center justify-end gap-3 w-1/3">
-            <div class="text-right hidden md:block">
-                <p class="text-sm font-bold text-brand-blue leading-none">Oluwaseun Adeyemi</p>
-                <p class="text-[11px] text-gray-500 font-medium mt-1">MAT NO: CSC/2021/089</p>
-            </div>
-            <img src="https://ui-avatars.com/api/?name=Oluwaseun+Adeyemi&background=f4f7fa&color=002046&rounded=true" alt="Candidate Photo" class="w-10 h-10 rounded-full border-2 border-gray-200">
-            <!-- Mobile Menu Toggle -->
-            <button id="mobile-palette-toggle" class="lg:hidden ml-2 w-10 h-10 bg-gray-100 rounded-lg text-gray-600 flex items-center justify-center hover:bg-gray-200">
-                <i class="fas fa-th"></i>
+            <!-- Close button for mobile -->
+            <button class="ml-auto lg:hidden text-gray-400 hover:text-pqOrange" onclick="toggleSidebar()">
+                <i class="fas fa-times text-lg"></i>
             </button>
         </div>
-    </header>
 
-    <!-- Main Workspace Area -->
-    <div class="flex flex-1 overflow-hidden relative">
-        
-        <!-- Left Section: Question Content Area -->
-        <main class="flex-1 flex flex-col h-full bg-brand-light relative">
+        <!-- Nav Links -->
+        <div class="flex-1 overflow-y-auto py-6 px-4 space-y-1">
+            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3 mb-2">Menu</p>
             
-            <!-- Tools Bar (Calculator, Constants, Font Size) -->
-            <div class="h-12 border-b border-gray-200 bg-white/50 flex items-center justify-between px-4 sm:px-8 shrink-0">
-                <div class="flex items-center gap-4">
-                    <button class="text-xs font-bold text-gray-500 hover:text-brand-blue flex items-center gap-1.5 transition-colors" onclick="toggleModal('calculator-modal')">
-                        <i class="fas fa-calculator text-brand-orange"></i> Calculator
-                    </button>
-                    <div class="w-px h-4 bg-gray-300"></div>
-                    <button class="text-xs font-bold text-gray-500 hover:text-brand-blue flex items-center gap-1.5 transition-colors">
-                        <i class="fas fa-superscript text-brand-orange"></i> Formula Sheet
-                    </button>
+            <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-blue-50 text-pqBlue font-bold text-sm shadow-sm border border-blue-100">
+                <i class="fas fa-chart-pie text-base w-5 text-pqOrange"></i> Dashboard Overview
+            </a>
+            <a href="#" class="flex items-center justify-between px-3 py-2.5 rounded-xl text-gray-600 hover:text-pqBlue hover:bg-gray-50 transition-all text-sm font-semibold group">
+                <div class="flex items-center gap-3">
+                    <i class="fas fa-file-alt text-base w-5 text-gray-400 group-hover:text-pqBlue"></i> My Articles
                 </div>
-                <div class="flex items-center gap-2">
-                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mr-1">Text Size:</span>
-                    <button onclick="changeFontSize('decrease')" class="w-7 h-7 rounded bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 flex items-center justify-center font-bold font-serif text-sm">A-</button>
-                    <button onclick="changeFontSize('increase')" class="w-7 h-7 rounded bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 flex items-center justify-center font-bold font-serif text-base">A+</button>
+                <span class="bg-gray-100 text-gray-500 text-[10px] px-2 py-0.5 rounded-md font-bold">12</span>
+            </a>
+            <a href="#" class="flex items-center justify-between px-3 py-2.5 rounded-xl text-gray-600 hover:text-pqBlue hover:bg-gray-50 transition-all text-sm font-semibold group">
+                <div class="flex items-center gap-3">
+                    <i class="fas fa-comments text-base w-5 text-gray-400 group-hover:text-pqBlue"></i> Comments
+                </div>
+                <span class="bg-pqOrange text-white text-[10px] px-2 py-0.5 rounded-md font-bold shadow-sm">3 New</span>
+            </a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-600 hover:text-pqBlue hover:bg-gray-50 transition-all text-sm font-semibold group">
+                <i class="fas fa-chart-line text-base w-5 text-gray-400 group-hover:text-pqBlue"></i> Advanced Analytics
+            </a>
+
+            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3 mt-6 mb-2">Settings</p>
+            <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-600 hover:text-pqBlue hover:bg-gray-50 transition-all text-sm font-semibold group">
+                <i class="fas fa-user-circle text-base w-5 text-gray-400 group-hover:text-pqBlue"></i> Author Profile
+            </a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-600 hover:text-pqBlue hover:bg-gray-50 transition-all text-sm font-semibold group">
+                <i class="fas fa-cog text-base w-5 text-gray-400 group-hover:text-pqBlue"></i> Preferences
+            </a>
+        </div>
+
+        <!-- Write Post CTA -->
+        <div class="p-4 border-t border-gray-100">
+            <button class="w-full bg-pqOrange hover:bg-orange-600 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-md text-sm flex items-center justify-center gap-2">
+                <i class="fas fa-pen-nib"></i> Write New Article
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Content Wrapper -->
+    <div class="flex-1 flex flex-col h-full overflow-hidden relative">
+        
+        <!-- Top Bar -->
+        <header class="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-4 lg:px-8 z-10 flex-shrink-0">
+            <div class="flex items-center gap-4">
+                <button class="lg:hidden text-gray-500 hover:text-pqBlue" onclick="toggleSidebar()">
+                    <i class="fas fa-bars text-xl"></i>
+                </button>
+                
+                <!-- Search -->
+                <div class="hidden md:flex items-center bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 focus-within:border-pqOrange focus-within:ring-1 focus-within:ring-pqOrange transition-all w-64">
+                    <i class="fas fa-search text-gray-400 text-sm"></i>
+                    <input type="text" placeholder="Search articles..." class="bg-transparent border-none outline-none text-sm ml-2 w-full text-gray-700 placeholder-gray-400">
                 </div>
             </div>
 
-            <!-- Scrollable Question Canvas -->
-            <div class="flex-1 overflow-y-auto p-4 sm:p-8" id="question-scroll-area">
-                <div class="max-w-4xl mx-auto bg-white shadow-soft border border-gray-100 rounded-2xl p-6 sm:p-10 mb-8">
-                    
-                    <!-- Question Metadata -->
-                    <div class="flex items-center justify-between border-b border-gray-100 pb-4 mb-6">
-                        <h2 class="text-lg sm:text-xl font-black text-brand-blue flex items-center gap-2">
-                            <span class="bg-brand-blue text-white text-xs px-3 py-1 rounded-full uppercase tracking-wider font-bold">Question <span id="current-q-num">1</span> of <span id="total-q-num">50</span></span>
-                        </h2>
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs font-bold px-2 py-1 bg-gray-100 text-gray-500 rounded border border-gray-200 shadow-inner-soft" id="q-marks">2.0 Marks</span>
-                            <span class="text-xs font-bold px-2 py-1 bg-red-50 text-red-600 rounded border border-red-100 shadow-inner-soft hidden" id="q-negative-marks">-0.5 Negative</span>
+            <div class="flex items-center gap-4 lg:gap-6">
+                <button class="text-gray-400 hover:text-pqBlue relative transition-colors">
+                    <i class="far fa-bell text-lg"></i>
+                    <span class="absolute -top-1 -right-1 w-2 h-2 bg-pqOrange rounded-full"></span>
+                </button>
+                
+                <div class="h-6 w-px bg-gray-200"></div>
+                
+                <div class="flex items-center gap-3 cursor-pointer group">
+                    <div class="text-right hidden sm:block">
+                        <p class="text-xs font-bold text-pqBlue">Admin Scholar</p>
+                        <p class="text-[10px] text-gray-400">Contributor</p>
+                    </div>
+                    <img src="https://ui-avatars.com/api/?name=Admin&background=002046&color=ffffff" class="w-8 h-8 rounded-full border-2 border-transparent group-hover:border-pqOrange transition-all" alt="Profile">
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Scrollable Dashboard Area -->
+        <main class="flex-1 overflow-y-auto p-4 lg:p-8">
+            
+            <div class="max-w-7xl mx-auto space-y-6 lg:space-y-8">
+                
+                <!-- Welcome Section -->
+                <div>
+                    <h1 class="text-2xl font-black text-pqBlue tracking-tight">Welcome back, Scholar! 👋</h1>
+                    <p class="text-sm text-gray-500 mt-1">Here is what is happening with your articles today.</p>
+                </div>
+
+                <!-- Stats Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+                    <!-- Stat Card 1 -->
+                    <div class="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex flex-col justify-between group hover:border-pqBlue transition-colors">
+                        <div class="flex justify-between items-start mb-4">
+                            <div class="w-10 h-10 rounded-full bg-blue-50 text-pqBlue flex items-center justify-center text-lg group-hover:scale-110 transition-transform">
+                                <i class="fas fa-eye"></i>
+                            </div>
+                            <span class="text-[10px] font-bold text-pqGreen bg-green-50 px-2 py-1 rounded-md flex items-center gap-1">
+                                <i class="fas fa-arrow-up"></i> 12%
+                            </span>
+                        </div>
+                        <div>
+                            <h3 class="text-2xl font-black text-gray-800">14.2k</h3>
+                            <p class="text-xs text-gray-500 font-medium">Total Article Views</p>
                         </div>
                     </div>
 
-                    <!-- Question Text Body -->
-                    <div id="question-text" class="text-base sm:text-lg text-gray-800 leading-relaxed font-medium mb-8 transition-all duration-300">
-                        <!-- Content Injected via JS -->
-                        Loading question payload...
+                    <!-- Stat Card 2 -->
+                    <div class="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex flex-col justify-between group hover:border-pqOrange transition-colors">
+                        <div class="flex justify-between items-start mb-4">
+                            <div class="w-10 h-10 rounded-full bg-orange-50 text-pqOrange flex items-center justify-center text-lg group-hover:scale-110 transition-transform">
+                                <i class="fas fa-heart"></i>
+                            </div>
+                            <span class="text-[10px] font-bold text-pqGreen bg-green-50 px-2 py-1 rounded-md flex items-center gap-1">
+                                <i class="fas fa-arrow-up"></i> 5%
+                            </span>
+                        </div>
+                        <div>
+                            <h3 class="text-2xl font-black text-gray-800">842</h3>
+                            <p class="text-xs text-gray-500 font-medium">Total Likes</p>
+                        </div>
                     </div>
 
-                    <!-- Question Image Attachment (Hidden by default) -->
-                    <div id="question-image-container" class="hidden mb-8 border border-gray-200 rounded-xl p-2 bg-gray-50 max-w-2xl">
-                        <img id="question-image" src="" alt="Question Reference Figure" class="w-full h-auto rounded-lg shadow-sm cursor-zoom-in">
+                    <!-- Stat Card 3 -->
+                    <div class="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex flex-col justify-between group hover:border-blue-400 transition-colors">
+                        <div class="flex justify-between items-start mb-4">
+                            <div class="w-10 h-10 rounded-full bg-indigo-50 text-indigo-500 flex items-center justify-center text-lg group-hover:scale-110 transition-transform">
+                                <i class="fas fa-comments"></i>
+                            </div>
+                            <span class="text-[10px] font-bold text-gray-500 bg-gray-50 px-2 py-1 rounded-md flex items-center gap-1">
+                                <i class="fas fa-minus"></i> 0%
+                            </span>
+                        </div>
+                        <div>
+                            <h3 class="text-2xl font-black text-gray-800">156</h3>
+                            <p class="text-xs text-gray-500 font-medium">Reader Comments</p>
+                        </div>
                     </div>
 
-                    <!-- Options Grid -->
-                    <div id="options-container" class="space-y-3 sm:space-y-4">
-                        <!-- Options Injected via JS -->
+                    <!-- Stat Card 4 -->
+                    <div class="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex flex-col justify-between group hover:border-gray-400 transition-colors">
+                        <div class="flex justify-between items-start mb-4">
+                            <div class="w-10 h-10 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-lg group-hover:scale-110 transition-transform">
+                                <i class="fas fa-file-alt"></i>
+                            </div>
+                        </div>
+                        <div>
+                            <h3 class="text-2xl font-black text-gray-800">12</h3>
+                            <p class="text-xs text-gray-500 font-medium">Published Articles</p>
+                        </div>
                     </div>
-
                 </div>
-            </div>
 
-            <!-- Bottom Action Footer -->
-            <div class="h-20 sm:h-24 bg-white border-t border-gray-200 shadow-[0_-4px_15px_rgba(0,0,0,0.03)] shrink-0 px-4 sm:px-8 flex items-center justify-between z-20">
-                <!-- Left: Previous & Clear -->
-                <div class="flex items-center gap-2 sm:gap-4">
-                    <button id="btn-prev" class="h-10 sm:h-12 px-4 sm:px-6 rounded-xl border-2 border-gray-200 text-gray-600 font-bold hover:bg-gray-50 hover:text-brand-blue hover:border-brand-blue transition-all flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
-                        <i class="fas fa-chevron-left"></i> <span class="hidden sm:inline">Previous</span>
-                    </button>
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
                     
-                    <button id="btn-clear" class="h-10 sm:h-12 px-4 rounded-xl border border-transparent text-gray-500 hover:bg-red-50 hover:text-red-600 font-bold transition-all text-xs sm:text-sm flex items-center gap-1.5" title="Clear selection">
-                        <i class="fas fa-eraser"></i> <span class="hidden md:inline">Clear</span>
-                    </button>
+                    <!-- Chart Section -->
+                    <div class="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm p-5 lg:p-6">
+                        <div class="flex items-center justify-between mb-6">
+                            <div>
+                                <h3 class="font-black text-pqBlue">Audience Engagement</h3>
+                                <p class="text-[11px] text-gray-400">Views over the last 7 days</p>
+                            </div>
+                            <select class="bg-gray-50 border border-gray-200 text-xs font-bold text-gray-600 rounded-lg px-3 py-1.5 outline-none focus:border-pqOrange">
+                                <option>Last 7 Days</option>
+                                <option>This Month</option>
+                                <option>All Time</option>
+                            </select>
+                        </div>
+                        <div class="w-full h-[250px]">
+                            <canvas id="viewsChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Quick Draft / Recent Comments -->
+                    <div class="bg-pqBlue rounded-2xl border border-pqActiveBlue shadow-lg p-5 lg:p-6 text-white relative overflow-hidden">
+                        <div class="absolute -right-8 -top-8 w-32 h-32 bg-pqOrange/20 rounded-full blur-2xl"></div>
+                        
+                        <h3 class="font-black text-lg mb-1 relative z-10">Quick Draft</h3>
+                        <p class="text-[11px] text-gray-300 mb-4 relative z-10">Got an idea? Jot it down quickly.</p>
+                        
+                        <form class="space-y-3 relative z-10">
+                            <input type="text" placeholder="Article Title..." class="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-pqOrange">
+                            <textarea placeholder="What is the update about?" rows="4" class="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-pqOrange resize-none"></textarea>
+                            <button type="button" class="bg-pqOrange hover:bg-orange-600 w-full font-bold py-2.5 rounded-xl transition-all shadow-md text-xs">
+                                Save as Draft
+                            </button>
+                        </form>
+                    </div>
                 </div>
 
-                <!-- Center: Mark for Review -->
-                <button id="btn-review" class="h-10 sm:h-12 px-4 sm:px-6 rounded-xl border-2 border-brand-marked text-brand-marked font-bold bg-amber-50 hover:bg-brand-marked hover:text-white transition-all flex items-center gap-2 shadow-sm">
-                    <i class="fas fa-flag"></i> <span class="hidden sm:inline">Mark for Review</span><span class="sm:hidden">Review</span>
-                </button>
+                <!-- Recent Articles Table -->
+                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div class="p-5 lg:p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div>
+                            <h3 class="font-black text-pqBlue">Recent Articles</h3>
+                            <p class="text-[11px] text-gray-400">Manage your published content and drafts.</p>
+                        </div>
+                        <a href="#" class="text-xs font-bold text-pqOrange hover:underline text-right">View All Articles &rarr;</a>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-gray-50/50 text-[10px] uppercase tracking-widest text-gray-400">
+                                    <th class="px-6 py-4 font-bold rounded-tl-lg">Article Details</th>
+                                    <th class="px-6 py-4 font-bold">Status</th>
+                                    <th class="px-6 py-4 font-bold">Date</th>
+                                    <th class="px-6 py-4 font-bold">Views</th>
+                                    <th class="px-6 py-4 font-bold text-right rounded-tr-lg">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-sm divide-y divide-gray-100">
+                                
+                                <!-- Table Row 1 -->
+                                <tr class="hover:bg-gray-50/50 transition-colors group">
+                                    <td class="px-6 py-4">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-10 h-10 rounded-lg bg-gray-100 overflow-hidden flex-shrink-0">
+                                                <img src="https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&w=150&auto=format&fit=crop" class="w-full h-full object-cover" alt="Thumb">
+                                            </div>
+                                            <div>
+                                                <p class="font-bold text-pqBlue group-hover:text-pqOrange transition-colors line-clamp-1">Understanding Post-UTME Grading Systems</p>
+                                                <p class="text-[11px] text-gray-400 mt-0.5">Category: Admissions</p>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <span class="bg-green-50 text-pqGreen border border-green-100 text-[10px] font-bold px-2.5 py-1 rounded-md">Published</span>
+                                    </td>
+                                    <td class="px-6 py-4 text-gray-500 text-xs">Oct 24, 2026</td>
+                                    <td class="px-6 py-4 font-medium text-gray-600">3,492</td>
+                                    <td class="px-6 py-4 text-right">
+                                        <div class="flex items-center justify-end gap-2">
+                                            <button class="w-8 h-8 rounded-full bg-white border border-gray-200 text-gray-400 hover:text-pqBlue hover:border-pqBlue transition-all flex items-center justify-center" title="Edit">
+                                                <i class="fas fa-pen text-xs"></i>
+                                            </button>
+                                            <button class="w-8 h-8 rounded-full bg-white border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-500 transition-all flex items-center justify-center" title="Delete">
+                                                <i class="fas fa-trash text-xs"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
 
-                <!-- Right: Next / Save -->
-                <button id="btn-next" class="h-10 sm:h-12 px-6 sm:px-10 rounded-xl bg-brand-blue text-white font-black hover:bg-brand-active hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center gap-2 shadow-md">
-                    <span id="btn-next-text">Save & Next</span> <i class="fas fa-chevron-right"></i>
-                </button>
+                                <!-- Table Row 2 -->
+                                <tr class="hover:bg-gray-50/50 transition-colors group">
+                                    <td class="px-6 py-4">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-10 h-10 rounded-lg bg-gray-100 overflow-hidden flex-shrink-0 flex items-center justify-center text-gray-300">
+                                                <i class="fas fa-image"></i>
+                                            </div>
+                                            <div>
+                                                <p class="font-bold text-pqBlue group-hover:text-pqOrange transition-colors line-clamp-1">10 Study Hacks for Medical Students</p>
+                                                <p class="text-[11px] text-gray-400 mt-0.5">Category: Tips & Tricks</p>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <span class="bg-gray-100 text-gray-500 border border-gray-200 text-[10px] font-bold px-2.5 py-1 rounded-md">Draft</span>
+                                    </td>
+                                    <td class="px-6 py-4 text-gray-500 text-xs">Oct 22, 2026</td>
+                                    <td class="px-6 py-4 font-medium text-gray-400">-</td>
+                                    <td class="px-6 py-4 text-right">
+                                        <div class="flex items-center justify-end gap-2">
+                                            <button class="w-8 h-8 rounded-full bg-white border border-gray-200 text-gray-400 hover:text-pqBlue hover:border-pqBlue transition-all flex items-center justify-center" title="Edit">
+                                                <i class="fas fa-pen text-xs"></i>
+                                            </button>
+                                            <button class="w-8 h-8 rounded-full bg-white border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-500 transition-all flex items-center justify-center" title="Delete">
+                                                <i class="fas fa-trash text-xs"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div class="pt-8 pb-4 text-center border-t border-gray-200">
+                    <p class="text-[11px] text-gray-400">&copy; 2026 ExamGuard Creator Studio. All rights reserved.</p>
+                </div>
+
             </div>
         </main>
-
-        <!-- Right Section: Question Palette Sidebar -->
-        <!-- Overlay for mobile -->
-        <div id="sidebar-overlay" class="fixed inset-0 bg-brand-blue/40 z-40 hidden lg:hidden backdrop-blur-sm transition-opacity"></div>
-        
-        <aside id="question-palette" class="absolute lg:relative right-0 top-0 h-full w-[85%] sm:w-80 bg-white border-l border-gray-200 shadow-2xl lg:shadow-none flex flex-col z-50 transform translate-x-full lg:translate-x-0 transition-transform duration-300 ease-in-out shrink-0">
-            
-            <!-- Mobile Close Button -->
-            <div class="h-16 border-b border-gray-200 flex items-center justify-between px-4 lg:hidden">
-                <span class="font-black text-brand-blue">Question Palette</span>
-                <button id="close-palette" class="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-red-50 hover:text-red-500 transition-colors">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-
-            <!-- Legend/Stats Area -->
-            <div class="p-4 sm:p-5 border-b border-gray-100 bg-gray-50 shrink-0">
-                <h3 class="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">Exam Status</h3>
-                <div class="grid grid-cols-2 gap-y-3 gap-x-2 text-[11px] sm:text-xs font-bold text-gray-600">
-                    <div class="flex items-center gap-2">
-                        <div class="w-6 h-6 rounded flex items-center justify-center bg-brand-answered text-white shadow-inner-soft" id="count-answered">0</div>
-                        <span>Answered</span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <div class="w-6 h-6 rounded border-2 border-brand-unanswered text-brand-unanswered bg-white flex items-center justify-center" id="count-unanswered">50</div>
-                        <span>Not Answered</span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <div class="w-6 h-6 rounded flex items-center justify-center bg-brand-marked text-white shadow-inner-soft" id="count-marked">0</div>
-                        <span>Marked</span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <div class="w-6 h-6 rounded flex items-center justify-center bg-gray-100 border border-gray-300 text-gray-400" id="count-notvisited">50</div>
-                        <span>Not Visited</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- The Grid Area -->
-            <div class="flex-1 overflow-y-auto p-4 sm:p-5">
-                <h3 class="text-xs font-black text-brand-blue uppercase tracking-widest mb-4">Question Navigator</h3>
-                <div id="palette-grid" class="grid grid-cols-5 gap-2 sm:gap-3">
-                    <!-- Buttons Injected via JS -->
-                </div>
-            </div>
-
-            <!-- Submit Block -->
-            <div class="p-4 sm:p-5 border-t border-gray-200 bg-white shrink-0">
-                <div class="text-[10px] text-gray-400 font-bold mb-3 text-center leading-tight">Ensure all questions are answered before submitting. Action is irreversible.</div>
-                <button onclick="toggleModal('submit-modal')" class="w-full py-3.5 sm:py-4 rounded-xl bg-brand-orange text-white font-black hover:bg-[#e64a19] shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 uppercase tracking-wide">
-                    <i class="fas fa-check-double"></i> Submit Final Exam
-                </button>
-            </div>
-        </aside>
-
     </div>
 
-    <!-- Modals -->
-
-    <!-- Submission Confirmation Modal -->
-    <div id="submit-modal" class="fixed inset-0 z-[60] hidden">
-        <div class="modal-backdrop absolute inset-0 bg-brand-blue/60" onclick="toggleModal('submit-modal')"></div>
-        <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[90%] max-w-md bg-white rounded-3xl shadow-2xl p-8 text-center flex flex-col items-center">
-            <div class="w-20 h-20 rounded-full bg-orange-50 text-brand-orange flex items-center justify-center text-4xl mb-6 ring-8 ring-orange-50/50">
-                <i class="fas fa-exclamation-triangle"></i>
-            </div>
-            <h2 class="text-2xl font-black text-brand-blue mb-2">Confirm Submission</h2>
-            <p class="text-gray-500 font-medium text-sm leading-relaxed mb-6">
-                You are about to submit your examination. You have <strong id="modal-unanswered" class="text-brand-unanswered">0</strong> unanswered questions. Are you absolutely sure you want to proceed? This cannot be undone.
-            </p>
-            <div class="flex gap-4 w-full">
-                <button onclick="toggleModal('submit-modal')" class="flex-1 py-3 rounded-xl border-2 border-gray-200 text-gray-600 font-bold hover:bg-gray-50 transition-all">
-                    Return to Exam
-                </button>
-                <button onclick="executeFinalSubmission()" class="flex-1 py-3 rounded-xl bg-brand-orange text-white font-black hover:bg-[#e64a19] shadow-md transition-all">
-                    Yes, Submit
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Time Up Auto-Submit Modal -->
-    <div id="timeup-modal" class="fixed inset-0 z-[70] hidden pointer-events-none">
-        <div class="modal-backdrop absolute inset-0 bg-black/80"></div>
-        <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[90%] max-w-md bg-white rounded-3xl shadow-2xl p-10 text-center flex flex-col items-center pointer-events-auto">
-            <div class="w-24 h-24 rounded-full bg-red-50 text-red-500 flex items-center justify-center text-5xl mb-6 pulse-animation">
-                <i class="far fa-hourglass"></i>
-            </div>
-            <h2 class="text-3xl font-black text-brand-blue mb-3">Time's Up!</h2>
-            <p class="text-gray-600 font-medium text-base leading-relaxed mb-8">
-                Your examination session has ended automatically. Your responses have been successfully recorded.
-            </p>
-            <div class="w-full bg-gray-50 rounded-xl p-4 border border-gray-100 flex items-center justify-center gap-3">
-                <i class="fas fa-spinner fa-spin text-brand-blue text-xl"></i>
-                <span class="font-bold text-brand-blue">Saving to server and redirecting...</span>
-            </div>
-        </div>
-    </div>
-
-    <!-- Basic Calculator Modal (Visual representation) -->
-    <div id="calculator-modal" class="fixed inset-0 z-[60] hidden">
-        <div class="absolute inset-0" onclick="toggleModal('calculator-modal')"></div>
-        <div class="absolute top-24 left-4 sm:left-24 w-72 bg-gray-900 rounded-2xl shadow-2xl p-4 border border-gray-700">
-            <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
-                <span class="text-white font-bold text-xs">Standard Calculator</span>
-                <button onclick="toggleModal('calculator-modal')" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
-            </div>
-            <div class="bg-gray-800 rounded-xl h-16 mb-4 flex items-end justify-end p-3 text-white text-2xl font-mono tracking-wider">
-                0.00
-            </div>
-            <div class="grid grid-cols-4 gap-2">
-                <!-- Generic calculator buttons for UI demonstration -->
-                <button class="bg-gray-700 text-white rounded-lg h-10 font-bold hover:bg-gray-600">C</button>
-                <button class="bg-gray-700 text-white rounded-lg h-10 font-bold hover:bg-gray-600">()</button>
-                <button class="bg-gray-700 text-white rounded-lg h-10 font-bold hover:bg-gray-600">%</button>
-                <button class="bg-brand-orange text-white rounded-lg h-10 font-bold hover:bg-[#e64a19]">÷</button>
-                <button class="bg-gray-600 text-white rounded-lg h-10 font-bold hover:bg-gray-500">7</button>
-                <button class="bg-gray-600 text-white rounded-lg h-10 font-bold hover:bg-gray-500">8</button>
-                <button class="bg-gray-600 text-white rounded-lg h-10 font-bold hover:bg-gray-500">9</button>
-                <button class="bg-brand-orange text-white rounded-lg h-10 font-bold hover:bg-[#e64a19]">×</button>
-                <button class="bg-gray-600 text-white rounded-lg h-10 font-bold hover:bg-gray-500">4</button>
-                <button class="bg-gray-600 text-white rounded-lg h-10 font-bold hover:bg-gray-500">5</button>
-                <button class="bg-gray-600 text-white rounded-lg h-10 font-bold hover:bg-gray-500">6</button>
-                <button class="bg-brand-orange text-white rounded-lg h-10 font-bold hover:bg-[#e64a19]">-</button>
-                <button class="bg-gray-600 text-white rounded-lg h-10 font-bold hover:bg-gray-500">1</button>
-                <button class="bg-gray-600 text-white rounded-lg h-10 font-bold hover:bg-gray-500">2</button>
-                <button class="bg-gray-600 text-white rounded-lg h-10 font-bold hover:bg-gray-500">3</button>
-                <button class="bg-brand-orange text-white rounded-lg h-10 font-bold hover:bg-[#e64a19]">+</button>
-                <button class="bg-gray-600 text-white rounded-lg h-10 font-bold hover:bg-gray-500 col-span-2">0</button>
-                <button class="bg-gray-600 text-white rounded-lg h-10 font-bold hover:bg-gray-500">.</button>
-                <button class="bg-brand-blue text-white rounded-lg h-10 font-bold hover:bg-brand-active">=</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Application Logic Script -->
+    <!-- Interactive Scripts -->
     <script>
-        /**
-         * Exam Engine State Configuration
-         */
-        const EXAM_DURATION_SECONDS = 7200; // 2 hours
-        const TOTAL_QUESTIONS = 50;
-        
-        let currentState = {
-            currentIndex: 0,
-            timeLeft: EXAM_DURATION_SECONDS,
-            fontSizeLevel: 1, // 0 = small, 1 = normal, 2 = large, 3 = x-large
-            questions: []
-        };
+        // Sidebar Toggle Logic for Mobile
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebarOverlay');
 
-        // Status Enums
-        const STATUS = {
-            NOT_VISITED: 'not-visited',
-            UNANSWERED: 'unanswered',
-            ANSWERED: 'answered',
-            MARKED: 'marked',
-            MARKED_ANSWERED: 'marked-answered' // Optional edge case: answered but marked for review
-        };
-
-        /**
-         * 1. Data Mocking Engine
-         * Generates rigorous, varied question structures to test the UI.
-         */
-        function generateMockQuestions() {
-            const types = [
-                "What is the time complexity of binary search algorithm?",
-                "Which of the following is not a valid access modifier in Java?",
-                "Identify the correct syntax for a pointer declaration in C++.",
-                "In database normalization, what dependency does the Second Normal Form (2NF) eliminate?",
-                "Calculate the cross product of the vectors A(1, 2, 3) and B(4, 5, 6)."
-            ];
-            
-            const optionSets = [
-                ["O(1)", "O(n)", "O(log n)", "O(n^2)"],
-                ["public", "protected", "friend", "private"],
-                ["int x*;", "int *x;", "*int x;", "pointer x;"],
-                ["Partial dependency", "Transitive dependency", "Multi-valued dependency", "Join dependency"],
-                ["(-3, 6, -3)", "(3, -6, 3)", "(-3, -6, -3)", "(0, 0, 0)"]
-            ];
-
-            const db = [];
-            for (let i = 0; i < TOTAL_QUESTIONS; i++) {
-                const randomTypeIndex = Math.floor(Math.random() * types.length);
-                const isImageQuestion = i === 4 || i === 12; // Inject a few image questions
-                
-                db.push({
-                    id: `q_${i+1}`,
-                    number: i + 1,
-                    text: isImageQuestion 
-                        ? `${types[randomTypeIndex]} <br><br><em>Refer to the architectural diagram below before making your selection.</em>` 
-                        : types[randomTypeIndex],
-                    imageUrl: isImageQuestion ? 'https://images.unsplash.com/photo-1516116216624-53e697fedbea?auto=format&fit=crop&w=800&q=80' : null,
-                    options: optionSets[randomTypeIndex].map((opt, idx) => ({ id: `opt_${i}_${idx}`, text: opt })),
-                    selectedOptionId: null,
-                    status: STATUS.NOT_VISITED
-                });
-            }
-            return db;
-        }
-
-        /**
-         * 2. Initialization
-         */
-        function initExamEngine() {
-            currentState.questions = generateMockQuestions();
-            currentState.questions[0].status = STATUS.UNANSWERED; // First question is visited by default
-            
-            setupEventListeners();
-            startCountdown();
-            renderQuestion(0);
-            renderPaletteGrid();
-            updateDashboardStats();
-        }
-
-        /**
-         * 3. DOM Interactions & Rendering
-         */
-        function renderQuestion(index) {
-            const q = currentState.questions[index];
-            const qContainer = document.getElementById('question-text');
-            const oContainer = document.getElementById('options-container');
-            const imgContainer = document.getElementById('question-image-container');
-            const imgElement = document.getElementById('question-image');
-            
-            // Update Headers
-            document.getElementById('current-q-num').textContent = q.number;
-            
-            // Apply Font Size class
-            const fontSizes = ['text-sm', 'text-base sm:text-lg', 'text-lg sm:text-xl', 'text-xl sm:text-2xl'];
-            qContainer.className = `text-gray-800 leading-relaxed font-medium mb-8 transition-all duration-300 ${fontSizes[currentState.fontSizeLevel]}`;
-            
-            // Inject Text
-            qContainer.innerHTML = q.text;
-
-            // Handle Images
-            if (q.imageUrl) {
-                imgElement.src = q.imageUrl;
-                imgContainer.classList.remove('hidden');
-            } else {
-                imgContainer.classList.add('hidden');
-            }
-
-            // Render Options
-            oContainer.innerHTML = '';
-            const labels = ['A', 'B', 'C', 'D', 'E'];
-            
-            q.options.forEach((opt, idx) => {
-                const isChecked = q.selectedOptionId === opt.id;
-                
-                const optionHTML = `
-                    <div class="relative w-full">
-                        <input type="radio" name="question_option" id="${opt.id}" value="${opt.id}" ${isChecked ? 'checked' : ''} onchange="handleOptionSelect('${opt.id}')">
-                        <label for="${opt.id}" class="option-label flex items-start gap-4 p-4 border-2 border-gray-200 rounded-xl cursor-pointer w-full bg-white group">
-                            <div class="option-letter shrink-0 w-8 h-8 rounded border-2 border-gray-300 flex items-center justify-center font-bold text-gray-500 group-hover:border-brand-blue group-hover:text-brand-blue transition-colors mt-0.5">
-                                ${labels[idx]}
-                            </div>
-                            <div class="flex-1 pt-1 text-gray-700 font-medium ${fontSizes[currentState.fontSizeLevel]} leading-snug">
-                                ${opt.text}
-                            </div>
-                        </label>
-                    </div>
-                `;
-                oContainer.insertAdjacentHTML('beforeend', optionHTML);
-            });
-
-            // Update Action Buttons States
-            document.getElementById('btn-prev').disabled = index === 0;
-            
-            const btnNext = document.getElementById('btn-next');
-            const btnNextText = document.getElementById('btn-next-text');
-            if (index === TOTAL_QUESTIONS - 1) {
-                btnNext.classList.remove('bg-brand-blue', 'hover:bg-brand-active');
-                btnNext.classList.add('bg-brand-orange', 'hover:bg-[#e64a19]');
-                btnNextText.textContent = "Save & Finish";
-            } else {
-                btnNext.classList.add('bg-brand-blue', 'hover:bg-brand-active');
-                btnNext.classList.remove('bg-brand-orange', 'hover:bg-[#e64a19]');
-                btnNextText.textContent = "Save & Next";
-            }
-
-            // Update Review Button State
-            const btnReview = document.getElementById('btn-review');
-            if (q.status === STATUS.MARKED || q.status === STATUS.MARKED_ANSWERED) {
-                btnReview.classList.add('bg-brand-marked', 'text-white');
-                btnReview.classList.remove('bg-amber-50', 'text-brand-marked');
-            } else {
-                btnReview.classList.remove('bg-brand-marked', 'text-white');
-                btnReview.classList.add('bg-amber-50', 'text-brand-marked');
-            }
-
-            // Reset scroll position
-            document.getElementById('question-scroll-area').scrollTop = 0;
-        }
-
-        function renderPaletteGrid() {
-            const grid = document.getElementById('palette-grid');
-            grid.innerHTML = '';
-
-            currentState.questions.forEach((q, idx) => {
-                const btn = document.createElement('button');
-                btn.textContent = q.number;
-                btn.className = getGridButtonClass(q.status, idx === currentState.currentIndex);
-                btn.onclick = () => jumpToQuestion(idx);
-                
-                // Add flag icon indicator if marked
-                if (q.status === STATUS.MARKED || q.status === STATUS.MARKED_ANSWERED) {
-                    btn.innerHTML = `${q.number}<div class="absolute -top-1 -right-1 w-3 h-3 bg-brand-marked border-2 border-white rounded-full"></div>`;
-                }
-
-                grid.appendChild(btn);
-            });
-        }
-
-        function getGridButtonClass(status, isCurrent) {
-            let base = "relative w-full aspect-square rounded-xl flex items-center justify-center font-bold text-sm transition-all transform hover:scale-105 shadow-sm border-2 ";
-            
-            if (isCurrent) {
-                // Current question overrides everything with a heavy blue ring
-                base += "bg-white border-brand-current text-brand-current ring-4 ring-blue-100 ";
-                return base;
-            }
-
-            switch(status) {
-                case STATUS.ANSWERED:
-                    base += "bg-brand-answered border-brand-answered text-white "; break;
-                case STATUS.UNANSWERED:
-                    base += "bg-white border-brand-unanswered text-brand-unanswered "; break;
-                case STATUS.MARKED:
-                case STATUS.MARKED_ANSWERED:
-                    base += "bg-brand-marked border-brand-marked text-white "; break;
-                default: // NOT_VISITED
-                    base += "bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300 "; break;
-            }
-            return base;
-        }
-
-        function updateDashboardStats() {
-            let ans = 0, unans = 0, marked = 0, notvis = 0;
-            currentState.questions.forEach(q => {
-                if (q.status === STATUS.ANSWERED || q.status === STATUS.MARKED_ANSWERED) ans++;
-                if (q.status === STATUS.UNANSWERED) unans++;
-                if (q.status === STATUS.MARKED) marked++;
-                if (q.status === STATUS.NOT_VISITED) notvis++;
-            });
-
-            document.getElementById('count-answered').textContent = ans;
-            document.getElementById('count-unanswered').textContent = unans;
-            document.getElementById('count-marked').textContent = marked;
-            document.getElementById('count-notvisited').textContent = notvis;
-            
-            // Update submission modal value
-            document.getElementById('modal-unanswered').textContent = unans + notvis;
-        }
-
-        /**
-         * 4. Handlers & Actions
-         */
-        function handleOptionSelect(optionId) {
-            const q = currentState.questions[currentState.currentIndex];
-            q.selectedOptionId = optionId;
-            
-            // Determine new status based on whether it was marked for review
-            if (q.status === STATUS.MARKED) {
-                q.status = STATUS.MARKED_ANSWERED;
-            } else {
-                q.status = STATUS.ANSWERED;
-            }
-            
-            updateDashboardStats();
-            renderPaletteGrid();
-        }
-
-        function clearResponse() {
-            const q = currentState.questions[currentState.currentIndex];
-            q.selectedOptionId = null;
-            
-            // Revert status
-            if (q.status === STATUS.MARKED_ANSWERED) {
-                q.status = STATUS.MARKED;
-            } else if (q.status === STATUS.ANSWERED) {
-                q.status = STATUS.UNANSWERED;
-            }
-
-            // Uncheck the radio buttons in DOM
-            const radios = document.querySelectorAll('input[name="question_option"]');
-            radios.forEach(r => r.checked = false);
-
-            updateDashboardStats();
-            renderPaletteGrid();
-        }
-
-        function toggleMarkForReview() {
-            const q = currentState.questions[currentState.currentIndex];
-            
-            if (q.status === STATUS.MARKED || q.status === STATUS.MARKED_ANSWERED) {
-                // Unmark
-                q.status = q.selectedOptionId ? STATUS.ANSWERED : STATUS.UNANSWERED;
-            } else {
-                // Mark
-                q.status = q.selectedOptionId ? STATUS.MARKED_ANSWERED : STATUS.MARKED;
-            }
-            
-            renderQuestion(currentState.currentIndex); // Updates button visual
-            updateDashboardStats();
-            renderPaletteGrid();
-        }
-
-        function navigate(direction) {
-            const newIndex = currentState.currentIndex + direction;
-            if (newIndex >= 0 && newIndex < TOTAL_QUESTIONS) {
-                jumpToQuestion(newIndex);
-            } else if (direction > 0 && newIndex === TOTAL_QUESTIONS) {
-                toggleModal('submit-modal');
-            }
-        }
-
-        function jumpToQuestion(index) {
-            // Save logic: If moving away from current, ensure it's logged as unanswered if not touched
-            const currentQ = currentState.questions[currentState.currentIndex];
-            if (currentQ.status === STATUS.NOT_VISITED) {
-                currentQ.status = STATUS.UNANSWERED;
-            }
-
-            currentState.currentIndex = index;
-            
-            // Mark new question as visited if it was previously untouched
-            const newQ = currentState.questions[index];
-            if (newQ.status === STATUS.NOT_VISITED) {
-                newQ.status = STATUS.UNANSWERED;
-            }
-
-            renderQuestion(index);
-            renderPaletteGrid();
-            updateDashboardStats();
-            
-            // Auto-close palette on mobile when jumping
-            if(window.innerWidth < 1024) {
-                toggleMobilePalette(false);
-            }
-        }
-
-        function changeFontSize(action) {
-            if (action === 'increase' && currentState.fontSizeLevel < 3) {
-                currentState.fontSizeLevel++;
-            } else if (action === 'decrease' && currentState.fontSizeLevel > 0) {
-                currentState.fontSizeLevel--;
-            }
-            renderQuestion(currentState.currentIndex);
-        }
-
-        /**
-         * 5. Timer & Security Constraints
-         */
-        let timerInterval;
-        function startCountdown() {
-            const display = document.getElementById('countdown-display');
-            const timerContainer = document.getElementById('master-timer');
-            const icon = timerContainer.querySelector('.timer-icon');
-
-            timerInterval = setInterval(() => {
-                if (currentState.timeLeft <= 0) {
-                    clearInterval(timerInterval);
-                    handleTimeUp();
-                    return;
-                }
-
-                currentState.timeLeft--;
-                
-                const h = Math.floor(currentState.timeLeft / 3600);
-                const m = Math.floor((currentState.timeLeft % 3600) / 60);
-                const s = currentState.timeLeft % 60;
-
-                display.textContent = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-
-                // UI Warnings
-                if (currentState.timeLeft === 300) { // 5 minutes left
-                    timerContainer.classList.add('timer-urgent');
-                    icon.classList.replace('text-gray-400', 'text-white');
-                    display.classList.replace('text-brand-blue', 'text-white');
-                }
-            }, 1000);
-        }
-
-        function handleTimeUp() {
-            const modal = document.getElementById('timeup-modal');
-            modal.classList.remove('hidden');
-            
-            // Simulate server submission delay
-            setTimeout(() => {
-                window.location.href = "/exam-completed.html";
-            }, 3000);
-        }
-
-        function executeFinalSubmission() {
-            clearInterval(timerInterval);
-            document.getElementById('submit-modal').innerHTML = `
-                <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[90%] max-w-md bg-white rounded-3xl shadow-2xl p-10 text-center flex flex-col items-center">
-                    <i class="fas fa-spinner fa-spin text-5xl text-brand-blue mb-4"></i>
-                    <h2 class="text-xl font-bold text-brand-blue">Uploading Answers securely...</h2>
-                    <p class="text-sm text-gray-500 mt-2">Do not close or refresh this window.</p>
-                </div>
-            `;
-            
-            // Simulate network request
-            setTimeout(() => {
-                window.location.href = "/exam-completed.html";
-            }, 2500);
-        }
-
-        /**
-         * 6. View toggles & Event Bindings
-         */
-        function toggleModal(modalId) {
-            const modal = document.getElementById(modalId);
-            if (modal.classList.contains('hidden')) {
-                modal.classList.remove('hidden');
-            } else {
-                modal.classList.add('hidden');
-            }
-        }
-
-        function toggleMobilePalette(forceClose = false) {
-            const palette = document.getElementById('question-palette');
-            const overlay = document.getElementById('sidebar-overlay');
-            
-            if (forceClose || !palette.classList.contains('translate-x-full')) {
-                // Close
-                palette.classList.add('translate-x-full');
-                overlay.classList.add('hidden');
-                document.body.classList.remove('overflow-hidden'); // Restore body scroll if needed
-            } else {
-                // Open
-                palette.classList.remove('translate-x-full');
+        function toggleSidebar() {
+            const isClosed = sidebar.classList.contains('-translate-x-full');
+            if (isClosed) {
+                sidebar.classList.remove('-translate-x-full');
                 overlay.classList.remove('hidden');
+                setTimeout(() => overlay.classList.add('opacity-100'), 10);
+            } else {
+                sidebar.classList.add('-translate-x-full');
+                overlay.classList.remove('opacity-100');
+                setTimeout(() => overlay.classList.add('hidden'), 300);
             }
         }
 
-        function setupEventListeners() {
-            document.getElementById('btn-next').addEventListener('click', () => navigate(1));
-            document.getElementById('btn-prev').addEventListener('click', () => navigate(-1));
-            document.getElementById('btn-clear').addEventListener('click', clearResponse);
-            document.getElementById('btn-review').addEventListener('click', toggleMarkForReview);
+        // Chart.js Initialization
+        document.addEventListener("DOMContentLoaded", function() {
+            const ctx = document.getElementById('viewsChart').getContext('2d');
             
-            // Mobile Menu
-            document.getElementById('mobile-palette-toggle').addEventListener('click', () => toggleMobilePalette());
-            document.getElementById('close-palette').addEventListener('click', () => toggleMobilePalette(true));
-            document.getElementById('sidebar-overlay').addEventListener('click', () => toggleMobilePalette(true));
+            // Gradient Fill for the chart area
+            let gradient = ctx.createLinearGradient(0, 0, 0, 400);
+            gradient.addColorStop(0, 'rgba(0, 32, 70, 0.2)'); // pqBlue with opacity
+            gradient.addColorStop(1, 'rgba(0, 32, 70, 0)');
 
-            // Keyboard Navigation (Arrow Keys)
-            document.addEventListener('keydown', (e) => {
-                if (e.key === 'ArrowRight') {
-                    navigate(1);
-                } else if (e.key === 'ArrowLeft') {
-                    if(currentState.currentIndex > 0) navigate(-1);
+            const viewsChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                    datasets: [{
+                        label: 'Article Views',
+                        data: [1200, 1900, 1500, 2200, 1800, 2800, 2400],
+                        borderColor: '#002046', // pqBlue
+                        backgroundColor: gradient,
+                        borderWidth: 3,
+                        pointBackgroundColor: '#ff5622', // pqOrange
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        fill: true,
+                        tension: 0.4 // Smooth curves
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#001633',
+                            titleFont: { family: 'Inter', size: 12 },
+                            bodyFont: { family: 'Inter', size: 14, weight: 'bold' },
+                            padding: 10,
+                            displayColors: false,
+                            cornerRadius: 8
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: '#f3f4f6', drawBorder: false },
+                            ticks: { font: { family: 'Inter', size: 11 }, color: '#9ca3af' }
+                        },
+                        x: {
+                            grid: { display: false, drawBorder: false },
+                            ticks: { font: { family: 'Inter', size: 11 }, color: '#9ca3af' }
+                        }
+                    },
+                    interaction: {
+                        intersect: false,
+                        mode: 'index',
+                    },
                 }
             });
-
-            // Prevent accidentally leaving page
-            window.addEventListener('beforeunload', (e) => {
-                if (currentState.timeLeft > 0) {
-                    e.preventDefault();
-                    e.returnValue = '';
-                }
-            });
-
-            // Anti-cheat: Disable right click
-            document.addEventListener('contextmenu', event => event.preventDefault());
-            
-            // Anti-cheat: Blur listener (User switches tabs)
-            window.addEventListener('blur', () => {
-                console.warn('Security Warning: User navigated away from the exam window.');
-                // In production, this would trigger an API call to log a violation
-            });
-        }
-
-        // Boot
-        document.addEventListener('DOMContentLoaded', initExamEngine);
-
+        });
     </script>
 </body>
 </html>
