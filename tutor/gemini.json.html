@@ -1816,67 +1816,90 @@
 
     // ============ VIEWS ============
     function switchView(targetViewId, pageTitle) {
-        const spinner = document.getElementById('loading-spinner');
-        const mainContent = document.getElementById('main-content-wrapper');
-        const mobileTitle = document.getElementById('mobile-page-title');
+    const spinner = document.getElementById('loading-spinner');
+    const mainContent = document.getElementById('main-content-wrapper');
+    const mobileTitle = document.getElementById('mobile-page-title');
 
-        spinner.classList.remove('hidden');
-        spinner.classList.add('flex');
-        mainContent.classList.add('opacity-30', 'pointer-events-none');
+    spinner.classList.remove('hidden');
+    spinner.classList.add('flex');
+    mainContent.classList.add('opacity-30', 'pointer-events-none');
 
-        setTimeout(() => {
-            document.querySelectorAll('.view-section').forEach(v => {
-                v.classList.add('hidden');
-                v.classList.remove('block');
-            });
+    setTimeout(async () => {
+        document.querySelectorAll('.view-section').forEach(v => {
+            v.classList.add('hidden');
+            v.classList.remove('block');
+        });
 
-            document.getElementById(`view-${targetViewId}`).classList.remove('hidden');
-            document.getElementById(`view-${targetViewId}`).classList.add('block');
+        document.getElementById(`view-${targetViewId}`).classList.remove('hidden');
+        document.getElementById(`view-${targetViewId}`).classList.add('block');
 
-            mobileTitle.innerText = pageTitle;
+        mobileTitle.innerText = pageTitle;
 
-            // Mobile nav
-            ['home', 'select', 'study'].forEach(nav => {
-                const el = document.getElementById(`mob-nav-${nav}`);
-                if (el) {
-                    el.classList.remove('nav-active-mobile');
-                    const bar = el.querySelector('.nav-active-mobile-bar');
-                    if (bar) bar.classList.add('hidden');
-                }
-            });
-            const activeMob = document.getElementById(`mob-nav-${targetViewId}`);
-            if (activeMob) {
-                activeMob.classList.add('nav-active-mobile');
-                const bar = activeMob.querySelector('.nav-active-mobile-bar');
-                if (bar) bar.classList.remove('hidden');
+        // Mobile nav
+        ['home', 'select', 'study'].forEach(nav => {
+            const el = document.getElementById(`mob-nav-${nav}`);
+            if (el) {
+                el.classList.remove('nav-active-mobile');
+                const bar = el.querySelector('.nav-active-mobile-bar');
+                if (bar) bar.classList.add('hidden');
             }
+        });
+        const activeMob = document.getElementById(`mob-nav-${targetViewId}`);
+        if (activeMob) {
+            activeMob.classList.add('nav-active-mobile');
+            const bar = activeMob.querySelector('.nav-active-mobile-bar');
+            if (bar) bar.classList.remove('hidden');
+        }
 
-            // Desktop nav
-            document.querySelectorAll('[id^="desk-nav-"]').forEach(el => {
-                el.classList.remove('nav-active-desktop');
-            });
-            const activeDesk = document.getElementById(`desk-nav-${targetViewId}`);
-            if (activeDesk) activeDesk.classList.add('nav-active-desktop');
+        // Desktop nav
+        document.querySelectorAll('[id^="desk-nav-"]').forEach(el => {
+            el.classList.remove('nav-active-desktop');
+        });
+        const activeDesk = document.getElementById(`desk-nav-${targetViewId}`);
+        if (activeDesk) activeDesk.classList.add('nav-active-desktop');
 
-            spinner.classList.add('hidden');
-            spinner.classList.remove('flex');
-            mainContent.classList.remove('opacity-30', 'pointer-events-none');
-
-            if (window.innerWidth < 768) {
-                const drawer = document.getElementById("drawer-navigation");
-                if (window.FlowbiteInstances) {
-                    const drawerInstance = FlowbiteInstances.getInstance("Drawer", "drawer-navigation");
-                    if (drawerInstance) {
-                        drawerInstance.hide();
+        // ============ NEW: Refresh student data if going to home ============
+        if (targetViewId === 'home') {
+            try {
+                const profile = await fetchStudentProfile();
+                const updatedData = profile?.user || profile;
+                
+                if (updatedData) {
+                    studentData = updatedData;
+                    
+                    // Update token balance
+                    const tokenEl = document.getElementById('token-balance');
+                    if (tokenEl) {
+                        const newBalance = updatedData.social?.creditPoints || 
+                                         updatedData.creditPoints || 0;
+                        tokenEl.textContent = newBalance;
                     }
-                } else {
-                    drawer.classList.add("-translate-x-full");
+                    
+                    console.log('✅ Updated credit balance to:', updatedData.creditPoints || updatedData.social?.creditPoints);
                 }
+            } catch (err) {
+                console.error('Error refreshing profile:', err);
             }
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }, 300);
-    }
+        }
 
+        spinner.classList.add('hidden');
+        spinner.classList.remove('flex');
+        mainContent.classList.remove('opacity-30', 'pointer-events-none');
+
+        if (window.innerWidth < 768) {
+            const drawer = document.getElementById("drawer-navigation");
+            if (window.FlowbiteInstances) {
+                const drawerInstance = FlowbiteInstances.getInstance("Drawer", "drawer-navigation");
+                if (drawerInstance) {
+                    drawerInstance.hide();
+                }
+            } else {
+                drawer.classList.add("-translate-x-full");
+            }
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 300);
+}
     // ============ COURSES/SUBJECTS ============
     async function loadExamSets() {
         try {
