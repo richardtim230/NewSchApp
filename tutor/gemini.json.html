@@ -2099,7 +2099,7 @@ function showCreditModal(title, message) {
         }
     });
 }
-        async function startSelectedExam() {
+async function startSelectedExam() {
     if (!selectedExamSetId) {
         alert("Please select an exam first");
         return;
@@ -2108,6 +2108,9 @@ function showCreditModal(title, message) {
     try {
         showSpinner(true);
 
+        // Fetch exam details first
+        currentExamSet = await fetchExamSetDetails(selectedExamSetId);
+        
         // ============ DEDUCT CREDITS BEFORE STARTING ============
         const token = localStorage.getItem('token') || localStorage.getItem('student_jwt_token');
         
@@ -2125,17 +2128,18 @@ function showCreditModal(title, message) {
                     'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({
-                    accessCode: selectedExamSetId
+                    examSetId: selectedExamSetId,  // Try this first
+                    // Or use: accessCode: currentExamSet.accessCode
                 })
             });
 
             const creditData = await creditResponse.json();
+            console.log('Credit response:', creditData); // Debug log
 
             if (!creditResponse.ok) {
                 showSpinner(false);
                 
                 if (creditResponse.status === 402) {
-                    // Insufficient credits - show modal
                     showCreditModal(
                         'Insufficient Credits',
                         `This exam requires 8 credits, but you only have ${creditData.currentCredits || 0} credits available. Purchase credits to continue.`
@@ -2148,7 +2152,6 @@ function showCreditModal(title, message) {
             }
 
             // ✅ Credits deducted successfully
-            // Update UI credit display
             if (document.getElementById('token-balance')) {
                 document.getElementById('token-balance').textContent = creditData.remainingCredits || 0;
             }
@@ -2160,8 +2163,7 @@ function showCreditModal(title, message) {
             return;
         }
 
-        // ============ PROCEED WITH EXAM IF CREDITS DEDUCTED ============
-        currentExamSet = await fetchExamSetDetails(selectedExamSetId);
+        // ============ PROCEED WITH EXAM ============
         examQuestions = await fetchCBTQuestions(selectedExamSetId);
 
         if (!Array.isArray(examQuestions) || examQuestions.length === 0) {
