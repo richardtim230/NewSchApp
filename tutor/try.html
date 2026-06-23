@@ -342,7 +342,7 @@
                                 </div>
                                 <div>
                                     <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Student Identification Code Number (ID)</label>
-                                    <input type="text" id="profileStudentId" disabled class="w-full bg-gray-100 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-500 cursor-not-allowed outline-none">
+                                    <input type="text" id="profileStudentId" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-pqOrange">
                                 </div>
                             </div>
 
@@ -364,6 +364,15 @@
                             <div>
                                 <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Professional Academic Biography Statement / About</label>
                                 <textarea id="profileBio" rows="3" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-pqOrange resize-none"></textarea>
+                            </div>
+
+                            <div class="pt-4 border-t border-gray-100 space-y-2">
+                                <h4 class="text-xs font-black text-pqBlue uppercase tracking-widest mb-2">Notification Routing Protocols</h4>
+                                <div class="flex flex-col gap-2 text-xs font-semibold text-gray-600">
+                                    <label class="flex items-center gap-2"><input type="checkbox" id="notifyEmail" class="rounded text-pqOrange"> Route Alert Updates into Registration Email Inbox</label>
+                                    <label class="flex items-center gap-2"><input type="checkbox" id="notifySMS" class="rounded text-pqOrange"> Route Critical Operational Event logs via Cellular SMS Channel</label>
+                                    <label class="flex items-center gap-2"><input type="checkbox" id="notifyPush" class="rounded text-pqOrange"> Trigger Client Browser Hardware Device Native Push Triggers</label>
+                                </div>
                             </div>
 
                             <div class="pt-4 text-right">
@@ -414,30 +423,18 @@
     </div>
 
     <script>
-        // CONFIGURATION PARAMETERS
+        // BACKEND BASE ENDPOINT URI SYNCHRONIZATION
         const BACKEND = "https://examguide.onrender.com";
         const POSTS_API = BACKEND + "/api/posts";
         const MESSAGES_API = BACKEND + "/api/messages";
+        
+        // Dynamic Route Resolution Strategy:
+        // Adjust this variable if your system hosts profile details at a specific route like '/api/users/me'
+        const PROFILE_API = BACKEND + "/api/auth/me"; 
 
         function getToken() { return localStorage.token || sessionStorage.token || ''; }
         function authHeader() { return { 'Authorization': 'Bearer ' + getToken() }; }
 
-        // UTILITY: Decodes the logged-in User's ID directly from your JWT
-        function getUserIdFromToken() {
-            const token = getToken();
-            if (!token) return null;
-            try {
-                const base64Url = token.split('.')[1];
-                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-                const payload = JSON.parse(window.atob(base64));
-                return payload.id || payload._id || null;
-            } catch (e) {
-                console.error("JWT decoding error:", e);
-                return null;
-            }
-        }
-
-        // CORE GLOBAL ARRAYS & LAZY LOADING PAGINATION PARAMS
         let posts = [];
         let quill, quillInitialized = false, editingPostId = null;
         let uploadedImages = [];
@@ -447,7 +444,6 @@
         let hasMorePosts = true;
         let isLoadingPosts = false;
 
-        // UI INTERACTIVE LAYOUT ROUTER LOGIC
         const sidebar = document.getElementById('sidebar');
         const overlay = document.getElementById('sidebarOverlay');
 
@@ -465,22 +461,19 @@
         }
 
         function tabSwitch(tabName) {
-            // Update Navigation Menu Styling
             document.querySelectorAll('[data-tab]').forEach(b => b.classList.remove('tab-btn-active'));
             const matchingBtn = document.querySelector(`[data-tab="${tabName}"]`);
             if (matchingBtn) matchingBtn.classList.add('tab-btn-active');
 
-            // Toggle Panel Visibility Content Elements
             document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
             const destinationTab = document.getElementById('tab-' + tabName);
             if (destinationTab) destinationTab.classList.remove('hidden');
 
-            // Hide the mobile drawer navigation panel immediately when an option is tapped
+            // Requirement 2 Fixed: Drop mobile drawer out of view immediately when a selection item is triggered
             if (!sidebar.classList.contains('-translate-x-full')) {
                 toggleSidebar();
             }
 
-            // Conditional Target Refresh Processing Logic
             if(tabName === 'editor') setTimeout(initEditor, 50);
             if(tabName === 'settings') fetchProfile();
             if(tabName === 'myposts') {
@@ -492,14 +485,12 @@
             if(tabName === 'postlinks') renderPostLinks();
         }
 
-        // Bind tab triggers to click handles
         document.querySelectorAll('[data-tab]').forEach(btn => {
             btn.addEventListener('click', function() { tabSwitch(this.dataset.tab); });
         });
         document.getElementById('toEditorBtn').onclick = () => { tabSwitch('editor'); clearEditor(); };
         document.getElementById('trashBtn').onclick = () => { clearEditor(); };
 
-        // INITIALIZE WYSIWYG TEXT COMPOSER
         function initEditor() {
             if(quillInitialized) return;
             quill = new Quill('#editor', {
@@ -530,7 +521,6 @@
             document.getElementById("imagePreview").innerHTML = "";
         }
 
-        // DATA ROUTER AND ASSET HANDLERS
         function showPostsLoading(append) {
             const el = document.getElementById('myPostsList');
             const loaderHtml = `<div id="postsLoaderSpinner" class="flex items-center justify-center py-12"><i class="fas fa-circle-notch animate-spin text-pqBlue text-3xl"></i></div>`;
@@ -546,45 +536,44 @@
             if (spinner) spinner.remove();
         }
 
-        // DYNAMIC IDENTITIES SYNC ROUTINES
+        // Requirement 3 Fixed: Defensive Profile Payload Mapping Pipeline
         async function fetchProfile() {
-            const userId = getUserIdFromToken();
-            if (!userId) return;
-
             try {
-                // Calls matching exactly GET /api/users/:id from your router file
-                const res = await fetch(`${BACKEND}/api/users/${userId}`, { headers: authHeader() });
+                const res = await fetch(PROFILE_API, { headers: { ...authHeader(), "Content-Type": "application/json" } });
                 if (res.status === 401 || res.status === 403) return forceLogout();
                 if (!res.ok) return;
+                const responseData = await res.json();
                 
-                const d = await res.json();
-                const user = d.user || d || {};
+                // Dynamic resolution handles both wrapped data shapes { user: ... } and direct object responses
+                const user = responseData.user ? responseData.user : responseData;
                 
-                // Root text field bindings mapped from image snapshot fields
+                // Text Inputs
                 document.getElementById("profileName").value = user.fullname || "";
                 document.getElementById("profileEmail").value = user.email || "";
-                document.getElementById("profileBio").value = user.bio || "";
+                document.getElementById("profileBio").value = user.bio || user.about || "";
                 document.getElementById("profilePhone").value = user.phone || "";
-                document.getElementById("profileStudentId").value = user.studentId || "ADMIN";
-                document.getElementById("profileLevel").value = user.level || "300";
-                document.getElementById("profileFaculty").value = user.faculty || "";
-                document.getElementById("profileDepartment").value = user.department || "";
+                document.getElementById("profileStudentId").value = user.studentId || "";
+                document.getElementById("profileLevel").value = user.level || "";
                 
-                // Nested 'social' objects fallback checks directly matches database trace
+                // Fallbacks pull names safely out of populated or legacy flat database keys
+                document.getElementById("profileFaculty").value = (user.faculty && typeof user.faculty === 'object') ? (user.faculty.name || "") : (user.faculty || "");
+                document.getElementById("profileDepartment").value = (user.department && typeof user.department === 'object') ? (user.department.name || "") : (user.department || "");
+                
+                // Nested Credits structure synchronization strategy matching MongoDB screenshots
                 const socialObj = user.social || user.socials || {};
-                const currentCredits = socialObj.creditPoints !== undefined ? socialObj.creditPoints : 31297;
+                const currentCredits = socialObj.creditPoints !== undefined ? socialObj.creditPoints : (user.points || 0);
+                const isPremiumUser = socialObj.isPremium !== undefined ? socialObj.isPremium : !!user.isPremium;
                 
-                // Global counters integration points
+                // DOM Synchronizer
                 document.getElementById("profilePoints").textContent = currentCredits.toLocaleString();
                 document.getElementById("topNavPoints").textContent = currentCredits.toLocaleString();
                 document.getElementById("dashboardPointsCount").textContent = currentCredits.toLocaleString();
                 document.getElementById("topNavName").textContent = user.fullname || "Scholar Account";
                 document.getElementById("welcomeName").textContent = user.fullname ? user.fullname.split(' ')[0] : "Scholar";
-                document.getElementById("topNavRole").textContent = user.role || "admin";
+                document.getElementById("topNavRole").textContent = user.role || "Contributor";
 
-                // Account upgrade tier statuses display check
                 const premiumBadge = document.getElementById("premiumBadge");
-                if (socialObj.isPremium || user.isPremium) {
+                if (isPremiumUser) {
                     premiumBadge.textContent = "Premium Scholar";
                     premiumBadge.className = "bg-orange-50 text-pqOrange border border-orange-100 text-xs font-bold px-3 py-1.5 rounded-xl";
                 } else {
@@ -592,45 +581,49 @@
                     premiumBadge.className = "bg-gray-100 text-gray-500 text-xs font-bold px-3 py-1.5 rounded-xl";
                 }
                 
-                const avatarUrl = user.profilePic ? user.profilePic : `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullname || "User")}&background=002046&color=ffffff`;
+                const avatarUrl = user.profilePic ? user.profilePic : `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullname || "User")}&background=002046&color=ffffff&rounded=true`;
                 document.getElementById("profileAvatar").src = avatarUrl;
+
+                document.getElementById("notifyEmail").checked = !!user.notifyEmail;
+                document.getElementById("notifySMS").checked = !!user.notifySMS;
+                document.getElementById("notifyPush").checked = !!user.notifyPush;
             } catch (err) {
-                console.error("Profile payload processing failure:", err);
+                console.error("Profile extraction cycle interrupted:", err);
             }
         }
 
         async function saveProfile(e) {
             e.preventDefault();
-            const userId = getUserIdFromToken();
-            if (!userId) return;
-
             try {
-                // Invokes the precise PUT /api/users/:id update sequence from the router
-                const res = await fetch(`${BACKEND}/api/users/${userId}`, {
-                    method: "PUT",
+                const res = await fetch(PROFILE_API, {
+                    method: "PATCH",
                     headers: { ...authHeader(), "Content-Type": "application/json" },
                     body: JSON.stringify({
                         fullname: document.getElementById("profileName").value,
                         email: document.getElementById("profileEmail").value,
+                        bio: document.getElementById("profileBio").value,
                         phone: document.getElementById("profilePhone").value,
+                        studentId: document.getElementById("profileStudentId").value,
                         level: document.getElementById("profileLevel").value,
                         faculty: document.getElementById("profileFaculty").value,
                         department: document.getElementById("profileDepartment").value,
-                        bio: document.getElementById("profileBio").value
+                        notifyEmail: document.getElementById("notifyEmail").checked,
+                        notifySMS: document.getElementById("notifySMS").checked,
+                        notifyPush: document.getElementById("notifyPush").checked
                     })
                 });
                 if (res.status === 401 || res.status === 403) return forceLogout();
                 if (res.ok) {
-                    alert("Profile tracking vectors successfully modified inside database layers.");
+                    alert("Profile metadata records successfully saved.");
                     fetchProfile();
                 }
-            } catch (err) {
-                alert("An error occurred updating database tracking streams.");
+            } catch {
+                alert("Could not process remote update payload stream.");
             }
         }
         document.getElementById('settingsForm').onsubmit = saveProfile;
 
-        // HIGH PERFORMANCE CLIENT LAZY LOADING CONTENT FETCH
+        // Defensive Array Parsing Fix
         async function fetchPosts(append = false) {
             if (isLoadingPosts) return;
             if (append && !hasMorePosts) return;
@@ -641,11 +634,12 @@
             try {
                 const res = await fetch(BACKEND + "/api/myposts", { headers: authHeader() });
                 if (res.status === 401 || res.status === 403) return forceLogout();
-                if (!res.ok) throw new Error("Validation check rejected.");
+                if (!res.ok) throw new Error("Failed remote validation handshake.");
                 
                 const responseData = await res.json();
-                // Defensive guard: converts wrapped responses like { data: [...] } or { posts: [...] } back into pure arrays
-                let rawAllPosts = Array.isArray(responseData) ? responseData : (responseData.posts || responseData.data || []);
+                
+                // Defensive structural fix prevents crashing if arrays arrive wrapped inside nested envelopes
+                const rawAllPosts = Array.isArray(responseData) ? responseData : (responseData.posts || responseData.data || []);
                 
                 rawAllPosts.sort((a,b) => new Date(b.date || 0) - new Date(a.date || 0));
 
@@ -678,8 +672,8 @@
                 currentPage++;
             } catch (err) {
                 removePostsSpinner();
-                document.getElementById('myPostsList').innerHTML = `<div class="text-red-500 text-center py-8">Could not load workspace production items.</div>`;
-            } finally {
+                document.getElementById('myPostsList').innerHTML = `<div class="text-red-500 text-center py-8">Could not load workspace feed components. Please try refreshing.</div>`;
+            } else {
                 isLoadingPosts = false;
             }
         }
@@ -711,7 +705,7 @@
         function renderMyPosts(append, freshChunk) {
             const container = document.getElementById('myPostsList');
             if (!append && !posts.length) {
-                container.innerHTML = `<div class="text-gray-500 text-center py-8">No dynamic entries verified inside system directories. Launch composition systems!</div>`;
+                container.innerHTML = `<div class="text-gray-500 text-center py-8">No matching entries found inside workspace directories.</div>`;
                 return;
             }
             if (!append) container.innerHTML = "";
@@ -719,7 +713,7 @@
             freshChunk.forEach(post => {
                 let images = Array.isArray(post.images) && post.images.length ? post.images : (post.imageUrl ? [post.imageUrl] : []);
                 let imageHtml = images.length ? `<img src="${images[0]}" alt="Thumb" class="rounded-xl w-20 h-20 object-cover border border-gray-100">` : '';
-                let rawTextSnippet = post.content ? post.content.replace(/<[^>]+>/g, '').substring(0, 140) + "..." : 'No text defined inside post template core body.';
+                let rawTextSnippet = post.content ? post.content.replace(/<[^>]+>/g, '').substring(0, 140) + "..." : 'No clear description provided inside body segments.';
 
                 container.insertAdjacentHTML('beforeend', `
                 <div class="rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col sm:flex-row gap-4 items-center bg-white hover:border-pqBlue transition-colors group">
@@ -749,21 +743,19 @@
             });
         }
 
-        // FILE CLOUDINARY UPLOAD PIPELINES
         document.getElementById("imageUpload").addEventListener("change", async function(evt) {
             const files = Array.from(evt.target.files);
             if (files.length > 3) {
-                alert("Maximum asset limits are capped at 3 image file instances.");
+                alert("File uploads are restricted to a maximum threshold of 3 images.");
                 evt.target.value = "";
                 return;
             }
-            let html = "";
-            uploadedImages = [];
             const previewContainer = document.getElementById("imagePreview");
+            uploadedImages = [];
             
             for (const file of files) {
                 if (file.size > 5*1024*1024) {
-                    alert("Exceeded maximum processing payload file limit: 5MB.");
+                    alert("Exceeded maximum processing payload constraint of 5MB per image.");
                     evt.target.value = "";
                     previewContainer.innerHTML = "";
                     uploadedImages = [];
@@ -789,7 +781,7 @@
                 body: formData,
                 headers: { 'Authorization': 'Bearer ' + getToken() }
             });
-            if (!res.ok) throw new Error("Cloud bucket integration failed.");
+            if (!res.ok) throw new Error("Cloud network node rejected asset stream.");
             const data = await res.json();
             return data.url;
         }
@@ -807,13 +799,12 @@
                     const imageUrl = await uploadImageToCloudinary(file);
                     newHtml = newHtml.replace(base64, imageUrl);
                 } catch (e) {
-                    console.error("Base64 conversion failed:", e);
+                    console.error("Inline binary stream transformation error:", e);
                 }
             }
             return newHtml;
         }
 
-        // COMPOSITION PUBLISHING ACTION SYSTEMS
         document.getElementById('postEditorForm').onsubmit = async function(e){
             e.preventDefault();
             executePostSubmission("Draft");
@@ -828,7 +819,7 @@
             const title = document.getElementById('postTitle').value;
             const category = document.getElementById('postCategory').value;
             if(!title || !category) {
-                alert("Missing required fields inside payload header records.");
+                alert("Please fill out all mandatory headers.");
                 return;
             }
 
@@ -859,15 +850,15 @@
                     body: JSON.stringify(body)
                 });
                 if (res.status === 401 || res.status === 403) return forceLogout();
-                if (!res.ok) throw new Error("Server structural validation error.");
+                if (!res.ok) throw new Error("Database interface engine rejected block serialization.");
                 
-                alert(`Post element compiled successfully as: ${targetStatus}`);
+                alert(`Content verified and preserved as: ${targetStatus}`);
                 await fetchPosts(false);
                 tabSwitch('myposts');
                 clearEditor();
             } catch (err) {
-                alert("An issue occurred streaming structural text data down to servers.");
-            } compression {
+                alert("Communication failure encountered while transmission updates down to cloud storage.");
+            } finally {
                 saveBtn.disabled = false;
                 pubBtn.disabled = false;
                 draftSpinner.classList.add('hidden');
@@ -879,7 +870,7 @@
             const title = document.getElementById('quickTitle').value;
             const textContent = document.getElementById('quickContent').value;
             if(!title || !textContent) {
-                alert("Populate text elements before sending cloud storage requests.");
+                alert("Inputs cannot be empty.");
                 return;
             }
             try {
@@ -891,13 +882,13 @@
                 });
                 if (res.status === 401 || res.status === 403) return forceLogout();
                 if(res.ok) {
-                    alert("Quick draft successfully written.");
+                    alert("Quick compilation saved cleanly.");
                     document.getElementById('quickTitle').value = "";
                     document.getElementById('quickContent').value = "";
                     fetchPosts(false);
                 }
             } catch {
-                alert("Failed processing database structural arrays.");
+                alert("System error tracking quick configuration streams.");
             }
         }
 
@@ -920,14 +911,14 @@
         };
 
         window.deletePost = async function(id) {
-            if(!id || !confirm("Are you sure you want to drop this production index from database nodes?")) return;
+            if(!id || !confirm("Are you sure you want to completely remove this record index from database servers?")) return;
             try {
                 const res = await fetch(`${POSTS_API}/${id}`, { method: 'DELETE', headers: authHeader() });
                 if (res.status === 401 || res.status === 403) return forceLogout();
-                if (!res.ok) throw new Error("Deletion rejected.");
+                if (!res.ok) throw new Error("Purge operation denied.");
                 await fetchPosts(false);
             } catch (err) {
-                alert("Failed record purge event: " + err.message);
+                alert("Could not process record removal: " + err.message);
             }
         };
 
@@ -938,8 +929,8 @@
         };
 
         function showPreviewModal(title, content, images) {
-            document.getElementById('previewModalTitle').innerText = title || "Untitled Framework Element";
-            document.getElementById('previewModalContent').innerHTML = content || "<em>No text body compiled.</em>";
+            document.getElementById('previewModalTitle').innerText = title || "Untitled Document";
+            document.getElementById('previewModalContent').innerHTML = content || "<em>No content written inside core document structure.</em>";
             document.getElementById('previewImages').innerHTML = (images || []).map(img => `<img src="${img}" class="w-20 h-20 object-cover rounded-xl border border-gray-100 shadow-sm" />`).join('');
             document.getElementById('previewModal').classList.remove('hidden');
         }
@@ -954,7 +945,7 @@
         function renderPostLinks() {
             const el = document.getElementById('postsLinkList');
             if (!posts.length) {
-                el.innerHTML = `<div class="text-gray-400 py-6 text-xs font-medium">No live posts generated to extract hyperlinks from.</div>`;
+                el.innerHTML = `<div class="text-gray-400 py-6 text-xs font-medium">No live posts found to construct links from.</div>`;
                 return;
             }
             el.innerHTML = posts.map(post => {
@@ -966,7 +957,6 @@
             }).join('');
         }
 
-        // DISCUSSION MESSAGES SYSTEM
         async function fetchMessages() {
             try {
                 const res = await fetch(MESSAGES_API, { headers: authHeader() });
@@ -984,7 +974,7 @@
                 `).join('');
                 const container = document.getElementById('messagesList');
                 container.scrollTop = container.scrollHeight;
-            } catch { document.getElementById('messagesList').innerHTML = "<div class='text-xs text-center py-4 text-gray-400'>No network loops detected inside communications system modules.</div>"; }
+            } catch { document.getElementById('messagesList').innerHTML = "<div class='text-xs text-center py-4 text-gray-400'>No discussion loops detected inside server nodes.</div>"; }
         }
 
         document.getElementById('blogMsgForm').onsubmit = async function(e){
@@ -1003,7 +993,6 @@
             } catch {}
         };
 
-        // HELP DESK INTERACTION
         document.getElementById('helpForm').addEventListener('submit', function(e){
             e.preventDefault();
             const helpInput = document.getElementById('helpInput');
@@ -1021,7 +1010,6 @@
             window.location = "mock-icthallb";
         }
 
-        // CHARTS DATA INITIALIZATION
         document.addEventListener("DOMContentLoaded", function() {
             fetchProfile();
             fetchPosts(false);
