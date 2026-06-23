@@ -1390,6 +1390,175 @@
                 </div>
             </div>
 
+            <!-- Floating actions: Chatbot + Quiz -->
+<style>
+  /* Small local styles to ensure consistent spacing and animations */
+  .floating-actions {
+    right: 1rem;
+    bottom: 1.25rem;
+    z-index: 60;
+  }
+  .fab-btn {
+    width: 52px;
+    height: 52px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 20px rgba(2,6,23,0.12);
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .fab-btn:active { transform: translateY(1px) scale(.99); }
+  .fab-pulse {
+    animation: pulse 2.2s infinite;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 6px 18px rgba(255,86,34,0.12); }
+    50% { box-shadow: 0 10px 30px rgba(255,86,34,0.08); }
+    100% { box-shadow: 0 6px 18px rgba(255,86,34,0.12); }
+  }
+
+  /* Chat modal */
+  .chat-overlay {
+    background: rgba(0,0,0,0.45);
+    backdrop-filter: blur(4px);
+  }
+  .chat-box {
+    width: 360px;
+    max-width: calc(100vw - 32px);
+  }
+  @media (min-width: 768px) {
+    .chat-box { border-radius: 14px; }
+  }
+</style>
+
+<div id="floatingActions" class="fixed floating-actions right-4 bottom-6 flex flex-col gap-3 items-end">
+  <!-- Chatbot -->
+  <button id="open-chat-btn" aria-label="Open AI chat" title="AI Chat" type="button"
+    class="fab-btn bg-gradient-to-br from-[#002046] to-[#0d2b52] text-white hover:scale-105 transition-all shadow-lg">
+    <i class="fas fa-robot fa-lg"></i>
+  </button>
+
+  <!-- Quiz page -->
+  <button id="open-quiz-btn" aria-label="Open Quiz" title="Open Quiz" type="button"
+    class="fab-btn bg-white text-pqOrange hover:scale-105 transition-all border border-gray-100">
+    <i class="fas fa-question-circle fa-lg"></i>
+  </button>
+</div>
+
+<!-- Chat modal (hidden by default) -->
+<div id="chatModal" class="fixed inset-0 z-60 hidden items-end md:items-center justify-center chat-overlay p-4">
+  <div class="bg-white chat-box shadow-xl w-full md:max-w-sm flex flex-col overflow-hidden">
+    <div class="bg-gradient-to-r from-pqBlue to-pqActiveBlue px-4 py-3 flex items-center justify-between text-white">
+      <div class="flex items-center gap-3">
+        <i class="fas fa-robot text-2xl"></i>
+        <div>
+          <div class="font-bold text-sm">AI Chat</div>
+          <div class="text-[12px] opacity-80">Ask study questions</div>
+        </div>
+      </div>
+      <button id="close-chat-btn" class="text-white/90 hover:text-white" aria-label="Close chat">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+
+    <div id="chatMessages" class="p-4 flex-1 overflow-y-auto text-[13px] bg-gray-50">
+      <div class="text-gray-500 text-sm italic">This is a placeholder chat. Connect to your AI endpoint to enable messages.</div>
+    </div>
+
+    <div class="p-3 border-t border-gray-100 bg-white">
+      <div class="flex gap-2">
+        <input id="chatInput" class="flex-1 p-2.5 border rounded-lg text-sm" placeholder="Type a question..." aria-label="Type a question">
+        <button id="sendChatBtn" class="bg-pqOrange text-white px-3 py-2 rounded-lg font-bold">Send</button>
+      </div>
+      <div class="text-[11px] text-gray-400 mt-2">Tip: This UI is local — hook up your AI API to get responses.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Floating actions behavior
+  (function(){
+    const openChatBtn = document.getElementById('open-chat-btn');
+    const openQuizBtn = document.getElementById('open-quiz-btn');
+    const chatModal = document.getElementById('chatModal');
+    const closeChatBtn = document.getElementById('close-chat-btn');
+    const sendChatBtn = document.getElementById('sendChatBtn');
+    const chatInput = document.getElementById('chatInput');
+    const chatMessages = document.getElementById('chatMessages');
+
+    // Open chat modal
+    openChatBtn?.addEventListener('click', () => {
+      chatModal.classList.remove('hidden');
+      chatModal.style.display = 'flex';
+      chatInput?.focus();
+    });
+
+    // Close chat modal
+    function closeChat() {
+      chatModal.classList.add('hidden');
+      chatModal.style.display = 'none';
+    }
+    closeChatBtn?.addEventListener('click', closeChat);
+
+    // click overlay to close (but not when clicking inside the chat box)
+    chatModal?.addEventListener('click', (evt) => {
+      if (evt.target === chatModal) closeChat();
+    });
+
+    // Escape to close
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && chatModal && !chatModal.classList.contains('hidden')) {
+        closeChat();
+      }
+    });
+
+    // Placeholder send handler (append message locally). Replace with actual API call.
+    sendChatBtn?.addEventListener('click', async () => {
+      const text = chatInput.value.trim();
+      if (!text) return;
+      appendMessage('You', text, true);
+      chatInput.value = '';
+      // Simulate bot reply (replace this with your fetch to AI endpoint)
+      appendMessage('AI', 'Thinking...', false, true);
+      setTimeout(() => {
+        // replace the 'Thinking...' with a canned response
+        const last = chatMessages.querySelector('.bot.thinking');
+        if (last) last.textContent = 'This is a sample reply. Integrate your AI API to return real answers.';
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }, 800);
+    });
+
+    function appendMessage(who, text, isUser=false, thinking=false) {
+      const wrapper = document.createElement('div');
+      wrapper.className = (isUser ? 'text-right' : 'text-left');
+      const bubble = document.createElement('div');
+      bubble.className = (isUser ? 'inline-block bg-pqOrange text-white px-3 py-2 rounded-lg mt-2' : 'inline-block bg-white border border-gray-200 px-3 py-2 rounded-lg mt-2 bot');
+      if (thinking) bubble.classList.add('thinking');
+      bubble.textContent = text;
+      wrapper.appendChild(bubble);
+      chatMessages.appendChild(wrapper);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // Quiz button behavior — navigate to /quiz (modify as needed)
+    openQuizBtn?.addEventListener('click', () => {
+      // Replace the pathname if your quiz route is different
+      window.location.href = 'quiz';
+    });
+
+    // Accessibility: keyboard focus style
+    [openChatBtn, openQuizBtn].forEach(el => {
+      el?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          el.click();
+        }
+      });
+    });
+
+  })();
+</script>
             <!-- ================= VIEW 3: STUDY (PAST QUESTIONS) ================= -->
             <div id="view-study" class="view-section hidden space-y-4">
                 
