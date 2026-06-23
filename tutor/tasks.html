@@ -758,9 +758,39 @@
                 } catch (articleErr) {
                     console.error("Failed handling automatic article task retrieval pipeline:", articleErr);
                 }
+                const referralTask = {
+    _id: 'referral-task',
+    title: 'Refer Friends & Earn',
+    description: 'Earn 10 credit points for every successful referral.',
+    activityType: 'referral',
+    points: 10,
+    status: 'active',
+    meta: {
+        referralCode: currentUserId
+    }
+};
+
+const watchAdsTask = {
+    _id: 'watch-ads-task',
+    title: 'Watch Ads & Earn',
+    description: 'Watch a sponsored ad and complete verification to earn points.',
+    activityType: 'watch_ads',
+    points: 5,
+    status: localStorage.getItem('watch_ads_completed') === 'true'
+        ? 'done'
+        : 'active',
+    meta: {
+        verificationUrl: 'view-ads?taskId=watch-ads-task'
+    }
+};
 
                 // Combine both pools into tracking space
-                tasks = [...standardTasks, ...visibleArticles];
+                tasks = [
+    ...standardTasks,
+    ...visibleArticles,
+    referralTask,
+    watchAdsTask
+];
                 
                 renderTasks();
                 updateStats();
@@ -778,6 +808,7 @@
                 showToast(`Failed to load tasks: ${e.message}`, 'error');
             }
         }
+        
 
         function renderTasks() {
             const container = document.getElementById('tasks-container');
@@ -917,6 +948,75 @@
                     externalLinkBtn.style.display = 'flex';
                 }
             } else {
+
+    // ============================================
+    // REFERRAL TASK
+    // ============================================
+    if (task.activityType === 'referral') {
+
+        externalLinkBtn.classList.remove('hidden');
+        externalLinkBtn.style.display = 'flex';
+
+        const referralLink =
+            `https://oau.examguard.com.ng/register?ref=${currentUserId}`;
+
+        externalLinkBtn.href = '#';
+        externalLinkBtn.innerHTML = 'Copy Referral Link 🚀';
+
+        externalLinkBtn.className =
+            'w-full text-center bg-gradient-to-r from-pqBlue to-pqActiveBlue text-white font-bold py-3.5 rounded-lg transition-all text-[13px] flex items-center justify-center gap-2 shadow-sm';
+
+        externalLinkBtn.onclick = function(e) {
+            e.preventDefault();
+
+            navigator.clipboard.writeText(referralLink);
+
+            showToast(
+                'Referral link copied! Earn 10 points per successful referral.',
+                'success'
+            );
+        };
+
+        actionBtn.textContent = 'Waiting For Referral Completion';
+        actionBtn.disabled = true;
+        actionBtn.className =
+            'w-full bg-gray-200 text-gray-400 font-bold py-3 rounded-lg text-[13px] cursor-not-allowed';
+
+        document.getElementById('taskDetailModal').classList.remove('hidden');
+        document.getElementById('taskDetailModal').style.display = 'flex';
+
+        return;
+    }
+
+    // ============================================
+    // WATCH ADS TASK
+    // ============================================
+    if (task.activityType === 'watch_ads') {
+
+        externalLinkBtn.href = `view-ads?taskId=${task._id}`;
+
+        externalLinkBtn.innerHTML =
+            'Watch Sponsored Ad & Verify 🎥';
+
+        externalLinkBtn.className =
+            'w-full text-center bg-gradient-to-r from-pqOrange to-orange-600 text-white font-bold py-3.5 rounded-lg transition-all text-[13px] flex items-center justify-center gap-2 shadow-sm animate-pulse';
+
+        externalLinkBtn.classList.remove('hidden');
+        externalLinkBtn.style.display = 'flex';
+
+        actionBtn.textContent =
+            '🔒 Complete Ad Verification First';
+
+        actionBtn.disabled = true;
+
+        actionBtn.className =
+            'w-full bg-gray-200 text-gray-400 font-bold py-3 rounded-lg text-[13px] cursor-not-allowed';
+
+        document.getElementById('taskDetailModal').classList.remove('hidden');
+        document.getElementById('taskDetailModal').style.display = 'flex';
+
+        return;
+    }
                 if (isArticleTask) {
                     // Automatic Post Verification Setup Pipeline
                     const isAdVerified = localStorage.getItem(`verified_ad_click_${task._id}`) === "true";
