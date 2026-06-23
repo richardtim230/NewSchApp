@@ -2116,24 +2116,6 @@ async function startSelectedExam() {
             return;
         }
 
-        // ============ FIRST: Get exam info using the ID to extract access code ============
-        let examAccessCode = selectedExamSetId; // Use the ID as the access code for now
-        
-        try {
-            // Try to fetch exam details first
-            const examRes = await fetch(`https://examguide.onrender.com/api/exam-set/by-access?accessCode=${encodeURIComponent(selectedExamSetId)}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            
-            if (examRes.ok) {
-                const examData = await examRes.json();
-                examAccessCode = examData.accessCode || selectedExamSetId;
-                console.log('Exam Access Code:', examAccessCode);
-            }
-        } catch (e) {
-            console.warn('Could not fetch exam details, using ID as access code');
-        }
-
         // ============ DEDUCT CREDITS USING ACCESS CODE ============
         try {
             const creditResponse = await fetch('https://examguide.onrender.com/api/student/exam-set/use-credit-v2', {
@@ -2143,30 +2125,20 @@ async function startSelectedExam() {
                     'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({
-                    accessCode: examAccessCode  // Use accessCode not examSetId
+                    accessCode: selectedExamSetId  // This is now the actual accessCode (e.g., "ANAT222")
                 })
             });
 
-            const creditText = await creditResponse.text();
-            console.log('Credit response:', creditText);
-            
-            let creditData = {};
-            try {
-                creditData = JSON.parse(creditText);
-            } catch (e) {
-                console.error('Failed to parse response:', creditText);
-                showSpinner(false);
-                alert('❌ Server error. Please try again.');
-                return;
-            }
+            const creditData = await creditResponse.json();
+            console.log('Credit response:', creditData);
 
             if (!creditResponse.ok) {
                 showSpinner(false);
                 
-                if (creditResponse.status === 402 || creditData.message?.includes('credit')) {
+                if (creditResponse.status === 402) {
                     showCreditModal(
                         'Insufficient Credits',
-                        `This exam requires 8 credits, but you only have ${creditData.currentCredits || 0} credits available. Purchase credits to continue.`
+                        `This exam requires 8 credits, but you only have ${creditData.currentCredits || 0} credits available.`
                     );
                     return;
                 }
@@ -2175,34 +2147,31 @@ async function startSelectedExam() {
                 return;
             }
 
-            // ✅ Credits deducted successfully
-            console.log('✅ Credits deducted. Remaining:', creditData.remainingCredits);
-            
+            // ✅ Credits deducted
             if (document.getElementById('token-balance')) {
-                const newBalance = creditData.remainingCredits || 0;
-                document.getElementById('token-balance').textContent = newBalance;
+                document.getElementById('token-balance').textContent = creditData.remainingCredits || 0;
             }
 
         } catch (creditError) {
             console.error('Credit deduction error:', creditError);
             showSpinner(false);
-            alert('❌ Error processing credits: ' + creditError.message);
+            alert('❌ Error: ' + creditError.message);
             return;
         }
 
         // ============ PROCEED WITH EXAM ============
-        currentExamSet = await fetchExamSetDetails(selectedExamSetId);
-        examQuestions = await fetchCBTQuestions(selectedExamSetId);
+        // Now fetch using the accessCode
+        currentExamSet = await fetchExamInfo(selectedExamSetId, token);
+        examQuestions = await fetchCBTQuestions(selectedExamSetId, token);
 
         if (!Array.isArray(examQuestions) || examQuestions.length === 0) {
             showSpinner(false);
-            alert("No questions found for this exam");
+            alert("No questions found");
             return;
         }
 
         currentQuestionIndex = 0;
         userAnswers = {};
-
         renderQuestion();
         showSpinner(false);
         switchView('study', 'Study');
@@ -2210,7 +2179,7 @@ async function startSelectedExam() {
     } catch (err) {
         console.error("Start exam error:", err);
         showSpinner(false);
-        alert("Failed to start exam: " + err.message);
+        alert("Failed to start exam");
     }
 }
 
