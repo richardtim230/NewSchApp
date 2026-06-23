@@ -331,36 +331,57 @@ if (loginResponse.ok) {
 });
 
 // ====== REGISTRATION HANDLING (with confirmation modal) ======
+// ====== REGISTRATION HANDLING ======
 forms.register.addEventListener('submit', async function(e) {
     e.preventDefault();
 
-    // Collect all registration details
     const fullName = document.getElementById('reg-fullname').value.trim();
     const username = document.getElementById('reg-username').value.trim();
     const password = document.getElementById('reg-password').value;
     const email = document.getElementById('reg-email').value.trim();
-    const facultyId = document.getElementById('reg-faculty').value; // ObjectId
-    const departmentId = document.getElementById('reg-department').value; // ObjectId
+    const facultyId = document.getElementById('reg-faculty').value;
+    const departmentId = document.getElementById('reg-department').value;
     const level = document.getElementById('reg-level').value;
     const phone = document.getElementById('reg-phone').value.trim();
 
-    // Look up the display name for faculty and department (for confirmation modal)
+    const manualReferral =
+        document.getElementById('reg-referral')?.value.trim() || "";
+
+    const profilePic =
+        document.getElementById('reg-profile-pic')?.files[0] || null;
+
     const facultyText = facultyId
-        ? document.querySelector('#reg-faculty option[value="' + facultyId + '"]').textContent
-        : "";
-    const departmentText = departmentId
-        ? document.querySelector('#reg-department option[value="' + departmentId + '"]').textContent
+        ? document.querySelector(`#reg-faculty option[value="${facultyId}"]`).textContent
         : "";
 
-    if (!fullName || !username || !password || !email || !facultyId || !departmentId || !level || !phone) {
-        showStatusModal("error", "Registration Error", "All fields are required!");
+    const departmentText = departmentId
+        ? document.querySelector(`#reg-department option[value="${departmentId}"]`).textContent
+        : "";
+
+    if (
+        !fullName ||
+        !username ||
+        !password ||
+        !email ||
+        !facultyId ||
+        !departmentId ||
+        !level ||
+        !phone
+    ) {
+        showStatusModal(
+            "error",
+            "Registration Error",
+            "All required fields must be completed."
+        );
         return;
     }
 
-    // Get referral code from localStorage if user landed via referral link
-    const referralCode = localStorage.getItem('pendingReferral') || "";
+    // URL referral takes priority
+    const referralCode =
+        localStorage.getItem('pendingReferral') ||
+        manualReferral ||
+        "";
 
-    // Show confirmation modal with display names
     showConfirmationModal({
         "Full Name": fullName,
         "Username": username,
@@ -369,46 +390,106 @@ forms.register.addEventListener('submit', async function(e) {
         "Department": departmentText,
         "Level": level,
         "Phone": phone,
-        ...(referralCode ? { "Referral Code": referralCode } : {})
+        ...(referralCode
+            ? { "Referral ID": referralCode }
+            : {}),
+        ...(profilePic
+            ? { "Profile Picture": profilePic.name }
+            : {})
     }, async function proceedReg() {
-        showLoadingModal("Registering...", "Please wait while we create your account.");
+
+        showLoadingModal(
+            "Registering...",
+            "Please wait while we create your account."
+        );
+
         await setRegLoading(true);
+
         try {
-            let registerResponse = await fetch("https://examguide.onrender.com/api/auth/register", {
-                method: "POST",
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    username,
-                    password,
-                    email,
-                    fullname: fullName,
-                    faculty: facultyId,   // Send as ObjectId
-                    department: departmentId, // Send as ObjectId
-                    level,
-                    phone,
-                    ref: referralCode // Pass referral code if present
-                })
-            });
-            let result = await registerResponse.json();
+
+            const formData = new FormData();
+
+            formData.append("fullname", fullName);
+            formData.append("username", username);
+            formData.append("password", password);
+            formData.append("email", email);
+            formData.append("faculty", facultyId);
+            formData.append("department", departmentId);
+            formData.append("level", level);
+            formData.append("phone", phone);
+
+            if (referralCode) {
+                formData.append("ref", referralCode);
+            }
+
+            if (profilePic) {
+                formData.append("profilePic", profilePic);
+            }
+
+            const registerResponse = await fetch(
+                "https://examguide.onrender.com/api/auth/register",
+                {
+                    method: "POST",
+                    body: formData
+                }
+            );
+
+            const result = await registerResponse.json();
+
             await setRegLoading(false);
 
             if (registerResponse.ok) {
-                showStatusModal("success", "Registration Successful", result.message || "Account created! Redirecting to login...", false);
-                // Auto-close modal and switch to login after short timeout
+
+                localStorage.removeItem("pendingReferral");
+
+                showStatusModal(
+                    "success",
+                    "Registration Successful",
+                    result.message ||
+                    "Account created successfully.",
+                    false
+                );
+
                 setTimeout(() => {
+
                     closeModal();
+
                     forms.login.classList.add('active');
                     forms.register.classList.remove('active');
-                    messageBox.innerHTML = '<div class="message success">Your account was created successfully.</div>';
+
+                    document
+                        .querySelector('[data-tab="login"]')
+                        .click();
+
                 }, 1800);
+
             } else {
-                showStatusModal("error", "Registration Failed", result.message || "Could not register. Try again.");
+
+                showStatusModal(
+                    "error",
+                    "Registration Failed",
+                    result.message ||
+                    "Could not register."
+                );
+
             }
+
         } catch (err) {
+
+            console.error(err);
+
             await setRegLoading(false);
-            showStatusModal("error", "Network Error", "Could not connect to server.");
+
+            showStatusModal(
+                "error",
+                "Network Error",
+                "Could not connect to server."
+            );
+
         }
+
     });
+
 });
 
 document.querySelectorAll('.social-btn').forEach(btn => {
