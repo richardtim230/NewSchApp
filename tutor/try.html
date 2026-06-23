@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Exam In-Session - OAU ExamGuard</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        pqBlue: '#002046',
+                        pqActiveBlue: '#0d2b52',
+                        pqOrange: '#ff5622',
+                        pqLightBg: '#f4f7fa',
+                        pqGreen: '#10b981',
+                        pqPurple: '#8b5cf6' // For "Marked for Review"
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Hide scrollbar for clean UI but keep functionality */
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        /* Prevent text selection on options to avoid accidental highlighting */
+        .no-select { user-select: none; -webkit-user-select: none; }
+        
+        /* Pulse animation for low time */
+        @keyframes pulse-red {
+            0%, 100% { color: #ef4444; }
+            50% { color: #991b1b; }
+        }
+        .timer-danger { animation: pulse-red 1s infinite; font-weight: 900; }
+    </style>
+</head>
+<body class="bg-pqLightBg text-gray-800 h-screen flex flex-col overflow-hidden font-sans antialiased">
+
+    <!-- Top Header Bar -->
+    <header class="bg-white shadow-sm border-b border-gray-200 h-16 shrink-0 flex items-center justify-between px-4 lg:px-6 z-30 relative">
+        <!-- Brand & Exam Title -->
+        <div class="flex items-center gap-4">
+            <div class="hidden sm:flex items-center gap-2 border-r border-gray-200 pr-4">
+                <span class="text-2xl">🛡️</span>
+                <span class="text-lg font-black text-pqBlue tracking-tight">ExamGuard</span>
+            </div>
+            <div>
+                <h1 class="text-sm md:text-base font-bold text-gray-800 leading-tight">MTH 101: Calculus I - Mock Exam</h1>
+                <p class="text-[10px] md:text-xs text-gray-500 font-medium">Candidate: <span class="text-pqBlue font-bold">2026/123456</span></p>
+            </div>
+        </div>
+
+        <!-- Timer -->
+        <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
+            <div class="bg-pqLightBg border border-gray-200 rounded-lg px-4 py-1 flex items-center gap-2 shadow-inner">
+                <i class="far fa-clock text-gray-400"></i>
+                <span id="exam-timer" class="font-mono text-xl font-black text-pqBlue tracking-wider">01:30:00</span>
+            </div>
+        </div>
+
+        <!-- Right Controls -->
+        <div class="flex items-center gap-3">
+            <button class="hidden md:flex items-center gap-2 text-xs font-bold text-gray-500 hover:text-pqBlue transition-colors px-2">
+                <i class="fas fa-calculator"></i> Calculator
+            </button>
+            <button id="submit-exam-btn" class="bg-red-50 text-red-600 border border-red-200 hover:bg-red-600 hover:text-white px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all shadow-sm">
+                Submit
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <div class="flex flex-1 overflow-hidden relative">
+
+        <!-- Mobile Drawer Toggle (Visible only on small screens) -->
+        <button id="mobile-grid-toggle" class="lg:hidden absolute bottom-20 right-4 z-40 bg-pqBlue text-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center border-2 border-white">
+            <i class="fas fa-th"></i>
+        </button>
+
+        <!-- Left Content Area (Question View) -->
+        <main class="flex-1 flex flex-col h-full overflow-y-auto bg-white/50 relative">
+            
+            <!-- Progress Bar -->
+            <div class="w-full h-1 bg-gray-200">
+                <div id="progress-bar" class="h-full bg-pqGreen transition-all duration-300" style="width: 0%"></div>
+            </div>
+
+            <div class="flex-1 max-w-4xl mx-auto w-full p-4 md:p-8 flex flex-col">
+                
+                <!-- Question Header -->
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-xl md:text-2xl font-black text-pqBlue flex items-center gap-3">
+                        <span class="bg-blue-50 text-pqBlue border border-blue-100 w-10 h-10 flex items-center justify-center rounded-xl text-lg shadow-sm" id="q-number-display">1</span>
+                        Question
+                    </h2>
+                    <button id="flag-btn" class="text-xs font-bold px-3 py-1.5 rounded-lg border transition-all flex items-center gap-2 border-gray-300 text-gray-500 hover:bg-gray-50">
+                        <i class="far fa-flag"></i> Mark for Review
+                    </button>
+                </div>
+
+                <!-- Question Text -->
+                <div class="prose max-w-none text-gray-700 text-base md:text-lg mb-8" id="question-text">
+                    <!-- Dynamic Content -->
+                </div>
+
+                <!-- Options -->
+                <div class="flex flex-col gap-3 mb-10 no-select" id="options-container">
+                    <!-- Dynamic Options Injected Here -->
+                </div>
+
+                <div class="mt-auto pt-6 border-t border-gray-200 flex items-center justify-between">
+                    <button id="prev-btn" class="px-5 py-2.5 rounded-xl font-bold text-sm bg-white border border-gray-300 text-gray-600 hover:bg-gray-50 hover:text-pqBlue transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+                        <i class="fas fa-arrow-left"></i> Previous
+                    </button>
+                    
+                    <button id="clear-btn" class="text-xs font-bold text-gray-400 hover:text-red-500 transition-colors">
+                        Clear Selection
+                    </button>
+
+                    <button id="next-btn" class="px-6 py-2.5 rounded-xl font-bold text-sm bg-pqBlue border border-pqBlue text-white hover:bg-pqActiveBlue transition-all flex items-center gap-2 shadow-md">
+                        Next <i class="fas fa-arrow-right"></i>
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <!-- Right Sidebar (Question Grid) -->
+        <aside id="question-sidebar" class="w-full lg:w-80 bg-white border-l border-gray-200 flex flex-col h-full absolute lg:relative z-30 transition-transform duration-300 translate-x-full lg:translate-x-0">
+            
+            <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                <h3 class="font-black text-pqBlue text-sm uppercase tracking-wider">Question Map</h3>
+                <button id="close-mobile-grid" class="lg:hidden text-gray-500 hover:text-red-500"><i class="fas fa-times text-lg"></i></button>
+            </div>
+
+            <!-- Legend -->
+            <div class="p-4 grid grid-cols-2 gap-y-3 gap-x-2 text-[10px] font-bold text-gray-500 border-b border-gray-100 bg-white">
+                <div class="flex items-center gap-2"><div class="w-3 h-3 rounded bg-pqGreen border border-pqGreen"></div> Answered</div>
+                <div class="flex items-center gap-2"><div class="w-3 h-3 rounded bg-white border border-gray-300"></div> Unanswered</div>
+                <div class="flex items-center gap-2"><div class="w-3 h-3 rounded bg-pqPurple border border-pqPurple"></div> For Review</div>
+                <div class="flex items-center gap-2"><div class="w-3 h-3 rounded bg-white border-2 border-pqOrange"></div> Current</div>
+            </div>
+
+            <!-- Grid -->
+            <div class="flex-1 overflow-y-auto p-4 bg-pqLightBg">
+                <div class="grid grid-cols-5 gap-2" id="question-grid">
+                    <!-- Dynamic Grid Items -->
+                </div>
+            </div>
+        </aside>
+
+        <!-- Overlay for Mobile Drawer -->
+        <div id="sidebar-overlay" class="fixed inset-0 bg-pqBlue/50 backdrop-blur-sm z-20 hidden lg:hidden transition-opacity opacity-0"></div>
+
+    </div>
+
+    <!-- Exam Engine Script -->
+    <script>
+        // --- 1. MOCK EXAM DATA ---
+        const examData = [
+            { id: 1, text: "If a function f(x) is continuous on a closed interval [a, b], then it is bounded on that interval. This is known as the:", options: ["Mean Value Theorem", "Intermediate Value Theorem", "Extreme Value Theorem", "Fundamental Theorem of Calculus"], answer: null },
+            { id: 2, text: "Evaluate the limit as x approaches 0 of (sin x) / x.", options: ["0", "1", "Infinity", "Undefined"], answer: null },
+            { id: 3, text: "Which of the following is the derivative of f(x) = e^(2x)?", options: ["e^(2x)", "2e^(2x)", "x*e^(2x)", "1/2 * e^(2x)"], answer: null },
+            { id: 4, text: "The area under the velocity-time graph of a moving object represents:", options: ["Acceleration", "Total displacement", "Momentum", "Instantaneous velocity"], answer: null },
+            { id: 5, text: "What is the integral of 1/x dx?", options: ["-1/x^2 + C", "ln|x| + C", "x^2/2 + C", "e^x + C"], answer: null },
+            // Generating more empty questions to show grid scaling
+            ...Array.from({length: 45}, (_, i) => ({ 
+                id: i + 6, 
+                text: `This is a sample text for question ${i + 6}. In a real scenario, this would be fetched from the database.`, 
+                options: ["Option A", "Option B", "Option C", "Option D"], 
+                answer: null 
+            }))
+        ];
+
+        // --- 2. STATE MANAGEMENT ---
+        const state = {
+            currentIndex: 0,
+            answers: {}, // Stores selected option index
+            flagged: new Set(), // Stores question indices marked for review
+            durationSeconds: 5400 // 1 hour 30 mins
+        };
+
+        // --- 3. DOM ELEMENTS ---
+        const els = {
+            qNum: document.getElementById('q-number-display'),
+            qText: document.getElementById('question-text'),
+            optionsBox: document.getElementById('options-container'),
+            prevBtn: document.getElementById('prev-btn'),
+            nextBtn: document.getElementById('next-btn'),
+            clearBtn: document.getElementById('clear-btn'),
+            flagBtn: document.getElementById('flag-btn'),
+            grid: document.getElementById('question-grid'),
+            timer: document.getElementById('exam-timer'),
+            progressBar: document.getElementById('progress-bar'),
+            // Mobile Drawer
+            sidebar: document.getElementById('question-sidebar'),
+            overlay: document.getElementById('sidebar-overlay'),
+            openDrawer: document.getElementById('mobile-grid-toggle'),
+            closeDrawer: document.getElementById('close-mobile-grid'),
+        };
+
+        // --- 4. EXAM ENGINE LOGIC ---
+        function init() {
+            renderGrid();
+            loadQuestion(state.currentIndex);
+            startTimer();
+            updateProgress();
+        }
+
+        function loadQuestion(index) {
+            state.currentIndex = index;
+            const q = examData[index];
+            
+            // Update Text
+            els.qNum.textContent = index + 1;
+            els.qText.innerHTML = `<p>${q.text}</p>`;
+
+            // Update Options
+            els.optionsBox.innerHTML = '';
+            const labels = ['A', 'B', 'C', 'D'];
+            
+            q.options.forEach((opt, optIdx) => {
+                const isSelected = state.answers[index] === optIdx;
+                
+                const optEl = document.createElement('label');
+                optEl.className = `group flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                    isSelected 
+                    ? 'border-pqBlue bg-blue-50/50' 
+                    : 'border-gray-200 bg-white hover:border-blue-200 hover:bg-gray-50'
+                }`;
+                
+                optEl.innerHTML = `
+                    <input type="radio" name="q${index}" value="${optIdx}" class="hidden" ${isSelected ? 'checked' : ''}>
+                    <div class="w-8 h-8 shrink-0 rounded flex items-center justify-center font-bold text-sm transition-colors ${
+                        isSelected 
+                        ? 'bg-pqBlue text-white shadow-md' 
+                        : 'bg-gray-100 text-gray-500 group-hover:bg-blue-100 group-hover:text-pqBlue'
+                    }">
+                        ${labels[optIdx]}
+                    </div>
+                    <div class="flex-1 pt-1.5 text-gray-700 font-medium leading-snug">
+                        ${opt}
+                    </div>
+                `;
+
+                // Handle click
+                optEl.addEventListener('click', () => selectOption(index, optIdx));
+                els.optionsBox.appendChild(optEl);
+            });
+
+            // Update Buttons
+            els.prevBtn.disabled = index === 0;
+            els.nextBtn.innerHTML = index === examData.length - 1 ? 'Finish <i class="fas fa-check"></i>' : 'Next <i class="fas fa-arrow-right"></i>';
+            
+            // Update Flag state
+            const isFlagged = state.flagged.has(index);
+            els.flagBtn.className = `text-xs font-bold px-3 py-1.5 rounded-lg border transition-all flex items-center gap-2 ${
+                isFlagged 
+                ? 'bg-purple-50 text-pqPurple border-purple-200' 
+                : 'border-gray-300 text-gray-500 hover:bg-gray-50'
+            }`;
+
+            updateGridUI();
+        }
+
+        function selectOption(qIndex, optIndex) {
+            state.answers[qIndex] = optIndex;
+            loadQuestion(qIndex); // Re-render to show selection
+            updateProgress();
+        }
+
+        function toggleFlag() {
+            if (state.flagged.has(state.currentIndex)) {
+                state.flagged.delete(state.currentIndex);
+            } else {
+                state.flagged.add(state.currentIndex);
+            }
+            loadQuestion(state.currentIndex);
+        }
+
+        function clearSelection() {
+            delete state.answers[state.currentIndex];
+            loadQuestion(state.currentIndex);
+            updateProgress();
+        }
+
+        function renderGrid() {
+            els.grid.innerHTML = '';
+            examData.forEach((_, i) => {
+                const btn = document.createElement('button');
+                btn.id = `grid-btn-${i}`;
+                btn.className = `w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold border transition-all hover:scale-105`;
+                btn.textContent = i + 1;
+                btn.onclick = () => { loadQuestion(i); closeMobileDrawer(); };
+                els.grid.appendChild(btn);
+            });
+        }
+
+        function updateGridUI() {
+            examData.forEach((_, i) => {
+                const btn = document.getElementById(`grid-btn-${i}`);
+                const isCurrent = i === state.currentIndex;
+                const isAnswered = state.answers[i] !== undefined;
+                const isFlagged = state.flagged.has(i);
+
+                // Base classes
+                let classes = "w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold border transition-all ";
+
+                // Priority: Current > Flagged > Answered > Unanswered
+                if (isCurrent) {
+                    classes += "bg-white text-pqBlue border-2 border-pqOrange shadow-md ring-2 ring-orange-100";
+                } else if (isFlagged) {
+                    classes += "bg-pqPurple text-white border-pqPurple";
+                } else if (isAnswered) {
+                    classes += "bg-pqGreen text-white border-pqGreen shadow-sm";
+                } else {
+                    classes += "bg-white text-gray-500 border-gray-200 hover:border-gray-300";
+                }
+
+                btn.className = classes;
+            });
+        }
+
+        function updateProgress() {
+            const answeredCount = Object.keys(state.answers).length;
+            const percentage = (answeredCount / examData.length) * 100;
+            els.progressBar.style.width = `${percentage}%`;
+        }
+
+        function startTimer() {
+            const interval = setInterval(() => {
+                state.durationSeconds--;
+                
+                const h = Math.floor(state.durationSeconds / 3600).toString().padStart(2, '0');
+                const m = Math.floor((state.durationSeconds % 3600) / 60).toString().padStart(2, '0');
+                const s = (state.durationSeconds % 60).toString().padStart(2, '0');
+                
+                els.timer.textContent = `${h}:${m}:${s}`;
+
+                // Warning colors under 5 minutes
+                if (state.durationSeconds <= 300) {
+                    els.timer.classList.add('timer-danger');
+                }
+
+                if (state.durationSeconds <= 0) {
+                    clearInterval(interval);
+                    alert("Time is up! Submitting exam automatically.");
+                    // submitExam() logic here
+                }
+            }, 1000);
+        }
+
+        // --- 5. EVENT LISTENERS ---
+        els.prevBtn.addEventListener('click', () => {
+            if (state.currentIndex > 0) loadQuestion(state.currentIndex - 1);
+        });
+
+        els.nextBtn.addEventListener('click', () => {
+            if (state.currentIndex < examData.length - 1) {
+                loadQuestion(state.currentIndex + 1);
+            } else {
+                if(confirm("Are you sure you want to submit your exam?")) {
+                    alert("Exam Submitted successfully!");
+                    // Trigger backend submission
+                }
+            }
+        });
+
+        els.flagBtn.addEventListener('click', toggleFlag);
+        els.clearBtn.addEventListener('click', clearSelection);
+
+        // Mobile Drawer Logic
+        function openMobileDrawer() {
+            els.sidebar.classList.remove('translate-x-full');
+            els.overlay.classList.remove('hidden');
+            setTimeout(() => els.overlay.classList.remove('opacity-0'), 10);
+        }
+
+        function closeMobileDrawer() {
+            els.sidebar.classList.add('translate-x-full');
+            els.overlay.classList.add('opacity-0');
+            setTimeout(() => els.overlay.classList.add('hidden'), 300);
+        }
+
+        els.openDrawer.addEventListener('click', openMobileDrawer);
+        els.closeDrawer.addEventListener('click', closeMobileDrawer);
+        els.overlay.addEventListener('click', closeMobileDrawer);
+
+        // Submit Button (Header)
+        document.getElementById('submit-exam-btn').addEventListener('click', () => {
+            const answeredCount = Object.keys(state.answers).length;
+            const msg = answeredCount < examData.length 
+                ? `You have answered ${answeredCount} out of ${examData.length} questions. Are you sure you want to submit?`
+                : "Are you sure you want to submit your exam?";
+            
+            if(confirm(msg)) {
+                alert("Exam Submitted!");
+                window.location.href = "dashboard.html"; // Redirect to dashboard
+            }
+        });
+
+        // Initialize Engine
+        init();
+
+    </script>
+</body>
+</html>
