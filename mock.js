@@ -539,7 +539,7 @@ forms.register.addEventListener('submit', async function(e) {
       // close modal if present
       try { closeModal(); } catch (e) {}
       // redirect to student dashboard or desired page
-      window.location.href = 's-dashboard';
+      window.location.href = 'loader';
     }, 1200);
   });
 })();
