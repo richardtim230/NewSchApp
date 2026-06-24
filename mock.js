@@ -491,7 +491,58 @@ forms.register.addEventListener('submit', async function(e) {
     });
 
 });
+// ====== Guest login (no backend) ======
+// Appends a "Continue as Guest" button to the login form and simulates a login.
+(function setupGuestLogin() {
+  // Create button
+  const guestBtn = document.createElement('button');
+  guestBtn.type = 'button';
+  guestBtn.id = 'guestLoginBtn';
+  guestBtn.textContent = 'Continue as Guest';
+  // Use existing primary styles but make it visually distinct
+  guestBtn.className = 'btn-primary';
+  guestBtn.style.background = '#fff';
+  guestBtn.style.color = 'var(--primary)';
+  guestBtn.style.border = '1.5px solid rgba(39,110,241,0.12)';
+  guestBtn.style.marginTop = '8px';
 
+  // Insert after the login button
+  const loginBtn = document.getElementById('loginBtn');
+  if (loginBtn && loginBtn.parentNode) {
+    loginBtn.parentNode.insertBefore(guestBtn, loginBtn.nextSibling);
+  }
+
+  // Handler: set a guest session in localStorage and redirect
+  guestBtn.addEventListener('click', function () {
+    const guestUser = {
+      _id: 'guest_' + Date.now(),
+      username: 'guest',
+      fullname: 'Guest User',
+      email: '',
+      role: 'guest',
+      referralCode: '',
+      creditPoints: 0,
+      verified: false,
+      createdAt: new Date().toISOString()
+    };
+
+    // Save tokens/data locally (no backend)
+    localStorage.setItem('student_jwt_token', 'guest_token');
+    localStorage.setItem('token', 'guest_token');
+    localStorage.setItem('studentData', JSON.stringify(guestUser));
+
+    // Inform the user and redirect to dashboard
+    showStatusModal('success', 'Guest Login', 'You are now signed in as a guest. Some features may be limited.', false);
+
+    // Short delay so user sees the modal, then navigate
+    setTimeout(() => {
+      // close modal if present
+      try { closeModal(); } catch (e) {}
+      // redirect to student dashboard or desired page
+      window.location.href = 's-dashboard';
+    }, 1200);
+  });
+})();
 document.querySelectorAll('.social-btn').forEach(btn => {
     btn.addEventListener('click', function() {
         const platform = btn.classList.contains('google') ? "Google" : "Facebook";
