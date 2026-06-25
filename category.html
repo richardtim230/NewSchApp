@@ -341,29 +341,48 @@ function stripHtml(input) {
     };
 
     // Fetch articles from backend
-    async function fetchAndRenderArticles() {
-        try {
-            let url = `${POSTS_API}/filter?limit=${articlesPerPage * currentPage}`;
-            if (currentCategory) {
-                url += `&category=${encodeURIComponent(currentCategory)}`;
-            }
-            
-            const res = await fetch(url);
-            if (!res.ok) throw new Error("Could not fetch articles");
-            allArticles = await res.json();
-            
-            if (!Array.isArray(allArticles)) {
-                allArticles = [];
-            }
-            
-            renderArticles();
-            renderTrending();
-            renderTopics();
-        } catch (error) {
-            console.error("Articles fetch error:", error);
-            document.getElementById('articlesGrid').innerHTML = '<div class="col-span-full text-center text-gray-400 py-16">Error loading articles. Please try again.</div>';
+async function fetchAndRenderArticles() {
+    try {
+        let url = `${POSTS_API}/filter?limit=${articlesPerPage * currentPage}`;
+        if (currentCategory) {
+            url += `&category=${encodeURIComponent(currentCategory)}`;
         }
+
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("Could not fetch articles");
+
+        // read response and ensure it's an array
+        let fetched = await res.json();
+        if (!Array.isArray(fetched)) fetched = [];
+
+        // Filter out scholarship posts (case-insensitive).
+        // This checks common shapes: article.category (string), or article.category.name/title/slug.
+        allArticles = fetched.filter(a => {
+            let rawCat = "";
+
+            if (typeof a.category === "string") {
+                rawCat = a.category;
+            } else if (a.category && typeof a.category === "object") {
+                rawCat = a.category.name || a.category.title || a.category.slug || "";
+            } else {
+                // fallback to other possible fields
+                rawCat = a.categoryName || a.category_name || a.category_title || "";
+            }
+
+            const cat = String(rawCat || "").trim().toLowerCase();
+            // exclude exact "scholarship" or "scholarships"
+            if (!cat) return true; // keep if no category set
+            return cat !== "scholarships" && cat !== "Scholarships";
+        });
+
+        renderArticles();
+        renderTrending();
+        renderTopics();
+    } catch (error) {
+        console.error("Articles fetch error:", error);
+        document.getElementById('articlesGrid').innerHTML = '<div class="col-span-full text-center text-gray-400 py-16">Error loading articles. Please try again.</div>';
     }
+}
 
     // Render main articles grid
     async function renderArticles() {
