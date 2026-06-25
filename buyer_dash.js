@@ -1,6 +1,6 @@
 //  — All JavaScript for Buyer Dashboard (HTML and JS fully separated)
 
-const BACKEND = "https://examguard-jmvj.onrender.com";
+const BACKEND = "https://examguide.onrender.com";
 function getToken() { return localStorage.token || sessionStorage.token || ''; }
 function authHeader() { return { 'Authorization': 'Bearer ' + getToken() }; }
 
