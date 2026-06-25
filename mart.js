@@ -13,8 +13,8 @@ function hideProductsSpinner() {
     async function fetchFacultiesAndDepartments() {
       try {
         const [faculties, departments] = await Promise.all([
-          fetch('https://examguard-jmvj.onrender.com/api/faculties').then(r => r.json()),
-          fetch('https://examguard-jmvj.onrender.com/api/departments').then(r => r.json())
+          fetch('https://examguide.onrender.com/api/faculties').then(r => r.json()),
+          fetch('https://examguide.onrender.com/api/departments').then(r => r.json())
         ]);
         facultiesCache = faculties;
         departmentsCache = departments;
@@ -49,7 +49,7 @@ function hideProductsSpinner() {
       try {
         const token = localStorage.getItem("token");
         if (token) {
-          const res = await fetch("https://examguard-jmvj.onrender.com/api/auth/me", {
+          const res = await fetch("https://examguide.onrender.com/api/auth/me", {
             headers: { "Authorization": "Bearer " + token }
           });
           if (res.ok) {
@@ -134,7 +134,7 @@ function renderProducts(products) {
   async function fetchPublicProducts(query="") {
   showProductsSpinner();
   try {
-    let url = "https://examguard-jmvj.onrender.com/api/blogger-dashboard/public/listings";
+    let url = "https://examguide.onrender.com/api/blogger-dashboard/public/listings";
     let res = await fetch(url);
     let products = [];
     if (res.ok) {
@@ -248,7 +248,7 @@ ${offerMessage}
 
         // Try sending to backend (replace with real endpoint)
         try {
-          const res = await fetch("hhttps://examguard-jmvj.onrender.com/api/offers", {
+          const res = await fetch("hhttps://examguide.onrender.com/api/offers", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
