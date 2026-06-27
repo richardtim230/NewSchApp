@@ -299,7 +299,7 @@ if (loginResponse.ok) {
                 window.location.href =
                     role === 'superadmin'
                         ? "supaadmin.html"
-                        : "s-dashboard";
+                        : "loader";
             }, 1300);
 
             await setLoginLoading(false);
@@ -316,7 +316,7 @@ if (loginResponse.ok) {
         );
 
         setTimeout(() => {
-            window.location.href = "s-dashboard";
+            window.location.href = "loader";
         }, 1200);
     }
 
