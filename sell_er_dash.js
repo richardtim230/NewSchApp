@@ -1,6 +1,6 @@
 // SELLER DASHBOARD SCRIPT - FULLY BACKEND INTEGRATED, NO DEMO DATA, WITH IMAGE UPLOAD SUPPORT
 
-const BACKEND = "https://examguard-jmvj.onrender.com";
+const BACKEND = "https://examguide.onrender.com";
 const CLOUDINARY_UPLOAD_ENDPOINT = `${BACKEND}/api/images`;
 let products = [];
 let offersByProduct = {};
