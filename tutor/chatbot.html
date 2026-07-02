@@ -1,44 +1,22 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>ExamGuard AI Tutor</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
-    
     <script>
         window.MathJax = {
             tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
             chtml: { scale: 1, matchFontHeight: false }
         };
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>    
-    
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        pqBlue: '#002046',       
-                        pqDarkBg: '#001633',     
-                        pqActiveBlue: '#0d2b52', 
-                        pqOrange: '#ff5622',     
-                        pqLightBg: '#f4f7fa',    
-                        pqCardBg: '#ffffff',     
-                        pqOptionBg: '#f1f5f9',
-                        pqGreen: '#4caf50'
-                    },
-                    fontFamily: {
-                        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif']
-                    }
-                }
-            }
-        }
-    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
     <style>
-        /* Maintain clean, scrollbar-free aesthetic */
+        /* Minor layout tweaks */
         body, #chat-container {
             -ms-overflow-style: none;
             scrollbar-width: none;
@@ -46,320 +24,522 @@
         body::-webkit-scrollbar, #chat-container::-webkit-scrollbar {
             display: none;
         }
-        
-        .chat-bubble-bot {
-            border-top-left-radius: 0;
-        }
-        
-        .chat-bubble-user {
-            border-top-right-radius: 0;
-        }
-
-        /* Fix inline math rendering in chat */
-        .chat-message mjx-container {
-            display: inline !important;
-            margin: 0 0.15em !important;
-        }
-        
-        /* Smooth typing indicator animation */
-        .typing-dot {
-            animation: typing 1.4s infinite ease-in-out both;
-        }
+        .chat-bubble-bot { border-top-left-radius: 0; }
+        .chat-bubble-user { border-top-right-radius: 0; }
+        .typing-dot { animation: typing 1.4s infinite ease-in-out both; }
         .typing-dot:nth-child(1) { animation-delay: -0.32s; }
         .typing-dot:nth-child(2) { animation-delay: -0.16s; }
         @keyframes typing {
             0%, 80%, 100% { transform: scale(0); opacity: 0.5; }
             40% { transform: scale(1); opacity: 1; }
         }
+        .material-item { border: 1px dashed #e6eefc; padding: 8px; border-radius: 8px; background:#fff; display:flex; justify-content:space-between; gap:8px; align-items:center; }
+        .small { font-size:12px; color:#6b7280; }
     </style>
 </head>
-<body class="bg-pqLightBg text-gray-800 antialiased h-screen font-sans overflow-hidden flex">
+<body class="bg-gray-50 text-gray-800 antialiased h-screen font-sans flex">
 
-    <nav class="fixed top-0 left-0 right-0 z-40 bg-pqBlue border-b border-white/5 shadow-md h-12 flex items-center justify-between px-3 md:hidden">
-    
-        <div class="w-7 h-7 rounded-full bg-white flex items-center justify-center p-0.5 shadow-inner">
-            <img src="https://ui-avatars.com/api/?name=OAU&background=ffffff&color=002046&bold=true&font-size=0.45" alt="OAU Logo" class="rounded-full">
+<div class="hidden md:flex flex-col z-30 h-screen bg-blue-900 w-[260px] border-r border-white/5 flex-shrink-0 p-4">
+    <div class="mb-4">
+        <h2 class="text-white font-bold text-xl">OAU ExamGuard 🎓</h2>
+        <p class="text-blue-200 text-sm">AI Tutor Interface</p>
+    </div>
+    <div class="mb-4">
+        <div class="text-white font-bold">AI Credits</div>
+        <div class="text-3xl font-extrabold text-white" id="ai-credits-display">—</div>
+        <div class="small">Queries left</div>
+    </div>
+
+    <div class="mt-6">
+        <h3 class="text-white text-sm mb-2">Materials</h3>
+        <div id="materials-list" class="flex flex-col gap-2"></div>
+        <div class="mt-3">
+            <label class="block text-xs text-blue-100 mb-1">Upload material (PDF / DOCX / TXT / images)</label>
+            <input id="material-file" type="file" class="text-sm" />
+            <button id="upload-btn" class="mt-2 w-full bg-white text-blue-900 font-semibold py-2 rounded-lg">Upload</button>
+            <div id="upload-status" class="text-xs text-white/80 mt-2"></div>
         </div>
-    </nav>
+    </div>
+</div>
 
-    <div class="hidden md:flex flex-col z-30 h-screen bg-pqDarkBg w-[260px] border-r border-white/5 flex-shrink-0">
-        <div class="px-4 pt-5 pb-3 bg-pqBlue border-b border-white/5 flex justify-between items-center">
+<div class="flex-1 flex flex-col h-full relative">
+    <div class="bg-white border-b shadow-sm px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+            <div class="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+                <i class="fas fa-robot text-blue-700"></i>
+            </div>
             <div>
-                <h2 class="text-[18px] font-extrabold text-white flex items-center tracking-wide">
-                    OAU ExamGuard<span class="ml-1.5 text-base">🎓</span>
-                </h2>
-                <p class="text-[10px] text-gray-400 font-medium mt-0.5">AI Tutor Interface</p>
+                <div class="text-lg font-bold text-blue-900">ExamGuard Assistant</div>
+                <div class="text-xs text-gray-500">Always online to help you study</div>
             </div>
         </div>
 
-        <div class="px-4 py-3 border-b border-white/5 flex items-center gap-2.5 bg-pqDarkBg">
-            <div class="relative">
-                <img class="w-9 h-9 rounded-full bg-white p-0.5 object-cover" src="https://ui-avatars.com/api/?name=Student&background=ffffff&color=002046&bold=true" alt="profile">
-                <span class="absolute bottom-0 right-0 w-2 h-2 bg-pqGreen border-2 border-pqDarkBg rounded-full"></span>
-            </div>
-            <div class="leading-tight">
-                <div class="text-[13px] font-bold text-white">Student User</div>
-                <div class="text-[10px] text-gray-400 font-light truncate max-w-[150px]">Active Session</div>
-            </div>
+        <div class="flex items-center gap-3">
+            <label class="text-sm text-gray-600">Stream responses</label>
+            <input id="stream-toggle" type="checkbox" checked class="h-4 w-4"/>
         </div>
-
-        <div class="p-4 mt-2">
-            <div class="bg-gradient-to-br from-[#001736] to-[#003c71] rounded-2xl p-4 shadow-md relative overflow-hidden text-white border border-white/5">
-                <div class="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-white/5 via-transparent to-transparent"></div>
-                
-                <div class="flex items-center gap-2 mb-2 relative z-10">
-                    <div class="bg-white/10 px-2.5 py-1 rounded-full flex items-center gap-1.5 backdrop-blur-md">
-                        <i class="fas fa-bolt text-yellow-400 text-[10px]"></i>
-                        <span class="text-[9px] font-bold tracking-widest text-gray-200">AI ENERGY</span>
-                    </div>
-                </div>
-                <div class="flex items-end gap-2 mb-1 relative z-10">
-                    <span id="ai-credits-display" class="text-[32px] font-extrabold leading-none tracking-tight">45</span>
-                    <span class="text-[10px] text-gray-400 font-medium mb-1.5 uppercase tracking-wider">Queries Left</span>
-                </div>
-            </div>
-        </div>
-
-        
     </div>
 
-    <div class="flex-1 flex flex-col h-full relative pt-12 md:pt-0 bg-pqLightBg w-full">
-        
-        <div class="hidden md:flex h-[68px] bg-white border-b border-gray-100 items-center justify-between px-6 shadow-sm flex-shrink-0 z-10">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center border border-blue-100">
-                    <i class="fas fa-robot text-pqBlue text-lg"></i>
-                </div>
-                <div>
-                    <h1 class="text-[15px] font-bold text-pqBlue">ExamGuard Assistant</h1>
-                    <p class="text-[11px] font-medium text-gray-500">Always online to help you study</p>
-                </div>
-            </div>
-            <button onclick="clearChat()" class="text-[12px] font-bold text-gray-400 hover:text-red-500 transition-colors flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-red-50">
-                <i class="fas fa-trash-alt"></i> Clear Chat
-            </button>
-        </div>
-
-        <div id="chat-container" class="flex-1 overflow-y-auto px-4 py-6 scroll-smooth pb-[120px] md:pb-[140px] flex flex-col gap-5 max-w-4xl mx-auto w-full">
-            
-            <div id="welcome-card" class="bg-pqCardBg rounded-2xl shadow-sm border border-gray-100 relative overflow-hidden mt-4 mx-2">
-                <div class="absolute top-0 left-0 right-0 h-1 bg-pqOrange"></div>
-                <div class="p-5">
-                    <div class="flex items-center gap-2 mb-2">
-                        <div class="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-pqOrange">
-                            <i class="fas fa-sparkles text-sm"></i>
-                        </div>
-                        <span class="text-[10px] font-bold text-pqOrange tracking-widest uppercase">AI TUTOR</span>
-                    </div>
-                    <h3 class="text-pqBlue font-bold text-[16px] mb-2">How can I help you today?</h3>
-                    <p class="text-gray-500 text-[13px] leading-relaxed mb-4">Paste difficult past questions, ask for step-by-step math breakdowns, or request explanations for complex OAU course topics.</p>
-                    
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-4">
-                        <button onclick="prefillInput('Explain the concept of Electromagnetism in PHY102 simple terms.')" class="text-left bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl p-3 transition">
-                            <span class="block text-[12px] font-bold text-pqBlue mb-1">Physics Concept</span>
-                            <span class="block text-[11px] text-gray-500 truncate">Explain Electromagnetism...</span>
-                        </button>
-                        <button onclick="prefillInput('Solve this equation: $$ x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a} $$ step by step.')" class="text-left bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl p-3 transition">
-                            <span class="block text-[12px] font-bold text-pqBlue mb-1">Math Breakdown</span>
-                            <span class="block text-[11px] text-gray-500 truncate">Solve quadratic formula...</span>
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            </div>
-
-        <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-pqLightBg via-pqLightBg to-transparent pt-8 pb-4 md:pb-6 px-4 z-20">
-            <div class="max-w-4xl mx-auto relative">
-                <form id="chat-form" class="relative flex items-end bg-white rounded-2xl shadow-[0_4px_20px_rgba(0,32,70,0.08)] border border-gray-100 p-2 transition-all focus-within:border-pqOrange focus-within:ring-2 focus-within:ring-orange-100">
-                    
-                    <textarea 
-                        id="chat-input" 
-                        rows="1" 
-                        placeholder="Type your question or paste an equation..." 
-                        class="w-full bg-transparent border-none text-[14px] text-gray-800 placeholder-gray-400 focus:ring-0 resize-none py-3 pl-3 pr-12 max-h-32 min-h-[48px]"
-                        oninput="this.style.height = ''; this.style.height = this.scrollHeight + 'px'"
-                    ></textarea>
-                    
-                    <button type="submit" id="send-btn" class="absolute right-3 bottom-3 w-10 h-10 bg-pqOrange hover:bg-orange-600 text-white rounded-xl flex items-center justify-center transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed">
-                        <i class="fas fa-paper-plane text-[14px]"></i>
-                    </button>
-                </form>
-                <div class="text-center mt-2">
-                    <span class="text-[9.5px] text-gray-400 font-medium">AI can make mistakes. Verify important answers with your study materials.</span>
-                </div>
+    <main id="chat-container" class="flex-1 overflow-y-auto p-6 space-y-4 max-w-4xl mx-auto w-full">
+        <div id="welcome-card" class="bg-white p-5 rounded-2xl shadow">
+            <h3 class="font-bold text-blue-900">How can I help you today?</h3>
+            <p class="text-sm text-gray-600">Paste questions, upload PDFs or DOCX and ask the tutor to summarize, explain, or generate practice questions based on your materials.</p>
+            <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2">
+                <button onclick="prefillInput('Explain the concept of Electromagnetism in PHY102 in simple terms.')" class="bg-gray-50 p-3 rounded border text-left">Physics Concept</button>
+                <button onclick="prefillInput('Solve this equation: $$ x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a} $$ step by step.')" class="bg-gray-50 p-3 rounded border text-left">Math Breakdown</button>
             </div>
         </div>
+    </main>
 
+    <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white to-transparent p-4">
+        <div class="max-w-4xl mx-auto relative">
+            <form id="chat-form" class="relative flex items-end bg-white rounded-2xl shadow p-2 border">
+                <textarea id="chat-input" rows="1"
+                    placeholder="Type your question or paste an equation..."
+                    class="w-full bg-transparent border-none text-sm text-gray-800 placeholder-gray-400 resize-none py-3 pl-3 pr-12"
+                    oninput="this.style.height = ''; this.style.height = this.scrollHeight + 'px'"></textarea>
+
+                <button type="submit" id="send-btn" class="absolute right-3 bottom-3 w-10 h-10 bg-orange-500 hover:bg-orange-600 text-white rounded-lg flex items-center justify-center">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </form>
+
+            <div class="mt-3 flex gap-2 items-center justify-center">
+                <select id="action-select" class="text-sm p-2 border rounded">
+                    <option value="chat">Chat (general)</option>
+                    <option value="summarize">Summarize selected material</option>
+                    <option value="generate_practice">Generate practice questions</option>
+                    <option value="explain">Explain selected material</option>
+                </select>
+                <input id="practice-count" type="number" min="1" max="20" value="5" class="text-sm p-2 border rounded w-20" title="Number of questions for generation" />
+                <input id="explain-highlight" type="text" placeholder="(optional) highlight text for explain" class="text-sm p-2 border rounded w-64" />
+                <button id="run-action" class="bg-blue-700 text-white px-4 py-2 rounded text-sm">Run</button>
+            </div>
+        </div>
     </div>
+</div>
 
-    <script>
-        const chatContainer = document.getElementById('chat-container');
-        const chatForm = document.getElementById('chat-form');
-        const chatInput = document.getElementById('chat-input');
-        const welcomeCard = document.getElementById('welcome-card');
-        const sendBtn = document.getElementById('send-btn');
-        let isWaitingForResponse = false;
+<script>
+/*
+  Frontend integration for chatbot endpoints:
+  - BACKEND_BASE: change if your backend is on another origin
+  - Uses localStorage.student_jwt_token (set during login)
+  - Creates session on load
+*/
+const BACKEND_BASE = "https://examguide.onrender.com"; // "" means same origin, or set "https://examguide.onrender.com"
+const API = (path) => `${BACKEND_BASE}/api/chatbot${path}`;
 
-        function prefillInput(text) {
-            chatInput.value = text;
-            chatInput.focus();
-            chatInput.style.height = ''; 
-            chatInput.style.height = chatInput.scrollHeight + 'px';
-        }
+let session = null;
+let materials = []; // { materialId, originalName, preview }
+let token = localStorage.getItem('student_jwt_token') || null;
+let userData = null;
+try { userData = JSON.parse(localStorage.getItem('studentData') || "null"); } catch(e){ userData = null; }
 
-        chatForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            const message = chatInput.value.trim();
-            if (!message || isWaitingForResponse) return;
+const creditsEl = document.getElementById('ai-credits-display');
+if (userData && typeof userData.creditPoints !== 'undefined') creditsEl.textContent = userData.creditPoints;
 
-            // Hide welcome card on first message
-            if (welcomeCard) welcomeCard.style.display = 'none';
+// Helper: show notification (very small)
+function showTemp(msg, timeout = 3000) {
+  const el = document.createElement('div');
+  el.textContent = msg;
+  el.className = "fixed bottom-6 right-6 bg-black text-white px-4 py-2 rounded shadow";
+  document.body.appendChild(el);
+  setTimeout(()=> el.remove(), timeout);
+}
 
-            // Reset input
-            chatInput.value = '';
-            chatInput.style.height = '48px';
-            
-            // Add user message
-            addMessage(message, 'user');
-            
-            // Trigger bot logic
-            handleBotResponse(message);
-        });
+// Set Authorization header
+function authHeaders() {
+  const headers = { "Content-Type": "application/json" };
+  const t = localStorage.getItem('student_jwt_token') || token;
+  if (t) headers["Authorization"] = "Bearer " + t;
+  return headers;
+}
 
-        // Submit on Enter (Shift+Enter for new line)
-        chatInput.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                chatForm.dispatchEvent(new Event('submit'));
-            }
-        });
+// Create or resume session on load
+async function ensureSession() {
+  try {
+    const res = await fetch(API('/session'), {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ title: "Web session" })
+    });
+    if (!res.ok) {
+      console.warn("Could not create session", await res.text());
+      return null;
+    }
+    const data = await res.json();
+    if (data && data.session) {
+      session = data.session;
+      console.log("session created", session._id || session.id || session);
+      return session;
+    }
+  } catch (err) {
+    console.error("ensureSession error", err);
+  }
+  return null;
+}
 
-        function addMessage(text, sender) {
-            const wrapper = document.createElement('div');
-            wrapper.className = `flex w-full ${sender === 'user' ? 'justify-end' : 'justify-start'}`;
+// Upload material
+document.getElementById('upload-btn').addEventListener('click', async function() {
+  if (!token) { showTemp("Please login to upload materials"); return; }
+  const input = document.getElementById('material-file');
+  if (!input.files || input.files.length === 0) { showTemp("Please choose a file"); return; }
+  const file = input.files[0];
+  const fd = new FormData();
+  fd.append('file', file);
+  // optionally attach ownerId (server attaches from token)
+  try {
+    document.getElementById('upload-status').textContent = "Uploading...";
+    const res = await fetch(API('/upload'), {
+      method: 'POST',
+      headers: {
+        // don't set Content-Type for FormData
+        "Authorization": "Bearer " + token
+      },
+      body: fd
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      console.error("upload failed", data);
+      document.getElementById('upload-status').textContent = "Upload failed: " + (data.message || data.error || res.statusText);
+      showTemp("Upload failed");
+      return;
+    }
+    document.getElementById('upload-status').textContent = "Uploaded";
+    const mat = { materialId: data.materialId, originalName: file.name, preview: data.extractedText || "" };
+    materials.unshift(mat);
+    renderMaterials();
+    showTemp("Upload successful");
+    // clear file input
+    input.value = "";
+    // attach material to session if present
+    if (session && session._id) {
+      // optional: not required; session / generate will reference materialId directly
+    }
+  } catch (err) {
+    console.error("upload error", err);
+    document.getElementById('upload-status').textContent = "Upload error";
+    showTemp("Upload error");
+  }
+});
 
-            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+// Render materials list
+function renderMaterials() {
+  const list = document.getElementById('materials-list');
+  list.innerHTML = "";
+  materials.forEach((m, idx) => {
+    const div = document.createElement('div');
+    div.className = "material-item";
+    div.innerHTML = `
+      <div style="flex:1">
+        <div class="font-semibold">${escapeHtml(m.originalName)}</div>
+        <div class="small">${escapeHtml((m.preview||"").slice(0,120))}${(m.preview&&m.preview.length>120)?"...":""}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+        <label style="font-size:12px;color:#374151">
+          <input type="checkbox" data-idx="${idx}" class="material-ck" /> Use
+        </label>
+        <button data-idx="${idx}" class="btn-select text-xs px-2 py-1 bg-blue-600 text-white rounded">Details</button>
+      </div>
+    `;
+    list.appendChild(div);
+  });
+  // attach handlers
+  document.querySelectorAll('.btn-select').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const idx = parseInt(e.currentTarget.dataset.idx, 10);
+      const m = materials[idx];
+      if (!m) return;
+      // show modal-like details
+      const w = window.open("", "_blank", "width=700,height=500,scrollbars=1");
+      w.document.write("<pre style='white-space:pre-wrap;word-wrap:break-word;font-family:monospace;padding:12px;'>" + escapeHtml(m.preview || "(no preview)") + "</pre>");
+    });
+  });
+}
 
-            if (sender === 'user') {
-                wrapper.innerHTML = `
-                    <div class="max-w-[85%] md:max-w-[75%] flex flex-col items-end">
-                        <div class="bg-pqOrange text-white text-[14px] leading-relaxed p-4 rounded-2xl chat-bubble-user shadow-sm">
-                            ${escapeHtml(text).replace(/\n/g, '<br>')}
-                        </div>
-                        <span class="text-[10px] text-gray-400 mt-1.5 font-medium pr-1">${time}</span>
-                    </div>
-                `;
+// Helper: get selected materialIds (max 3)
+function getSelectedMaterialIds() {
+  const checks = document.querySelectorAll('.material-ck');
+  const ids = [];
+  checks.forEach(ck => {
+    if (ck.checked) {
+      const idx = parseInt(ck.dataset.idx, 10);
+      if (materials[idx]) ids.push(materials[idx].materialId);
+    }
+  });
+  return ids.slice(0,3);
+}
+
+// Run action button (summarize / generate_practice / explain)
+document.getElementById('run-action').addEventListener('click', async () => {
+  const action = document.getElementById('action-select').value;
+  if (!token) { showTemp("Please login to use this feature"); return; }
+
+  if (action === 'chat') {
+    showTemp("Use the chat input to send messages.", 2000);
+    return;
+  }
+
+  const materialIds = getSelectedMaterialIds();
+  if (materialIds.length === 0) { showTemp("Select at least one uploaded material to run this action"); return; }
+  const materialId = materialIds[0]; // use first selected
+
+  const payload = { materialId, action, options: {} };
+  if (action === 'generate_practice') {
+    payload.options.count = parseInt(document.getElementById('practice-count').value || 5, 10);
+  }
+  if (action === 'explain') {
+    payload.options.highlight = document.getElementById('explain-highlight').value || "";
+  }
+
+  try {
+    const btn = document.getElementById('run-action');
+    btn.disabled = true;
+    btn.textContent = "Running...";
+    const res = await fetch(API('/generate'), {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      showTemp("Action failed: " + (data.message || res.statusText));
+      console.error(data);
+      btn.disabled = false;
+      btn.textContent = "Run";
+      return;
+    }
+    // show as assistant message
+    addMessage(data.result || (data.output || JSON.stringify(data)), 'bot');
+    // update credits if backend returned charge
+    if (data.charge && typeof data.charge.cost !== 'undefined') adjustCredits(-Math.abs(Number(data.charge.cost)));
+  } catch (err) {
+    console.error("run action error", err);
+    showTemp("Action error");
+  } finally {
+    const btn = document.getElementById('run-action');
+    btn.disabled = false;
+    btn.textContent = "Run";
+  }
+});
+
+// Chat form handling
+const chatForm = document.getElementById('chat-form');
+chatForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const message = document.getElementById('chat-input').value.trim();
+  if (!message) return;
+  if (!token) { showTemp("Please login to chat"); return; }
+
+  addMessage(message, 'user');
+  document.getElementById('chat-input').value = '';
+  document.getElementById('chat-input').style.height = '48px';
+
+  const materialIds = getSelectedMaterialIds();
+  const useStream = document.getElementById('stream-toggle').checked;
+
+  if (useStream) {
+    await sendStreamMessage(message, materialIds);
+  } else {
+    await sendMessage(message, materialIds);
+  }
+});
+
+// Non-streaming chat
+async function sendMessage(message, materialIds = []) {
+  try {
+    const payload = { message, materialIds, sessionId: session && session._id };
+    const res = await fetch(API('/message'), {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      addMessage("Error: " + (data.message || JSON.stringify(data)), 'bot');
+      return;
+    }
+    addMessage(data.reply || data.result || JSON.stringify(data), 'bot');
+    if (data.charge && typeof data.charge.cost !== 'undefined') adjustCredits(-Math.abs(Number(data.charge.cost)));
+  } catch (err) {
+    console.error("sendMessage error", err);
+    addMessage("Network error communicating with AI service.", 'bot');
+  }
+}
+
+// Streaming chat (progressive)
+async function sendStreamMessage(message, materialIds = []) {
+  // create assistant placeholder
+  const assistantElement = addMessage('', 'bot', true); // streaming = true returns DOM element to update
+  const payload = { message, materialIds, sessionId: session && session._id };
+
+  try {
+    const res = await fetch(API('/message-stream'), {
+      method: 'POST',
+      headers: {
+        ...authHeaders(),
+        // chat stream responds as text/event-stream, server expects JSON body
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const txt = await res.text();
+      assistantElement.querySelector('.chat-message').innerHTML = escapeHtml("Stream error: " + txt);
+      return;
+    }
+
+    // read body as stream
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let done = false;
+    while (!done) {
+      const { value, done: rdone } = await reader.read();
+      done = rdone;
+      if (value) {
+        buffer += decoder.decode(value, { stream: true });
+        // Process SSE-style chunks: server sends "event: chunk\n data: <text>\n\n"
+        let parts = buffer.split("\n\n");
+        // keep last partial in buffer
+        buffer = parts.pop();
+        for (const p of parts) {
+          // p contains one event block - parse lines
+          const lines = p.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+          for (const line of lines) {
+            if (line.startsWith("data:")) {
+              let payloadLine = line.slice(5).trim();
+              // try parse JSON, else treat as plain text
+              try {
+                const parsed = JSON.parse(payloadLine);
+                appendToAssistant(assistantElement, parsed?.text || parsed || payloadLine);
+              } catch (err) {
+                appendToAssistant(assistantElement, payloadLine);
+              }
+            } else if (line.startsWith("event:")) {
+              // ignore event name
             } else {
-                wrapper.innerHTML = `
-                    <div class="max-w-[90%] md:max-w-[80%] flex gap-3">
-                        <div class="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center shadow-sm flex-shrink-0 mt-1">
-                            <i class="fas fa-robot text-pqBlue text-[12px]"></i>
-                        </div>
-                        <div class="flex flex-col items-start">
-                            <div class="bg-white text-gray-800 text-[14px] leading-relaxed p-4 border border-gray-100 rounded-2xl chat-bubble-bot shadow-sm chat-message">
-                                ${formatBotText(text)}
-                            </div>
-                            <span class="text-[10px] text-gray-400 mt-1.5 font-medium pl-1">ExamGuard AI • ${time}</span>
-                        </div>
-                    </div>
-                `;
+              // fallback - append raw
+              appendToAssistant(assistantElement, line + "\n");
             }
-
-            chatContainer.appendChild(wrapper);
-            scrollToBottom();
-
-            // Render MathJax if present
-            if (sender === 'bot' && window.MathJax && MathJax.typesetPromise) {
-                MathJax.typesetPromise([wrapper]).catch(err => console.warn("MathJax error:", err));
-            }
+          }
         }
+      }
+    }
 
-        function showTypingIndicator() {
-            const id = 'typing-' + Date.now();
-            const wrapper = document.createElement('div');
-            wrapper.id = id;
-            wrapper.className = 'flex w-full justify-start';
-            wrapper.innerHTML = `
-                <div class="max-w-[90%] md:max-w-[80%] flex gap-3">
-                    <div class="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center shadow-sm flex-shrink-0 mt-1">
-                        <i class="fas fa-robot text-pqBlue text-[12px]"></i>
-                    </div>
-                    <div class="bg-white border border-gray-100 p-4 rounded-2xl chat-bubble-bot shadow-sm flex items-center gap-1.5 h-[52px]">
-                        <div class="w-1.5 h-1.5 bg-gray-400 rounded-full typing-dot"></div>
-                        <div class="w-1.5 h-1.5 bg-gray-400 rounded-full typing-dot"></div>
-                        <div class="w-1.5 h-1.5 bg-gray-400 rounded-full typing-dot"></div>
-                    </div>
-                </div>
-            `;
-            chatContainer.appendChild(wrapper);
-            scrollToBottom();
-            return id;
+    // buffer may contain final done event (data: {...})
+    if (buffer && buffer.includes("data:")) {
+      const lines = buffer.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+      for (const line of lines) {
+        if (line.startsWith("data:")) {
+          const payloadLine = line.slice(5).trim();
+          try {
+            const parsed = JSON.parse(payloadLine);
+            appendToAssistant(assistantElement, parsed?.text || parsed || payloadLine);
+            if (parsed?.charge) adjustCredits(-Math.abs(Number(parsed.charge.cost || 0)));
+          } catch (err) {
+            appendToAssistant(assistantElement, payloadLine);
+          }
         }
+      }
+    }
 
-        function removeTypingIndicator(id) {
-            const el = document.getElementById(id);
-            if (el) el.remove();
-        }
+    // final 'done' event may have been sent; no explicit close needed
+    // update credits if server included charge in final done event (handled above)
+  } catch (err) {
+    console.error("streaming error", err);
+    assistantElement.querySelector('.chat-message').innerHTML = escapeHtml("Streaming error: " + String(err.message || err));
+  }
+}
 
-        function handleBotResponse(userMessage) {
-            isWaitingForResponse = true;
-            sendBtn.disabled = true;
-            
-            const typingId = showTypingIndicator();
+// UI helpers to append messages
+const chatContainer = document.getElementById('chat-container');
 
-            // Deduct local UI credit simulation
-            const creditEl = document.getElementById('ai-credits-display');
-            if (creditEl) {
-                let current = parseInt(creditEl.textContent);
-                if(current > 0) creditEl.textContent = current - 1;
-            }
+function addMessage(text, sender='bot', streaming=false) {
+  // returns assistant element when streaming true for incremental updates
+  const wrapper = document.createElement('div');
+  wrapper.className = `flex w-full ${sender === 'user' ? 'justify-end' : 'justify-start'}`;
+  const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (sender === 'user') {
+    wrapper.innerHTML = `
+      <div class="max-w-[85%] md:max-w-[75%] flex flex-col items-end">
+        <div class="bg-orange-500 text-white p-4 rounded-2xl chat-bubble-user">${escapeHtml(text).replace(/\n/g, '<br>')}</div>
+        <span class="text-[10px] text-gray-400 mt-1.5">${time}</span>
+      </div>`;
+    chatContainer.appendChild(wrapper);
+    scrollToBottom();
+    return null;
+  } else {
+    wrapper.innerHTML = `
+      <div class="max-w-[90%] md:max-w-[80%] flex gap-3">
+        <div class="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center mt-1">
+          <i class="fas fa-robot text-blue-700 text-[12px]"></i>
+        </div>
+        <div class="flex flex-col items-start">
+          <div class="bg-white text-gray-800 p-4 border border-gray-100 rounded-2xl chat-bubble-bot chat-message">${escapeHtml(text).replace(/\n/g, '<br>')}</div>
+          <span class="text-[10px] text-gray-400 mt-1.5">ExamGuard AI • ${time}</span>
+        </div>
+      </div>`;
+    chatContainer.appendChild(wrapper);
+    scrollToBottom();
+    if (streaming) return wrapper;
+    return null;
+  }
+}
 
-            // SIMULATE API CALL
-            setTimeout(() => {
-                removeTypingIndicator(typingId);
-                
-                // Example response containing MathJax to prove it works
-                const response = `Here is the breakdown for your query.\n\nTo solve for acceleration $a$ in physics, we use Newton's second law:\n\n$$ F = ma $$\n\nIf you have a force of **20N** and a mass of **5kg**, the calculation is:\n\n$$ a = \\frac{F}{m} = \\frac{20}{5} = 4 m/s^2 $$\n\nWould you like to try a practice question related to this?`;
-                
-                addMessage(response, 'bot');
-                isWaitingForResponse = false;
-                sendBtn.disabled = false;
-            }, 1500);
-        }
+function appendToAssistant(wrapper, chunk) {
+  if (!wrapper) return;
+  const msgBox = wrapper.querySelector('.chat-message');
+  // append raw text (preserve simple formatting)
+  msgBox.innerHTML = msgBox.innerHTML + escapeHtml(chunk).replace(/\n/g, '<br>');
+  // MathJax render attempt
+  if (window.MathJax && MathJax.typesetPromise) {
+    MathJax.typesetPromise([msgBox]).catch(()=>{});
+  }
+  scrollToBottom();
+}
 
-        function scrollToBottom() {
-            chatContainer.scrollTo({
-                top: chatContainer.scrollHeight,
-                behavior: 'smooth'
-            });
-        }
+// Adjust credits display and update localStorage copy if present
+function adjustCredits(delta) {
+  try {
+    const current = parseInt(creditsEl.textContent || "0", 10);
+    const next = current + Number(delta);
+    creditsEl.textContent = Math.max(0, next);
+    // update localStorage studentData if present
+    const sdRaw = localStorage.getItem('studentData');
+    if (sdRaw) {
+      try {
+        const sd = JSON.parse(sdRaw);
+        sd.creditPoints = Math.max(0, sd.creditPoints + Number(delta));
+        localStorage.setItem('studentData', JSON.stringify(sd));
+      } catch(e){}
+    }
+  } catch(e){ console.warn(e); }
+}
 
-        function clearChat() {
-            // Remove all elements except welcome card
-            const messages = chatContainer.querySelectorAll('.flex.w-full');
-            messages.forEach(msg => msg.remove());
-            if (welcomeCard) welcomeCard.style.display = 'block';
-        }
+// small utility
+function scrollToBottom() {
+  chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
+}
+function escapeHtml(unsafe) {
+  if (!unsafe) return "";
+  return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+               .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
 
-        // Basic formatting to convert bold syntax to HTML and preserve line breaks
-        function formatBotText(text) {
-            let html = escapeHtml(text);
-            // Convert **text** to <strong>text</strong>
-            html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-            // Preserve line breaks (ignoring ones inside block math)
-            html = html.replace(/\n/g, '<br>');
-            return html;
-        }
+// Initialize on load
+(async function init() {
+  // ensure session if logged in
+  if (!token) {
+    creditsEl.textContent = "—";
+  } else {
+    await ensureSession();
+  }
 
-        function escapeHtml(unsafe) {
-            return unsafe
-                 .replace(/&/g, "&amp;")
-                 .replace(/</g, "&lt;")
-                 .replace(/>/g, "&gt;")
-                 .replace(/"/g, "&quot;")
-                 .replace(/'/g, "&#039;");
-        }
-    </script>
+  // optionally preload user's existing materials (not implemented server endpoint for list)
+  renderMaterials();
+})();
+
+</script>
 </body>
 </html>
