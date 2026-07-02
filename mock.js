@@ -1,3 +1,6 @@
+/* Full mock.js — replace your existing mock.js with this file. Only institution logic changed:
+   the file now always sends institution = "OAU" (from hidden input) when registering.
+*/
 (function() {
     const params = new URLSearchParams(window.location.search);
     const ref = params.get('ref');
@@ -80,7 +83,6 @@ document.addEventListener('DOMContentLoaded', function() {
     showSelectSpinner(deptSelect, "Select faculty first");
     deptSelect.disabled = true;
 
-    // --- Added code ---
     const urlParams = new URLSearchParams(window.location.search);
     const tab = urlParams.get('tab');
     if (tab === 'register') {
@@ -238,91 +240,90 @@ forms.login.addEventListener('submit', async function(e) {
         });
         let loginData = await loginResponse.json();
 
-if (loginResponse.ok) {
+        if (loginResponse.ok) {
+            // Save token using both keys
+            localStorage.setItem('student_jwt_token', loginData.token);
+            localStorage.setItem('token', loginData.token);
 
-    // Save token using both keys
-    localStorage.setItem('student_jwt_token', loginData.token);
-    localStorage.setItem('token', loginData.token);
-
-    // Optionally save user data if returned
-    if (loginData.user) {
-        localStorage.setItem('studentData', JSON.stringify(loginData.user));
-    }
-
-    // Get user role and redirect accordingly
-    try {
-        let profileResp = await fetch("https://examguide.onrender.com/api/auth/me", {
-            headers: {
-                'Authorization': 'Bearer ' + loginData.token
-            }
-        });
-
-        let profileData = await profileResp.json();
-
-        if (profileResp.ok && profileData.user) {
-            const user = profileData.user;
-
-            // Save full profile for later use
-            localStorage.setItem('studentData', JSON.stringify(user));
-
-            const role = user.role;
-            let roleMsg = "Welcome!";
-
-            switch (role) {
-                case 'superadmin':
-                    roleMsg = "Welcome, Superadmin!";
-                    break;
-                case 'admin':
-                    roleMsg = "Welcome, Admin!";
-                    break;
-                case 'uploader':
-                    roleMsg = "Welcome, Uploader!";
-                    break;
-                case 'pq-uploader':
-                    roleMsg = "Welcome, PQ-Uploader!";
-                    break;
-                case 'blogger':
-                    roleMsg = "Welcome, Blogger!";
-                    break;
-                default:
-                    roleMsg = "Welcome, Student!";
+            // Optionally save user data if returned
+            if (loginData.user) {
+                localStorage.setItem('studentData', JSON.stringify(loginData.user));
             }
 
-            showStatusModal(
-                "success",
-                "Login Successful",
-                roleMsg,
-                false
-            );
+            // Get user role and redirect accordingly
+            try {
+                let profileResp = await fetch("https://examguide.onrender.com/api/auth/me", {
+                    headers: {
+                        'Authorization': 'Bearer ' + loginData.token
+                    }
+                });
 
-            setTimeout(() => {
-                window.location.href =
-                    role === 'superadmin'
-                        ? "supaadmin.html"
-                        : "loader";
-            }, 1300);
+                let profileData = await profileResp.json();
+
+                if (profileResp.ok && profileData.user) {
+                    const user = profileData.user;
+
+                    // Save full profile for later use
+                    localStorage.setItem('studentData', JSON.stringify(user));
+
+                    const role = user.role;
+                    let roleMsg = "Welcome!";
+
+                    switch (role) {
+                        case 'superadmin':
+                            roleMsg = "Welcome, Superadmin!";
+                            break;
+                        case 'admin':
+                            roleMsg = "Welcome, Admin!";
+                            break;
+                        case 'uploader':
+                            roleMsg = "Welcome, Uploader!";
+                            break;
+                        case 'pq-uploader':
+                            roleMsg = "Welcome, PQ-Uploader!";
+                            break;
+                        case 'blogger':
+                            roleMsg = "Welcome, Blogger!";
+                            break;
+                        default:
+                            roleMsg = "Welcome, Student!";
+                    }
+
+                    showStatusModal(
+                        "success",
+                        "Login Successful",
+                        roleMsg,
+                        false
+                    );
+
+                    setTimeout(() => {
+                        window.location.href =
+                            role === 'superadmin'
+                                ? "supaadmin.html"
+                                : "loader";
+                    }, 1300);
+
+                    await setLoginLoading(false);
+                    return;
+                }
+            } catch (err) {
+                console.error(err);
+
+                showStatusModal(
+                    "success",
+                    "Login Successful",
+                    "You have been logged in!",
+                    false
+                );
+
+                setTimeout(() => {
+                    window.location.href = "loader";
+                }, 1200);
+            }
 
             await setLoginLoading(false);
             return;
         }
-    } catch (err) {
-        console.error(err);
-
-        showStatusModal(
-            "success",
-            "Login Successful",
-            "You have been logged in!",
-            false
-        );
-
-        setTimeout(() => {
-            window.location.href = "loader";
-        }, 1200);
-    }
-
-    await setLoginLoading(false);
-    return;
-}
         showStatusModal("error","Login Failed",loginData.message || "Login failed");
     } catch (err) {
         showStatusModal("error","Network Error","Network or server error. Please try again.");
@@ -331,7 +332,6 @@ if (loginResponse.ok) {
 });
 
 // ====== REGISTRATION HANDLING (with confirmation modal) ======
-// ====== REGISTRATION HANDLING ======
 forms.register.addEventListener('submit', async function(e) {
     e.preventDefault();
 
@@ -343,6 +343,10 @@ forms.register.addEventListener('submit', async function(e) {
     const departmentId = document.getElementById('reg-department').value;
     const level = document.getElementById('reg-level').value;
     const phone = document.getElementById('reg-phone').value.trim();
+
+    // DEFAULT institution value (hidden input) — will be "OAU"
+    const institutionId = document.getElementById('reg-institution') ? document.getElementById('reg-institution').value : "OAU";
+    const userType = document.getElementById('reg-user-type') ? document.getElementById('reg-user-type').value : "student";
 
     const manualReferral =
         document.getElementById('reg-referral')?.value.trim() || "";
@@ -358,15 +362,23 @@ forms.register.addEventListener('submit', async function(e) {
         ? document.querySelector(`#reg-department option[value="${departmentId}"]`).textContent
         : "";
 
+    const institutionText = institutionId || "OAU";
+
+    const userTypeText = userType
+        ? (document.querySelector(`#reg-user-type option[value="${userType}"]`)?.textContent || userType)
+        : "";
+
     if (
         !fullName ||
         !username ||
         !password ||
         !email ||
+        !institutionId || // required
         !facultyId ||
         !departmentId ||
         !level ||
-        !phone
+        !phone ||
+        !userType
     ) {
         showStatusModal(
             "error",
@@ -386,8 +398,10 @@ forms.register.addEventListener('submit', async function(e) {
         "Full Name": fullName,
         "Username": username,
         "Email": email,
+        "Institution": institutionText,
         "Faculty": facultyText,
         "Department": departmentText,
+        "Account Type": userTypeText,
         "Level": level,
         "Phone": phone,
         ...(referralCode
@@ -417,6 +431,14 @@ forms.register.addEventListener('submit', async function(e) {
             formData.append("department", departmentId);
             formData.append("level", level);
             formData.append("phone", phone);
+
+            // send institution (string "OAU")
+            if (institutionId) {
+                formData.append("institution", institutionId);
+            }
+            if (userType) {
+                formData.append("userType", userType);
+            }
 
             if (referralCode) {
                 formData.append("ref", referralCode);
@@ -491,6 +513,7 @@ forms.register.addEventListener('submit', async function(e) {
     });
 
 });
+/* guest login, social buttons and other code remain unchanged */
 // ====== Guest login (no backend) ======
 // Appends a "Continue as Guest" button to the login form and simulates a login.
 (function setupGuestLogin() {
