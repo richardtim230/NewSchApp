@@ -1,11 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ExamGuard AI Tutor</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
     <script>
         window.MathJax = {
@@ -14,532 +13,435 @@
         };
     </script>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
-
     <style>
-        /* Minor layout tweaks */
-        body, #chat-container {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
+        * { box-sizing: border-box; }
+        html, body { height: 100%; margin: 0; padding: 0; }
+        body, #chat-container { -ms-overflow-style: none; scrollbar-width: none; }
+        body::-webkit-scrollbar, #chat-container::-webkit-scrollbar { display: none; }
+        
+        .chat-bubble { animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .typing-dots { display: inline-flex; gap: 4px; }
+        .typing-dot { width: 8px; height: 8px; border-radius: 50%; background: #d1d5db; animation: bounce 1.4s infinite; }
+        .typing-dot:nth-child(1) { animation-delay: 0s; }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+        
+        .material-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; font-size: 12px; color: #1e40af; }
+        .material-badge .remove { cursor: pointer; font-weight: bold; }
+        .material-badge .remove:hover { color: #dc2626; }
+
+        .btn-primary { background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 500; cursor: pointer; transition: background 0.2s; }
+        .btn-primary:hover { background: #1d4ed8; }
+        .btn-primary:disabled { background: #cbd5e1; cursor: not-allowed; }
+        
+        .btn-secondary { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; padding: 8px 16px; border-radius: 6px; font-weight: 500; cursor: pointer; transition: background 0.2s; }
+        .btn-secondary:hover { background: #e5e7eb; }
+
+        .input-file { padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; }
+        
+        .badge-info { display: inline-block; padding: 4px 8px; background: #dbeafe; color: #0c4a6e; border-radius: 4px; font-size: 11px; font-weight: 600; }
+
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 9999; }
+        .modal { background: white; border-radius: 12px; max-width: 600px; width: 95%; max-height: 85vh; overflow-y: auto; }
+        .modal-header { padding: 16px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
+        .modal-body { padding: 16px; }
+        .modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: #6b7280; }
+
+        .empty-state { text-align: center; padding: 32px 16px; color: #9ca3af; }
+        .empty-state i { font-size: 48px; opacity: 0.5; margin-bottom: 12px; display: block; }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .sidebar { display: none; }
+            .chat-container { margin: 0; }
         }
-        body::-webkit-scrollbar, #chat-container::-webkit-scrollbar {
-            display: none;
-        }
-        .chat-bubble-bot { border-top-left-radius: 0; }
-        .chat-bubble-user { border-top-right-radius: 0; }
-        .typing-dot { animation: typing 1.4s infinite ease-in-out both; }
-        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
-        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
-        @keyframes typing {
-            0%, 80%, 100% { transform: scale(0); opacity: 0.5; }
-            40% { transform: scale(1); opacity: 1; }
-        }
-        .material-item { border: 1px dashed #e6eefc; padding: 8px; border-radius: 8px; background:#fff; display:flex; justify-content:space-between; gap:8px; align-items:center; }
-        .small { font-size:12px; color:#6b7280; }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-800 antialiased h-screen font-sans flex">
-
-<div class="hidden md:flex flex-col z-30 h-screen bg-blue-900 w-[260px] border-r border-white/5 flex-shrink-0 p-4">
-    <div class="mb-4">
-        <h2 class="text-white font-bold text-xl">OAU ExamGuard 🎓</h2>
-        <p class="text-blue-200 text-sm">AI Tutor Interface</p>
-    </div>
-    <div class="mb-4">
-        <div class="text-white font-bold">AI Credits</div>
-        <div class="text-3xl font-extrabold text-white" id="ai-credits-display">—</div>
-        <div class="small">Queries left</div>
-    </div>
-
-    <div class="mt-6">
-        <h3 class="text-white text-sm mb-2">Materials</h3>
-        <div id="materials-list" class="flex flex-col gap-2"></div>
-        <div class="mt-3">
-            <label class="block text-xs text-blue-100 mb-1">Upload material (PDF / DOCX / TXT / images)</label>
-            <input id="material-file" type="file" class="text-sm" />
-            <button id="upload-btn" class="mt-2 w-full bg-white text-blue-900 font-semibold py-2 rounded-lg">Upload</button>
-            <div id="upload-status" class="text-xs text-white/80 mt-2"></div>
-        </div>
-    </div>
-</div>
-
-<div class="flex-1 flex flex-col h-full relative">
-    <div class="bg-white border-b shadow-sm px-6 py-4 flex items-center justify-between">
-        <div class="flex items-center gap-4">
-            <div class="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
-                <i class="fas fa-robot text-blue-700"></i>
+<body class="bg-white">
+    <div class="flex h-full">
+        <!-- Sidebar (Materials Panel) -->
+        <div class="hidden lg:flex flex-col w-80 bg-gray-50 border-r border-gray-200 overflow-y-auto">
+            <div class="p-6 border-b border-gray-200 sticky top-0 bg-white">
+                <h2 class="text-lg font-bold text-gray-900">Materials</h2>
+                <p class="text-xs text-gray-500 mt-1">Upload files for analysis</p>
             </div>
-            <div>
-                <div class="text-lg font-bold text-blue-900">ExamGuard Assistant</div>
-                <div class="text-xs text-gray-500">Always online to help you study</div>
-            </div>
-        </div>
 
-        <div class="flex items-center gap-3">
-            <label class="text-sm text-gray-600">Stream responses</label>
-            <input id="stream-toggle" type="checkbox" checked class="h-4 w-4"/>
-        </div>
-    </div>
+            <div class="p-6 flex flex-col gap-4 flex-1">
+                <!-- Upload Section -->
+                <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-400 transition" id="uploadZone">
+                    <i class="fas fa-cloud-upload-alt text-3xl text-gray-400 mb-2 block"></i>
+                    <p class="text-sm font-medium text-gray-700">Drop files here</p>
+                    <p class="text-xs text-gray-500 mt-1">or click to browse</p>
+                    <input id="materialInput" type="file" multiple accept=".pdf,.docx,.doc,.jpg,.jpeg,.png,.txt" style="display: none;">
+                </div>
 
-    <main id="chat-container" class="flex-1 overflow-y-auto p-6 space-y-4 max-w-4xl mx-auto w-full">
-        <div id="welcome-card" class="bg-white p-5 rounded-2xl shadow">
-            <h3 class="font-bold text-blue-900">How can I help you today?</h3>
-            <p class="text-sm text-gray-600">Paste questions, upload PDFs or DOCX and ask the tutor to summarize, explain, or generate practice questions based on your materials.</p>
-            <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2">
-                <button onclick="prefillInput('Explain the concept of Electromagnetism in PHY102 in simple terms.')" class="bg-gray-50 p-3 rounded border text-left">Physics Concept</button>
-                <button onclick="prefillInput('Solve this equation: $$ x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a} $$ step by step.')" class="bg-gray-50 p-3 rounded border text-left">Math Breakdown</button>
+                <!-- Upload Status -->
+                <div id="uploadStatus" style="display: none;" class="p-3 rounded-lg text-sm text-blue-700 bg-blue-50"></div>
+
+                <!-- Materials List -->
+                <div>
+                    <h3 class="text-sm font-semibold text-gray-900 mb-3">Uploaded Materials</h3>
+                    <div id="materialsList" class="space-y-2 max-h-96 overflow-y-auto">
+                        <div class="empty-state text-xs">
+                            <i class="fas fa-inbox"></i>
+                            No materials yet
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Selected Materials for Chat -->
+                <div id="selectedMaterialsPanel" style="display: none;">
+                    <h3 class="text-sm font-semibold text-gray-900 mb-2">Selected for Chat</h3>
+                    <div id="selectedMaterialsTags" class="flex flex-wrap gap-2"></div>
+                </div>
             </div>
         </div>
-    </main>
 
-    <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white to-transparent p-4">
-        <div class="max-w-4xl mx-auto relative">
-            <form id="chat-form" class="relative flex items-end bg-white rounded-2xl shadow p-2 border">
-                <textarea id="chat-input" rows="1"
-                    placeholder="Type your question or paste an equation..."
-                    class="w-full bg-transparent border-none text-sm text-gray-800 placeholder-gray-400 resize-none py-3 pl-3 pr-12"
-                    oninput="this.style.height = ''; this.style.height = this.scrollHeight + 'px'"></textarea>
+        <!-- Main Chat Area -->
+        <div class="flex flex-col flex-1 bg-white">
+            <!-- Header -->
+            <div class="border-b border-gray-200 bg-white p-4 lg:p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h1 class="text-xl lg:text-2xl font-bold text-gray-900">Prof. Adeyemi</h1>
+                        <p class="text-sm text-gray-500 mt-1">AI Tutor Assistant</p>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-sm font-semibold text-gray-900" id="creditsDisplay">— Credits</div>
+                        <button onclick="clearChat()" class="mt-2 text-xs font-medium text-gray-600 hover:text-red-600 transition">
+                            <i class="fas fa-trash-alt"></i> Clear
+                        </button>
+                    </div>
+                </div>
+            </div>
 
-                <button type="submit" id="send-btn" class="absolute right-3 bottom-3 w-10 h-10 bg-orange-500 hover:bg-orange-600 text-white rounded-lg flex items-center justify-center">
-                    <i class="fas fa-paper-plane"></i>
-                </button>
-            </form>
+            <!-- Chat Container -->
+            <div id="chatContainer" class="flex-1 overflow-y-auto p-4 lg:p-6 space-y-4 max-w-4xl mx-auto w-full">
+                <div class="empty-state">
+                    <i class="fas fa-comments"></i>
+                    <p class="text-gray-600">Start a conversation with Prof. Adeyemi</p>
+                </div>
+            </div>
 
-            <div class="mt-3 flex gap-2 items-center justify-center">
-                <select id="action-select" class="text-sm p-2 border rounded">
-                    <option value="chat">Chat (general)</option>
-                    <option value="summarize">Summarize selected material</option>
-                    <option value="generate_practice">Generate practice questions</option>
-                    <option value="explain">Explain selected material</option>
-                </select>
-                <input id="practice-count" type="number" min="1" max="20" value="5" class="text-sm p-2 border rounded w-20" title="Number of questions for generation" />
-                <input id="explain-highlight" type="text" placeholder="(optional) highlight text for explain" class="text-sm p-2 border rounded w-64" />
-                <button id="run-action" class="bg-blue-700 text-white px-4 py-2 rounded text-sm">Run</button>
+            <!-- Input Area -->
+            <div class="border-t border-gray-200 bg-white p-4 lg:p-6">
+                <div class="max-w-4xl mx-auto">
+                    <!-- Materials Badge Row -->
+                    <div id="materialsBadgeRow" class="mb-3 flex flex-wrap gap-2" style="display: none;"></div>
+
+                    <!-- Message Input -->
+                    <form id="chatForm" class="flex gap-2">
+                        <textarea 
+                            id="chatInput" 
+                            placeholder="Ask anything..." 
+                            rows="1" 
+                            class="flex-1 border border-gray-300 rounded-lg px-4 py-3 text-sm resize-none focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                            oninput="this.style.height=''; this.style.height = Math.min(this.scrollHeight, 120) + 'px'">
+                        </textarea>
+                        <button type="submit" id="sendBtn" class="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-lg transition flex items-center justify-center" style="width: 44px; height: 44px;">
+                            <i class="fas fa-arrow-up text-lg"></i>
+                        </button>
+                    </form>
+                    
+                    <!-- Mobile Material Upload Button -->
+                    <div class="lg:hidden mt-3">
+                        <button onclick="document.getElementById('materialInput').click()" class="btn-secondary w-full text-sm">
+                            <i class="fas fa-cloud-upload-alt"></i> Add Material
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
-</div>
 
-<script>
-/*
-  Frontend integration for chatbot endpoints:
-  - BACKEND_BASE: change if your backend is on another origin
-  - Uses localStorage.student_jwt_token (set during login)
-  - Creates session on load
-*/
-const BACKEND_BASE = "https://examguide.onrender.com"; // "" means same origin, or set "https://examguide.onrender.com"
-const API = (path) => `${BACKEND_BASE}/api/chatbot${path}`;
+    <!-- Quiz Modal -->
+    <div id="quizModal" class="modal-overlay" style="display: none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 class="text-lg font-bold text-gray-900">Generated Quiz</h2>
+                <button class="modal-close" onclick="closeQuizModal()">×</button>
+            </div>
+            <div class="modal-body" id="quizContent"></div>
+        </div>
+    </div>
 
-let session = null;
-let materials = []; // { materialId, originalName, preview }
-let token = localStorage.getItem('student_jwt_token') || null;
-let userData = null;
-try { userData = JSON.parse(localStorage.getItem('studentData') || "null"); } catch(e){ userData = null; }
+    <script>
+        const BACKEND_BASE = "https://examguide.onrender.com";
+        const API = (path) => `${BACKEND_BASE}/api/ai-chat${path}`;
 
-const creditsEl = document.getElementById('ai-credits-display');
-if (userData && typeof userData.creditPoints !== 'undefined') creditsEl.textContent = userData.creditPoints;
+        let token = localStorage.getItem('student_jwt_token') || null;
+        let userData = null;
+        let materials = [];
+        let selectedMaterialIds = [];
+        let sessionId = null;
 
-// Helper: show notification (very small)
-function showTemp(msg, timeout = 3000) {
-  const el = document.createElement('div');
-  el.textContent = msg;
-  el.className = "fixed bottom-6 right-6 bg-black text-white px-4 py-2 rounded shadow";
-  document.body.appendChild(el);
-  setTimeout(()=> el.remove(), timeout);
-}
+        try { userData = JSON.parse(localStorage.getItem('studentData') || "null"); } catch (e) { userData = null; }
 
-// Set Authorization header
-function authHeaders() {
-  const headers = { "Content-Type": "application/json" };
-  const t = localStorage.getItem('student_jwt_token') || token;
-  if (t) headers["Authorization"] = "Bearer " + t;
-  return headers;
-}
+        function updateCreditsDisplay() {
+            const credits = userData?.creditPoints ?? "—";
+            document.getElementById('creditsDisplay').textContent = credits + " Credits";
+        }
 
-// Create or resume session on load
-async function ensureSession() {
-  try {
-    const res = await fetch(API('/session'), {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({ title: "Web session" })
-    });
-    if (!res.ok) {
-      console.warn("Could not create session", await res.text());
-      return null;
-    }
-    const data = await res.json();
-    if (data && data.session) {
-      session = data.session;
-      console.log("session created", session._id || session.id || session);
-      return session;
-    }
-  } catch (err) {
-    console.error("ensureSession error", err);
-  }
-  return null;
-}
+        function authHeaders(json = true) {
+            const h = {};
+            if (json) h['Content-Type'] = 'application/json';
+            if (token) h['Authorization'] = 'Bearer ' + token;
+            return h;
+        }
 
-// Upload material
-document.getElementById('upload-btn').addEventListener('click', async function() {
-  if (!token) { showTemp("Please login to upload materials"); return; }
-  const input = document.getElementById('material-file');
-  if (!input.files || input.files.length === 0) { showTemp("Please choose a file"); return; }
-  const file = input.files[0];
-  const fd = new FormData();
-  fd.append('file', file);
-  // optionally attach ownerId (server attaches from token)
-  try {
-    document.getElementById('upload-status').textContent = "Uploading...";
-    const res = await fetch(API('/upload'), {
-      method: 'POST',
-      headers: {
-        // don't set Content-Type for FormData
-        "Authorization": "Bearer " + token
-      },
-      body: fd
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      console.error("upload failed", data);
-      document.getElementById('upload-status').textContent = "Upload failed: " + (data.message || data.error || res.statusText);
-      showTemp("Upload failed");
-      return;
-    }
-    document.getElementById('upload-status').textContent = "Uploaded";
-    const mat = { materialId: data.materialId, originalName: file.name, preview: data.extractedText || "" };
-    materials.unshift(mat);
-    renderMaterials();
-    showTemp("Upload successful");
-    // clear file input
-    input.value = "";
-    // attach material to session if present
-    if (session && session._id) {
-      // optional: not required; session / generate will reference materialId directly
-    }
-  } catch (err) {
-    console.error("upload error", err);
-    document.getElementById('upload-status').textContent = "Upload error";
-    showTemp("Upload error");
-  }
-});
+        function notify(msg, type = 'info') {
+            const div = document.createElement('div');
+            const bgColor = type === 'error' ? 'bg-red-100' : 'bg-blue-100';
+            const textColor = type === 'error' ? 'text-red-700' : 'text-blue-700';
+            div.className = `fixed bottom-4 right-4 p-3 rounded-lg text-sm font-medium ${bgColor} ${textColor} z-50 max-w-sm`;
+            div.textContent = msg;
+            document.body.appendChild(div);
+            setTimeout(() => div.remove(), 3000);
+        }
 
-// Render materials list
-function renderMaterials() {
-  const list = document.getElementById('materials-list');
-  list.innerHTML = "";
-  materials.forEach((m, idx) => {
-    const div = document.createElement('div');
-    div.className = "material-item";
-    div.innerHTML = `
-      <div style="flex:1">
-        <div class="font-semibold">${escapeHtml(m.originalName)}</div>
-        <div class="small">${escapeHtml((m.preview||"").slice(0,120))}${(m.preview&&m.preview.length>120)?"...":""}</div>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
-        <label style="font-size:12px;color:#374151">
-          <input type="checkbox" data-idx="${idx}" class="material-ck" /> Use
-        </label>
-        <button data-idx="${idx}" class="btn-select text-xs px-2 py-1 bg-blue-600 text-white rounded">Details</button>
-      </div>
-    `;
-    list.appendChild(div);
-  });
-  // attach handlers
-  document.querySelectorAll('.btn-select').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const idx = parseInt(e.currentTarget.dataset.idx, 10);
-      const m = materials[idx];
-      if (!m) return;
-      // show modal-like details
-      const w = window.open("", "_blank", "width=700,height=500,scrollbars=1");
-      w.document.write("<pre style='white-space:pre-wrap;word-wrap:break-word;font-family:monospace;padding:12px;'>" + escapeHtml(m.preview || "(no preview)") + "</pre>");
-    });
-  });
-}
+        // Material upload handling
+        const uploadZone = document.getElementById('uploadZone');
+        const materialInput = document.getElementById('materialInput');
 
-// Helper: get selected materialIds (max 3)
-function getSelectedMaterialIds() {
-  const checks = document.querySelectorAll('.material-ck');
-  const ids = [];
-  checks.forEach(ck => {
-    if (ck.checked) {
-      const idx = parseInt(ck.dataset.idx, 10);
-      if (materials[idx]) ids.push(materials[idx].materialId);
-    }
-  });
-  return ids.slice(0,3);
-}
+        uploadZone.addEventListener('click', () => materialInput.click());
+        uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.style.borderColor = '#3b82f6'; });
+        uploadZone.addEventListener('dragleave', () => { uploadZone.style.borderColor = '#d1d5db'; });
+        uploadZone.addEventListener('drop', (e) => { 
+            e.preventDefault(); 
+            uploadZone.style.borderColor = '#d1d5db';
+            if (e.dataTransfer.files.length > 0) materialInput.files = e.dataTransfer.files;
+            handleMaterialUpload();
+        });
 
-// Run action button (summarize / generate_practice / explain)
-document.getElementById('run-action').addEventListener('click', async () => {
-  const action = document.getElementById('action-select').value;
-  if (!token) { showTemp("Please login to use this feature"); return; }
+        materialInput.addEventListener('change', handleMaterialUpload);
 
-  if (action === 'chat') {
-    showTemp("Use the chat input to send messages.", 2000);
-    return;
-  }
+        async function handleMaterialUpload() {
+            if (!materialInput.files.length) return;
+            if (!token) { notify('Please login first', 'error'); return; }
 
-  const materialIds = getSelectedMaterialIds();
-  if (materialIds.length === 0) { showTemp("Select at least one uploaded material to run this action"); return; }
-  const materialId = materialIds[0]; // use first selected
+            const statusDiv = document.getElementById('uploadStatus');
+            statusDiv.textContent = `Uploading ${materialInput.files.length} file(s)...`;
+            statusDiv.style.display = 'block';
 
-  const payload = { materialId, action, options: {} };
-  if (action === 'generate_practice') {
-    payload.options.count = parseInt(document.getElementById('practice-count').value || 5, 10);
-  }
-  if (action === 'explain') {
-    payload.options.highlight = document.getElementById('explain-highlight').value || "";
-  }
+            for (const file of materialInput.files) {
+                try {
+                    const fd = new FormData();
+                    fd.append('file', file);
+                    const res = await fetch(API('/upload'), { 
+                        method: 'POST', 
+                        headers: { 'Authorization': 'Bearer ' + token }, 
+                        body: fd 
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.message || 'Upload failed');
 
-  try {
-    const btn = document.getElementById('run-action');
-    btn.disabled = true;
-    btn.textContent = "Running...";
-    const res = await fetch(API('/generate'), {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify(payload)
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      showTemp("Action failed: " + (data.message || res.statusText));
-      console.error(data);
-      btn.disabled = false;
-      btn.textContent = "Run";
-      return;
-    }
-    // show as assistant message
-    addMessage(data.result || (data.output || JSON.stringify(data)), 'bot');
-    // update credits if backend returned charge
-    if (data.charge && typeof data.charge.cost !== 'undefined') adjustCredits(-Math.abs(Number(data.charge.cost)));
-  } catch (err) {
-    console.error("run action error", err);
-    showTemp("Action error");
-  } finally {
-    const btn = document.getElementById('run-action');
-    btn.disabled = false;
-    btn.textContent = "Run";
-  }
-});
-
-// Chat form handling
-const chatForm = document.getElementById('chat-form');
-chatForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const message = document.getElementById('chat-input').value.trim();
-  if (!message) return;
-  if (!token) { showTemp("Please login to chat"); return; }
-
-  addMessage(message, 'user');
-  document.getElementById('chat-input').value = '';
-  document.getElementById('chat-input').style.height = '48px';
-
-  const materialIds = getSelectedMaterialIds();
-  const useStream = document.getElementById('stream-toggle').checked;
-
-  if (useStream) {
-    await sendStreamMessage(message, materialIds);
-  } else {
-    await sendMessage(message, materialIds);
-  }
-});
-
-// Non-streaming chat
-async function sendMessage(message, materialIds = []) {
-  try {
-    const payload = { message, materialIds, sessionId: session && session._id };
-    const res = await fetch(API('/message'), {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify(payload)
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      addMessage("Error: " + (data.message || JSON.stringify(data)), 'bot');
-      return;
-    }
-    addMessage(data.reply || data.result || JSON.stringify(data), 'bot');
-    if (data.charge && typeof data.charge.cost !== 'undefined') adjustCredits(-Math.abs(Number(data.charge.cost)));
-  } catch (err) {
-    console.error("sendMessage error", err);
-    addMessage("Network error communicating with AI service.", 'bot');
-  }
-}
-
-// Streaming chat (progressive)
-async function sendStreamMessage(message, materialIds = []) {
-  // create assistant placeholder
-  const assistantElement = addMessage('', 'bot', true); // streaming = true returns DOM element to update
-  const payload = { message, materialIds, sessionId: session && session._id };
-
-  try {
-    const res = await fetch(API('/message-stream'), {
-      method: 'POST',
-      headers: {
-        ...authHeaders(),
-        // chat stream responds as text/event-stream, server expects JSON body
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok) {
-      const txt = await res.text();
-      assistantElement.querySelector('.chat-message').innerHTML = escapeHtml("Stream error: " + txt);
-      return;
-    }
-
-    // read body as stream
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let done = false;
-    while (!done) {
-      const { value, done: rdone } = await reader.read();
-      done = rdone;
-      if (value) {
-        buffer += decoder.decode(value, { stream: true });
-        // Process SSE-style chunks: server sends "event: chunk\n data: <text>\n\n"
-        let parts = buffer.split("\n\n");
-        // keep last partial in buffer
-        buffer = parts.pop();
-        for (const p of parts) {
-          // p contains one event block - parse lines
-          const lines = p.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-          for (const line of lines) {
-            if (line.startsWith("data:")) {
-              let payloadLine = line.slice(5).trim();
-              // try parse JSON, else treat as plain text
-              try {
-                const parsed = JSON.parse(payloadLine);
-                appendToAssistant(assistantElement, parsed?.text || parsed || payloadLine);
-              } catch (err) {
-                appendToAssistant(assistantElement, payloadLine);
-              }
-            } else if (line.startsWith("event:")) {
-              // ignore event name
-            } else {
-              // fallback - append raw
-              appendToAssistant(assistantElement, line + "\n");
+                    materials.push({
+                        id: data.materialId,
+                        name: file.name,
+                        size: file.size,
+                        type: file.type
+                    });
+                    renderMaterialsList();
+                } catch (err) {
+                    notify(`Failed: ${file.name}`, 'error');
+                }
             }
-          }
+
+            statusDiv.textContent = 'Upload complete';
+            setTimeout(() => { statusDiv.style.display = 'none'; }, 2000);
+            materialInput.value = '';
         }
-      }
-    }
 
-    // buffer may contain final done event (data: {...})
-    if (buffer && buffer.includes("data:")) {
-      const lines = buffer.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
-      for (const line of lines) {
-        if (line.startsWith("data:")) {
-          const payloadLine = line.slice(5).trim();
-          try {
-            const parsed = JSON.parse(payloadLine);
-            appendToAssistant(assistantElement, parsed?.text || parsed || payloadLine);
-            if (parsed?.charge) adjustCredits(-Math.abs(Number(parsed.charge.cost || 0)));
-          } catch (err) {
-            appendToAssistant(assistantElement, payloadLine);
-          }
+        function renderMaterialsList() {
+            const list = document.getElementById('materialsList');
+            if (materials.length === 0) {
+                list.innerHTML = '<div class="empty-state text-xs"><i class="fas fa-inbox"></i> No materials yet</div>';
+                return;
+            }
+
+            list.innerHTML = materials.map((m, idx) => `
+                <div class="p-3 bg-white border border-gray-200 rounded-lg flex items-start justify-between hover:border-blue-300 transition cursor-pointer group" onclick="toggleMaterial('${m.id}')">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium text-gray-900 truncate">${m.name}</p>
+                        <p class="text-xs text-gray-500">${(m.size / 1024).toFixed(0)} KB</p>
+                    </div>
+                    <input type="checkbox" class="material-checkbox" data-id="${m.id}" style="margin-left: 8px;">
+                </div>
+            `).join('');
         }
-      }
-    }
 
-    // final 'done' event may have been sent; no explicit close needed
-    // update credits if server included charge in final done event (handled above)
-  } catch (err) {
-    console.error("streaming error", err);
-    assistantElement.querySelector('.chat-message').innerHTML = escapeHtml("Streaming error: " + String(err.message || err));
-  }
-}
+        function toggleMaterial(id) {
+            const idx = selectedMaterialIds.indexOf(id);
+            if (idx > -1) selectedMaterialIds.splice(idx, 1);
+            else selectedMaterialIds.push(id);
 
-// UI helpers to append messages
-const chatContainer = document.getElementById('chat-container');
+            document.querySelectorAll('.material-checkbox').forEach(cb => {
+                cb.checked = selectedMaterialIds.includes(cb.dataset.id);
+            });
 
-function addMessage(text, sender='bot', streaming=false) {
-  // returns assistant element when streaming true for incremental updates
-  const wrapper = document.createElement('div');
-  wrapper.className = `flex w-full ${sender === 'user' ? 'justify-end' : 'justify-start'}`;
-  const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  if (sender === 'user') {
-    wrapper.innerHTML = `
-      <div class="max-w-[85%] md:max-w-[75%] flex flex-col items-end">
-        <div class="bg-orange-500 text-white p-4 rounded-2xl chat-bubble-user">${escapeHtml(text).replace(/\n/g, '<br>')}</div>
-        <span class="text-[10px] text-gray-400 mt-1.5">${time}</span>
-      </div>`;
-    chatContainer.appendChild(wrapper);
-    scrollToBottom();
-    return null;
-  } else {
-    wrapper.innerHTML = `
-      <div class="max-w-[90%] md:max-w-[80%] flex gap-3">
-        <div class="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center mt-1">
-          <i class="fas fa-robot text-blue-700 text-[12px]"></i>
-        </div>
-        <div class="flex flex-col items-start">
-          <div class="bg-white text-gray-800 p-4 border border-gray-100 rounded-2xl chat-bubble-bot chat-message">${escapeHtml(text).replace(/\n/g, '<br>')}</div>
-          <span class="text-[10px] text-gray-400 mt-1.5">ExamGuard AI • ${time}</span>
-        </div>
-      </div>`;
-    chatContainer.appendChild(wrapper);
-    scrollToBottom();
-    if (streaming) return wrapper;
-    return null;
-  }
-}
+            updateSelectedMaterialsDisplay();
+        }
 
-function appendToAssistant(wrapper, chunk) {
-  if (!wrapper) return;
-  const msgBox = wrapper.querySelector('.chat-message');
-  // append raw text (preserve simple formatting)
-  msgBox.innerHTML = msgBox.innerHTML + escapeHtml(chunk).replace(/\n/g, '<br>');
-  // MathJax render attempt
-  if (window.MathJax && MathJax.typesetPromise) {
-    MathJax.typesetPromise([msgBox]).catch(()=>{});
-  }
-  scrollToBottom();
-}
+        function updateSelectedMaterialsDisplay() {
+            const row = document.getElementById('materialsBadgeRow');
+            if (selectedMaterialIds.length === 0) {
+                row.style.display = 'none';
+                return;
+            }
+            row.style.display = 'flex';
+            row.innerHTML = selectedMaterialIds.map(id => {
+                const mat = materials.find(m => m.id === id);
+                return `<span class="material-badge">${mat?.name || 'Material'} <span class="remove" onclick="removeMaterial('${id}', event)">×</span></span>`;
+            }).join('');
+        }
 
-// Adjust credits display and update localStorage copy if present
-function adjustCredits(delta) {
-  try {
-    const current = parseInt(creditsEl.textContent || "0", 10);
-    const next = current + Number(delta);
-    creditsEl.textContent = Math.max(0, next);
-    // update localStorage studentData if present
-    const sdRaw = localStorage.getItem('studentData');
-    if (sdRaw) {
-      try {
-        const sd = JSON.parse(sdRaw);
-        sd.creditPoints = Math.max(0, sd.creditPoints + Number(delta));
-        localStorage.setItem('studentData', JSON.stringify(sd));
-      } catch(e){}
-    }
-  } catch(e){ console.warn(e); }
-}
+        function removeMaterial(id, e) {
+            e.stopPropagation();
+            selectedMaterialIds = selectedMaterialIds.filter(m => m !== id);
+            document.querySelectorAll('.material-checkbox').forEach(cb => {
+                cb.checked = selectedMaterialIds.includes(cb.dataset.id);
+            });
+            updateSelectedMaterialsDisplay();
+        }
 
-// small utility
-function scrollToBottom() {
-  chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
-}
-function escapeHtml(unsafe) {
-  if (!unsafe) return "";
-  return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-               .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-}
+        // Chat functionality
+        const chatContainer = document.getElementById('chatContainer');
+        const chatForm = document.getElementById('chatForm');
+        const chatInput = document.getElementById('chatInput');
+        const sendBtn = document.getElementById('sendBtn');
 
-// Initialize on load
-(async function init() {
-  // ensure session if logged in
-  if (!token) {
-    creditsEl.textContent = "—";
-  } else {
-    await ensureSession();
-  }
+        function clearChatUI() {
+            chatContainer.innerHTML = '<div class="empty-state"><i class="fas fa-comments"></i> <p class="text-gray-600">Start a conversation</p></div>';
+        }
 
-  // optionally preload user's existing materials (not implemented server endpoint for list)
-  renderMaterials();
-})();
+        function clearChat() {
+            if (confirm('Clear chat history?')) clearChatUI();
+        }
 
-</script>
+        function addMessage(text, sender = 'bot') {
+            if (chatContainer.querySelector('.empty-state')) chatContainer.innerHTML = '';
+
+            const div = document.createElement('div');
+            div.className = `chat-bubble flex gap-3 ${sender === 'user' ? 'justify-end' : 'justify-start'}`;
+
+            if (sender === 'user') {
+                div.innerHTML = `
+                    <div class="max-w-xs lg:max-w-md xl:max-w-lg bg-blue-600 text-white p-3 rounded-lg text-sm leading-relaxed">
+                        ${escapeHtml(text).replace(/\n/g, '<br>')}
+                    </div>
+                `;
+            } else {
+                div.innerHTML = `
+                    <div class="max-w-xs lg:max-w-md xl:max-w-lg bg-gray-100 text-gray-900 p-3 rounded-lg text-sm leading-relaxed chat-message">
+                        ${formatText(text)}
+                    </div>
+                `;
+            }
+
+            chatContainer.appendChild(div);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            if (sender === 'bot' && window.MathJax) {
+                MathJax.typesetPromise([div]).catch(() => {});
+            }
+        }
+
+        function formatText(text) {
+            let html = escapeHtml(text || '');
+            html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+            return html.replace(/\n/g, '<br>');
+        }
+
+        function escapeHtml(s) {
+            return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        }
+
+        function showTypingIndicator() {
+            addMessage('', 'bot');
+            const lastMsg = chatContainer.lastElementChild.querySelector('.chat-message');
+            lastMsg.innerHTML = '<div class="typing-dots"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
+            return chatContainer.lastElementChild;
+        }
+
+        function removeTypingIndicator(el) {
+            if (el) el.remove();
+        }
+
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const message = chatInput.value.trim();
+            if (!message) return;
+            if (!token) { notify('Please login first', 'error'); return; }
+
+            addMessage(message, 'user');
+            chatInput.value = '';
+            chatInput.style.height = '';
+            sendBtn.disabled = true;
+
+            const typingEl = showTypingIndicator();
+            try {
+                const payload = {
+                    messages: [{ role: 'user', content: message }],
+                    channel: 'general',
+                    materialIds: selectedMaterialIds
+                };
+                const res = await fetch(API('/send'), {
+                    method: 'POST',
+                    headers: authHeaders(true),
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                removeTypingIndicator(typingEl);
+
+                if (!res.ok) {
+                    addMessage('Server error: ' + (data.error || 'Unknown error'), 'bot');
+                    return;
+                }
+
+                addMessage(data.reply || 'No response', 'bot');
+
+                if (data.cbt?.questions) {
+                    setTimeout(() => showQuizModal(data.cbt.questions, data.cbt.examId), 500);
+                }
+            } catch (err) {
+                removeTypingIndicator(typingEl);
+                addMessage('Connection error. Please try again.', 'bot');
+            } finally {
+                sendBtn.disabled = false;
+            }
+        });
+
+        // Quiz Modal
+        function showQuizModal(questions, examId) {
+            const content = document.getElementById('quizContent');
+            content.innerHTML = questions.map((q, idx) => `
+                <div class="mb-6 pb-6 border-b border-gray-200 last:border-0">
+                    <p class="font-semibold text-gray-900 mb-3">${idx + 1}. ${escapeHtml(q.text)}</p>
+                    <div class="space-y-2 mb-3">
+                        ${q.options.map((opt, i) => `
+                            <label class="flex items-center p-2 rounded hover:bg-gray-50 cursor-pointer">
+                                <input type="radio" name="q${idx}" value="${i}" class="mr-2">
+                                <span class="text-sm text-gray-700">${escapeHtml(opt)}</span>
+                            </label>
+                        `).join('')}
+                    </div>
+                    <p class="text-xs text-gray-500 italic">Answer: ${q.answer} – ${escapeHtml(q.explanation || '')}</p>
+                </div>
+            `).join('');
+            document.getElementById('quizModal').style.display = 'flex';
+        }
+
+        function closeQuizModal() {
+            document.getElementById('quizModal').style.display = 'none';
+        }
+
+        // Initialize
+        updateCreditsDisplay();
+        clearChatUI();
+    </script>
 </body>
 </html>
