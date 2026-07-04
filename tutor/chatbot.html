@@ -40,15 +40,19 @@
         .btn-secondary { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; padding: 8px 16px; border-radius: 6px; font-weight: 500; cursor: pointer; transition: background 0.2s; }
         .btn-secondary:hover { background: #e5e7eb; }
 
+        .btn-success { background: #10b981; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 500; cursor: pointer; transition: background 0.2s; }
+        .btn-success:hover { background: #059669; }
+
         .input-file { padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; }
         
         .badge-info { display: inline-block; padding: 4px 8px; background: #dbeafe; color: #0c4a6e; border-radius: 4px; font-size: 11px; font-weight: 600; }
 
         .modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); display: none; align-items: center; justify-content: center; z-index: 9999; }
         .modal-overlay.show { display: flex; }
-        .modal { background: white; border-radius: 12px; max-width: 600px; width: 95%; max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+        .modal { background: white; border-radius: 12px; max-width: 700px; width: 95%; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
         .modal-header { padding: 20px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: white; }
         .modal-body { padding: 20px; }
+        .modal-footer { padding: 20px; border-top: 1px solid #e5e7eb; display: flex; gap: 10px; justify-content: flex-end; position: sticky; bottom: 0; background: white; }
         .modal-close { background: none; border: none; font-size: 24px; cursor: pointer; color: #6b7280; padding: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; }
         .modal-close:hover { color: #111827; }
 
@@ -56,11 +60,15 @@
         .empty-state i { font-size: 48px; opacity: 0.5; margin-bottom: 12px; display: block; }
 
         .quiz-question { padding: 16px; background: #f9fafb; border-radius: 8px; margin-bottom: 12px; border-left: 4px solid #2563eb; }
-        .quiz-question-text { font-weight: 600; color: #111827; margin-bottom: 12px; }
-        .quiz-option { display: flex; align-items: center; padding: 8px; margin: 6px 0; border-radius: 6px; cursor: pointer; transition: background 0.2s; }
+        .quiz-question-text { font-weight: 600; color: #111827; margin-bottom: 12px; font-size: 14px; }
+        .quiz-option { display: flex; align-items: flex-start; padding: 10px; margin: 8px 0; border-radius: 6px; cursor: pointer; transition: background 0.2s; border: 1px solid #e5e7eb; }
         .quiz-option:hover { background: #f3f4f6; }
-        .quiz-option input { margin-right: 8px; }
-        .quiz-answer { padding: 8px 12px; background: #dbeafe; color: #0c4a6e; border-radius: 6px; font-size: 12px; margin-top: 8px; }
+        .quiz-option input { margin-right: 10px; margin-top: 2px; cursor: pointer; }
+        .quiz-answer { padding: 12px; background: #dbeafe; color: #0c4a6e; border-radius: 6px; font-size: 13px; margin-top: 8px; border-left: 4px solid #0c4a6e; display: none; }
+        .quiz-answer.show { display: block; }
+        .quiz-answer strong { display: block; margin-bottom: 4px; }
+
+        .test-btn { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; }
 
         /* Responsive adjustments */
         @media (max-width: 768px) {
@@ -164,10 +172,14 @@
     <div id="quizModal" class="modal-overlay">
         <div class="modal">
             <div class="modal-header">
-                <h2 class="text-lg font-bold text-gray-900">Generated Quiz</h2>
+                <h2 class="text-lg font-bold text-gray-900">Test Your Knowledge</h2>
                 <button type="button" class="modal-close" onclick="closeQuizModal()">×</button>
             </div>
             <div class="modal-body" id="quizContent"></div>
+            <div class="modal-footer">
+                <button type="button" onclick="closeQuizModal()" class="btn-secondary">Close</button>
+                <button type="button" id="submitQuizBtn" onclick="submitQuiz()" class="btn-success">Submit Answers</button>
+            </div>
         </div>
     </div>
 
@@ -180,6 +192,10 @@
         let materials = [];
         let selectedMaterialIds = [];
         let sessionId = null;
+        let currentQuestions = null;
+        let retryCount = 0;
+        const MAX_RETRIES = 3;
+        let lastUserMessage = null;
 
         try { userData = JSON.parse(localStorage.getItem('studentData') || "null"); } catch (e) { userData = null; }
 
@@ -197,8 +213,8 @@
 
         function notify(msg, type = 'info') {
             const div = document.createElement('div');
-            const bgColor = type === 'error' ? 'bg-red-100' : 'bg-blue-100';
-            const textColor = type === 'error' ? 'text-red-700' : 'text-blue-700';
+            const bgColor = type === 'error' ? 'bg-red-100' : (type === 'success' ? 'bg-green-100' : 'bg-blue-100');
+            const textColor = type === 'error' ? 'text-red-700' : (type === 'success' ? 'text-green-700' : 'text-blue-700');
             div.className = `fixed bottom-4 right-4 p-3 rounded-lg text-sm font-medium ${bgColor} ${textColor} z-50 max-w-sm`;
             div.textContent = msg;
             document.body.appendChild(div);
@@ -340,7 +356,7 @@
             return null;
         }
 
-        function addMessage(text, sender = 'bot') {
+        function addMessage(text, sender = 'bot', hasQuiz = false) {
             if (chatContainer.querySelector('.empty-state')) chatContainer.innerHTML = '';
 
             const div = document.createElement('div');
@@ -362,22 +378,27 @@
                     displayText = text.replace(/\[\s*\{[\s\S]*?\}\s*\]/, '').trim();
                 }
 
-                div.innerHTML = `
+                let html = `
                     <div class="max-w-xs lg:max-w-md xl:max-w-lg bg-gray-100 text-gray-900 p-3 rounded-lg text-sm leading-relaxed chat-message">
                         ${formatText(displayText)}
-                    </div>
                 `;
+
+                // Add quiz button if questions found
+                if (questions && Array.isArray(questions) && questions.length > 0) {
+                    currentQuestions = questions;
+                    html += `<button onclick="openQuizModal()" class="test-btn btn-primary mt-3" style="padding: 6px 12px; font-size: 12px;">
+                        <i class="fas fa-book"></i> Take Test
+                    </button>`;
+                }
+
+                html += '</div>';
+                div.innerHTML = html;
 
                 chatContainer.appendChild(div);
                 chatContainer.scrollTop = chatContainer.scrollHeight;
 
                 if (window.MathJax) {
                     MathJax.typesetPromise([div]).catch(() => {});
-                }
-
-                // If JSON questions found, show modal
-                if (questions && Array.isArray(questions) && questions.length > 0) {
-                    setTimeout(() => showQuizModal(questions), 300);
                 }
 
                 return;
@@ -429,11 +450,17 @@
             if (!message) return;
             if (!token) { notify('Please login first', 'error'); return; }
 
+            lastUserMessage = message;
+            retryCount = 0;
             addMessage(message, 'user');
             chatInput.value = '';
             chatInput.style.height = '';
             sendBtn.disabled = true;
 
+            await sendMessage(message);
+        });
+
+        async function sendMessage(message) {
             showTypingIndicator();
             try {
                 const payload = {
@@ -451,35 +478,66 @@
 
                 if (!res.ok) {
                     addMessage('Server error: ' + (data.error || 'Unknown error'), 'bot');
+                    sendBtn.disabled = false;
                     return;
                 }
 
-                addMessage(data.reply || 'No response', 'bot');
+                const reply = data.reply || '';
+
+                // Check if response is "No response" and retry
+                if (reply.toLowerCase().includes('no response') || reply.trim().length === 0) {
+                    if (retryCount < MAX_RETRIES) {
+                        retryCount++;
+                        notify(`No response received. Retrying... (${retryCount}/${MAX_RETRIES})`, 'info');
+                        await new Promise(resolve => setTimeout(resolve, 1500)); // Wait 1.5s before retry
+                        await sendMessage(lastUserMessage);
+                        return;
+                    } else {
+                        addMessage('Unable to get a response after several attempts. Please try again later.', 'bot');
+                        sendBtn.disabled = false;
+                        return;
+                    }
+                }
+
+                addMessage(reply, 'bot');
+                sendBtn.disabled = false;
             } catch (err) {
                 removeTypingIndicator();
                 console.error('Chat error:', err);
-                addMessage('Connection error. Please try again.', 'bot');
-            } finally {
-                sendBtn.disabled = false;
+                if (retryCount < MAX_RETRIES) {
+                    retryCount++;
+                    notify(`Connection error. Retrying... (${retryCount}/${MAX_RETRIES})`, 'info');
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    await sendMessage(lastUserMessage);
+                } else {
+                    addMessage('Connection error. Please check your internet and try again.', 'bot');
+                    sendBtn.disabled = false;
+                }
             }
-        });
+        }
 
         // Quiz Modal
-        function showQuizModal(questions) {
+        function openQuizModal() {
+            if (!currentQuestions || currentQuestions.length === 0) {
+                notify('No questions available', 'error');
+                return;
+            }
+
             const content = document.getElementById('quizContent');
-            content.innerHTML = questions.map((q, idx) => `
+            content.innerHTML = currentQuestions.map((q, idx) => `
                 <div class="quiz-question">
                     <div class="quiz-question-text">${idx + 1}. ${escapeHtml(q.text)}</div>
                     <div class="space-y-2">
                         ${q.options.map((opt, i) => `
                             <label class="quiz-option">
-                                <input type="radio" name="q${idx}" value="${i}" />
+                                <input type="radio" name="q${idx}" value="${i}" class="question-${idx}" />
                                 <span class="text-sm text-gray-700">${escapeHtml(opt)}</span>
                             </label>
                         `).join('')}
                     </div>
-                    <div class="quiz-answer">
-                        <strong>Answer:</strong> ${q.answer} – ${escapeHtml(q.explanation || '')}
+                    <div class="quiz-answer" id="answer-${idx}">
+                        <strong>Correct Answer: ${q.answer}</strong>
+                        ${escapeHtml(q.explanation || 'No explanation available')}
                     </div>
                 </div>
             `).join('');
@@ -488,6 +546,51 @@
 
         function closeQuizModal() {
             document.getElementById('quizModal').classList.remove('show');
+        }
+
+        function submitQuiz() {
+            if (!currentQuestions) return;
+
+            let score = 0;
+            const answers = [];
+
+            currentQuestions.forEach((q, idx) => {
+                const selected = document.querySelector(`input[name="q${idx}"]:checked`);
+                const answerDiv = document.getElementById(`answer-${idx}`);
+                
+                if (selected) {
+                    const userAnswer = parseInt(selected.value);
+                    answers.push(userAnswer);
+                    const isCorrect = userAnswer === q.answer;
+                    if (isCorrect) score++;
+                    
+                    // Show answer with visual feedback
+                    answerDiv.classList.add('show');
+                    answerDiv.innerHTML = `
+                        <strong style="color: ${isCorrect ? '#10b981' : '#ef4444'}">
+                            ${isCorrect ? '✓ Correct' : '✗ Incorrect'}
+                        </strong>
+                        <div style="margin-top: 4px;">
+                            <span>Your answer: ${q.options[userAnswer]}</span>
+                            ${!isCorrect ? `<br><span>Correct answer: ${q.options[q.answer]}</span>` : ''}
+                            <br><span style="margin-top: 4px; display: block;">${escapeHtml(q.explanation || '')}</span>
+                        </div>
+                    `;
+                } else {
+                    answerDiv.classList.add('show');
+                    answerDiv.innerHTML = `
+                        <strong style="color: #ef4444;">✗ Not answered</strong>
+                        <div style="margin-top: 4px;">Correct answer: ${q.options[q.answer]}</div>
+                    `;
+                }
+            });
+
+            // Show score notification
+            notify(`Score: ${score}/${currentQuestions.length} (${Math.round((score/currentQuestions.length)*100)}%)`, 'success');
+            
+            // Disable submit button after submission
+            document.getElementById('submitQuizBtn').disabled = true;
+            document.getElementById('submitQuizBtn').style.opacity = '0.6';
         }
 
         // Initialize
