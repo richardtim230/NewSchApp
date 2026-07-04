@@ -49,12 +49,129 @@
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
+
+        /* Toast */
+        #toast-container {
+            position: fixed;
+            right: 16px;
+            bottom: 16px;
+            z-index: 99999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: none;
+        }
+        .toast {
+            pointer-events: auto;
+            min-width: 220px;
+            max-width: 360px;
+            background: rgba(0,0,0,0.85);
+            color: #fff;
+            padding: 12px 14px;
+            border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            font-weight: 600;
+        }
+
+        /* Fixed mobile header adjustments */
+        .mobile-fixed-header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 40;
+        }
+        /* Keep content below fixed header on mobile */
+        .mobile-header-spacer {
+            height: 76px; /* matches the header height on mobile */
+        }
+
+        /* Confirm modal overlay */
+        .confirm-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(12,23,48,0.7);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 60;
+        }
+        .confirm-overlay.open { display: flex; }
+
+        /* Small helper for question options images */
+        .option-img { max-height: 80px; margin-left: 10px; display:inline-block; vertical-align:middle; }
     </style>
 </head>
-<body class="bg-exam-bg text-exam-textMain font-sans antialiased min-h-screen flex flex-col pb-20 lg:pb-0 select-none">
+<body class="bg-exam-bg text-exam-textMain font-sans antialiased min-h-screen flex flex-col pb-20 lg:pb-0">
+
+    <!-- Instruction Modal (must be shown on load, user closes to start) -->
+    <div id="instructionModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" style="display:none;">
+      <div class="bg-white rounded-2xl p-6 w-full max-w-lg">
+        <div class="text-center">
+          <h2 class="text-2xl font-bold mb-2">Welcome to the CBT Test Portal</h2>
+          <p class="text-sm text-slate-600 mb-4">Please read the instructions carefully before starting your test.</p>
+          <ul class="text-left text-sm text-slate-700 mb-4 space-y-2">
+            <li>- You will have a fixed time to complete the selected exam.</li>
+            <li>- Navigate with Next and Previous. Last question shows Submit.</li>
+            <li>- Do not refresh your browser during the test.</li>
+            <li>- Click "Start Test" to begin.</li>
+          </ul>
+          <button class="bg-exam-blue text-white px-6 py-2 rounded-xl" onclick="closeInstructionModal()">Start Test</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- EXAM SELECTION MODAL (will be shown only if needed) -->
+    <div id="exam-selection-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" style="display:none;">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-lg">
+            <h2 class="text-center text-2xl font-bold mb-4">Select an Exam to Begin</h2>
+            <div id="examButtons" class="flex flex-col gap-3"></div>
+            <p id="exam-selection-loading" class="text-sm text-slate-500 mt-3 text-center">Loading exams...</p>
+        </div>
+    </div>
+
+    <!-- Toast container -->
+    <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+    <!-- Confirm Submit Modal -->
+    <div id="confirm-submit" class="confirm-overlay" role="dialog" aria-modal="true">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-sm text-center">
+            <h3 class="text-xl font-bold text-slate-900 mb-2">Submit Exam</h3>
+            <p class="text-sm text-slate-600">Are you sure you want to submit your answers? You won't be able to change them after submission.</p>
+            <div class="mt-6 flex gap-3 justify-center">
+                <button id="cancel-submit" class="px-5 py-2 rounded-xl border border-slate-300">Cancel</button>
+                <button id="confirm-submit-btn" class="px-5 py-2 rounded-xl bg-exam-blue text-white">Submit</button>
+            </div>
+        </div>
+    </div>
 
     <!-- ========================================== -->
-    <!-- DESKTOP HEADER                             -->
+    <!-- MOBILE HEADER & SUB-HEADER (fixed)         -->
+    <!-- ========================================== -->
+    <div class="lg:hidden mobile-fixed-header bg-white px-4 py-4 flex justify-between items-end border-b border-slate-200 mb-4 shadow-sm">
+        <div>
+            <h2 id="mobileExamTitle" class="font-bold text-slate-800 text-sm mb-1.5">Loading exam...</h2>
+            <div class="flex gap-2">
+                <span id="mobileExamSubject" class="bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-semibold px-2 py-0.5 rounded-md">Subject</span>
+                <span id="mobileExamCount" class="bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-semibold px-2 py-0.5 rounded-md">0 Questions</span>
+            </div>
+        </div>
+        <div class="text-right flex flex-col items-end">
+            <p class="text-[10px] text-slate-500 font-medium mb-1">Time Remaining</p>
+            <div class="flex items-center gap-1.5 text-slate-800">
+                <i class="ph ph-stopwatch text-lg"></i>
+                <p id="mobile-timer" class="font-bold text-lg leading-none tracking-tight">00:00:00</p>
+            </div>
+        </div>
+    </div>
+    <!-- spacer so content does not sit under the fixed header on mobile -->
+    <div class="mobile-header-spacer lg:hidden"></div>
+
+    <!-- ========================================== -->
+    <!-- DESKTOP HEADER (hidden on mobile)          -->
     <!-- ========================================== -->
     <header class="hidden lg:flex items-center justify-between bg-white rounded-2xl shadow-panel p-4 mx-6 mt-6 mb-6">
         <div class="flex items-center gap-6">
@@ -62,7 +179,7 @@
             <div class="flex items-center gap-3">
                 <img src="https://ui-avatars.com/api/?name=EG&background=1e293b&color=fff&rounded=true" alt="Logo" class="w-10 h-10 rounded-lg">
                 <div>
-                    <h1 class="font-bold text-lg leading-tight">ExamGuard CBT</h1>
+                    <h1 id="desktopExamTitle" class="font-bold text-lg leading-tight">Loading exam...</h1>
                     <p class="text-[11px] text-slate-500 font-medium">Computer Based Testing</p>
                 </div>
             </div>
@@ -70,13 +187,7 @@
             <div class="h-10 w-px bg-slate-200"></div>
             
             <!-- Exam Details -->
-            <div>
-                <h2 class="font-bold text-slate-800">JAMB Practice Exam 2025</h2>
-                <div class="flex gap-2 mt-1">
-                    <span class="bg-slate-100 text-slate-700 text-[11px] font-semibold px-2 py-0.5 rounded-md">Mathematics</span>
-                    <span class="bg-slate-100 text-slate-700 text-[11px] font-semibold px-2 py-0.5 rounded-md">40 Questions</span>
-                </div>
-            </div>
+            <div id="desktopExamTags"></div>
         </div>
 
         <div class="flex items-center gap-6">
@@ -85,39 +196,17 @@
                 <i class="ph ph-stopwatch text-2xl text-slate-700"></i>
                 <div>
                     <p class="text-[10px] text-slate-500 font-medium leading-none mb-1">Time Remaining</p>
-                    <p id="desktop-timer" class="font-bold text-xl leading-none tracking-tight">00:59:32</p>
+                    <p id="desktop-timer" class="font-bold text-xl leading-none tracking-tight">00:00:00</p>
                 </div>
             </div>
             
             <!-- Submit Button -->
-            <button class="bg-exam-blue hover:bg-blue-700 text-white font-semibold px-6 py-2.5 rounded-xl flex items-center gap-2 transition-colors shadow-sm shadow-blue-500/30">
+            <button id="desktop-submit" class="hidden bg-exam-blue hover:bg-blue-700 text-white font-semibold px-6 py-2.5 rounded-xl flex items-center gap-2 transition-colors shadow-sm shadow-blue-500/30">
                 <i class="ph ph-paper-plane-tilt text-lg"></i>
                 Submit Exam
             </button>
         </div>
     </header>
-
-    <!-- ========================================== -->
-    <!-- MOBILE HEADER & SUB-HEADER                 -->
-    <!-- ========================================== -->
-    
-    
-    <div class="lg:hidden bg-white px-4 py-4 flex justify-between items-end border-b border-slate-200 mb-4 shadow-sm">
-        <div>
-            <h2 class="font-bold text-slate-800 text-sm mb-1.5">JAMB Practice Exam 2025</h2>
-            <div class="flex gap-2">
-                <span class="bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-semibold px-2 py-0.5 rounded-md">Mathematics</span>
-                <span class="bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-semibold px-2 py-0.5 rounded-md">40 Questions</span>
-            </div>
-        </div>
-        <div class="text-right flex flex-col items-end">
-            <p class="text-[10px] text-slate-500 font-medium mb-1">Time Remaining</p>
-            <div class="flex items-center gap-1.5 text-slate-800">
-                <i class="ph ph-stopwatch text-lg"></i>
-                <p id="mobile-timer" class="font-bold text-lg leading-none tracking-tight">00:59:32</p>
-            </div>
-        </div>
-    </div>
 
     <!-- ========================================== -->
     <!-- MAIN CONTENT WRAPPER                       -->
@@ -130,74 +219,39 @@
                 
                 <!-- Question Header -->
                 <div class="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
-                    <h3 class="font-bold text-lg lg:text-xl text-slate-900">Question 12 of 40</h3>
-                    <button class="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-exam-orange transition-colors">
+                    <h3 id="questionMeta" class="font-bold text-lg lg:text-xl text-slate-900">Question 0 of 0</h3>
+                    <button id="mark-review-btn" class="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-exam-orange transition-colors">
                         <i class="ph ph-bookmark text-lg"></i>
-                        <span class="hidden sm:inline">Mark for Review</span>
+                        <span id="markReviewLabel" class="hidden sm:inline">Mark for Review</span>
                     </button>
                 </div>
 
                 <!-- Question Text -->
-                <div class="bg-exam-gray border border-exam-border rounded-xl p-5 lg:p-6 mb-6">
-                    <p class="text-[15px] lg:text-lg text-slate-800 font-medium">
-                        If 2x<sup>2</sup> - 5x + 3 = 0, what is the value of 4x<sup>2</sup> - 10x + 7?
-                    </p>
+                <div id="questionBox" class="bg-exam-gray border border-exam-border rounded-xl p-5 lg:p-6 mb-6 min-h-[120px]">
+                    <p id="questionText" class="text-[15px] lg:text-lg text-slate-800 font-medium">No question loaded</p>
                 </div>
 
                 <!-- Options -->
-                <div class="space-y-3 lg:space-y-4 mb-8">
-                    
-                    <!-- Option A -->
-                    <label class="relative block cursor-pointer group">
-                        <input type="radio" name="q12" value="A" class="peer sr-only">
-                        <div class="p-4 lg:p-5 rounded-xl border border-slate-200 bg-white transition-all peer-checked:border-exam-blue peer-checked:bg-exam-blueLight flex items-center gap-4 hover:border-blue-300">
-                            <div class="w-5 h-5 lg:w-6 lg:h-6 rounded-full border-2 border-slate-300 peer-checked:border-[6px] peer-checked:border-exam-blue bg-white transition-all shrink-0"></div>
-                            <span class="font-bold text-slate-800 w-6">A.</span>
-                            <span class="text-slate-600 font-medium">1</span>
-                        </div>
-                    </label>
-
-                    <!-- Option B -->
-                    <label class="relative block cursor-pointer group">
-                        <input type="radio" name="q12" value="B" class="peer sr-only">
-                        <div class="p-4 lg:p-5 rounded-xl border border-slate-200 bg-white transition-all peer-checked:border-exam-blue peer-checked:bg-exam-blueLight flex items-center gap-4 hover:border-blue-300">
-                            <div class="w-5 h-5 lg:w-6 lg:h-6 rounded-full border-2 border-slate-300 peer-checked:border-[6px] peer-checked:border-exam-blue bg-white transition-all shrink-0"></div>
-                            <span class="font-bold text-slate-800 w-6">B.</span>
-                            <span class="text-slate-600 font-medium">2</span>
-                        </div>
-                    </label>
-
-                    <!-- Option C (Selected in design) -->
-                    <label class="relative block cursor-pointer group">
-                        <input type="radio" name="q12" value="C" class="peer sr-only" checked>
-                        <div class="p-4 lg:p-5 rounded-xl border border-slate-200 bg-white transition-all peer-checked:border-exam-blue peer-checked:bg-exam-blueLight flex items-center gap-4 hover:border-blue-300 shadow-sm peer-checked:shadow-none">
-                            <div class="w-5 h-5 lg:w-6 lg:h-6 rounded-full border-2 border-slate-300 peer-checked:border-[6px] peer-checked:border-exam-blue bg-white transition-all shrink-0"></div>
-                            <span class="font-bold text-slate-800 w-6">C.</span>
-                            <span class="text-slate-600 font-medium">3</span>
-                        </div>
-                    </label>
-
-                    <!-- Option D -->
-                    <label class="relative block cursor-pointer group">
-                        <input type="radio" name="q12" value="D" class="peer sr-only">
-                        <div class="p-4 lg:p-5 rounded-xl border border-slate-200 bg-white transition-all peer-checked:border-exam-blue peer-checked:bg-exam-blueLight flex items-center gap-4 hover:border-blue-300">
-                            <div class="w-5 h-5 lg:w-6 lg:h-6 rounded-full border-2 border-slate-300 peer-checked:border-[6px] peer-checked:border-exam-blue bg-white transition-all shrink-0"></div>
-                            <span class="font-bold text-slate-800 w-6">D.</span>
-                            <span class="text-slate-600 font-medium">4</span>
-                        </div>
-                    </label>
+                <div id="optionsContainer" class="space-y-3 lg:space-y-4 mb-8">
+                    <!-- options injected -->
                 </div>
 
                 <!-- Action Buttons -->
                 <div class="flex items-center justify-between pt-4">
-                    <button class="w-[48%] lg:w-auto px-6 py-3.5 border border-exam-blue text-exam-blue font-semibold rounded-xl flex items-center justify-center gap-2 hover:bg-blue-50 transition-colors">
+                    <button id="prevBtn" class="w-[48%] lg:w-auto px-6 py-3.5 border border-exam-blue text-exam-blue font-semibold rounded-xl flex items-center justify-center gap-2 hover:bg-blue-50 transition-colors">
                         <i class="ph ph-arrow-left text-lg"></i>
                         Previous
                     </button>
-                    <button class="w-[48%] lg:w-auto px-10 py-3.5 bg-exam-blue text-white font-semibold rounded-xl flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors shadow-sm shadow-blue-500/30">
-                        Next
-                        <i class="ph ph-arrow-right text-lg"></i>
-                    </button>
+                    <div class="flex gap-3 w-[48%] lg:w-auto justify-end">
+                        <button id="nextBtn" class="px-8 py-3.5 bg-exam-blue text-white font-semibold rounded-xl flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors">
+                            Next
+                            <i class="ph ph-arrow-right text-lg"></i>
+                        </button>
+                        <button id="submitBtn" class="px-8 py-3.5 hidden bg-green-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2 hover:bg-green-700 transition-colors">
+                            Submit
+                            <i class="ph ph-check text-lg"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -208,32 +262,32 @@
                 <div class="bg-white rounded-2xl shadow-panel p-5">
                     <div class="flex justify-between text-sm font-bold text-slate-800 mb-3">
                         <span>Exam Progress</span>
-                        <span class="text-slate-500 font-medium text-xs">30% Completed</span>
+                        <span id="mobileProgressText" class="text-slate-500 font-medium text-xs">0% Completed</span>
                     </div>
                     <div class="w-full bg-slate-100 rounded-full h-2 mb-2 overflow-hidden">
-                        <div class="bg-exam-blue h-2 rounded-full" style="width: 30%"></div>
+                        <div id="mobileProgressBar" class="bg-exam-blue h-2 rounded-full" style="width: 0%"></div>
                     </div>
-                    <p class="text-xs text-slate-500">12 of 40 questions answered</p>
+                    <p id="mobileProgressCount" class="text-xs text-slate-500">0 of 0 questions answered</p>
                 </div>
 
                 <!-- Mobile Quick Actions -->
                 <div class="bg-white rounded-2xl shadow-panel p-5">
                     <h4 class="font-bold text-slate-800 mb-3">Quick Actions</h4>
                     <div class="space-y-2">
-                        <button class="w-full flex items-center justify-between p-3 rounded-xl border border-slate-100 hover:bg-slate-50 transition-colors">
+                        <button id="openNavigatorMobile" class="w-full flex items-center justify-between p-3 rounded-xl border border-slate-100 hover:bg-slate-50 transition-colors">
                             <div class="flex items-center gap-3 text-sm font-semibold text-slate-700">
                                 <i class="ph ph-calculator text-exam-blue text-lg"></i>
                                 Calculator
                             </div>
                             <i class="ph ph-caret-right text-slate-400"></i>
                         </button>
-                        <button class="w-full flex items-center justify-between p-3 rounded-xl border border-slate-100 hover:bg-slate-50 transition-colors">
+                        <button id="openMarkedMobile" class="w-full flex items-center justify-between p-3 rounded-xl border border-slate-100 hover:bg-slate-50 transition-colors">
                             <div class="flex items-center gap-3 text-sm font-semibold text-slate-700">
                                 <i class="ph ph-flag text-exam-orange text-lg"></i>
                                 Review Marked
                             </div>
                             <div class="flex items-center gap-2">
-                                <span class="bg-exam-orange text-white text-[10px] font-bold px-2 py-0.5 rounded-full">1</span>
+                                <span id="markedCountMobile" class="bg-exam-orange text-white text-[10px] font-bold px-2 py-0.5 rounded-full">0</span>
                                 <i class="ph ph-caret-right text-slate-400"></i>
                             </div>
                         </button>
@@ -256,7 +310,7 @@
                             <span class="text-[10px] text-slate-500 font-medium leading-tight">Exam<br>Guidelines</span>
                         </div>
                     </div>
-                    <button class="w-full py-3 border border-red-500 text-red-500 font-semibold rounded-xl flex items-center justify-center gap-2 hover:bg-red-50 transition-colors">
+                    <button id="endExamMobile" class="w-full py-3 border border-red-500 text-red-500 font-semibold rounded-xl flex items-center justify-center gap-2 hover:bg-red-50 transition-colors">
                         <i class="ph ph-power text-lg"></i>
                         End Exam
                     </button>
@@ -270,8 +324,6 @@
             <!-- Question Navigator -->
             <div class="bg-white rounded-2xl shadow-panel p-6">
                 <h3 class="font-bold text-slate-900 mb-4">Question Navigator</h3>
-                
-                <!-- Legend -->
                 <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mb-6 text-[11px] font-semibold text-slate-700">
                     <div class="flex items-center gap-1.5"><div class="w-3.5 h-3.5 rounded bg-exam-green"></div> Answered</div>
                     <div class="flex items-center gap-1.5"><div class="w-3.5 h-3.5 rounded border border-slate-300 bg-white"></div> Not Answered</div>
@@ -289,32 +341,32 @@
             <div class="bg-white rounded-2xl shadow-panel p-6">
                 <div class="flex justify-between items-center mb-3">
                     <h4 class="font-bold text-slate-900 text-sm">Exam Progress</h4>
-                    <span class="text-slate-500 font-semibold text-xs">30% Completed</span>
+                    <span id="desktopProgressPercent" class="text-slate-500 font-semibold text-xs">0% Completed</span>
                 </div>
                 <div class="w-full bg-slate-100 rounded-full h-2.5 mb-2 overflow-hidden">
-                    <div class="bg-exam-blue h-2.5 rounded-full" style="width: 30%"></div>
+                    <div id="desktopProgressBar" class="bg-exam-blue h-2.5 rounded-full" style="width: 0%"></div>
                 </div>
-                <p class="text-[11px] text-slate-500 font-medium">12 of 40 questions answered</p>
+                <p id="desktopProgressCount" class="text-[11px] text-slate-500 font-medium">0 of 0 questions answered</p>
             </div>
 
             <!-- Quick Actions -->
             <div class="bg-white rounded-2xl shadow-panel p-6">
                 <h4 class="font-bold text-slate-900 text-sm mb-3">Quick Actions</h4>
                 <div class="space-y-2">
-                    <button class="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100">
+                    <button id="desktopCalcBtn" class="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100">
                         <div class="flex items-center gap-3 text-sm font-semibold text-slate-700">
                             <i class="ph ph-calculator text-exam-blue text-lg"></i>
                             Calculator
                         </div>
                         <i class="ph ph-caret-right text-slate-400"></i>
                     </button>
-                    <button class="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100">
+                    <button id="desktopMarkedBtn" class="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100">
                         <div class="flex items-center gap-3 text-sm font-semibold text-slate-700">
                             <i class="ph ph-flag text-exam-orange text-lg"></i>
                             Review Marked
                         </div>
                         <div class="flex items-center gap-2">
-                            <span class="bg-exam-orange text-white text-[10px] font-bold px-2 py-0.5 rounded-full">1</span>
+                            <span id="markedCountDesktop" class="bg-exam-orange text-white text-[10px] font-bold px-2 py-0.5 rounded-full">0</span>
                             <i class="ph ph-caret-right text-slate-400"></i>
                         </div>
                     </button>
@@ -334,8 +386,8 @@
                 <i class="ph-fill ph-user text-xl"></i>
             </div>
             <div>
-                <p class="text-[11px] text-slate-500 font-medium leading-tight">Candidate: <span class="font-bold text-slate-800 text-sm">John Doe</span></p>
-                <p class="text-[11px] text-slate-500 font-medium">ID: CBT2025001</p>
+                <p class="text-[11px] text-slate-500 font-medium leading-tight">Candidate: <span id="candidateName" class="font-bold text-slate-800 text-sm">Guest</span></p>
+                <p class="text-[11px] text-slate-500 font-medium">ID: <span id="candidateId">-</span></p>
             </div>
         </div>
 
@@ -353,50 +405,13 @@
         </div>
 
         <!-- End Exam Action -->
-        <button class="px-6 py-2.5 border border-red-500 text-red-500 font-semibold rounded-xl flex items-center gap-2 hover:bg-red-50 transition-colors">
+        <button id="desktopEndExam" class="px-6 py-2.5 border border-red-500 text-red-500 font-semibold rounded-xl flex items-center gap-2 hover:bg-red-50 transition-colors">
             <i class="ph ph-power text-lg"></i>
             End Exam
         </button>
     </footer>
 
-    <!-- ========================================== -->
-    <!-- MOBILE BOTTOM NAVIGATION                   -->
-    <!-- ========================================== -->
-    <nav class="lg:hidden fixed bottom-0 left-0 w-full bg-white border-t border-slate-200 px-2 py-2 z-30 pb-safe shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)]">
-        <ul class="flex items-center justify-between max-w-md mx-auto">
-            <li>
-                <button class="flex flex-col items-center gap-1 text-exam-blue min-w-[64px] px-2 py-1">
-                    <i class="ph ph-list-dashes text-2xl"></i>
-                    <span class="text-[10px] font-semibold">Question</span>
-                </button>
-            </li>
-            <li>
-                <button id="open-navigator-btn" class="flex flex-col items-center gap-1 text-slate-500 hover:text-exam-blue min-w-[64px] px-2 py-1 transition-colors">
-                    <i class="ph ph-squares-four text-2xl"></i>
-                    <span class="text-[10px] font-semibold">Navigator</span>
-                </button>
-            </li>
-            <li>
-                <button class="relative flex flex-col items-center gap-1 text-slate-500 hover:text-exam-blue min-w-[64px] px-2 py-1 transition-colors">
-                    <div class="relative">
-                        <i class="ph ph-bookmark text-2xl"></i>
-                        <span class="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-exam-orange text-[8px] font-bold text-white">1</span>
-                    </div>
-                    <span class="text-[10px] font-semibold">Review</span>
-                </button>
-            </li>
-            <li>
-                <button class="flex flex-col items-center gap-1 text-slate-500 hover:text-exam-blue min-w-[64px] px-2 py-1 transition-colors">
-                    <i class="ph ph-dots-three-circle text-2xl"></i>
-                    <span class="text-[10px] font-semibold">More</span>
-                </button>
-            </li>
-        </ul>
-    </nav>
-
-    <!-- ========================================== -->
-    <!-- MOBILE NAVIGATOR OVERLAY                   -->
-    <!-- ========================================== -->
+    <!-- mobile navigator component (copied from original file) -->
     <div id="mobile-navigator" class="fixed inset-0 bg-white z-50 transform translate-y-full transition-transform duration-300 flex flex-col lg:hidden">
         
         <!-- Overlay Header -->
@@ -425,95 +440,641 @@
         </div>
     </div>
 
-    <!-- Safe Area Padding styling for newer iPhones -->
-    <style>
-        @supports (padding-bottom: env(safe-area-inset-bottom)) {
-            .pb-safe { padding-bottom: calc(0.5rem + env(safe-area-inset-bottom)); }
-        }
-    </style>
+    <!-- Calculator Modal (kept from test UI) -->
+    <div class="calculator-modal-overlay" id="calculatorModal">
+      <div class="calculator-modal-content">
+        <div class="calculator-modal-header">
+          <h3>Calculator</h3>
+          <button class="close-calc-btn" onclick="closeCalculator()">✕</button>
+        </div>
+        <div class="calculator">
+          <div class="calc-display" id="calcDisplay">0</div>
+          <button class="calc-btn clear" onclick="clearCalc()">C</button>
+          <button class="calc-btn delete" onclick="deleteCalc()">DEL</button>
+          <button class="calc-btn operator" onclick="appendCalc('/')">÷</button>
+          <button class="calc-btn" onclick="appendCalc('7')">7</button>
+          <button class="calc-btn" onclick="appendCalc('8')">8</button>
+          <button class="calc-btn" onclick="appendCalc('9')">9</button>
+          <button class="calc-btn operator" onclick="appendCalc('*')">×</button>
+          <button class="calc-btn" onclick="appendCalc('4')">4</button>
+          <button class="calc-btn" onclick="appendCalc('5')">5</button>
+          <button class="calc-btn" onclick="appendCalc('6')">6</button>
+          <button class="calc-btn operator" onclick="appendCalc('-')">−</button>
+          <button class="calc-btn" onclick="appendCalc('1')">1</button>
+          <button class="calc-btn" onclick="appendCalc('2')">2</button>
+          <button class="calc-btn" onclick="appendCalc('3')">3</button>
+          <button class="calc-btn operator" onclick="appendCalc('+')">+</button>
+          <button class="calc-btn" onclick="appendCalc('0')">0</button>
+          <button class="calc-btn" onclick="appendCalc('.')">.</button>
+          <button class="calc-btn equals" onclick="calculateResult()">=</button>
+        </div>
+      </div>
+    </div>
 
-    <!-- ========================================== -->
-    <!-- JAVASCRIPT LOGIC                           -->
-    <!-- ========================================== -->
     <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            
-            // 1. Grid Population Logic
-            const totalQuestions = 40;
-            const answeredQs = [1,2,3,4,5,6,7,8,9,10,11];
-            const currentQ = 12;
-            const markedQ = 13;
-            
-            const desktopGrid = document.getElementById('desktop-grid');
-            const mobileGrid = document.getElementById('mobile-grid');
+    // === CONFIG ===
+    const API_URL = "https://examguide.onrender.com/api/";
+    const BACKEND_URL = "https://examguide.onrender.com";
+    const token = localStorage.getItem("token");
+    let currentUser = "Guest";
+    let currentUserId = null;
+    let examSet = "";
 
-            function createGridButton(i) {
-                const btn = document.createElement('button');
-                btn.innerText = i;
-                
-                // Base classes targeting a 40x40ish square exactly like the design
-                let baseClasses = "aspect-square rounded-lg text-[13px] font-semibold flex items-center justify-center transition-all border ";
-                
-                if (i === currentQ) {
-                    baseClasses += "bg-exam-blue text-white border-exam-blue shadow-sm shadow-blue-500/30";
-                } else if (i === markedQ) {
-                    baseClasses += "bg-exam-orange text-white border-exam-orange";
-                } else if (answeredQs.includes(i)) {
-                    baseClasses += "bg-exam-green text-white border-exam-green";
-                } else {
-                    baseClasses += "bg-white text-slate-700 border-slate-200 hover:bg-slate-50";
-                }
-                
-                btn.className = baseClasses;
-                return btn;
-            }
+    // --- Parse examSetId from URL ---
+    function getQueryParam(name) {
+      const url = new URL(window.location.href);
+      return url.searchParams.get(name);
+    }
+    const examSetId = getQueryParam('examSet');
 
-            // Populate both grids
-            for (let i = 1; i <= totalQuestions; i++) {
-                if(desktopGrid) desktopGrid.appendChild(createGridButton(i));
-                if(mobileGrid) mobileGrid.appendChild(createGridButton(i).cloneNode(true));
-            }
-
-            // 2. Mobile Navigator Toggle Logic
-            const navigatorOverlay = document.getElementById('mobile-navigator');
-            const openNavBtn = document.getElementById('open-navigator-btn');
-            const closeNavBtn = document.getElementById('close-navigator-btn');
-
-            function openNavigator() {
-                navigatorOverlay.classList.remove('translate-y-full');
-                document.body.style.overflow = 'hidden'; // Prevent background scroll
-            }
-
-            function closeNavigator() {
-                navigatorOverlay.classList.add('translate-y-full');
-                document.body.style.overflow = '';
-            }
-
-            openNavBtn?.addEventListener('click', openNavigator);
-            closeNavBtn?.addEventListener('click', closeNavigator);
-
-            // 3. Simple Timer Logic
-            let timeInSeconds = (0 * 3600) + (59 * 60) + 32; // 00:59:32
-            const desktopTimer = document.getElementById('desktop-timer');
-            const mobileTimer = document.getElementById('mobile-timer');
-
-            function formatTime(seconds) {
-                const h = Math.floor(seconds / 3600).toString().padStart(2, '0');
-                const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
-                const s = (seconds % 60).toString().padStart(2, '0');
-                return `${h}:${m}:${s}`;
-            }
-
-            setInterval(() => {
-                if (timeInSeconds > 0) {
-                    timeInSeconds--;
-                    const formatted = formatTime(timeInSeconds);
-                    if(desktopTimer) desktopTimer.innerText = formatted;
-                    if(mobileTimer) mobileTimer.innerText = formatted;
-                }
-            }, 1000);
-            
+    // On load: authenticate user
+    async function fetchCurrentUser() {
+      if (!token) {
+        // If token absent redirect to mock/login
+        // Keep user in place for now showing guest (you may redirect if preferred)
+        // window.location.href = "mock.html";
+        return;
+      }
+      try {
+        const resp = await fetch(API_URL + "auth/me", {
+          headers: { Authorization: "Bearer " + token }
         });
+        const data = await resp.json();
+        if (resp.ok && data.user && data.user.username) {
+          currentUser = data.user.username;
+          currentUserId = data.user._id || data.user.id;
+          const candidateEl = document.getElementById('candidateName');
+          if (candidateEl) candidateEl.innerText = currentUser;
+          const candidateIdEl = document.getElementById('candidateId');
+          if (candidateIdEl) candidateIdEl.innerText = currentUserId || '-';
+        } else {
+          localStorage.removeItem('token');
+          window.location.href = "mock.html";
+        }
+      } catch (e) {
+        localStorage.removeItem('token');
+        window.location.href = "mock.html";
+      }
+    }
+    fetchCurrentUser();
+
+    // Utility: mark quiz task as done for today
+    async function markQuizTaskDoneOnServer(userId, quizId) {
+      const today = new Date();
+      const dateStr = `${today.getFullYear()}-${(today.getMonth()+1).toString().padStart(2,"0")}-${today.getDate().toString().padStart(2,"0")}`;
+      try {
+        await fetch(`${BACKEND_URL}/api/users/${userId}/daily-tasks`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: 'Bearer ' + (localStorage.getItem("token") || "")
+          },
+          body: JSON.stringify({ date: dateStr, taskId: `quiz-${quizId}` })
+        });
+      } catch (e) { /* fail silently */ }
+    }
+
+    // Modal logic
+    function closeInstructionModal() {
+      const m = document.getElementById('instructionModal');
+      if (m) m.style.display = 'none';
+      window._cbtReadyToStart = true;
+      if (typeof window._cbtLoadQuestions === 'function') window._cbtLoadQuestions();
+    }
+    window.onload = function() {
+      const m = document.getElementById('instructionModal');
+      if (m) m.style.display = 'flex';
+      // If you prefer to skip instruction modal when no examSetId, show selection modal
+      if (!examSetId) {
+        // show exam selection fallback (if API available)
+        // toggle exam selection modal -- here we keep it hidden unless needed by code
+      }
+    };
+
+    // Session constants
+    const MAX_SESSION_QUESTIONS = 60;
+    const SESSION_TIME_LIMIT = 40 * 60;
+
+    // State
+    let questions = [];
+    let currentQuestionIndex = 0;
+    let userAnswers = {};
+    let timeLimit = SESSION_TIME_LIMIT;
+    let timeRemaining = timeLimit;
+    let timerInterval;
+
+    // === CALCULATOR FUNCTIONS ===
+    let calcInput = "0";
+
+    function openCalculator() {
+      document.getElementById('calculatorModal').classList.add('open');
+    }
+
+    function closeCalculator() {
+      document.getElementById('calculatorModal').classList.remove('open');
+    }
+
+    function updateCalcDisplay() {
+      const display = document.getElementById("calcDisplay");
+      if (calcInput.length > 20) {
+        display.style.fontSize = "1rem";
+      } else {
+        display.style.fontSize = "1.5rem";
+      }
+      display.innerText = calcInput;
+    }
+
+    function appendCalc(value) {
+      if (calcInput === "0" && value !== ".") {
+        calcInput = value;
+      } else if (value === "." && calcInput.includes(".")) {
+        return;
+      } else {
+        calcInput += value;
+      }
+      updateCalcDisplay();
+    }
+
+    function clearCalc() {
+      calcInput = "0";
+      updateCalcDisplay();
+    }
+
+    function deleteCalc() {
+      if (calcInput.length > 1) {
+        calcInput = calcInput.slice(0, -1);
+      } else {
+        calcInput = "0";
+      }
+      updateCalcDisplay();
+    }
+
+    function calculateResult() {
+      try {
+        // eslint-disable-next-line no-eval
+        calcInput = String(eval(calcInput));
+        updateCalcDisplay();
+      } catch (e) {
+        calcInput = "Error";
+        updateCalcDisplay();
+        setTimeout(() => {
+          calcInput = "0";
+          updateCalcDisplay();
+        }, 1000);
+      }
+    }
+
+    // Close calculator when clicking outside
+    document.addEventListener('click', function(event) {
+      const calcModal = document.getElementById('calculatorModal');
+      const calcBtn = document.querySelector('.calc-icon-btn');
+      if (!calcModal) return;
+      if (calcModal.classList.contains('open') && 
+          !calcModal.contains(event.target) && 
+          (!calcBtn || !calcBtn.contains(event.target))) {
+        closeCalculator();
+      }
+    });
+
+    // Toast utilities (simple)
+    const toastContainer = document.getElementById('toast-container');
+    function showToast(msg, opts = {}) {
+      const el = document.createElement('div');
+      el.className = 'toast';
+      el.innerText = msg;
+      toastContainer.appendChild(el);
+      const duration = opts.duration || 3000;
+      setTimeout(() => {
+        el.style.transition = 'opacity .25s, transform .25s';
+        el.style.opacity = '0';
+        el.style.transform = 'translateX(12px)';
+        setTimeout(() => el.remove(), 300);
+      }, duration);
+    }
+
+    // === QUESTION PALETTE / NAV / RENDERING FUNCTIONS ===
+    function renderQuestionPalette() {
+      // Desktop palette uses desktop-grid
+      const desktopGrid = document.getElementById('desktop-grid');
+      if (desktopGrid) desktopGrid.innerHTML = '';
+      const mobileGrid = document.getElementById('mobile-grid');
+      if (mobileGrid) mobileGrid.innerHTML = '';
+
+      questions.forEach((q, index) => {
+        const btn = document.createElement('button');
+        btn.innerText = index + 1;
+        btn.className = `aspect-square rounded-lg text-[13px] font-semibold flex items-center justify-center transition-all border bg-white text-slate-700 border-slate-200 hover:bg-slate-50`;
+        if (index === currentQuestionIndex) {
+          btn.classList.add('bg-exam-blue', 'text-white', 'border-exam-blue');
+        } else if (userAnswers[q.id]) {
+          btn.classList.add('bg-exam-green', 'text-white', 'border-exam-green');
+        }
+        btn.setAttribute('data-q-index', index);
+        btn.addEventListener('click', () => {
+          currentQuestionIndex = index;
+          renderQuestion();
+          renderQuestionPalette();
+          // close mobile navigator if open
+          document.getElementById('mobile-navigator')?.classList.add('translate-y-full');
+          document.body.style.overflow = '';
+        });
+        desktopGrid?.appendChild(btn);
+        if (mobileGrid) {
+          const clone = btn.cloneNode(true);
+          mobileGrid.appendChild(clone);
+        }
+      });
+      updateProgressUI();
+    }
+
+    function updateProgressUI() {
+      const total = questions.length;
+      const curr = currentQuestionIndex + 1;
+      const questionMeta = document.getElementById("questionMeta");
+      if (questionMeta) questionMeta.innerText = `Question ${curr} of ${total}`;
+      const percent = total ? Math.round((Object.keys(userAnswers).length / total) * 100) : 0;
+
+      const mobileProgressBar = document.getElementById('mobileProgressBar');
+      const mobileProgressText = document.getElementById('mobileProgressText');
+      const mobileProgressCount = document.getElementById('mobileProgressCount');
+      const desktopProgressBar = document.getElementById('desktopProgressBar');
+      const desktopProgressPercent = document.getElementById('desktopProgressPercent');
+      const desktopProgressCount = document.getElementById('desktopProgressCount');
+
+      if (mobileProgressBar) mobileProgressBar.style.width = percent + '%';
+      if (mobileProgressText) mobileProgressText.innerText = `${percent}% Completed`;
+      if (mobileProgressCount) mobileProgressCount.innerText = `${Object.keys(userAnswers).length} of ${total} questions answered`;
+      if (desktopProgressBar) desktopProgressBar.style.width = percent + '%';
+      if (desktopProgressPercent) desktopProgressPercent.innerText = `${percent}% Completed`;
+      if (desktopProgressCount) desktopProgressCount.innerText = `${Object.keys(userAnswers).length} of ${total} questions answered`;
+    }
+
+    // Defer loading until instructions closed
+    window._cbtLoadQuestions = async function loadQuestions(selectedExamSet = null) {
+      if (!window._cbtReadyToStart) return;
+      if (!examSetId) {
+        // No examSet in query - show exam-selection modal maybe
+        showToast('No examSet in URL. Please select an exam.', { duration: 4500 });
+        document.getElementById('exam-selection-modal').style.display = 'flex';
+        return;
+      }
+      try {
+        // 1. Get questionset details
+        const res = await fetch(`${API_URL}questionsets/${examSetId}`, {
+          headers: { Authorization: "Bearer " + (token || "") }
+        });
+        if (!res.ok) throw new Error("Could not load exam set");
+        const activeSet = await res.json();
+        if (!activeSet || !Array.isArray(activeSet.questions) || activeSet.questions.length === 0) {
+          document.getElementById("desktopExamTitle").textContent = "No Questions Found";
+          document.getElementById("questionBox").innerHTML = "";
+          document.getElementById("mobile-timer").innerText = "Error!";
+          showToast('No questions found for this exam set.', { duration: 4000 });
+          return;
+        }
+
+        // Update headers
+        document.getElementById('desktopExamTitle').innerText = activeSet.title || "CBT Test";
+        document.getElementById('mobileExamTitle').innerText = activeSet.title || "CBT Test";
+        document.getElementById('desktopExamTags').innerHTML = `<span class="bg-slate-100 text-slate-700 text-[11px] font-semibold px-2 py-0.5 rounded-md">${activeSet.subject ?? ''}</span>
+          <span class="bg-slate-100 text-slate-700 text-[11px] font-semibold px-2 py-0.5 rounded-md">${activeSet.questions.length} Questions</span>`;
+        document.getElementById('mobileExamCount').innerText = `${activeSet.questions.length} Questions`;
+        document.getElementById('mobileExamSubject').innerText = activeSet.subject ?? 'Subject';
+
+        examSet = activeSet.title || "CBT Test";
+        const allQuestions = activeSet.questions.slice();
+
+        // 2. Fetch user's previously attempted question IDs for this exam set
+        let answeredIds = [];
+        try {
+          const progressRes = await fetch(`${API_URL}progress?examSet=${encodeURIComponent(examSet)}`, {
+            headers: { Authorization: "Bearer " + (token || "") }
+          });
+          if (progressRes.ok) {
+            const body = await progressRes.json();
+            const { progress } = body;
+            if (progress && Array.isArray(progress.answeredIds)) {
+              answeredIds = progress.answeredIds;
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+
+        // 3. Filter for unseen questions, if any
+        let unseenQuestions = allQuestions.filter(q => !answeredIds.includes(q.id));
+        if (unseenQuestions.length === 0) unseenQuestions = allQuestions.slice();
+
+        // 4. Start a fresh session (no resume of answers/timer)
+        // Normalize question shape: ensure id, question, options (array with text and optional image), answer, explanation
+        questions = shuffle(unseenQuestions).slice(0, MAX_SESSION_QUESTIONS).map((q, idx) => {
+          // Some APIs may provide options as array or object; normalize to array-of-objects
+          let opts = q.options || q.choices || [];
+          if (Array.isArray(opts)) {
+            // expected format: [{text:'A', image: ''}, ...] or simple strings
+            opts = opts.map(o => (typeof o === 'string') ? { text: o } : o);
+          } else if (typeof opts === 'object') {
+            // object keyed by A/B/C etc.
+            opts = Object.entries(opts).map(([k,v]) => (typeof v === 'string') ? { key: k, text: v } : v);
+          } else {
+            opts = [];
+          }
+          return {
+            id: q.id ?? q._id ?? idx,
+            question: q.text ?? q.question ?? q.title ?? '',
+            options: opts,
+            answer: q.answer,
+            explanation: q.explanation ?? '',
+            questionImage: q.questionImage ?? q.image ?? null
+          };
+        });
+
+        userAnswers = {};
+        currentQuestionIndex = 0;
+        timeLimit = SESSION_TIME_LIMIT;
+        timeRemaining = timeLimit;
+
+        // Render first question, palette, timers
+        renderQuestion();
+        renderQuestionPalette();
+        updateProgressUI();
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+          updateTimer();
+        }, 1000);
+        showToast('Exam loaded', { duration: 1200 });
+      } catch (err) {
+        console.error(err);
+        document.getElementById("questionBox").innerHTML =
+          `<p style="color:red;">Failed to load questions. Please refresh or try again later.</p>`;
+        document.getElementById("mobile-timer").innerText = "Error!";
+        showToast('Failed to load questions.', { duration: 4000 });
+      }
+    };
+
+    // Render current question
+    function renderQuestion() {
+      const q = questions[currentQuestionIndex];
+      const container = document.getElementById("questionBox");
+      if (!q) {
+        container.innerHTML = `<div style="color:red;">No question available.</div>`;
+        return;
+      }
+      const questionImageHTML = q.questionImage
+        ? `<div style="margin: 10px 0;"><img src="${q.questionImage}" style="max-width:100%; border-radius:8px;"></div>`
+        : "";
+      const optionsHTML = q.options.map((opt, idx) => {
+        const optText = opt.text ?? opt.label ?? opt.choice ?? `Option ${idx+1}`;
+        const optKey = opt.key ?? String(idx + 1);
+        const hasImage = opt.image ? `<img src="${opt.image}" class="option-img">` : "";
+        const isSelected = userAnswers[q.id] === optText;
+        return `
+          <button type="button" onclick="selectAnswer('${q.id}', ${JSON.stringify(optText)})" class="w-full p-3 rounded-md text-left ${isSelected ? 'selected' : ''} border bg-white flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="font-bold text-slate-800">${optKey}.</div>
+              <div class="text-slate-600">${optText}</div>
+            </div>
+            ${hasImage}
+          </button>`;
+      }).join('');
+      container.innerHTML = `
+        <div class="question text-slate-800 font-medium">${currentQuestionIndex + 1}. ${q.question}</div>
+        ${questionImageHTML}
+        <div class="options mt-4 space-y-3">${optionsHTML}</div>
+      `;
+      // Update nav button text / visibility
+      const prevBtn = document.getElementById('prevBtn');
+      const nextBtn = document.getElementById('nextBtn');
+      const submitBtn = document.getElementById('submitBtn');
+      if (prevBtn) prevBtn.disabled = currentQuestionIndex === 0;
+      if (nextBtn) {
+        if (currentQuestionIndex === questions.length - 1) {
+          nextBtn.innerText = 'Submit';
+        } else {
+          nextBtn.innerText = 'Next';
+        }
+      }
+      if (submitBtn) {
+        if (currentQuestionIndex === questions.length - 1) {
+          submitBtn.classList.remove('hidden');
+          document.getElementById('desktop-submit')?.classList.remove('hidden');
+        } else {
+          submitBtn.classList.add('hidden');
+          document.getElementById('desktop-submit')?.classList.add('hidden');
+        }
+      }
+      // Render math if present
+      if (window.MathJax && window.MathJax.typesetPromise) MathJax.typesetPromise();
+      updateProgressUI();
+    }
+
+    // Called when an option is clicked
+    function selectAnswer(qid, answer) {
+      userAnswers[qid] = answer;
+      // Re-render question area to mark selected button
+      renderQuestion();
+      renderQuestionPalette();
+      showToast('Answer saved', { duration: 900 });
+    }
+
+    // Navigation
+    function nextQuestion() {
+      if (currentQuestionIndex < questions.length - 1) {
+        currentQuestionIndex++;
+        renderQuestion();
+        renderQuestionPalette();
+      } else {
+        // last question -> submit flow
+        submitTest();
+      }
+    }
+    function prevQuestion() {
+      if (currentQuestionIndex > 0) {
+        currentQuestionIndex--;
+        renderQuestion();
+        renderQuestionPalette();
+      }
+    }
+
+    // Timer helpers
+    function updateTimerDisplay() {
+      const h = String(Math.floor(timeRemaining / 3600)).padStart(2, '0');
+      const m = String(Math.floor((timeRemaining % 3600) / 60)).padStart(2, '0');
+      const s = String(timeRemaining % 60).padStart(2, '0');
+      const formatted = `${h}:${m}:${s}`;
+      document.getElementById("mobile-timer").innerText = formatted;
+      document.getElementById("desktop-timer").innerText = formatted;
+    }
+    function updateTimer() {
+      if (timeRemaining <= 0) {
+        clearInterval(timerInterval);
+        showToast('Time is up — submitting...', { duration: 2000 });
+        submitTest();
+        return;
+      }
+      timeRemaining--;
+      updateTimerDisplay();
+    }
+
+    // submit flow
+    async function submitTest() {
+      clearInterval(timerInterval);
+      const nextBtn = document.getElementById("nextBtn");
+      if (nextBtn) {
+        nextBtn.disabled = true;
+        nextBtn.innerHTML = `<span class="spinner-border"></span>Submitting...`;
+      }
+      // compute score locally (if correct answers included)
+      let score = 0;
+      for (const q of questions) {
+        const userAns = userAnswers[q.id];
+        if (typeof userAns !== "undefined" && q.answer && userAns === q.answer) score++;
+      }
+      const timeTaken = SESSION_TIME_LIMIT - timeRemaining;
+      const payload = {
+        examSet: examSetId,
+        answers: userAnswers,
+        score,
+        timeTaken,
+        questions: questions.map(q => ({
+          id: q.id,
+          question: q.question,
+          answer: q.answer,
+          options: q.options,
+          explanation: q.explanation,
+          questionImage: q.questionImage || null
+        }))
+      };
+      try {
+        const response = await fetch(API_URL + "results", {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + (token || ""),
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+        if (!response.ok) {
+          // try to get message
+          const text = await response.text();
+          showToast('Failed to save result. ' + (text || ''), { duration: 5000 });
+          if (nextBtn) {
+            nextBtn.disabled = false;
+            nextBtn.innerHTML = 'Submit';
+          }
+          return;
+        }
+        // mark quiz task done (best effort)
+        if (currentUserId && examSetId) {
+          try { await markQuizTaskDoneOnServer(currentUserId, examSetId); } catch(e) {}
+        }
+        showToast('Exam submitted. Redirecting to results...', { duration: 1200 });
+        // redirect to summary page
+        setTimeout(() => {
+          window.location.href = `result-summary?examSet=${encodeURIComponent(examSetId)}`;
+        }, 800);
+      } catch (err) {
+        console.error(err);
+        alert("Network error. Please try again.");
+        if (nextBtn) {
+          nextBtn.disabled = false;
+          nextBtn.innerHTML = 'Submit';
+        }
+      }
+    }
+
+    // mark for review (local)
+    const marked = new Set();
+    document.getElementById('mark-review-btn')?.addEventListener('click', () => {
+      const q = questions[currentQuestionIndex];
+      if (!q) return;
+      if (marked.has(q.id)) {
+        marked.delete(q.id);
+        showToast('Unmarked for review');
+      } else {
+        marked.add(q.id);
+        showToast('Marked for review');
+      }
+      // update badge counts
+      document.getElementById('markedCountMobile').innerText = marked.size;
+      document.getElementById('markedCountDesktop').innerText = marked.size;
+    });
+
+    // helper shuffle
+    function shuffle(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    // Event wiring for nav buttons
+    document.getElementById('prevBtn')?.addEventListener('click', prevQuestion);
+    document.getElementById('nextBtn')?.addEventListener('click', () => {
+      // If on last question the button label is 'Submit', clicking triggers submitTest via nextQuestion
+      nextQuestion();
+    });
+    document.getElementById('submitBtn')?.addEventListener('click', () => {
+      // show confirm modal
+      document.getElementById('confirm-submit')?.classList.add('open');
+    });
+    document.getElementById('desktop-submit')?.addEventListener('click', () => {
+      document.getElementById('confirm-submit')?.classList.add('open');
+    });
+    document.getElementById('cancel-submit')?.addEventListener('click', () => {
+      document.getElementById('confirm-submit')?.classList.remove('open');
+    });
+    document.getElementById('confirm-submit-btn')?.addEventListener('click', async () => {
+      document.getElementById('confirm-submit')?.classList.remove('open');
+      await submitTest();
+    });
+
+    // mobile navigator toggles
+    document.getElementById('open-navigator-btn')?.addEventListener('click', () => {
+      document.getElementById('mobile-navigator')?.classList.remove('translate-y-full');
+      document.body.style.overflow = 'hidden';
+    });
+    document.getElementById('close-navigator-btn')?.addEventListener('click', () => {
+      document.getElementById('mobile-navigator')?.classList.add('translate-y-full');
+      document.body.style.overflow = '';
+    });
+
+    // End exam handlers use confirm
+    document.getElementById('endExamMobile')?.addEventListener('click', () => {
+      document.getElementById('confirm-submit')?.classList.add('open');
+    });
+    document.getElementById('desktopEndExam')?.addEventListener('click', () => {
+      document.getElementById('confirm-submit')?.classList.add('open');
+    });
+
+    // calculator open buttons
+    document.getElementById('desktopCalcBtn')?.addEventListener('click', openCalculator);
+    document.getElementById('openNavigatorMobile')?.addEventListener('click', openCalculator); // reusing open for mobile quick action
+
+    // show exam selection modal helper (kept from your script in case examSet absent)
+    function showExamSelectionModal(activeSets = [], proceedCallback) {
+      const modal = document.getElementById('exam-selection-modal');
+      const btnsDiv = document.getElementById('examButtons');
+      btnsDiv.innerHTML = "";
+      activeSets.forEach((set, idx) => {
+        const btn = document.createElement('button');
+        btn.className = "exam-select-btn bg-gradient-to-r from-blue-500 to-purple-600 text-white font-bold rounded-xl py-3 px-6 mb-3";
+        btn.innerText = set.title || `Exam #${idx+1}`;
+        btn.onclick = () => {
+          modal.style.display = "none";
+          proceedCallback(set);
+        };
+        btnsDiv.appendChild(btn);
+      });
+      modal.style.display = "flex";
+    }
+
+    // Expose loadQuestions to global for instruction modal close trigger
+    window._cbtLoadQuestions = window._cbtLoadQuestions || window._cbtLoadQuestions;
+
+    // If user closed instruction modal (closeInstructionModal) it will call window._cbtLoadQuestions()
+
     </script>
 </body>
 </html>
