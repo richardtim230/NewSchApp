@@ -16,8 +16,8 @@
     <style>
         * { box-sizing: border-box; }
         html, body { height: 100%; margin: 0; padding: 0; }
-        body, #chat-container { -ms-overflow-style: none; scrollbar-width: none; }
-        body::-webkit-scrollbar, #chat-container::-webkit-scrollbar { display: none; }
+        body, #chatContainer { -ms-overflow-style: none; scrollbar-width: none; }
+        body::-webkit-scrollbar, #chatContainer::-webkit-scrollbar { display: none; }
         
         .chat-bubble { animation: slideIn 0.3s ease-out; }
         @keyframes slideIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -30,7 +30,7 @@
         @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
         
         .material-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; font-size: 12px; color: #1e40af; }
-        .material-badge .remove { cursor: pointer; font-weight: bold; }
+        .material-badge .remove { cursor: pointer; font-weight: bold; margin-left: 4px; }
         .material-badge .remove:hover { color: #dc2626; }
 
         .btn-primary { background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 500; cursor: pointer; transition: background 0.2s; }
@@ -42,7 +42,9 @@
 
         .input-file { padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; }
         
-        .badge-info { display: inline-block; padding: 4px 8px; background: #dbeafe; color: #0c4a6e; border-radius: 4px; font-size: 11px; font-weight: 600; }
+        .material-item { padding: 12px; background: white; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+        .material-item:hover { border-color: #3b82f6; background: #f0f9ff; }
+        .material-item.selected { background: #dbeafe; border-color: #3b82f6; }
 
         .modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 9999; }
         .modal { background: white; border-radius: 12px; max-width: 600px; width: 95%; max-height: 85vh; overflow-y: auto; }
@@ -53,11 +55,15 @@
         .empty-state { text-align: center; padding: 32px 16px; color: #9ca3af; }
         .empty-state i { font-size: 48px; opacity: 0.5; margin-bottom: 12px; display: block; }
 
-        /* Responsive adjustments */
-        @media (max-width: 768px) {
-            .sidebar { display: none; }
-            .chat-container { margin: 0; }
-        }
+        .upload-zone { border: 2px dashed #d1d5db; border-radius: 8px; padding: 24px; text-align: center; cursor: pointer; transition: all 0.2s; }
+        .upload-zone:hover { border-color: #3b82f6; background: #f0f9ff; }
+        .upload-zone.dragover { border-color: #3b82f6; background: #f0f9ff; }
+
+        .notification { position: fixed; bottom: 16px; right: 16px; padding: 12px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; z-index: 50; max-width: 400px; animation: slideUp 0.3s ease-out; }
+        @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .notification.info { background: #dbeafe; color: #0c4a6e; }
+        .notification.error { background: #fee2e2; color: #7f1d1d; }
+        .notification.success { background: #dcfce7; color: #166534; }
     </style>
 </head>
 <body class="bg-white">
@@ -71,10 +77,11 @@
 
             <div class="p-6 flex flex-col gap-4 flex-1">
                 <!-- Upload Section -->
-                <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-400 transition" id="uploadZone">
+                <div class="upload-zone" id="uploadZone">
                     <i class="fas fa-cloud-upload-alt text-3xl text-gray-400 mb-2 block"></i>
                     <p class="text-sm font-medium text-gray-700">Drop files here</p>
                     <p class="text-xs text-gray-500 mt-1">or click to browse</p>
+                    <p class="text-xs text-gray-400 mt-2">PDF, DOCX, TXT, Images</p>
                     <input id="materialInput" type="file" multiple accept=".pdf,.docx,.doc,.jpg,.jpeg,.png,.txt" style="display: none;">
                 </div>
 
@@ -90,12 +97,6 @@
                             No materials yet
                         </div>
                     </div>
-                </div>
-
-                <!-- Selected Materials for Chat -->
-                <div id="selectedMaterialsPanel" style="display: none;">
-                    <h3 class="text-sm font-semibold text-gray-900 mb-2">Selected for Chat</h3>
-                    <div id="selectedMaterialsTags" class="flex flex-wrap gap-2"></div>
                 </div>
             </div>
         </div>
@@ -141,14 +142,14 @@
                             class="flex-1 border border-gray-300 rounded-lg px-4 py-3 text-sm resize-none focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                             oninput="this.style.height=''; this.style.height = Math.min(this.scrollHeight, 120) + 'px'">
                         </textarea>
-                        <button type="submit" id="sendBtn" class="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-lg transition flex items-center justify-center" style="width: 44px; height: 44px;">
+                        <button type="submit" id="sendBtn" class="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-lg transition flex items-center justify-center" style="width: 44px; height: 44px; min-width: 44px;">
                             <i class="fas fa-arrow-up text-lg"></i>
                         </button>
                     </form>
                     
                     <!-- Mobile Material Upload Button -->
                     <div class="lg:hidden mt-3">
-                        <button onclick="document.getElementById('materialInput').click()" class="btn-secondary w-full text-sm">
+                        <button type="button" onclick="document.getElementById('materialInput').click()" class="btn-secondary w-full text-sm">
                             <i class="fas fa-cloud-upload-alt"></i> Add Material
                         </button>
                     </div>
@@ -162,7 +163,7 @@
         <div class="modal">
             <div class="modal-header">
                 <h2 class="text-lg font-bold text-gray-900">Generated Quiz</h2>
-                <button class="modal-close" onclick="closeQuizModal()">×</button>
+                <button type="button" class="modal-close" onclick="closeQuizModal()">×</button>
             </div>
             <div class="modal-body" id="quizContent"></div>
         </div>
@@ -176,7 +177,6 @@
         let userData = null;
         let materials = [];
         let selectedMaterialIds = [];
-        let sessionId = null;
 
         try { userData = JSON.parse(localStorage.getItem('studentData') || "null"); } catch (e) { userData = null; }
 
@@ -194,9 +194,7 @@
 
         function notify(msg, type = 'info') {
             const div = document.createElement('div');
-            const bgColor = type === 'error' ? 'bg-red-100' : 'bg-blue-100';
-            const textColor = type === 'error' ? 'text-red-700' : 'text-blue-700';
-            div.className = `fixed bottom-4 right-4 p-3 rounded-lg text-sm font-medium ${bgColor} ${textColor} z-50 max-w-sm`;
+            div.className = `notification ${type}`;
             div.textContent = msg;
             document.body.appendChild(div);
             setTimeout(() => div.remove(), 3000);
@@ -207,13 +205,23 @@
         const materialInput = document.getElementById('materialInput');
 
         uploadZone.addEventListener('click', () => materialInput.click());
-        uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.style.borderColor = '#3b82f6'; });
-        uploadZone.addEventListener('dragleave', () => { uploadZone.style.borderColor = '#d1d5db'; });
-        uploadZone.addEventListener('drop', (e) => { 
-            e.preventDefault(); 
-            uploadZone.style.borderColor = '#d1d5db';
-            if (e.dataTransfer.files.length > 0) materialInput.files = e.dataTransfer.files;
-            handleMaterialUpload();
+
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        });
+
+        uploadZone.addEventListener('dragleave', () => {
+            uploadZone.classList.remove('dragover');
+        });
+
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                materialInput.files = e.dataTransfer.files;
+                handleMaterialUpload();
+            }
         });
 
         materialInput.addEventListener('change', handleMaterialUpload);
@@ -223,35 +231,50 @@
             if (!token) { notify('Please login first', 'error'); return; }
 
             const statusDiv = document.getElementById('uploadStatus');
-            statusDiv.textContent = `Uploading ${materialInput.files.length} file(s)...`;
-            statusDiv.style.display = 'block';
+            const files = Array.from(materialInput.files);
+            let uploadedCount = 0;
 
-            for (const file of materialInput.files) {
+            for (const file of files) {
+                statusDiv.textContent = `Uploading ${file.name}...`;
+                statusDiv.style.display = 'block';
+
                 try {
                     const fd = new FormData();
                     fd.append('file', file);
-                    const res = await fetch(API('/upload'), { 
-                        method: 'POST', 
-                        headers: { 'Authorization': 'Bearer ' + token }, 
-                        body: fd 
+
+                    const res = await fetch(API('/upload'), {
+                        method: 'POST',
+                        headers: { 'Authorization': 'Bearer ' + token },
+                        body: fd
                     });
+
                     const data = await res.json();
-                    if (!res.ok) throw new Error(data.message || 'Upload failed');
+
+                    if (!res.ok) {
+                        notify(`Failed to upload ${file.name}: ${data.message || 'Unknown error'}`, 'error');
+                        continue;
+                    }
 
                     materials.push({
                         id: data.materialId,
                         name: file.name,
                         size: file.size,
-                        type: file.type
+                        type: file.type,
+                        preview: data.extractedPreview || ''
                     });
-                    renderMaterialsList();
+
+                    uploadedCount++;
                 } catch (err) {
-                    notify(`Failed: ${file.name}`, 'error');
+                    notify(`Error uploading ${file.name}: ${err.message}`, 'error');
                 }
             }
 
-            statusDiv.textContent = 'Upload complete';
-            setTimeout(() => { statusDiv.style.display = 'none'; }, 2000);
+            if (uploadedCount > 0) {
+                notify(`Successfully uploaded ${uploadedCount} file(s)`, 'success');
+                renderMaterialsList();
+                setTimeout(() => { statusDiv.style.display = 'none'; }, 2000);
+            }
+
             materialInput.value = '';
         }
 
@@ -262,26 +285,28 @@
                 return;
             }
 
-            list.innerHTML = materials.map((m, idx) => `
-                <div class="p-3 bg-white border border-gray-200 rounded-lg flex items-start justify-between hover:border-blue-300 transition cursor-pointer group" onclick="toggleMaterial('${m.id}')">
-                    <div class="flex-1 min-w-0">
-                        <p class="text-sm font-medium text-gray-900 truncate">${m.name}</p>
-                        <p class="text-xs text-gray-500">${(m.size / 1024).toFixed(0)} KB</p>
+            list.innerHTML = materials.map((m) => `
+                <div class="material-item ${selectedMaterialIds.includes(m.id) ? 'selected' : ''}" onclick="toggleMaterial('${m.id}')">
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-medium text-gray-900 truncate">${escapeHtml(m.name)}</p>
+                            <p class="text-xs text-gray-500 mt-1">${(m.size / 1024).toFixed(1)} KB</p>
+                        </div>
+                        <input type="checkbox" class="material-checkbox" data-id="${m.id}" ${selectedMaterialIds.includes(m.id) ? 'checked' : ''} onclick="event.stopPropagation();" style="margin-top: 2px;">
                     </div>
-                    <input type="checkbox" class="material-checkbox" data-id="${m.id}" style="margin-left: 8px;">
                 </div>
             `).join('');
         }
 
         function toggleMaterial(id) {
             const idx = selectedMaterialIds.indexOf(id);
-            if (idx > -1) selectedMaterialIds.splice(idx, 1);
-            else selectedMaterialIds.push(id);
+            if (idx > -1) {
+                selectedMaterialIds.splice(idx, 1);
+            } else {
+                selectedMaterialIds.push(id);
+            }
 
-            document.querySelectorAll('.material-checkbox').forEach(cb => {
-                cb.checked = selectedMaterialIds.includes(cb.dataset.id);
-            });
-
+            renderMaterialsList();
             updateSelectedMaterialsDisplay();
         }
 
@@ -294,16 +319,14 @@
             row.style.display = 'flex';
             row.innerHTML = selectedMaterialIds.map(id => {
                 const mat = materials.find(m => m.id === id);
-                return `<span class="material-badge">${mat?.name || 'Material'} <span class="remove" onclick="removeMaterial('${id}', event)">×</span></span>`;
+                return `<span class="material-badge">${escapeHtml(mat?.name || 'Material')} <span class="remove" onclick="removeMaterial('${id}', event)">×</span></span>`;
             }).join('');
         }
 
         function removeMaterial(id, e) {
             e.stopPropagation();
             selectedMaterialIds = selectedMaterialIds.filter(m => m !== id);
-            document.querySelectorAll('.material-checkbox').forEach(cb => {
-                cb.checked = selectedMaterialIds.includes(cb.dataset.id);
-            });
+            renderMaterialsList();
             updateSelectedMaterialsDisplay();
         }
 
@@ -329,13 +352,13 @@
 
             if (sender === 'user') {
                 div.innerHTML = `
-                    <div class="max-w-xs lg:max-w-md xl:max-w-lg bg-blue-600 text-white p-3 rounded-lg text-sm leading-relaxed">
+                    <div class="max-w-xs lg:max-w-md xl:max-w-lg bg-blue-600 text-white p-3 rounded-lg text-sm leading-relaxed break-words">
                         ${escapeHtml(text).replace(/\n/g, '<br>')}
                     </div>
                 `;
             } else {
                 div.innerHTML = `
-                    <div class="max-w-xs lg:max-w-md xl:max-w-lg bg-gray-100 text-gray-900 p-3 rounded-lg text-sm leading-relaxed chat-message">
+                    <div class="max-w-xs lg:max-w-md xl:max-w-lg bg-gray-100 text-gray-900 p-3 rounded-lg text-sm leading-relaxed chat-message break-words">
                         ${formatText(text)}
                     </div>
                 `;
@@ -361,13 +384,26 @@
         }
 
         function showTypingIndicator() {
-            addMessage('', 'bot');
-            const lastMsg = chatContainer.lastElementChild.querySelector('.chat-message');
-            lastMsg.innerHTML = '<div class="typing-dots"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
-            return chatContainer.lastElementChild;
+            if (chatContainer.querySelector('.empty-state')) chatContainer.innerHTML = '';
+            const div = document.createElement('div');
+            div.className = 'chat-bubble flex gap-3 justify-start';
+            div.id = 'typing-indicator';
+            div.innerHTML = `
+                <div class="max-w-xs lg:max-w-md xl:max-w-lg bg-gray-100 text-gray-900 p-3 rounded-lg text-sm">
+                    <div class="typing-dots">
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                    </div>
+                </div>
+            `;
+            chatContainer.appendChild(div);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            return div;
         }
 
-        function removeTypingIndicator(el) {
+        function removeTypingIndicator() {
+            const el = document.getElementById('typing-indicator');
             if (el) el.remove();
         }
 
@@ -382,33 +418,55 @@
             chatInput.style.height = '';
             sendBtn.disabled = true;
 
-            const typingEl = showTypingIndicator();
+            showTypingIndicator();
+
             try {
                 const payload = {
                     messages: [{ role: 'user', content: message }],
                     channel: 'general',
                     materialIds: selectedMaterialIds
                 };
+
                 const res = await fetch(API('/send'), {
                     method: 'POST',
                     headers: authHeaders(true),
                     body: JSON.stringify(payload)
                 });
+
                 const data = await res.json();
-                removeTypingIndicator(typingEl);
+                removeTypingIndicator();
 
                 if (!res.ok) {
                     addMessage('Server error: ' + (data.error || 'Unknown error'), 'bot');
                     return;
                 }
 
-                addMessage(data.reply || 'No response', 'bot');
+                // Extract explanation and JSON from reply
+                let explanation = data.reply || 'No response';
+                let questions = null;
 
-                if (data.cbt?.questions) {
-                    setTimeout(() => showQuizModal(data.cbt.questions, data.cbt.examId), 500);
+                // Try to extract JSON array from the reply
+                const jsonMatch = explanation.match(/\[\s*\{[\s\S]*?\}\s*\]/);
+                if (jsonMatch) {
+                    try {
+                        questions = JSON.parse(jsonMatch[0]);
+                        // Remove JSON from explanation text
+                        explanation = explanation.replace(jsonMatch[0], '').trim();
+                    } catch (err) {
+                        console.warn('Failed to parse JSON:', err);
+                    }
+                }
+
+                // Display explanation only (without JSON)
+                addMessage(explanation, 'bot');
+
+                // Show quiz modal only if questions were extracted
+                if (questions && Array.isArray(questions) && questions.length > 0) {
+                    setTimeout(() => showQuizModal(questions, data.cbt?.examId || null), 500);
                 }
             } catch (err) {
-                removeTypingIndicator(typingEl);
+                removeTypingIndicator();
+                console.error('Error:', err);
                 addMessage('Connection error. Please try again.', 'bot');
             } finally {
                 sendBtn.disabled = false;
@@ -417,21 +475,24 @@
 
         // Quiz Modal
         function showQuizModal(questions, examId) {
+            if (!questions || questions.length === 0) return;
+
             const content = document.getElementById('quizContent');
             content.innerHTML = questions.map((q, idx) => `
                 <div class="mb-6 pb-6 border-b border-gray-200 last:border-0">
-                    <p class="font-semibold text-gray-900 mb-3">${idx + 1}. ${escapeHtml(q.text)}</p>
+                    <p class="font-semibold text-gray-900 mb-3">${idx + 1}. ${escapeHtml(q.text || '')}</p>
                     <div class="space-y-2 mb-3">
-                        ${q.options.map((opt, i) => `
+                        ${(q.options || []).map((opt, i) => `
                             <label class="flex items-center p-2 rounded hover:bg-gray-50 cursor-pointer">
                                 <input type="radio" name="q${idx}" value="${i}" class="mr-2">
-                                <span class="text-sm text-gray-700">${escapeHtml(opt)}</span>
+                                <span class="text-sm text-gray-700">${escapeHtml(opt || '')}</span>
                             </label>
                         `).join('')}
                     </div>
-                    <p class="text-xs text-gray-500 italic">Answer: ${q.answer} – ${escapeHtml(q.explanation || '')}</p>
+                    <p class="text-xs text-gray-500 italic">Answer: ${q.answer || '—'} – ${escapeHtml(q.explanation || '')}</p>
                 </div>
             `).join('');
+
             document.getElementById('quizModal').style.display = 'flex';
         }
 
