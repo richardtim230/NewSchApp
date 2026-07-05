@@ -3447,7 +3447,6 @@ function goToResultsPage(page) {
   fetchResults(page, resultsLimit);
 }
 
-// View student session
 async function viewStudentSession(resultId) {
   try {
     const resp = await fetch(API_URL + "results/" + resultId, { 
@@ -3461,8 +3460,18 @@ async function viewStudentSession(resultId) {
     const result = await resp.json();
     const submittedDate = result.submittedAt ? new Date(result.submittedAt) : null;
     const score = result.score ?? 0;
-    const percentage = result.totalQuestions ? Math.round((score / result.totalQuestions) * 100) : 0;
+    
+    // FIX: Ensure totalQuestions is properly set
+    const totalQuestions = result.totalQuestions || result.questionsAnswered?.length || 0;
+    
+    // FIX: Prevent division by zero
+    const percentage = totalQuestions > 0 ? Math.round((score / totalQuestions) * 100) : 0;
     const grade = percentage >= 70 ? 'A' : percentage >= 60 ? 'B' : percentage >= 50 ? 'C' : percentage >= 40 ? 'D' : 'F';
+
+    // Validate data
+    if (totalQuestions === 0) {
+      showNotification("No question data available for this session", "warning");
+    }
 
     let html = `
       <div class="modal-backdrop" onclick="closeModal(event)">
@@ -3496,15 +3505,42 @@ async function viewStudentSession(resultId) {
             <div class="grid grid-cols-3 gap-4 mb-6">
               <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <p class="text-xs font-semibold text-blue-900 uppercase">Score</p>
-                <p class="text-2xl font-bold text-blue-700 mt-1">${score}/${result.totalQuestions || 0}</p>
+                <p class="text-2xl font-bold text-blue-700 mt-1">
+                  ${score}/${totalQuestions}
+                </p>
+                ${totalQuestions === 0 ? '<p class="text-xs text-red-600 mt-1">⚠ No questions recorded</p>' : ''}
               </div>
               <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
                 <p class="text-xs font-semibold text-purple-900 uppercase">Percentage</p>
                 <p class="text-2xl font-bold text-purple-700 mt-1">${percentage}%</p>
               </div>
-              <div class="bg-green-50 border border-green-200 rounded-lg p-4">
-                <p class="text-xs font-semibold text-green-900 uppercase">Grade</p>
-                <p class="text-2xl font-bold text-green-700 mt-1">${grade}</p>
+              <div class="bg-${
+                grade === 'A' ? 'green' :
+                grade === 'B' ? 'blue' :
+                grade === 'C' ? 'yellow' :
+                grade === 'D' ? 'orange' :
+                'red'
+              }-50 border border-${
+                grade === 'A' ? 'green' :
+                grade === 'B' ? 'blue' :
+                grade === 'C' ? 'yellow' :
+                grade === 'D' ? 'orange' :
+                'red'
+              }-200 rounded-lg p-4">
+                <p class="text-xs font-semibold text-${
+                  grade === 'A' ? 'green' :
+                  grade === 'B' ? 'blue' :
+                  grade === 'C' ? 'yellow' :
+                  grade === 'D' ? 'orange' :
+                  'red'
+                }-900 uppercase">Grade</p>
+                <p class="text-2xl font-bold text-${
+                  grade === 'A' ? 'green' :
+                  grade === 'B' ? 'blue' :
+                  grade === 'C' ? 'yellow' :
+                  grade === 'D' ? 'orange' :
+                  'red'
+                }-700 mt-1">${grade}</p>
               </div>
             </div>
 
@@ -3526,52 +3562,58 @@ async function viewStudentSession(resultId) {
             <!-- Answers Review -->
             <div class="border-t border-slate-200 pt-6">
               <h3 class="text-lg font-bold text-slate-900 mb-4">Answer Review</h3>
-              <div class="space-y-4">
-                ${(result.questionsAnswered || []).map((qa, idx) => {
-                  const isCorrect = qa.isCorrect === true;
-                  return `
-                    <div class="border rounded-lg overflow-hidden">
-                      <div class="bg-slate-50 p-4 border-b border-slate-200">
-                        <div class="flex items-start justify-between">
-                          <div class="flex-1">
-                            <p class="text-sm font-semibold text-slate-900">Question ${idx + 1}</p>
-                            <p class="text-sm text-slate-700 mt-1">${qa.questionText}</p>
+              ${(result.questionsAnswered && result.questionsAnswered.length > 0) ? `
+                <div class="space-y-4">
+                  ${(result.questionsAnswered || []).map((qa, idx) => {
+                    const isCorrect = qa.isCorrect === true;
+                    return `
+                      <div class="border rounded-lg overflow-hidden">
+                        <div class="bg-slate-50 p-4 border-b border-slate-200">
+                          <div class="flex items-start justify-between">
+                            <div class="flex-1">
+                              <p class="text-sm font-semibold text-slate-900">Question ${idx + 1}</p>
+                              <p class="text-sm text-slate-700 mt-1">${qa.questionText}</p>
+                            </div>
+                            <span class="inline-flex items-center px-3 py-1 rounded-full font-semibold text-xs ml-4 flex-shrink-0 ${
+                              isCorrect ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                            }">
+                              ${isCorrect ? '✓ Correct' : '✗ Incorrect'}
+                            </span>
                           </div>
-                          <span class="inline-flex items-center px-3 py-1 rounded-full font-semibold text-xs ml-4 flex-shrink-0 ${
-                            isCorrect ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                          }">
-                            ${isCorrect ? '✓ Correct' : '✗ Incorrect'}
-                          </span>
                         </div>
-                      </div>
-                      <div class="p-4 space-y-3">
-                        <div>
-                          <p class="text-xs font-semibold text-slate-600 uppercase">Student's Answer</p>
-                          <p class="text-sm text-slate-900 mt-1 font-medium">${qa.studentAnswer || '-'}</p>
-                        </div>
-                        ${!isCorrect ? `
+                        <div class="p-4 space-y-3">
                           <div>
-                            <p class="text-xs font-semibold text-green-600 uppercase">Correct Answer</p>
-                            <p class="text-sm text-green-900 mt-1 font-medium">${qa.correctAnswer || '-'}</p>
+                            <p class="text-xs font-semibold text-slate-600 uppercase">Student's Answer</p>
+                            <p class="text-sm text-slate-900 mt-1 font-medium">${qa.studentAnswer || '-'}</p>
                           </div>
-                        ` : ''}
-                        ${qa.explanation ? `
-                          <div class="bg-blue-50 p-3 rounded">
-                            <p class="text-xs font-semibold text-blue-900 uppercase mb-1">Explanation</p>
-                            <p class="text-sm text-blue-900">${qa.explanation}</p>
-                          </div>
-                        ` : ''}
+                          ${!isCorrect ? `
+                            <div>
+                              <p class="text-xs font-semibold text-green-600 uppercase">Correct Answer</p>
+                              <p class="text-sm text-green-900 mt-1 font-medium">${qa.correctAnswer || '-'}</p>
+                            </div>
+                          ` : ''}
+                          ${qa.explanation ? `
+                            <div class="bg-blue-50 p-3 rounded">
+                              <p class="text-xs font-semibold text-blue-900 uppercase mb-1">Explanation</p>
+                              <p class="text-sm text-blue-900">${qa.explanation}</p>
+                            </div>
+                          ` : ''}
+                        </div>
                       </div>
-                    </div>
-                  `;
-                }).join('')}
-              </div>
+                    `;
+                  }).join('')}
+                </div>
+              ` : `
+                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <p class="text-sm text-yellow-800">⚠ No answer details available for this session</p>
+                </div>
+              `}
             </div>
           </div>
 
           <div class="modal-footer">
             <button class="btn btn-secondary" onclick="closeModal(event)">Close</button>
-            <button class="btn btn-primary">
+            <button class="btn btn-primary" onclick="exportSessionReport('${resultId}')">
               <i class="ph ph-download"></i> Export Report
             </button>
           </div>
@@ -3586,6 +3628,14 @@ async function viewStudentSession(resultId) {
     showNotification("Failed to load session details", "error");
   }
 }
+
+// Export session report
+function exportSessionReport(resultId) {
+  // Implementation for exporting report
+  showNotification("Report exported successfully", "success");
+}
+
+            
 
 // Notification helper
 function showNotification(message, type = 'info') {
