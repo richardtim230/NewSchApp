@@ -2930,163 +2930,700 @@ async function fetchDashboardCounts() {
 
     // ========== Questions ==========
     let questionsGlobal = [];
-    async function fetchQuestions() {
+
+async function fetchQuestions() {
   setSectionLoader("questionsSection", true);
   try {
-    const setId = document.getElementById("qSetSelect").value;
-    if (!setId) { document.querySelector("#questionsTable tbody").innerHTML = ""; return; }
-    const resp = await fetch(API_URL + "questionsets/" + setId, { headers: { Authorization: "Bearer " + token } });
-    const set = await resp.json();
-    let html = "";
-    (set.questions || []).forEach(q => {
-      html += `<tr>
-        <td>${q.question}</td>
-        <td>${q.options.map(o=>o.text).join(", ")}</td>
-        <td>${q.answer}</td>
-        <td>
-          <button class="action-btn" onclick="editQuestion('${setId}',${q.id})">Edit</button>
-          <button class="action-btn" onclick="deleteQuestion('${setId}',${q.id})">Delete</button>
-        </td>
-      </tr>`;
+    const setId = document.getElementById("qSetSelect")?.value;
+    
+    if (!setId) {
+      document.querySelector("#questionsTable tbody").innerHTML = `
+        <tr>
+          <td colspan="9" class="py-8 px-6 text-center">
+            <i class="ph ph-info text-slate-300 text-2xl mb-2"></i>
+            <p class="text-slate-600">Select a question set to view questions</p>
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    const resp = await fetch(API_URL + "questionsets/" + setId, { 
+      headers: { Authorization: "Bearer " + token } 
     });
-    document.querySelector("#questionsTable tbody").innerHTML = html;
+
+    if (!resp.ok) {
+      throw new Error("Failed to fetch questions");
+    }
+
+    const set = await resp.json();
+    questionsGlobal = set.questions || [];
+
+    const tableBody = document.querySelector("#questionsTable tbody");
+    const emptyState = document.querySelector(".questions-empty-state");
+
+    if (!questionsGlobal || questionsGlobal.length === 0) {
+      if (emptyState) emptyState.classList.remove('hidden');
+      if (tableBody) tableBody.innerHTML = '';
+      return;
+    }
+
+    if (emptyState) emptyState.classList.add('hidden');
+
+    let html = "";
+    questionsGlobal.forEach((q, index) => {
+      const options = Array.isArray(q.options) 
+        ? q.options.map(o => typeof o === 'string' ? o : o.text).join(", ")
+        : "-";
+
+      html += `
+        <tr>
+          <td class="py-4 px-6">
+            <span class="inline-flex items-center justify-center w-6 h-6 bg-slate-100 text-slate-600 text-xs font-semibold rounded-full">${index + 1}</span>
+          </td>
+          <td class="py-4 px-6">
+            <p class="text-slate-900 font-medium line-clamp-2">${q.question || '-'}</p>
+            <p class="text-xs text-slate-500 mt-1">ID: ${q.id || q._id || 'N/A'}</p>
+          </td>
+          <td class="py-4 px-6">
+            <div class="space-y-1">
+              ${(Array.isArray(q.options) ? q.options : []).map((opt, i) => {
+                const optText = typeof opt === 'string' ? opt : opt.text;
+                const isAnswer = q.answer === String.fromCharCode(65 + i);
+                return `
+                  <div class="flex items-center gap-2 text-xs">
+                    <span class="font-medium text-slate-500">${String.fromCharCode(65 + i)}.</span>
+                    <span class="text-slate-700">${optText}</span>
+                    ${isAnswer ? '<span class="ml-auto text-green-600 font-semibold">✓</span>' : ''}
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </td>
+          <td class="py-4 px-6 text-center">
+            <span class="inline-flex items-center px-3 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
+              ${q.answer || '-'}
+            </span>
+          </td>
+          <td class="py-4 px-6 text-center">
+            ${q.explanation ? `
+              <button 
+                class="text-xs text-blue-600 hover:text-blue-700 font-medium" 
+                title="${q.explanation}"
+                onclick="showExplanation('${q.question.replace(/'/g, "\\'")}', '${q.explanation.replace(/'/g, "\\'")}')"
+              >
+                <i class="ph ph-info"></i> View
+              </button>
+            ` : '<span class="text-slate-400">-</span>'}
+          </td>
+          <td class="py-4 px-6">
+            <div class="flex items-center justify-center gap-2">
+              <button 
+                class="px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs font-semibold rounded-lg transition-all"
+                title="Edit Question"
+                onclick="editQuestion('${setId}', ${q.id || q._id})"
+              >
+                <i class="ph ph-pencil"></i> Edit
+              </button>
+              <button 
+                class="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 text-xs font-semibold rounded-lg transition-all"
+                title="Delete Question"
+                onclick="confirmDeleteQuestion('${setId}', ${q.id || q._id})"
+              >
+                <i class="ph ph-trash"></i> Delete
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    });
+
+    if (tableBody) {
+      tableBody.innerHTML = html;
+    }
+
+    // Update count
+    const countEl = document.getElementById("questionCountBadge");
+    if (countEl) {
+      countEl.textContent = questionsGlobal.length;
+    }
+
+  } catch (error) {
+    console.error("Error fetching questions:", error);
+    showNotification("Failed to load questions", "error");
+    
+    const tableBody = document.querySelector("#questionsTable tbody");
+    if (tableBody) {
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="9" class="py-8 px-6 text-center">
+            <div class="flex flex-col items-center gap-2">
+              <i class="ph ph-warning text-yellow-500 text-2xl"></i>
+              <p class="text-slate-600">Failed to load questions</p>
+              <button 
+                class="text-sm text-brand-accent hover:text-blue-700 font-medium mt-2"
+                onclick="fetchQuestions()"
+              >
+                Try Again
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }
   } finally {
     setSectionLoader("questionsSection", false);
   }
 }
-      
-    async function deleteQuestion(setId, qid) {
-      if (!confirm("Delete this question?")) return;
-      await fetch(API_URL + `questionsets/${setId}/questions/${qid}`, {
-        method: "DELETE", headers: { Authorization: "Bearer " + token }
-      });
-      fetchQuestions();
-      fetchDashboardCounts();
-    }
-    function editQuestion(setId, qid) {
-      alert("Question editing not implemented in this mockup.");
+
+// Show explanation modal
+function showExplanation(question, explanation) {
+  let html = `
+    <div class="modal-backdrop" onclick="closeModal(event)">
+      <div class="modal" onclick="event.stopPropagation()">
+        <div class="modal-header">
+          <div class="modal-title">
+            <div class="modal-icon"><i class="ph ph-lightbulb"></i></div>
+            <div>
+              <h2>Answer Explanation</h2>
+              <p>Why this is the correct answer</p>
+            </div>
+          </div>
+          <button class="close-modal" onclick="closeModal(event)"><i class="ph ph-x"></i></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+            <p class="text-xs font-semibold text-blue-900 uppercase">Question</p>
+            <p class="text-sm text-blue-900 mt-1">${question}</p>
+          </div>
+
+          <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+            <p class="text-xs font-semibold text-green-900 uppercase">Explanation</p>
+            <p class="text-sm text-green-900 mt-1">${explanation}</p>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="closeModal(event)">Close</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("modalRoot").innerHTML = html;
+}
+
+// Confirm delete question
+function confirmDeleteQuestion(setId, qid) {
+  let html = `
+    <div class="modal-backdrop" onclick="closeModal(event)">
+      <div class="modal" onclick="event.stopPropagation()" style="max-width: 400px;">
+        <div class="modal-header">
+          <div class="modal-title">
+            <div class="modal-icon" style="background: #fee2e2; color: #dc2626;"><i class="ph ph-warning"></i></div>
+            <div>
+              <h2>Delete Question?</h2>
+              <p>This action cannot be undone</p>
+            </div>
+          </div>
+          <button class="close-modal" onclick="closeModal(event)"><i class="ph ph-x"></i></button>
+        </div>
+
+        <div class="modal-body">
+          <p class="text-slate-700">Are you sure you want to delete this question? This cannot be reversed.</p>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="closeModal(event)">Cancel</button>
+          <button class="btn btn-primary" style="background: linear-gradient(135deg, #dc2626, #991b1b);" onclick="deleteQuestion('${setId}', ${qid})">
+            <i class="ph ph-trash"></i> Delete Question
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("modalRoot").innerHTML = html;
+}
+
+// Delete question
+async function deleteQuestion(setId, qid) {
+  try {
+    const spinner = document.querySelector(".spinner");
+    const btn = document.querySelector(".btn-primary");
+    
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner" style="width: 16px; height: 16px; border-width: 2px;"></span>';
     }
 
-    // ========== Results ==========
-    // Add these globals for pagination state
+    const resp = await fetch(API_URL + `questionsets/${setId}/questions/${qid}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer " + token }
+    });
+
+    if (!resp.ok) {
+      throw new Error("Failed to delete question");
+    }
+
+    showNotification("Question deleted successfully", "success");
+    closeModal();
+    fetchQuestions();
+    fetchDashboardCounts();
+
+  } catch (error) {
+    console.error("Error deleting question:", error);
+    showNotification("Failed to delete question", "error");
+  }
+}
+
+// Edit question
+function editQuestion(setId, qid) {
+  const question = questionsGlobal.find(q => q.id === qid || q._id === qid);
+  
+  if (!question) {
+    showNotification("Question not found", "error");
+    return;
+  }
+
+  let html = `
+    <div class="modal-backdrop" onclick="closeModal(event)">
+      <div class="modal" onclick="event.stopPropagation()" style="max-width: 600px;">
+        <div class="modal-header">
+          <div class="modal-title">
+            <div class="modal-icon"><i class="ph ph-pencil-simple"></i></div>
+            <div>
+              <h2>Edit Question</h2>
+              <p>Modify question details</p>
+            </div>
+          </div>
+          <button class="close-modal" onclick="closeModal(event)"><i class="ph ph-x"></i></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Question Text</label>
+            <textarea 
+              id="editQText" 
+              class="form-input"
+              style="min-height: 100px; resize: vertical;"
+            >${question.question || ''}</textarea>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3 mb-4">
+            ${(Array.isArray(question.options) ? question.options : []).map((opt, i) => {
+              const optText = typeof opt === 'string' ? opt : opt.text;
+              return `
+                <div class="form-group mb-0">
+                  <label>Option ${String.fromCharCode(65 + i)}</label>
+                  <input 
+                    type="text" 
+                    id="editOpt${i}" 
+                    value="${optText}"
+                    class="form-input"
+                  >
+                </div>
+              `;
+            }).join('')}
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="form-group">
+              <label>Correct Answer</label>
+              <select id="editAnswer" class="form-select">
+                <option value="A" ${question.answer === 'A' ? 'selected' : ''}>A</option>
+                <option value="B" ${question.answer === 'B' ? 'selected' : ''}>B</option>
+                <option value="C" ${question.answer === 'C' ? 'selected' : ''}>C</option>
+                <option value="D" ${question.answer === 'D' ? 'selected' : ''}>D</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Explanation (Optional)</label>
+            <textarea 
+              id="editExplanation" 
+              class="form-input"
+              style="min-height: 80px; resize: vertical;"
+            >${question.explanation || ''}</textarea>
+          </div>
+
+          <div id="editQuestionMsg" class="mt-4 p-3 rounded-lg hidden" role="alert"></div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="closeModal(event)">Cancel</button>
+          <button class="btn btn-primary flex items-center justify-center gap-2" id="editQBtn">
+            <span class="spinner" id="editQSpinner" style="display:none; width: 16px; height: 16px; border-width: 2px;"></span>
+            <span id="editQBtnText"><i class="ph ph-check-circle"></i> Save Changes</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("modalRoot").innerHTML = html;
+}
+
+// ========== Results ==========
 let resultsPage = 1;
 let resultsLimit = 20;
 let resultsTotalPages = 1;
+let resultsData = [];
 
 async function fetchResults(page = 1, limit = 20) {
   setSectionLoader("resultsSection", true);
   try {
-    // Call the API with page and limit query params
-    const resp = await fetch(`${API_URL}results?page=${page}&limit=${limit}`, { headers: { Authorization: "Bearer " + token } });
+    const resp = await fetch(`${API_URL}results?page=${page}&limit=${limit}`, { 
+      headers: { Authorization: "Bearer " + token } 
+    });
+
+    if (!resp.ok) {
+      throw new Error("Failed to fetch results");
+    }
+
     const data = await resp.json();
-    const results = data.results || [];
+    resultsData = data.results || [];
     resultsPage = data.page || 1;
     resultsLimit = data.limit || 20;
-    resultsTotalPages = Math.ceil((data.total || results.length) / resultsLimit);
+    resultsTotalPages = Math.ceil((data.total || resultsData.length) / resultsLimit);
+
+    const tableBody = document.querySelector("#resultsTable tbody");
+    const emptyState = document.querySelector(".results-empty-state");
+
+    if (!resultsData || resultsData.length === 0) {
+      if (emptyState) emptyState.classList.remove('hidden');
+      if (tableBody) tableBody.innerHTML = '';
+      renderResultsPagination();
+      return;
+    }
+
+    if (emptyState) emptyState.classList.add('hidden');
 
     let html = "";
-    results.forEach(r => {
-      html += `<tr>
-        <td>
-          <a href="#" onclick="viewStudentSession('${r._id}');return false;" style="color:#3a86ff;font-weight:600;cursor:pointer;text-decoration:underline;">
-            ${r.user?.username || '-'}
-          </a>
-        </td>
-        <td>${r.examSet && r.examSet.title ? r.examSet.title : '-'}</td>
-        <td>${r.score ?? '-'}</td>
-        <td>${r.submittedAt ? (new Date(r.submittedAt)).toLocaleString() : '-'}</td>
-      </tr>`;
-    });
-    document.querySelector("#resultsTable tbody").innerHTML = html;
+    resultsData.forEach((r, index) => {
+      const submittedDate = r.submittedAt ? new Date(r.submittedAt) : null;
+      const score = r.score ?? 0;
+      const percentage = r.totalQuestions ? Math.round((score / r.totalQuestions) * 100) : 0;
+      const grade = percentage >= 70 ? 'A' : percentage >= 60 ? 'B' : percentage >= 50 ? 'C' : percentage >= 40 ? 'D' : 'F';
 
-    // Render pagination controls
+      html += `
+        <tr>
+          <td class="py-4 px-6">
+            <div class="flex items-center gap-3">
+              <img 
+                src="https://ui-avatars.com/api/?name=${encodeURIComponent(r.user?.fullname || r.user?.username || 'Student')}&background=3b82f6&color=fff" 
+                alt="Student" 
+                class="w-8 h-8 rounded-full"
+              >
+              <div>
+                <p class="font-medium text-slate-900">${r.user?.fullname || r.user?.username || '-'}</p>
+                <p class="text-xs text-slate-500">@${r.user?.username || '-'}</p>
+              </div>
+            </div>
+          </td>
+          <td class="py-4 px-6">
+            <span class="font-medium text-slate-900">${r.examSet?.title || '-'}</span>
+          </td>
+          <td class="py-4 px-6">
+            <div class="flex items-center gap-3">
+              <div class="flex-1">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-sm font-bold text-slate-900">${percentage}%</span>
+                </div>
+                <div class="w-full bg-slate-200 rounded-full h-2">
+                  <div 
+                    class="h-2 rounded-full transition-all ${
+                      percentage >= 70 ? 'bg-green-500' :
+                      percentage >= 60 ? 'bg-blue-500' :
+                      percentage >= 50 ? 'bg-yellow-500' :
+                      'bg-red-500'
+                    }" 
+                    style="width: ${percentage}%"
+                  ></div>
+                </div>
+              </div>
+            </div>
+            <p class="text-xs text-slate-500 mt-1">${score}/${r.totalQuestions || 0}</p>
+          </td>
+          <td class="py-4 px-6">
+            <span class="inline-flex items-center px-3 py-1 rounded-full font-semibold text-xs ${
+              grade === 'A' ? 'bg-green-100 text-green-700' :
+              grade === 'B' ? 'bg-blue-100 text-blue-700' :
+              grade === 'C' ? 'bg-yellow-100 text-yellow-700' :
+              grade === 'D' ? 'bg-orange-100 text-orange-700' :
+              'bg-red-100 text-red-700'
+            }">
+              Grade ${grade}
+            </span>
+          </td>
+          <td class="py-4 px-6">
+            <div>
+              <p class="font-medium text-slate-900">${submittedDate ? submittedDate.toLocaleDateString() : '-'}</p>
+              <p class="text-xs text-slate-500">${submittedDate ? submittedDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}</p>
+            </div>
+          </td>
+          <td class="py-4 px-6">
+            <button 
+              class="inline-flex items-center gap-2 px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm font-medium rounded-lg transition-all"
+              onclick="viewStudentSession('${r._id}')"
+            >
+              <i class="ph ph-eye"></i> View Details
+            </button>
+          </td>
+        </tr>
+      `;
+    });
+
+    if (tableBody) {
+      tableBody.innerHTML = html;
+    }
+
     renderResultsPagination();
+
+  } catch (error) {
+    console.error("Error fetching results:", error);
+    showNotification("Failed to load results", "error");
+    
+    const tableBody = document.querySelector("#resultsTable tbody");
+    if (tableBody) {
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="6" class="py-8 px-6 text-center">
+            <div class="flex flex-col items-center gap-2">
+              <i class="ph ph-warning text-yellow-500 text-2xl"></i>
+              <p class="text-slate-600">Failed to load results</p>
+              <button 
+                class="text-sm text-brand-accent hover:text-blue-700 font-medium mt-2"
+                onclick="fetchResults()"
+              >
+                Try Again
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }
   } finally {
     setSectionLoader("resultsSection", false);
   }
 }
 
 function renderResultsPagination() {
-  let html = `<div style="margin:10px 0; text-align:center;">`;
-  html += `<button class="btn" onclick="goToResultsPage(resultsPage-1)" ${resultsPage <= 1 ? "disabled" : ""}>Prev</button>`;
-  html += ` <span style="margin:0 12px;">Page ${resultsPage} of ${resultsTotalPages}</span> `;
-  html += `<button class="btn" onclick="goToResultsPage(resultsPage+1)" ${resultsPage >= resultsTotalPages ? "disabled" : ""}>Next</button>`;
-  html += `</div>`;
+  const paginationContainer = document.getElementById("resultsPaginationContainer");
+  
+  if (!paginationContainer) return;
 
-  // Insert pagination controls just above the results table
-  const table = document.getElementById("resultsTable");
-  let pagDiv = document.getElementById("resultsPagination");
-  if (!pagDiv) {
-    pagDiv = document.createElement("div");
-    pagDiv.id = "resultsPagination";
-    table.parentNode.insertBefore(pagDiv, table);
-  }
-  pagDiv.innerHTML = html;
+  let html = `
+    <div class="flex items-center justify-between">
+      <div class="text-sm text-slate-600">
+        Showing page <span class="font-semibold">${resultsPage}</span> of <span class="font-semibold">${resultsTotalPages}</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button 
+          class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed" 
+          onclick="goToResultsPage(resultsPage - 1)" 
+          ${resultsPage <= 1 ? "disabled" : ""}
+        >
+          <i class="ph ph-arrow-left"></i> Previous
+        </button>
+        <button 
+          class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed" 
+          onclick="goToResultsPage(resultsPage + 1)" 
+          ${resultsPage >= resultsTotalPages ? "disabled" : ""}
+        >
+          Next <i class="ph ph-arrow-right"></i>
+        </button>
+      </div>
+    </div>
+  `;
+
+  paginationContainer.innerHTML = html;
 }
 
 function goToResultsPage(page) {
   if (page < 1 || page > resultsTotalPages) return;
   fetchResults(page, resultsLimit);
 }
-      
-async function viewStudentSession(resultId) {
-  // Show loader or modal
-  const resp = await fetch(API_URL + "results/" + resultId, { headers: { Authorization: "Bearer " + token } });
-  if (!resp.ok) {
-    alert("Could not load session: " + resp.statusText);
-    return;
-  }
-  const result = await resp.json();
 
-  // Assuming result.questionsAnswered is an array of: { questionText, studentAnswer, correctAnswer, isCorrect }
-  let html = `
-    <div class="modal-backdrop" onclick="closeModal(event)">
-      <div class="modal" onclick="event.stopPropagation()" style="max-width:600px;">
-        <button class="close-modal" onclick="closeModal(event)">&times;</button>
-        <h2>Session for ${result.user?.fullname || result.user?.username || ''}</h2>
-        <div><b>Set:</b> ${result.examSet?.title || '-'}</div>
-        <div><b>Score:</b> ${result.score ?? '-'}</div>
-        <table class="data-table" style="margin-top:20px;">
-          <thead>
-  <tr>
-    <th>#</th>
-    <th>Question</th>
-    <th>Your Answer</th>
-    <th>Correct Answer</th>
-    <th>Status</th>
-  </tr>
-</thead>
-          <tbody>
-  `;
- (result.questionsAnswered || []).forEach((q, idx) => {
-  html += `<tr>
-    <td>${idx + 1}</td>
-    <td>${q.questionText}</td>
-    <td>${q.studentAnswer}</td>
-    <td>${q.correctAnswer}</td>
-    <td style="color:${q.isCorrect ? 'green' : 'red'};font-weight:700;">
-      ${q.isCorrect ? 'Correct' : 'Wrong'}
-    </td>
-  </tr>`;
-});
-  html += `
-          </tbody>
-        </table>
+// View student session
+async function viewStudentSession(resultId) {
+  try {
+    const resp = await fetch(API_URL + "results/" + resultId, { 
+      headers: { Authorization: "Bearer " + token } 
+    });
+
+    if (!resp.ok) {
+      throw new Error("Failed to load session");
+    }
+
+    const result = await resp.json();
+    const submittedDate = result.submittedAt ? new Date(result.submittedAt) : null;
+    const score = result.score ?? 0;
+    const percentage = result.totalQuestions ? Math.round((score / result.totalQuestions) * 100) : 0;
+    const grade = percentage >= 70 ? 'A' : percentage >= 60 ? 'B' : percentage >= 50 ? 'C' : percentage >= 40 ? 'D' : 'F';
+
+    let html = `
+      <div class="modal-backdrop" onclick="closeModal(event)">
+        <div class="modal" onclick="event.stopPropagation()" style="max-width: 900px;">
+          <div class="modal-header">
+            <div class="modal-title">
+              <div class="modal-icon"><i class="ph ph-chart-bar"></i></div>
+              <div>
+                <h2>Exam Session Details</h2>
+                <p>Review student answers and performance</p>
+              </div>
+            </div>
+            <button class="close-modal" onclick="closeModal(event)"><i class="ph ph-x"></i></button>
+          </div>
+
+          <div class="modal-body">
+            <!-- Student & Exam Info -->
+            <div class="grid grid-cols-2 gap-4 mb-6">
+              <div class="bg-slate-50 p-4 rounded-lg">
+                <p class="text-xs font-semibold text-slate-600 uppercase">Student</p>
+                <p class="text-lg font-bold text-slate-900 mt-1">${result.user?.fullname || result.user?.username || '-'}</p>
+                <p class="text-xs text-slate-500 mt-1">@${result.user?.username || '-'}</p>
+              </div>
+              <div class="bg-slate-50 p-4 rounded-lg">
+                <p class="text-xs font-semibold text-slate-600 uppercase">Question Set</p>
+                <p class="text-lg font-bold text-slate-900 mt-1">${result.examSet?.title || '-'}</p>
+              </div>
+            </div>
+
+            <!-- Score Overview -->
+            <div class="grid grid-cols-3 gap-4 mb-6">
+              <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p class="text-xs font-semibold text-blue-900 uppercase">Score</p>
+                <p class="text-2xl font-bold text-blue-700 mt-1">${score}/${result.totalQuestions || 0}</p>
+              </div>
+              <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                <p class="text-xs font-semibold text-purple-900 uppercase">Percentage</p>
+                <p class="text-2xl font-bold text-purple-700 mt-1">${percentage}%</p>
+              </div>
+              <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                <p class="text-xs font-semibold text-green-900 uppercase">Grade</p>
+                <p class="text-2xl font-bold text-green-700 mt-1">${grade}</p>
+              </div>
+            </div>
+
+            <!-- Submission Info -->
+            <div class="bg-slate-50 p-4 rounded-lg mb-6">
+              <p class="text-xs font-semibold text-slate-600 uppercase mb-2">Submission Details</p>
+              <div class="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p class="text-slate-600">Submitted On</p>
+                  <p class="font-medium text-slate-900">${submittedDate ? submittedDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '-'}</p>
+                </div>
+                <div>
+                  <p class="text-slate-600">Time</p>
+                  <p class="font-medium text-slate-900">${submittedDate ? submittedDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) : '-'}</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Answers Review -->
+            <div class="border-t border-slate-200 pt-6">
+              <h3 class="text-lg font-bold text-slate-900 mb-4">Answer Review</h3>
+              <div class="space-y-4">
+                ${(result.questionsAnswered || []).map((qa, idx) => {
+                  const isCorrect = qa.isCorrect === true;
+                  return `
+                    <div class="border rounded-lg overflow-hidden">
+                      <div class="bg-slate-50 p-4 border-b border-slate-200">
+                        <div class="flex items-start justify-between">
+                          <div class="flex-1">
+                            <p class="text-sm font-semibold text-slate-900">Question ${idx + 1}</p>
+                            <p class="text-sm text-slate-700 mt-1">${qa.questionText}</p>
+                          </div>
+                          <span class="inline-flex items-center px-3 py-1 rounded-full font-semibold text-xs ml-4 flex-shrink-0 ${
+                            isCorrect ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                          }">
+                            ${isCorrect ? '✓ Correct' : '✗ Incorrect'}
+                          </span>
+                        </div>
+                      </div>
+                      <div class="p-4 space-y-3">
+                        <div>
+                          <p class="text-xs font-semibold text-slate-600 uppercase">Student's Answer</p>
+                          <p class="text-sm text-slate-900 mt-1 font-medium">${qa.studentAnswer || '-'}</p>
+                        </div>
+                        ${!isCorrect ? `
+                          <div>
+                            <p class="text-xs font-semibold text-green-600 uppercase">Correct Answer</p>
+                            <p class="text-sm text-green-900 mt-1 font-medium">${qa.correctAnswer || '-'}</p>
+                          </div>
+                        ` : ''}
+                        ${qa.explanation ? `
+                          <div class="bg-blue-50 p-3 rounded">
+                            <p class="text-xs font-semibold text-blue-900 uppercase mb-1">Explanation</p>
+                            <p class="text-sm text-blue-900">${qa.explanation}</p>
+                          </div>
+                        ` : ''}
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal(event)">Close</button>
+            <button class="btn btn-primary">
+              <i class="ph ph-download"></i> Export Report
+            </button>
+          </div>
+        </div>
       </div>
+    `;
+
+    document.getElementById("modalRoot").innerHTML = html;
+
+  } catch (error) {
+    console.error("Error loading session:", error);
+    showNotification("Failed to load session details", "error");
+  }
+}
+
+// Notification helper
+function showNotification(message, type = 'info') {
+  let notificationContainer = document.getElementById('notificationContainer');
+  if (!notificationContainer) {
+    notificationContainer = document.createElement('div');
+    notificationContainer.id = 'notificationContainer';
+    notificationContainer.className = 'fixed top-4 right-4 z-40 space-y-2 max-w-sm';
+    document.body.appendChild(notificationContainer);
+  }
+
+  const notification = document.createElement('div');
+  notification.className = 'p-4 rounded-lg shadow-lg border animate-slideIn';
+
+  if (type === 'success') {
+    notification.className += ' bg-green-50 text-green-800 border-green-200';
+  } else if (type === 'error') {
+    notification.className += ' bg-red-50 text-red-800 border-red-200';
+  } else {
+    notification.className += ' bg-blue-50 text-blue-800 border-blue-200';
+  }
+
+  const icon = type === 'success' ? 'check-circle' : type === 'error' ? 'warning-circle' : 'info';
+
+  notification.innerHTML = `
+    <div class="flex items-center gap-3">
+      <i class="ph ph-${icon} text-lg"></i>
+      <span class="font-medium">${message}</span>
     </div>
   `;
-  document.getElementById("modalRoot").innerHTML = html;
+
+  notificationContainer.appendChild(notification);
+
+  setTimeout(() => {
+    notification.remove();
+  }, 4000);
 }
-// =========================
-// Reusable Section Loader
-// =========================
-function setSectionLoader(sectionId, show = true) {
-  const section = document.getElementById(sectionId);
-  if (!section) return;
-  const loader = section.querySelector('.section-loader');
-  if (!loader) return;
-  loader.style.display = show ? "flex" : "none";
-}
+
 
 async function fetchSchedules() {
   setSectionLoader("schedulesSection", true);
