@@ -1295,21 +1295,54 @@
 }
 
         async function loadDashboardStats() {
-            try {
-                const response = await fetch(`${API_BASE_URL}/lecturer/${currentLecturerId}/dashboard-stats`);
-                if (!response.ok) throw new Error('Failed to fetch dashboard stats');
-                const data = await response.json();
-                
-                document.getElementById('studentCount').textContent = data.studentCount || 0;
-                document.getElementById('courseCount').textContent = data.courseCount || 0;
-                document.getElementById('questionCount').textContent = data.questionCount || 0;
-                document.getElementById('examCount').textContent = data.examCount || 0;
-                
-                loadCharts(data);
-            } catch (error) {
-                console.error('Error loading dashboard stats:', error);
-            }
+    try {
+        const token = localStorage.getItem("token");
+
+        if (!token) {
+            throw new Error("No authentication token found.");
         }
+
+        const response = await fetch(`${API_BASE_URL}/lecturer/dashboard/stats`, {
+            method: "GET",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            }
+        });
+
+        if (response.status === 401) {
+            throw new Error("Session expired. Please login again.");
+        }
+
+        if (response.status === 403) {
+            throw new Error("Access denied. Lecturer account required.");
+        }
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.message || "Failed to fetch dashboard statistics.");
+        }
+
+        const data = await response.json();
+
+        console.log("Dashboard Stats:", data);
+
+        document.getElementById("studentCount").textContent = data.studentCount ?? 0;
+        document.getElementById("courseCount").textContent = data.courseCount ?? 0;
+        document.getElementById("questionCount").textContent = data.questionCount ?? 0;
+        document.getElementById("examCount").textContent = data.examCount ?? 0;
+
+        loadCharts(data);
+
+    } catch (error) {
+        console.error("Error loading dashboard stats:", error);
+
+        document.getElementById("studentCount").textContent = 0;
+        document.getElementById("courseCount").textContent = 0;
+        document.getElementById("questionCount").textContent = 0;
+        document.getElementById("examCount").textContent = 0;
+    }
+}
 
         function loadCharts(data) {
             // Load Performance Chart
