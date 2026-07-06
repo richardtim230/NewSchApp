@@ -1198,12 +1198,17 @@
 
     <script>
         const API_BASE_URL = 'http://examguide.onrender.com/api'; // UPDATE WITH YOUR BACKEND URL
-        let currentLecturerId = null;
+        let currentLecturerId = lecturer._id;
         let performanceChart = null;
         let trendsChart = null;
         let gradeChart = null;
         let levelChart = null;
 
+        const token = localStorage.getItem("token");
+
+if (!token) {
+    window.location.href = "/login.html";
+}
         // Loader Management
         function showLoader(sectionName) {
             const loaderId = sectionName + 'Loader';
@@ -1241,35 +1246,108 @@
         }
 
         async function loadLecturerInfo() {
-            try {
-                const response = await fetch(`${API_BASE_URL}/lecturer/me`);
-                if (!response.ok) throw new Error('Failed to fetch lecturer info');
-                const data = await response.json();
-                currentLecturerId = data.id;
-                document.getElementById('lecturerName').textContent = data.name || 'Lecturer';
-                document.getElementById('lecturerNameSidebar').textContent = data.name || 'Lecturer';
-            } catch (error) {
-                console.error('Error loading lecturer info:', error);
-                // Continue with generic name if fetch fails
-            }
+    try {
+        const token = localStorage.getItem("token");
+
+        if (!token) {
+            throw new Error("No authentication token found.");
         }
 
-        async function loadDashboardStats() {
-            try {
-                const response = await fetch(`${API_BASE_URL}/lecturer/${currentLecturerId}/dashboard-stats`);
-                if (!response.ok) throw new Error('Failed to fetch dashboard stats');
-                const data = await response.json();
-                
-                document.getElementById('studentCount').textContent = data.studentCount || 0;
-                document.getElementById('courseCount').textContent = data.courseCount || 0;
-                document.getElementById('questionCount').textContent = data.questionCount || 0;
-                document.getElementById('examCount').textContent = data.examCount || 0;
-                
-                loadCharts(data);
-            } catch (error) {
-                console.error('Error loading dashboard stats:', error);
+        const response = await fetch(`${API_BASE_URL}/lecturer/profile`, {
+            method: "GET",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
             }
+        });
+
+        if (response.status === 401) {
+            throw new Error("Session expired. Please login again.");
         }
+
+        if (response.status === 403) {
+            throw new Error("Access denied. This account is not a lecturer.");
+        }
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.message || "Failed to fetch lecturer profile.");
+        }
+
+        const data = await response.json();
+
+        console.log("Lecturer Profile:", data);
+
+        currentLecturerId = data._id;
+
+        document.getElementById("lecturerName").textContent =
+            data.name || "Lecturer";
+
+        document.getElementById("lecturerNameSidebar").textContent =
+            data.name || "Lecturer";
+
+        return data;
+
+    } catch (err) {
+        console.error("loadLecturerInfo:", err);
+
+        document.getElementById("lecturerName").textContent = "Lecturer";
+        document.getElementById("lecturerNameSidebar").textContent = "Lecturer";
+
+        alert(err.message);
+        return null;
+    }
+}
+
+        async function loadDashboardStats() {
+    try {
+        const token = localStorage.getItem("token");
+
+        if (!token) {
+            throw new Error("No authentication token found.");
+        }
+
+        const response = await fetch(`${API_BASE_URL}/lecturer/dashboard/stats`, {
+            method: "GET",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            }
+        });
+
+        if (response.status === 401) {
+            throw new Error("Session expired. Please login again.");
+        }
+
+        if (response.status === 403) {
+            throw new Error("Access denied. Lecturer account required.");
+        }
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.message || "Failed to fetch dashboard statistics.");
+        }
+
+        const data = await response.json();
+
+        console.log("Dashboard Stats:", data);
+
+        document.getElementById("studentCount").textContent = data.studentCount ?? 0;
+        document.getElementById("courseCount").textContent = data.courseCount ?? 0;
+        document.getElementById("questionCount").textContent = data.questionCount ?? 0;
+        document.getElementById("examCount").textContent = data.examCount ?? 0;
+
+        loadCharts(data);
+
+    } catch (error) {
+        console.error("Error loading dashboard stats:", error);
+
+        document.getElementById("studentCount").textContent = 0;
+        document.getElementById("courseCount").textContent = 0;
+        document.getElementById("questionCount").textContent = 0;
+        document.getElementById("examCount").textContent = 0;
+    }
+}
 
         function loadCharts(data) {
             // Load Performance Chart
