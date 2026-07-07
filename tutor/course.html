@@ -396,12 +396,15 @@
 
                 <div id="assessmentsSection" class="section-container hidden space-y-6">
                     <div class="bg-white p-6 rounded-2xl border border-slate-200/60 shadow-premium">
-                        <div class="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
-                            <div>
-                                <h3 class="text-base font-bold text-slate-900">Linked CBT Assessment Tracks</h3>
-                                <p class="text-xs text-slate-500">Official testing instances deployed via ExamGuard Engine</p>
-                            </div>
-                        </div>
+                        <div class="flex items-center justify-between">
+    <div>
+        <h3 class="text-base font-bold text-slate-900">Linked CBT Assessment Tracks</h3>
+        <p class="text-xs text-slate-500">Official testing instances deployed via ExamGuard Engine</p>
+    </div>
+    <button onclick="openCreateExamSetModal()" class="bg-brand-dark hover:bg-brand-active text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all flex items-center gap-2">
+        <i class="ph ph-plus text-sm"></i> New Exam Set
+    </button>
+</div>
 
                         <div class="space-y-4" id="assessmentsList">
                             <!-- dynamic -->
@@ -556,6 +559,82 @@
         </div>
     </div>
 
+    <!-- createExamSetModal -->
+<div id="createExamSetModal" class="modal-backdrop hidden" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="createExamSetTitle">
+        <div class="modal-header">
+            <div class="modal-title">
+                <div class="modal-icon bg-indigo-50 text-indigo-600"><i class="ph ph-book-open"></i></div>
+                <div>
+                    <h2 id="createExamSetTitle">Create Exam Set</h2>
+                    <p>Create a new exam set with questions for this course</p>
+                </div>
+            </div>
+            <button onclick="closeModal('createExamSetModal')" class="close-modal"><i class="ph ph-x"></i></button>
+        </div>
+        <form id="createExamSetForm" onsubmit="handleCreateExamSet(event)">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Exam Set Title</label>
+                    <input id="examSetTitle" type="text" required placeholder="e.g., Chemistry Final Exam 2024">
+                </div>
+
+                <div class="form-group">
+                    <label>Course</label>
+                    <select id="examSetCourseSelect" required>
+                        <option value="">Select a course...</option>
+                    </select>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="form-group">
+                        <label>Faculty</label>
+                        <input id="examSetFaculty" type="text" required placeholder="e.g., Science">
+                    </div>
+                    <div class="form-group">
+                        <label>Department</label>
+                        <input id="examSetDepartment" type="text" required placeholder="e.g., Chemistry">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="form-group">
+                        <label>Start Date/Time</label>
+                        <input id="examSetStartDate" type="datetime-local">
+                    </div>
+                    <div class="form-group">
+                        <label>End Date/Time</label>
+                        <input id="examSetEndDate" type="datetime-local">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Status</label>
+                    <select id="examSetStatus">
+                        <option value="INACTIVE">Inactive</option>
+                        <option value="ACTIVE">Active</option>
+                    </select>
+                </div>
+
+                <div class="border-t border-slate-200 pt-4 mt-4">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-bold text-slate-900">Questions</h3>
+                        <button type="button" onclick="addQuestionRow()" class="text-brand-active text-xs font-bold hover:underline flex items-center gap-1">
+                            <i class="ph ph-plus text-sm"></i> Add Question
+                        </button>
+                    </div>
+                    <div id="examSetQuestionsContainer">
+                        <!-- Questions will be added here -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" onclick="closeModal('createExamSetModal')" class="btn btn-secondary">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create Exam Set</button>
+            </div>
+        </form>
+    </div>
+</div>
     <!-- uploadResourceModal -->
     <div id="uploadResourceModal" class="modal-backdrop hidden" aria-hidden="true">
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="uploadResTitle">
@@ -1198,6 +1277,159 @@
             sidebar.classList.remove('sidebar-visible');
             overlay.classList.add('hidden');
         }
+
+        /**
+ * Open Create Exam Set Modal
+ */
+async function openCreateExamSetModal() {
+  openModal('createExamSetModal');
+  // Load course data for dropdown
+  const courseSelect = document.getElementById('examSetCourseSelect');
+  if (pageState.selectedCourse && courseSelect) {
+    courseSelect.value = getCourseId(pageState.selectedCourse) || '';
+  }
+}
+
+/**
+ * Add Question Row to Exam Set Form
+ */
+function addQuestionRow() {
+  const container = document.getElementById('examSetQuestionsContainer');
+  const questionCount = container.querySelectorAll('.question-row').length;
+  const rowNum = questionCount + 1;
+
+  const html = `
+    <div class="question-row border border-slate-200 p-4 rounded-xl mb-4 bg-slate-50">
+      <div class="flex items-center justify-between mb-3">
+        <h4 class="font-semibold text-sm text-slate-900">Question ${rowNum}</h4>
+        <button type="button" onclick="this.closest('.question-row').remove()" class="text-red-600 hover:text-red-800 text-xs font-bold">Remove</button>
+      </div>
+
+      <div class="form-group">
+        <label>Question Text</label>
+        <textarea name="questions[${questionCount}][question]" required placeholder="Enter the question..." class="w-full border border-slate-200 rounded-lg p-3 text-sm"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Options (one per line)</label>
+        <textarea name="questions[${questionCount}][options]" required placeholder="Option A&#10;Option B&#10;Option C&#10;Option D" class="w-full border border-slate-200 rounded-lg p-3 text-sm h-24"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Correct Answer</label>
+        <input type="text" name="questions[${questionCount}][answer]" required placeholder="e.g., Option A" class="w-full border border-slate-200 rounded-lg p-3 text-sm">
+      </div>
+
+      <div class="form-group">
+        <label>Explanation (Optional)</label>
+        <textarea name="questions[${questionCount}][explanation]" placeholder="Explain the correct answer..." class="w-full border border-slate-200 rounded-lg p-3 text-sm"></textarea>
+      </div>
+    </div>
+  `;
+
+  container.insertAdjacentHTML('beforeend', html);
+}
+
+/**
+ * Handle Create Exam Set Form Submission
+ */
+async function handleCreateExamSet(event) {
+  event.preventDefault();
+
+  const title = document.getElementById('examSetTitle').value.trim();
+  const courseId = document.getElementById('examSetCourseSelect').value;
+  const faculty = document.getElementById('examSetFaculty').value.trim();
+  const department = document.getElementById('examSetDepartment').value.trim();
+  const status = document.getElementById('examSetStatus').value;
+  
+  const startDate = document.getElementById('examSetStartDate').value;
+  const endDate = document.getElementById('examSetEndDate').value;
+
+  if (!title || !courseId || !faculty || !department) {
+    showStatus('Please fill in all required fields', 'error');
+    return;
+  }
+
+  // Parse questions from form
+  const questionRows = document.querySelectorAll('.question-row');
+  if (questionRows.length === 0) {
+    showStatus('Please add at least one question', 'error');
+    return;
+  }
+
+  const questions = [];
+  questionRows.forEach((row, idx) => {
+    const questionText = row.querySelector(`textarea[name*="[question]"]`).value.trim();
+    const optionsText = row.querySelector(`textarea[name*="[options]"]`).value.trim();
+    const answer = row.querySelector(`input[name*="[answer]"]`).value.trim();
+    const explanation = row.querySelector(`textarea[name*="[explanation]"]`)?.value.trim() || '';
+
+    if (!questionText || !optionsText || !answer) {
+      throw new Error(`Question ${idx + 1} is incomplete`);
+    }
+
+    const options = optionsText.split('\n').filter(o => o.trim()).map(text => ({
+      text: text.trim()
+    }));
+
+    if (options.length < 2) {
+      throw new Error(`Question ${idx + 1} must have at least 2 options`);
+    }
+
+    questions.push({
+      id: idx + 1,
+      question: questionText,
+      options: options,
+      answer: answer,
+      explanation: explanation,
+      questionImage: ''
+    });
+  });
+
+  try {
+    showStatus('Creating exam set...', 'info');
+
+    const payload = {
+      title,
+      courseId,
+      faculty,
+      department,
+      status,
+      questions,
+      schedule: {
+        start: startDate ? new Date(startDate).toISOString() : null,
+        end: endDate ? new Date(endDate).toISOString() : null
+      }
+    };
+
+    const response = await fetchJSON('/api/lecturer/exam-sets/create', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+
+    showStatus(`Exam set "${response.examSet.title}" created with ${response.totalQuestions} questions!`, 'success');
+    closeModal('createExamSetModal');
+    
+    // Reload exams
+    await loadExamsForCourse(getCourseId(pageState.selectedCourse));
+    renderAssessmentsList();
+    
+    // Reset form
+    document.getElementById('createExamSetForm').reset();
+    document.getElementById('examSetQuestionsContainer').innerHTML = '';
+
+  } catch (e) {
+    console.error('Create exam set error:', e);
+    showStatus(`Failed to create exam set: ${e.message}`, 'error');
+  }
+}
+
+/**
+ * Remove Question Row
+ */
+function removeQuestionRow(button) {
+  button.closest('.question-row').remove();
+}
 
         // Section router
         function switchTab(sectionId, targetElement) {
