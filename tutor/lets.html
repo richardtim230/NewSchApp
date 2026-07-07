@@ -1,0 +1,2354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CBT Lecturer Dashboard</title>
+    
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Tailwind CSS (via CDN for standalone running) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        brand: {
+                            dark: '#1e3a8a',   // Sidebar background (darker blue)
+                            active: '#2563eb', // Sidebar active
+                            accent: '#3b82f6', // Bright blue accents
+                            light: '#f8fafc'   // App background
+                        }
+                    },
+                    boxShadow: {
+                        'premium': '0 2px 10px -3px rgba(0,0,0,0.05), 0 4px 6px -4px rgba(0,0,0,0.02)',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Flowbite -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.css" rel="stylesheet" />
+    
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <style>
+        /* Custom Scrollbar for a premium feel */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+
+        /* Spinner Animation */
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid #cbd5e1;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        .spinner-sm {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #cbd5e1;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loading-skeleton {
+            background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+            background-size: 200% 100%;
+            animation: loading 1.5s infinite;
+        }
+
+        @keyframes loading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        .section-loader {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(2px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            border-radius: 1rem;
+            gap: 16px;
+        }
+
+        .section-loader.hidden {
+            display: none;
+        }
+
+        .loader-text {
+            color: #64748b;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        /* Retained styles for legacy JS compatibility */
+        .section-loader-inline {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(2px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            border-radius: 1rem;
+        }
+
+        /*==========================
+          MODAL BACKDROP
+        ===========================*/
+        .modal-backdrop{
+            position:fixed;
+            inset:0;
+            z-index:9999;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            padding:24px;
+            background:rgba(15,23,42,.55);
+            backdrop-filter:blur(12px);
+            -webkit-backdrop-filter:blur(12px);
+            animation:fadeIn .25s ease;
+        }
+
+        /*==========================
+          MODAL
+        ===========================*/
+        .modal{
+            width:min(95vw,700px);
+            background:#fff;
+            border-radius:28px;
+            overflow:hidden;
+            box-shadow:
+                0 30px 60px rgba(15,23,42,.18),
+                0 10px 20px rgba(15,23,42,.08);
+            animation:modalShow .3s ease;
+            display:flex;
+            flex-direction:column;
+            max-height:92vh;
+        }
+
+        /*==========================
+         HEADER
+        ===========================*/
+        .modal-header{
+            display:flex;
+            justify-content:space-between;
+            align-items:flex-start;
+            padding:30px;
+            border-bottom:1px solid #eef2f7;
+        }
+
+        .modal-title{
+            display:flex;
+            gap:18px;
+            align-items:center;
+        }
+
+        .modal-icon{
+            width:64px;
+            height:64px;
+            border-radius:18px;
+            background:#F3EEFF;
+            color:#6D28D9;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            font-size:28px;
+        }
+
+        .modal-title h2{
+            margin:0;
+            font-size:2rem;
+            font-weight:800;
+            color:#111827;
+        }
+
+        .modal-title p{
+            margin-top:6px;
+            color:#6B7280;
+            font-size:15px;
+        }
+
+        /*==========================
+         CLOSE BUTTON
+        ===========================*/
+        .close-modal{
+            width:52px;
+            height:52px;
+            border:none;
+            border-radius:16px;
+            background:#F9FAFB;
+            cursor:pointer;
+            font-size:26px;
+            transition:.25s;
+        }
+
+        .close-modal:hover{
+            background:#EDE9FE;
+            color:#6D28D9;
+            transform:rotate(90deg);
+        }
+
+        /*==========================
+         BODY
+        ===========================*/
+        .modal-body{
+            padding:30px;
+            overflow:auto;
+        }
+
+        .form-group{
+            margin-bottom:22px;
+        }
+
+        .form-group label{
+            display:block;
+            margin-bottom:10px;
+            font-size:14px;
+            font-weight:700;
+            color:#374151;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea{
+            width:100%;
+            border:1px solid #E5E7EB;
+            border-radius:16px;
+            padding:0 18px;
+            background:#fff;
+            font-size:17px;
+            transition:.25s;
+            outline:none;
+        }
+
+        .form-group input,
+        .form-group select{
+            height:56px;
+        }
+
+        .form-group textarea{
+            padding:12px 18px;
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .form-group input:hover,
+        .form-group select:hover,
+        .form-group textarea:hover{
+            border-color:#C4B5FD;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus{
+            border-color:#7C3AED;
+            box-shadow:0 0 0 4px rgba(124,58,237,.12);
+        }
+
+        /*==========================
+         FOOTER
+        ===========================*/
+        .modal-footer{
+            display:flex;
+            justify-content:flex-end;
+            gap:14px;
+            padding:24px 30px;
+            background:#FAFAFC;
+            border-top:1px solid #EEF2F7;
+        }
+
+        /*==========================
+         BUTTONS
+        ===========================*/
+        .btn{
+            height:52px;
+            padding:0 28px;
+            border-radius:14px;
+            font-size:15px;
+            font-weight:700;
+            cursor:pointer;
+            transition:.25s;
+            border: none;
+        }
+
+        .btn-secondary{
+            background:#fff;
+            border:1px solid #D1D5DB;
+            color:#374151;
+        }
+
+        .btn-secondary:hover{
+            background:#F3F4F6;
+        }
+
+        .btn-primary{
+            border:none;
+            color:#fff;
+            background:linear-gradient(135deg,#7C3AED,#5B21B6);
+            box-shadow:0 12px 25px rgba(124,58,237,.35);
+        }
+
+        .btn-primary:hover{
+            transform:translateY(-2px);
+            box-shadow:0 18px 35px rgba(124,58,237,.45);
+        }
+
+        /*==========================
+         ANIMATIONS
+        ===========================*/
+        @keyframes fadeIn{
+            from{opacity:0;}
+            to{opacity:1;}
+        }
+
+        @keyframes modalShow{
+            from{
+                opacity:0;
+                transform:translateY(30px) scale(.96);
+            }
+            to{
+                opacity:1;
+                transform:none;
+            }
+        }
+
+        @keyframes slideInLeft {
+            from {
+                transform: translateX(-100%);
+            }
+            to {
+                transform: translateX(0);
+            }
+        }
+
+        @keyframes slideOutLeft {
+            from {
+                transform: translateX(0);
+            }
+            to {
+                transform: translateX(-100%);
+            }
+        }
+
+        .sidebar-open {
+            animation: slideInLeft 0.3s ease forwards;
+        }
+
+        .sidebar-closed {
+            animation: slideOutLeft 0.3s ease forwards;
+        }
+
+        /*==========================
+         MOBILE
+        ===========================*/
+        @media(max-width:768px){
+            .modal{
+                width:100%;
+                height:auto;
+                max-height:100vh;
+                border-radius:28px 28px 0 0;
+                margin-top:auto;
+            }
+
+            .modal-backdrop{
+                align-items:flex-end;
+                padding:0;
+            }
+
+            .modal-header,
+            .modal-body,
+            .modal-footer{
+                padding:22px;
+            }
+
+            .modal-title h2{
+                font-size:1.7rem;
+            }
+
+            .modal-footer{
+                flex-direction:column-reverse;
+            }
+
+            .btn{
+                width:100%;
+            }
+
+            /* Mobile content adjustments */
+            body.mobile-sidebar-open {
+                overflow: hidden;
+            }
+        }
+
+        .badge-status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-active {
+            background-color: #dcfce7;
+            color: #166534;
+        }
+
+        .badge-inactive {
+            background-color: #fee2e2;
+            color: #991b1b;
+        }
+
+        /* Mobile Bottom Navigation */
+        .mobile-bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            border-top: 1px solid #e5e7eb;
+            display: none;
+            z-index: 30;
+        }
+
+        @media (max-width: 768px) {
+            .mobile-bottom-nav {
+                display: flex;
+            }
+
+            #mainContent {
+                margin-bottom: 70px;
+            }
+
+            main {
+                padding-bottom: 16px !important;
+            }
+        }
+
+        .mobile-nav-item {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 0;
+            cursor: pointer;
+            color: #6b7280;
+            font-size: 12px;
+            transition: all 0.2s;
+            border-top: 3px solid transparent;
+        }
+
+        .mobile-nav-item.active {
+            color: #1e3a8a;
+            border-top-color: #1e3a8a;
+        }
+
+        .mobile-nav-item i {
+            font-size: 24px;
+            margin-bottom: 4px;
+        }
+
+        /* Skeleton Loaders */
+        .skeleton-card {
+            background: white;
+            padding: 20px;
+            border-radius: 16px;
+            border: 1px solid #e2e8f0;
+            height: 150px;
+        }
+
+        .skeleton-row {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 12px;
+        }
+
+        .skeleton-row span {
+            flex: 1;
+            height: 16px;
+            border-radius: 8px;
+            loading-skeleton;
+        }
+    </style>
+</head>
+<body class="bg-brand-light text-slate-800 font-sans antialiased selection:bg-brand-accent selection:text-white">
+
+    <!-- SIDEBAR OVERLAY (MOBILE ONLY) -->
+    <div id="sidebar-overlay" class="fixed inset-0 bg-slate-900/50 z-40 hidden lg:hidden" style="display: none;"></div>
+
+    <!-- SIDEBAR -->
+    <aside id="sidebar" class="fixed inset-y-0 left-0 w-[260px] bg-brand-dark h-full text-white transition-transform duration-300 z-50 flex flex-col lg:relative lg:translate-x-0">
+        
+        <!-- Logo Area -->
+        <div class="h-20 flex items-center px-6 border-b border-white/10 shrink-0">
+            <div class="flex items-center gap-3 w-full">
+                <div class="w-10 h-10 bg-white rounded-lg flex items-center justify-center p-1">
+                    <svg class="w-full h-full text-brand-dark" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                </div>
+                <div class="flex-1">
+                    <h1 class="font-bold text-lg leading-tight tracking-wide">CBT Lecturer</h1>
+                    <p class="text-[10px] text-blue-200 uppercase tracking-widest font-semibold">Dashboard</p>
+                </div>
+                <button id="sidebar-close-btn" class="lg:hidden ml-auto bg-white/10 hover:bg-white/20 p-1.5 rounded-md transition-colors">
+                    <i class="ph ph-x text-lg"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Navigation Links -->
+        <div class="flex-1 overflow-y-auto py-6 px-4 space-y-1 hide-scrollbar" id="sidebarNav">
+            <a href="#dashboard" onclick="showSection('dashboard', this)" class="sidebar-link active flex items-center gap-3 px-4 py-3 bg-brand-active text-white rounded-xl relative group">
+                <div class="indicator absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-blue-400 rounded-r-md"></div>
+                <i class="ph-fill ph-squares-four text-xl text-blue-400"></i>
+                <span class="font-medium text-sm">Dashboard</span>
+            </a>
+            
+            <a href="#students" onclick="showSection('students', this)" class="sidebar-link flex items-center gap-3 px-4 py-3 text-slate-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors">
+                <div class="indicator absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-blue-400 rounded-r-md opacity-0"></div>
+                <i class="ph ph-users text-xl"></i>
+                <span class="font-medium text-sm">My Students</span>
+            </a>
+
+            <a href="#courses" onclick="showSection('courses', this)" class="sidebar-link flex items-center gap-3 px-4 py-3 text-slate-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors">
+                <div class="indicator absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-blue-400 rounded-r-md opacity-0"></div>
+                <i class="ph ph-books text-xl"></i>
+                <span class="font-medium text-sm">My Courses</span>
+            </a>
+
+            <a href="#questions" onclick="showSection('questions', this)" class="sidebar-link flex items-center gap-3 px-4 py-3 text-slate-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors">
+                <div class="indicator absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-blue-400 rounded-r-md opacity-0"></div>
+                <i class="ph ph-pencil-simple text-xl"></i>
+                <span class="font-medium text-sm">Questions</span>
+            </a>
+
+            <a href="#schedules" onclick="showSection('schedules', this)" class="sidebar-link flex items-center gap-3 px-4 py-3 text-slate-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors">
+                <div class="indicator absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-blue-400 rounded-r-md opacity-0"></div>
+                <i class="ph ph-calendar-blank text-xl"></i>
+                <span class="font-medium text-sm">Exams</span>
+            </a>
+
+            <a href="#results" onclick="showSection('results', this)" class="sidebar-link flex items-center gap-3 px-4 py-3 text-slate-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors">
+                <div class="indicator absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-blue-400 rounded-r-md opacity-0"></div>
+                <i class="ph ph-chart-bar text-xl"></i>
+                <span class="font-medium text-sm">Results</span>
+            </a>
+
+            <a href="#grading" onclick="showSection('grading', this)" class="sidebar-link flex items-center gap-3 px-4 py-3 text-slate-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors">
+                <div class="indicator absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-blue-400 rounded-r-md opacity-0"></div>
+                <i class="ph ph-star text-xl"></i>
+                <span class="font-medium text-sm">Grading</span>
+            </a>
+
+            <a href="#reports" onclick="showSection('reports', this)" class="sidebar-link flex items-center gap-3 px-4 py-3 text-slate-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors">
+                <div class="indicator absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-blue-400 rounded-r-md opacity-0"></div>
+                <i class="ph ph-file-pdf text-xl"></i>
+                <span class="font-medium text-sm">Reports</span>
+            </a>
+        </div>
+
+        <!-- User Profile -->
+        <div class="mt-auto p-4 border-t border-white/10 shrink-0">
+            <button onclick="logout()" class="w-full flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors text-left">
+                <div class="flex items-center gap-3">
+                    <img src="https://ui-avatars.com/api/?name=Lecturer&background=3b82f6&color=fff" alt="Lecturer" class="w-10 h-10 rounded-full border-2 border-white/20">
+                    <div>
+                        <p class="text-sm font-semibold text-white" id="lecturerNameSidebar">Lecturer</p>
+                        <p class="text-xs text-blue-200 flex items-center gap-1"><i class="ph ph-sign-out"></i> Logout</p>
+                    </div>
+                </div>
+            </button>
+        </div>
+    </aside>
+
+    <!-- MAIN CONTENT WRAPPER -->
+    <div id="mainContent" class="flex-1 flex flex-col h-screen overflow-hidden relative w-full">
+        
+        <!-- Desktop Header -->
+        <header class="hidden lg:flex items-center justify-between bg-white border-b border-slate-200 px-8 h-20 shrink-0 z-20">
+            <div>
+                <h2 class="text-2xl font-bold text-slate-900" id="pageTitle">Dashboard</h2>
+                <p class="text-sm text-slate-500 mt-0.5" id="pageSubtitle">Welcome to your lecturer dashboard</p>
+            </div>
+            
+            <div class="flex items-center gap-6">
+                <button class="flex items-center gap-3 bg-white p-1.5 pr-4 border border-slate-200 rounded-full shadow-sm hover:shadow-md transition-all">
+                    <img src="https://ui-avatars.com/api/?name=Lecturer&background=3b82f6&color=fff" alt="Lecturer" class="w-8 h-8 rounded-full">
+                    <div class="text-left hidden xl:block">
+                        <p class="text-xs font-semibold text-slate-900 leading-tight" id="lecturerName">Lecturer</p>
+                        <p class="text-[10px] text-slate-500 leading-tight">Lecturer</p>
+                    </div>
+                </button>
+            </div>
+        </header>
+
+        <!-- Mobile Header -->
+        <header class="lg:hidden flex items-center justify-between bg-white border-b border-slate-200 px-4 h-16 shrink-0 z-20">
+            <div class="flex items-center gap-3">
+                <button id="mobile-menu-btn" class="text-slate-500 hover:text-slate-800 focus:outline-none p-2">
+                    <i class="ph ph-list text-2xl"></i>
+                </button>
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-brand-dark rounded flex items-center justify-center p-1">
+                        <svg class="w-full h-full text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-sm leading-tight text-slate-900">CBT</h1>
+                        <p class="text-[9px] text-slate-400 uppercase tracking-widest font-semibold">Lecturer</p>
+                    </div>
+                </div>
+            </div>
+            <div class="flex items-center gap-4">
+                <img src="https://ui-avatars.com/api/?name=Lecturer&background=3b82f6&color=fff" alt="Profile" class="w-8 h-8 rounded-full border border-slate-200">
+            </div>
+        </header>
+
+        <!-- Scrollable Main Area -->
+        <main class="flex-1 overflow-y-auto px-4 lg:px-8 py-6 pb-10 bg-[#f8fafc] relative">
+            
+            <!-- ========================================== -->
+            <!-- DASHBOARD SECTION                          -->
+            <!-- ========================================== -->
+            <div id="dashboardSection" class="section block relative">
+                <div id="dashboardLoader" class="section-loader">
+                    <div class="spinner"></div>
+                    <span class="loader-text">Loading dashboard...</span>
+                </div>
+                
+                <!-- Stat Cards -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-6" id="dashboardCards">
+                    <div class="bg-white p-5 lg:p-6 rounded-2xl border border-slate-100 shadow-premium flex flex-col justify-between">
+                        <div class="flex items-start gap-4 mb-4 lg:mb-6">
+                            <div class="w-10 h-10 lg:w-12 lg:h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+                                <i class="ph-fill ph-users text-xl lg:text-2xl"></i>
+                            </div>
+                            <p class="text-xs lg:text-sm font-medium text-slate-500">Students</p>
+                        </div>
+                        <div>
+                            <h3 class="text-2xl lg:text-3xl font-bold text-slate-900 mb-1" id="studentCount">-</h3>
+                            <p class="text-xs text-slate-400">Registered</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-5 lg:p-6 rounded-2xl border border-slate-100 shadow-premium flex flex-col justify-between">
+                        <div class="flex items-start gap-4 mb-4 lg:mb-6">
+                            <div class="w-10 h-10 lg:w-12 lg:h-12 rounded-xl bg-green-100 text-green-600 flex items-center justify-center shrink-0">
+                                <i class="ph-fill ph-books text-xl lg:text-2xl"></i>
+                            </div>
+                            <p class="text-xs lg:text-sm font-medium text-slate-500">Courses</p>
+                        </div>
+                        <div>
+                            <h3 class="text-2xl lg:text-3xl font-bold text-slate-900 mb-1" id="courseCount">-</h3>
+                            <p class="text-xs text-slate-400">Teaching</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-5 lg:p-6 rounded-2xl border border-slate-100 shadow-premium flex flex-col justify-between">
+                        <div class="flex items-start gap-4 mb-4 lg:mb-6">
+                            <div class="w-10 h-10 lg:w-12 lg:h-12 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center shrink-0">
+                                <i class="ph-fill ph-pencil-simple text-xl lg:text-2xl"></i>
+                            </div>
+                            <p class="text-xs lg:text-sm font-medium text-slate-500">Questions</p>
+                        </div>
+                        <div>
+                            <h3 class="text-2xl lg:text-3xl font-bold text-slate-900 mb-1" id="questionCount">-</h3>
+                            <p class="text-xs text-slate-400">Uploaded</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-5 lg:p-6 rounded-2xl border border-slate-100 shadow-premium flex flex-col justify-between">
+                        <div class="flex items-start gap-4 mb-4 lg:mb-6">
+                            <div class="w-10 h-10 lg:w-12 lg:h-12 rounded-xl bg-orange-100 text-orange-500 flex items-center justify-center shrink-0">
+                                <i class="ph-fill ph-calendar-blank text-xl lg:text-2xl"></i>
+                            </div>
+                            <p class="text-xs lg:text-sm font-medium text-slate-500 leading-tight">Scheduled<br>Exams</p>
+                        </div>
+                        <div>
+                            <h3 class="text-2xl lg:text-3xl font-bold text-slate-900 mb-1" id="examCount">-</h3>
+                            <p class="text-xs text-slate-400">Upcoming</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Section -->
+                <div class="space-y-6 mb-8 dashboard-analytics">
+                    <div class="bg-white p-5 lg:p-6 rounded-2xl border border-slate-100 shadow-premium">
+                        <h3 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2"><i class="ph-fill ph-chart-pie text-blue-500"></i> Student Performance</h3>
+                        <div class="w-full h-64 flex justify-center items-center">
+                            <canvas id="performanceChart" class="w-full h-full"></canvas>
+                        </div>
+                    </div>
+                    <div class="bg-white p-5 lg:p-6 rounded-2xl border border-slate-100 shadow-premium">
+                        <h3 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2"><i class="ph-fill ph-chart-bar text-green-500"></i> Exam Trends</h3>
+                        <div class="w-full h-64 flex justify-center items-center">
+                            <canvas id="trendsChart" class="w-full h-full"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Welcome Banner -->
+                <div class="hidden lg:flex items-center justify-between bg-blue-50/50 border border-blue-100 rounded-2xl p-6 shadow-sm mb-6 relative overflow-hidden">
+                    <div class="flex-1 relative z-10">
+                        <h3 class="text-xl font-bold text-brand-dark mb-2"><i class="ph-fill ph-wave-sine text-blue-500"></i> Welcome back!</h3>
+                        <p class="text-sm text-slate-600 leading-relaxed max-w-2xl">
+                            Manage your students, upload and organize questions, schedule exams, and review results all from one dashboard.
+                        </p>
+                    </div>
+                    <i class="ph-fill ph-desktop text-7xl text-blue-500/20 absolute right-6 bottom-[-10px]"></i>
+                </div>
+            </div>
+
+            <!-- ========================================== -->
+            <!-- MY STUDENTS SECTION                        -->
+            <!-- ========================================== -->
+            <div id="studentsSection" class="section hidden relative">
+                <div id="studentsLoader" class="section-loader">
+                    <div class="spinner"></div>
+                    <span class="loader-text">Loading students...</span>
+                </div>
+                
+                <div class="mb-6 bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex gap-4 flex-wrap">
+                    <div class="flex-1 min-w-48">
+                        <label class="text-sm font-semibold text-slate-700 block mb-2">Filter by Level</label>
+                        <select id="levelFilter" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-lg focus:ring-brand-accent focus:border-brand-accent p-2.5">
+                            <option value="">All Levels</option>
+                            <option value="100">100</option>
+                            <option value="200">200</option>
+                            <option value="300">300</option>
+                            <option value="400">400</option>
+                        </select>
+                    </div>
+                    <div class="flex-1 min-w-48">
+                        <label class="text-sm font-semibold text-slate-700 block mb-2">Search Student</label>
+                        <input type="text" id="studentSearch" placeholder="Name or Matric Number" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-lg focus:ring-brand-accent focus:border-brand-accent p-2.5">
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto relative shadow-premium sm:rounded-2xl border border-slate-100 bg-white table-wrapper">
+                    <table class="w-full text-sm text-left text-slate-500" id="studentsTable">
+                        <thead class="text-xs text-slate-700 uppercase bg-slate-50 border-b border-slate-100">
+                            <tr>
+                                <th scope="col" class="py-4 px-6">Name</th>
+                                <th scope="col" class="py-4 px-6">Matric #</th>
+                                <th scope="col" class="py-4 px-6">Level</th>
+                                <th scope="col" class="py-4 px-6">Status</th>
+                                <th scope="col" class="py-4 px-6">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ========================================== -->
+            <!-- MY COURSES SECTION                         -->
+            <!-- ========================================== -->
+            <div id="coursesSection" class="section hidden relative">
+                <div id="coursesLoader" class="section-loader">
+                    <div class="spinner"></div>
+                    <span class="loader-text">Loading courses...</span>
+                </div>
+                
+                <div class="flex gap-3 mb-6 actions">
+                    <button class="flex items-center gap-2 bg-brand-accent hover:bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all shadow-sm" onclick="openModal('addCourseModal')">
+                        <i class="ph ph-plus-circle text-lg"></i> Add Course
+                    </button>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6" id="coursesGrid">
+                    <!-- Cards populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- ========================================== -->
+            <!-- QUESTIONS SECTION                          -->
+            <!-- ========================================== -->
+            <div id="questionsSection" class="section hidden relative">
+                <div id="questionsLoader" class="section-loader">
+                    <div class="spinner"></div>
+                    <span class="loader-text">Loading questions...</span>
+                </div>
+                
+                <div class="flex flex-wrap gap-3 mb-6 actions">
+                    <button class="flex items-center gap-2 bg-brand-accent hover:bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all shadow-sm" onclick="openModal('addQuestionModal')">
+                        <i class="ph ph-plus-circle text-lg"></i> Add Question
+                    </button>
+                    <button class="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all shadow-sm" onclick="openModal('bulkUploadModal')">
+                        <i class="ph ph-cloud-arrow-up text-lg"></i> Bulk Upload
+                    </button>
+                </div>
+                
+                <div class="mb-6 bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex items-center gap-4">
+                    <label for="courseSelect" class="text-sm font-semibold text-slate-700 whitespace-nowrap">Select Course:</label>
+                    <select id="courseSelect" class="bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-lg focus:ring-brand-accent focus:border-brand-accent block w-full max-w-sm p-2.5">
+                        <option value="">-- Select Course --</option>
+                    </select>
+                </div>
+
+                <div class="overflow-x-auto relative shadow-premium sm:rounded-2xl border border-slate-100 bg-white table-wrapper">
+                    <table class="w-full text-sm text-left text-slate-500" id="questionsTable">
+                        <thead class="text-xs text-slate-700 uppercase bg-slate-50 border-b border-slate-100">
+                            <tr>
+                                <th scope="col" class="py-4 px-6 w-1/3">Question</th>
+                                <th scope="col" class="py-4 px-6">Type</th>
+                                <th scope="col" class="py-4 px-6">Answer</th>
+                                <th scope="col" class="py-4 px-6">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ========================================== -->
+            <!-- EXAMS/SCHEDULES SECTION                    -->
+            <!-- ========================================== -->
+            <div id="schedulesSection" class="section hidden relative">
+                <div id="schedulesLoader" class="section-loader">
+                    <div class="spinner"></div>
+                    <span class="loader-text">Loading exams...</span>
+                </div>
+                
+                <div class="flex gap-3 mb-6 actions">
+                    <button class="flex items-center gap-2 bg-brand-accent hover:bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all shadow-sm" onclick="openModal('scheduleExamModal')">
+                        <i class="ph ph-plus-circle text-lg"></i> Schedule Exam
+                    </button>
+                </div>
+
+                <div class="overflow-x-auto relative shadow-premium sm:rounded-2xl border border-slate-100 bg-white table-wrapper">
+                    <table class="w-full text-sm text-left text-slate-500" id="schedulesTable">
+                        <thead class="text-xs text-slate-700 uppercase bg-slate-50 border-b border-slate-100">
+                            <tr>
+                                <th scope="col" class="py-4 px-6">Course</th>
+                                <th scope="col" class="py-4 px-6">Level(s)</th>
+                                <th scope="col" class="py-4 px-6">Start Date</th>
+                                <th scope="col" class="py-4 px-6">End Date</th>
+                                <th scope="col" class="py-4 px-6">Duration</th>
+                                <th scope="col" class="py-4 px-6">Status</th>
+                                <th scope="col" class="py-4 px-6">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ========================================== -->
+            <!-- RESULTS SECTION                            -->
+            <!-- ========================================== -->
+            <div id="resultsSection" class="section hidden relative">
+                <div id="resultsLoader" class="section-loader">
+                    <div class="spinner"></div>
+                    <span class="loader-text">Loading results...</span>
+                </div>
+                
+                <div class="mb-6 bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex gap-4 flex-wrap">
+                    <div class="flex-1 min-w-48">
+                        <label class="text-sm font-semibold text-slate-700 block mb-2">Filter by Exam</label>
+                        <select id="examFilter" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-lg focus:ring-brand-accent focus:border-brand-accent p-2.5">
+                            <option value="">All Exams</option>
+                        </select>
+                    </div>
+                    <div class="flex items-end">
+                        <button class="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all shadow-sm">
+                            <i class="ph ph-download text-lg"></i> Export
+                        </button>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto relative shadow-premium sm:rounded-2xl border border-slate-100 bg-white table-wrapper">
+                    <table class="w-full text-sm text-left text-slate-500" id="resultsTable">
+                        <thead class="text-xs text-slate-700 uppercase bg-slate-50 border-b border-slate-100">
+                            <tr>
+                                <th scope="col" class="py-4 px-6">Student</th>
+                                <th scope="col" class="py-4 px-6">Exam</th>
+                                <th scope="col" class="py-4 px-6">Score</th>
+                                <th scope="col" class="py-4 px-6">Grade</th>
+                                <th scope="col" class="py-4 px-6">Submitted</th>
+                                <th scope="col" class="py-4 px-6">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ========================================== -->
+            <!-- GRADING SECTION                            -->
+            <!-- ========================================== -->
+            <div id="gradingSection" class="section hidden relative">
+                <div id="gradingLoader" class="section-loader">
+                    <div class="spinner"></div>
+                    <span class="loader-text">Loading grading stats...</span>
+                </div>
+                
+                <div class="grid md:grid-cols-3 gap-4 mb-6">
+                    <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                        <p class="text-xs text-slate-600 mb-2">Average Score</p>
+                        <h3 class="text-2xl font-bold text-slate-900" id="avgScore">--</h3>
+                        <p class="text-xs text-slate-400 mt-1">Across all exams</p>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                        <p class="text-xs text-slate-600 mb-2">Pass Rate</p>
+                        <h3 class="text-2xl font-bold text-green-600" id="passRate">--%</h3>
+                        <p class="text-xs text-slate-400 mt-1">Score ≥ 40%</p>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                        <p class="text-xs text-slate-600 mb-2">Submissions</p>
+                        <h3 class="text-2xl font-bold text-slate-900" id="totalSubmissions">0</h3>
+                        <p class="text-xs text-slate-400 mt-1">Total completed</p>
+                    </div>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6 mb-6">
+                    <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-premium">
+                        <h3 class="text-lg font-bold text-slate-900 mb-4">Grade Distribution</h3>
+                        <div class="w-full h-64 flex justify-center items-center">
+                            <canvas id="gradeChart" class="w-full h-full"></canvas>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-premium">
+                        <h3 class="text-lg font-bold text-slate-900 mb-4">Performance by Level</h3>
+                        <div class="w-full h-64 flex justify-center items-center">
+                            <canvas id="levelChart" class="w-full h-full"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========================================== -->
+            <!-- REPORTS SECTION                            -->
+            <!-- ========================================== -->
+            <div id="reportsSection" class="section hidden relative">
+                <div id="reportsLoader" class="section-loader hidden">
+                    <div class="spinner"></div>
+                    <span class="loader-text">Loading reports...</span>
+                </div>
+                
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-premium">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                                <i class="ph-fill ph-chart-bar text-blue-600 text-lg"></i>
+                            </div>
+                            <h3 class="text-lg font-bold text-slate-900">Performance Report</h3>
+                        </div>
+                        <p class="text-sm text-slate-600 mb-4">Generate detailed student performance reports across all exams.</p>
+                        <button class="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all">
+                            <i class="ph ph-download"></i> Generate
+                        </button>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-premium">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                                <i class="ph-fill ph-chart-pie text-green-600 text-lg"></i>
+                            </div>
+                            <h3 class="text-lg font-bold text-slate-900">Grade Distribution Report</h3>
+                        </div>
+                        <p class="text-sm text-slate-600 mb-4">View grade statistics and distribution across your students.</p>
+                        <button class="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all">
+                            <i class="ph ph-download"></i> Generate
+                        </button>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-premium">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                                <i class="ph-fill ph-calendar-blank text-purple-600 text-lg"></i>
+                            </div>
+                            <h3 class="text-lg font-bold text-slate-900">Exam Activity Report</h3>
+                        </div>
+                        <p class="text-sm text-slate-600 mb-4">Track exam scheduling, participation, and submission statistics.</p>
+                        <button class="w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all">
+                            <i class="ph ph-download"></i> Generate
+                        </button>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-premium">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+                                <i class="ph-fill ph-users text-orange-600 text-lg"></i>
+                            </div>
+                            <h3 class="text-lg font-bold text-slate-900">Student Attendance Report</h3>
+                        </div>
+                        <p class="text-sm text-slate-600 mb-4">Monitor which students participated in exams.</p>
+                        <button class="w-full flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all">
+                            <i class="ph ph-download"></i> Generate
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- MOBILE BOTTOM NAVIGATION -->
+    <div class="mobile-bottom-nav">
+        <div class="mobile-nav-item active" onclick="showSectionFromMobileNav('dashboard', this)">
+            <i class="ph-fill ph-squares-four"></i>
+            <span>Home</span>
+        </div>
+        <div class="mobile-nav-item" onclick="showSectionFromMobileNav('students', this)">
+            <i class="ph ph-users"></i>
+            <span>Students</span>
+        </div>
+        <div class="mobile-nav-item" onclick="showSectionFromMobileNav('questions', this)">
+            <i class="ph ph-pencil-simple"></i>
+            <span>Questions</span>
+        </div>
+        <div class="mobile-nav-item" onclick="showSectionFromMobileNav('results', this)">
+            <i class="ph ph-chart-bar"></i>
+            <span>Results</span>
+        </div>
+        <div class="mobile-nav-item" onclick="showSectionFromMobileNav('more', this)">
+            <i class="ph ph-list"></i>
+            <span>More</span>
+        </div>
+    </div>
+
+    <!-- MODALS -->
+
+    <!-- Add Question Modal -->
+    <div id="addQuestionModal" class="modal-backdrop hidden" onclick="if(event.target.id === 'addQuestionModal') closeModal('addQuestionModal')">
+        <div class="modal" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <div class="modal-icon"><i class="ph ph-pencil-simple"></i></div>
+                    <div>
+                        <h2>Add Question</h2>
+                        <p>Create a new question for your course</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('addQuestionModal')" class="close-modal"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Select Course</label>
+                    <select id="qCourseSelect" required>
+                        <option value="">-- Select Course --</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Question</label>
+                    <textarea id="questionText" placeholder="Enter question here" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Question Type</label>
+                    <select id="questionType" required>
+                        <option value="multiple_choice">Multiple Choice</option>
+                        <option value="true_false">True/False</option>
+                        <option value="short_answer">Short Answer</option>
+                    </select>
+                </div>
+                <div id="optionsContainer" class="form-group">
+                    <label>Options (for Multiple Choice)</label>
+                    <div id="optionsList"></div>
+                    <button type="button" onclick="addOptionField()" class="btn btn-secondary" style="margin-top: 10px; width: 100%;">Add Option</button>
+                </div>
+                <div class="form-group">
+                    <label>Correct Answer</label>
+                    <input type="text" id="correctAnswer" placeholder="Enter correct answer" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeModal('addQuestionModal')" class="btn btn-secondary">Cancel</button>
+                <button onclick="saveQuestion()" class="btn btn-primary">Save Question</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Upload Modal -->
+    <div id="bulkUploadModal" class="modal-backdrop hidden" onclick="if(event.target.id === 'bulkUploadModal') closeModal('bulkUploadModal')">
+        <div class="modal" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <div class="modal-icon"><i class="ph ph-cloud-arrow-up"></i></div>
+                    <div>
+                        <h2>Bulk Upload</h2>
+                        <p>Upload multiple questions at once</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('bulkUploadModal')" class="close-modal"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Select Course</label>
+                    <select id="bulkCourseSelect" required>
+                        <option value="">-- Select Course --</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Upload CSV File</label>
+                    <input type="file" id="csvFile" accept=".csv" required>
+                    <p class="text-xs text-slate-500 mt-2">CSV format: Question | Type | Options (comma-separated) | Correct Answer</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeModal('bulkUploadModal')" class="btn btn-secondary">Cancel</button>
+                <button onclick="uploadBulkQuestions()" class="btn btn-primary">Upload</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Course Modal -->
+    <div id="addCourseModal" class="modal-backdrop hidden" onclick="if(event.target.id === 'addCourseModal') closeModal('addCourseModal')">
+        <div class="modal" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <div class="modal-icon"><i class="ph ph-books"></i></div>
+                    <div>
+                        <h2>Add Course</h2>
+                        <p>Create a new course</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('addCourseModal')" class="close-modal"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Course Code</label>
+                    <input type="text" id="courseCode" placeholder="e.g., CS101" required>
+                </div>
+                <div class="form-group">
+                    <label>Course Title</label>
+                    <input type="text" id="courseTitle" placeholder="e.g., Introduction to Programming" required>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="courseDesc" placeholder="Course description" required></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeModal('addCourseModal')" class="btn btn-secondary">Cancel</button>
+                <button onclick="saveCourse()" class="btn btn-primary">Save Course</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Schedule Exam Modal -->
+    <div id="scheduleExamModal" class="modal-backdrop hidden" onclick="if(event.target.id === 'scheduleExamModal') closeModal('scheduleExamModal')">
+        <div class="modal" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <div class="modal-icon"><i class="ph ph-calendar-blank"></i></div>
+                    <div>
+                        <h2>Schedule Exam</h2>
+                        <p>Create a new exam schedule</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('scheduleExamModal')" class="close-modal"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Select Course</label>
+                    <select id="examCourseSelect" required>
+                        <option value="">-- Select Course --</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Exam Title</label>
+                    <input type="text" id="examTitle" placeholder="e.g., Midterm" required>
+                </div>
+                <div class="form-group">
+                    <label>Start Date & Time</label>
+                    <input type="datetime-local" id="examStart" required>
+                </div>
+                <div class="form-group">
+                    <label>End Date & Time</label>
+                    <input type="datetime-local" id="examEnd" required>
+                </div>
+                <div class="form-group">
+                    <label>Levels</label>
+                    <select id="examLevels" multiple required>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                        <option value="300">300</option>
+                        <option value="400">400</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeModal('scheduleExamModal')" class="btn btn-secondary">Cancel</button>
+                <button onclick="scheduleExam()" class="btn btn-primary">Schedule</button>
+            </div>
+        </div>
+    </div>
+<script>
+    const API_BASE_URL = 'https://examguide.onrender.com/api'; // UPDATE WITH YOUR BACKEND URL
+    let currentLecturerId = null;
+    let performanceChart = null;
+    let trendsChart = null;
+    let gradeChart = null;
+    let levelChart = null;
+
+    // Loader Management
+    function showLoader(sectionName) {
+        const loaderId = sectionName + 'Loader';
+        const loader = document.getElementById(loaderId);
+        if (loader) {
+            loader.classList.remove('hidden');
+        }
+    }
+
+    function hideLoader(sectionName) {
+        const loaderId = sectionName + 'Loader';
+        const loader = document.getElementById(loaderId);
+        if (loader) {
+            loader.classList.add('hidden');
+        }
+    }
+
+    // Button Loader Management
+    function showButtonLoader(button) {
+        if (!button) return;
+        button.disabled = true;
+        button.classList.add('opacity-80', 'cursor-not-allowed');
+        const spinner = button.querySelector('.spinner-sm');
+        const text = button.querySelector('span');
+        if (spinner) spinner.classList.remove('hidden');
+        if (text) text.textContent = text.getAttribute('data-loading-text') || 'Loading...';
+    }
+
+    function hideButtonLoader(button) {
+        if (!button) return;
+        button.disabled = false;
+        button.classList.remove('opacity-80', 'cursor-not-allowed');
+        const spinner = button.querySelector('.spinner-sm');
+        const text = button.querySelector('span');
+        if (spinner) spinner.classList.add('hidden');
+        if (text) text.textContent = text.getAttribute('data-original-text') || 'Submit';
+    }
+
+    // Get Token Helper
+    function getAuthToken() {
+        return localStorage.getItem('student_jwt_token') || localStorage.getItem('token');
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+        initializeDashboard();
+    });
+
+    async function initializeDashboard() {
+        try {
+            showLoader('dashboard');
+            await loadLecturerInfo();
+            await loadDashboardStats();
+            setupEventListeners();
+        } catch (error) {
+            console.error('Failed to initialize dashboard:', error);
+            alert('Failed to initialize dashboard. Please check your connection and backend URL.');
+        } finally {
+            hideLoader('dashboard');
+        }
+    }
+
+    async function loadLecturerInfo() {
+        try {
+            const token = getAuthToken();
+
+            if (!token) {
+                throw new Error("No authentication token found.");
+            }
+
+            const response = await fetch(`${API_BASE_URL}/lecturer/profile`, {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                }
+            });
+
+            if (response.status === 401) {
+                throw new Error("Session expired. Please login again.");
+            }
+
+            if (response.status === 403) {
+                throw new Error("Access denied. This account is not a lecturer.");
+            }
+
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                throw new Error(error.message || "Failed to fetch lecturer profile.");
+            }
+
+            const data = await response.json();
+
+            console.log("Lecturer Profile:", data);
+
+            currentLecturerId = data._id;
+
+            document.getElementById("lecturerName").textContent =
+                data.name || "Lecturer";
+
+            document.getElementById("lecturerNameSidebar").textContent =
+                data.name || "Lecturer";
+
+            return data;
+
+        } catch (err) {
+            console.error("loadLecturerInfo:", err);
+
+            document.getElementById("lecturerName").textContent = "Lecturer";
+            document.getElementById("lecturerNameSidebar").textContent = "Lecturer";
+
+            alert(err.message);
+            return null;
+        }
+    }
+
+    async function loadDashboardStats() {
+        try {
+            const token = getAuthToken();
+
+            if (!token) {
+                throw new Error("No authentication token found.");
+            }
+
+            const response = await fetch(`${API_BASE_URL}/lecturer/dashboard/stats`, {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                }
+            });
+
+            if (response.status === 401) {
+                throw new Error("Session expired. Please login again.");
+            }
+
+            if (response.status === 403) {
+                throw new Error("Access denied. Lecturer account required.");
+            }
+
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                throw new Error(error.message || "Failed to fetch dashboard statistics.");
+            }
+
+            const data = await response.json();
+
+            console.log("Dashboard Stats:", data);
+
+            document.getElementById("studentCount").textContent = data.studentCount ?? 0;
+            document.getElementById("courseCount").textContent = data.courseCount ?? 0;
+            document.getElementById("questionCount").textContent = data.questionCount ?? 0;
+            document.getElementById("examCount").textContent = data.examCount ?? 0;
+
+            loadCharts(data);
+
+        } catch (error) {
+            console.error("Error loading dashboard stats:", error);
+
+            document.getElementById("studentCount").textContent = 0;
+            document.getElementById("courseCount").textContent = 0;
+            document.getElementById("questionCount").textContent = 0;
+            document.getElementById("examCount").textContent = 0;
+        }
+    }
+
+    function loadCharts(data) {
+        // Load Performance Chart
+        const performanceCtx = document.getElementById('performanceChart');
+        if (performanceCtx) {
+            if (performanceChart) performanceChart.destroy();
+            performanceChart = new Chart(performanceCtx, {
+                type: 'pie',
+                data: {
+                    labels: data.performanceLabels || ['Excellent', 'Good', 'Average', 'Poor'],
+                    datasets: [{
+                        data: data.performanceData || [0, 0, 0, 0],
+                        backgroundColor: ['#10b981', '#3b82f6', '#f59e0b', '#ef4444']
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        // Load Trends Chart
+        const trendsCtx = document.getElementById('trendsChart');
+        if (trendsCtx) {
+            if (trendsChart) trendsChart.destroy();
+            trendsChart = new Chart(trendsCtx, {
+                type: 'line',
+                data: {
+                    labels: data.trendLabels || [],
+                    datasets: [{
+                        label: 'Average Score',
+                        data: data.trendData || [],
+                        borderColor: '#3b82f6',
+                        tension: 0.4
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        // Load Grade Chart
+        const gradeCtx = document.getElementById('gradeChart');
+        if (gradeCtx) {
+            if (gradeChart) gradeChart.destroy();
+            gradeChart = new Chart(gradeCtx, {
+                type: 'bar',
+                data: {
+                    labels: data.gradeLabels || ['A', 'B', 'C', 'D', 'F'],
+                    datasets: [{
+                        label: 'Count',
+                        data: data.gradeData || [0, 0, 0, 0, 0],
+                        backgroundColor: '#7c3aed'
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        // Load Level Chart
+        const levelCtx = document.getElementById('levelChart');
+        if (levelCtx) {
+            if (levelChart) levelChart.destroy();
+            levelChart = new Chart(levelCtx, {
+                type: 'bar',
+                data: {
+                    labels: data.levelLabels || ['100', '200', '300', '400'],
+                    datasets: [{
+                        label: 'Average Score',
+                        data: data.levelData || [0, 0, 0, 0],
+                        backgroundColor: '#06b6d4'
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+    }
+
+    async function loadStudents() {
+        try {
+            showLoader("students");
+
+            const token = getAuthToken();
+
+            if (!token) {
+                throw new Error("No authentication token found.");
+            }
+
+            const response = await fetch(`${API_BASE_URL}/lecturer/students`, {
+                method: "GET",
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json"
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch students (${response.status})`);
+            }
+
+            const data = await response.json();
+            const students = data.students || [];
+
+            const tbody = document.querySelector("#studentsTable tbody");
+            tbody.innerHTML = "";
+
+            if (students.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="text-center py-4 text-slate-500">
+                            No students found
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            students.forEach(student => {
+                tbody.innerHTML += `
+                    <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                        <td class="py-4 px-6 font-medium">${student.name || "N/A"}</td>
+                        <td class="py-4 px-6">${student.matricNumber || "N/A"}</td>
+                        <td class="py-4 px-6">${student.level || "N/A"}</td>
+                        <td class="py-4 px-6">
+                            <span class="badge-status ${
+                                student.status === "Active"
+                                    ? "badge-active"
+                                    : "badge-inactive"
+                            }">
+                                ${student.status || "Inactive"}
+                            </span>
+                        </td>
+                        <td class="py-4 px-6">
+                            <button class="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                                View
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+        } catch (error) {
+            console.error("Error loading students:", error);
+
+            document.querySelector("#studentsTable tbody").innerHTML = `
+                <tr>
+                    <td colspan="5" class="text-center py-4 text-red-500">
+                        Failed to load students: ${error.message}
+                    </td>
+                </tr>
+            `;
+        } finally {
+            hideLoader("students");
+        }
+    }
+
+    async function loadCourses() {
+        try {
+            showLoader("courses");
+
+            const token = getAuthToken();
+
+            if (!token) {
+                throw new Error("No authentication token found.");
+            }
+
+            const response = await fetch(`${API_BASE_URL}/lecturer/courses`, {
+                method: "GET",
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json"
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch courses (${response.status})`);
+            }
+
+            const data = await response.json();
+            const courses = data.courses || [];
+
+            const coursesGrid = document.getElementById("coursesGrid");
+            coursesGrid.innerHTML = "";
+
+            if (courses.length === 0) {
+                coursesGrid.innerHTML =
+                    '<p class="text-slate-500">No courses found. Click "Add Course" to create one.</p>';
+                populateCourseSelects([]);
+                return;
+            }
+
+            courses.forEach(course => {
+                coursesGrid.innerHTML += `
+                    <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-premium hover:shadow-lg transition-all">
+                        <div class="flex items-start justify-between mb-4">
+                            <div>
+                                <h3 class="text-lg font-bold text-slate-900">${course.code || "N/A"}</h3>
+                                <p class="text-sm text-slate-600">${course.title || "N/A"}</p>
+                            </div>
+                            <span class="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-semibold rounded-lg">
+                                ${course.students || 0} students
+                            </span>
+                        </div>
+
+                        <p class="text-sm text-slate-600 mb-4">
+                            ${course.description || "No description"}
+                        </p>
+
+                        <div class="flex gap-2">
+                            <button class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition">
+                                Edit
+                            </button>
+
+                            <button class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-900 px-3 py-2 rounded-lg text-sm font-medium transition">
+                                View
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+
+            populateCourseSelects(courses);
+
+        } catch (error) {
+            console.error("Error loading courses:", error);
+
+            document.getElementById("coursesGrid").innerHTML =
+                `<p class="text-red-500">Failed to load courses: ${error.message}</p>`;
+        } finally {
+            hideLoader("courses");
+        }
+    }
+
+    function populateCourseSelects(courses) {
+        const selects = ['qCourseSelect', 'bulkCourseSelect', 'examCourseSelect', 'courseSelect'];
+        selects.forEach(selectId => {
+            const select = document.getElementById(selectId);
+            if (select) {
+                const currentValue = select.value;
+                select.innerHTML = '<option value="">-- Select Course --</option>';
+                courses.forEach(course => {
+                    const option = document.createElement('option');
+                    option.value = course._id;
+                    option.textContent = `${course.code || 'N/A'} - ${course.title || 'N/A'}`;
+                    select.appendChild(option);
+                });
+                select.value = currentValue;
+            }
+        });
+    }
+
+    async function loadQuestions() {
+        try {
+            showLoader("questions");
+
+            const courseId = document.getElementById("courseSelect")?.value;
+
+            if (!courseId) {
+                document.querySelector("#questionsTable tbody").innerHTML = `
+                    <tr>
+                        <td colspan="4" class="text-center py-4 text-slate-500">
+                            Please select a course first
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            const token = getAuthToken();
+
+            if (!token) {
+                throw new Error("No authentication token found.");
+            }
+
+            const response = await fetch(
+                `${API_BASE_URL}/lecturer/questions?course=${courseId}`,
+                {
+                    method: "GET",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json"
+                    }
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch questions (${response.status})`);
+            }
+
+            const data = await response.json();
+            const questions = data.questions || [];
+
+            const tbody = document.querySelector("#questionsTable tbody");
+            tbody.innerHTML = "";
+
+            if (questions.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="text-center py-4 text-slate-500">
+                            No questions found
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            questions.forEach(question => {
+                tbody.innerHTML += `
+                    <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                        <td class="py-4 px-6">
+                            ${(question.question || question.text || "N/A").substring(0, 50)}...
+                        </td>
+
+                        <td class="py-4 px-6">
+                            ${question.type || "N/A"}
+                        </td>
+
+                        <td class="py-4 px-6">
+                            ${question.answer || "N/A"}
+                        </td>
+
+                        <td class="py-4 px-6 flex gap-2">
+                            <button class="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                                Edit
+                            </button>
+
+                            <button onclick="deleteQuestion('${question._id}')" class="text-red-600 hover:text-red-800 text-sm font-medium">
+                                Delete
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+        } catch (error) {
+            console.error("Error loading questions:", error);
+
+            document.querySelector("#questionsTable tbody").innerHTML = `
+                <tr>
+                    <td colspan="4" class="text-center py-4 text-red-500">
+                        Failed to load questions: ${error.message}
+                    </td>
+                </tr>
+            `;
+        } finally {
+            hideLoader("questions");
+        }
+    }
+
+    async function loadExams() {
+        try {
+            showLoader('schedules');
+            
+            const token = getAuthToken();
+
+            if (!token) {
+                throw new Error("No authentication token found.");
+            }
+
+            const response = await fetch(`${API_BASE_URL}/lecturer/exams`, {
+                method: 'GET',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) throw new Error(`Failed to fetch exams (${response.status})`);
+            
+            const data = await response.json();
+            const exams = data.exams || [];
+            
+            const tbody = document.querySelector('#schedulesTable tbody');
+            tbody.innerHTML = '';
+            
+            if (exams.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-slate-500">No exams found</td></tr>';
+                return;
+            }
+            
+            exams.forEach(exam => {
+                const startDate = new Date(exam.startDate).toLocaleDateString();
+                const endDate = new Date(exam.endDate).toLocaleDateString();
+                const row = `
+                    <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                        <td class="py-4 px-6 font-medium">${exam.title || 'N/A'}</td>
+                        <td class="py-4 px-6">${exam.levels?.join(', ') || 'All'}</td>
+                        <td class="py-4 px-6">${startDate}</td>
+                        <td class="py-4 px-6">${endDate}</td>
+                        <td class="py-4 px-6">${exam.duration || 'N/A'} mins</td>
+                        <td class="py-4 px-6">
+                            <span class="badge-status ${exam.status === 'scheduled' ? 'badge-active' : 'badge-inactive'}">
+                                ${exam.status || 'scheduled'}
+                            </span>
+                        </td>
+                        <td class="py-4 px-6">
+                            <button class="text-blue-600 hover:text-blue-800 text-sm font-medium">Edit</button>
+                        </td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+        } catch (error) {
+            console.error('Error loading exams:', error);
+            document.querySelector('#schedulesTable tbody').innerHTML = `<tr><td colspan="7" class="text-center py-4 text-red-500">Failed to load exams: ${error.message}</td></tr>`;
+        } finally {
+            hideLoader('schedules');
+        }
+    }
+
+    async function loadResults() {
+        try {
+            showLoader('results');
+            
+            const token = getAuthToken();
+
+            if (!token) {
+                throw new Error("No authentication token found.");
+            }
+
+            const response = await fetch(`${API_BASE_URL}/lecturer/results`, {
+                method: 'GET',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) throw new Error(`Failed to fetch results (${response.status})`);
+            
+            const data = await response.json();
+            const results = data.results || [];
+            
+            const tbody = document.querySelector('#resultsTable tbody');
+            tbody.innerHTML = '';
+            
+            if (results.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-slate-500">No results found</td></tr>';
+                return;
+            }
+            
+            results.forEach(result => {
+                const submittedDate = new Date(result.submitted).toLocaleDateString();
+                const row = `
+                    <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                        <td class="py-4 px-6 font-medium">${result.student || 'N/A'}</td>
+                        <td class="py-4 px-6">${result.exam || 'N/A'}</td>
+                        <td class="py-4 px-6 font-semibold">${result.score || 0}</td>
+                        <td class="py-4 px-6">${result.grade || 'N/A'}</td>
+                        <td class="py-4 px-6">${submittedDate}</td>
+                        <td class="py-4 px-6">
+                            <button class="text-blue-600 hover:text-blue-800 text-sm font-medium">View</button>
+                        </td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+        } catch (error) {
+            console.error('Error loading results:', error);
+            document.querySelector('#resultsTable tbody').innerHTML = `<tr><td colspan="6" class="text-center py-4 text-red-500">Failed to load results: ${error.message}</td></tr>`;
+        } finally {
+            hideLoader('results');
+        }
+    }
+
+    async function loadGradingStats() {
+        try {
+            showLoader('grading');
+            
+            const token = getAuthToken();
+
+            if (!token) {
+                throw new Error("No authentication token found.");
+            }
+
+            const response = await fetch(`${API_BASE_URL}/lecturer/grading/stats`, {
+                method: 'GET',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) throw new Error(`Failed to fetch grading stats (${response.status})`);
+            
+            const stats = await response.json();
+            
+            document.getElementById('avgScore').textContent = (stats.averageScore || 0).toFixed(1);
+            document.getElementById('passRate').textContent = (stats.passRate || 0).toFixed(1) + '%';
+            document.getElementById('totalSubmissions').textContent = stats.totalSubmissions || 0;
+
+            // Load grading charts
+            loadGradingCharts(stats);
+        } catch (error) {
+            console.error('Error loading grading stats:', error);
+            document.getElementById('avgScore').textContent = '0.0';
+            document.getElementById('passRate').textContent = '0.0%';
+            document.getElementById('totalSubmissions').textContent = '0';
+        } finally {
+            hideLoader('grading');
+        }
+    }
+
+    function loadGradingCharts(stats) {
+        // Grade Distribution Chart
+        const gradeCtx = document.getElementById('gradeChart');
+        if (gradeCtx) {
+            if (gradeChart) gradeChart.destroy();
+            gradeChart = new Chart(gradeCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['A', 'B', 'C', 'D', 'F'],
+                    datasets: [{
+                        label: 'Students',
+                        data: [
+                            stats.gradeDistribution?.A || 0,
+                            stats.gradeDistribution?.B || 0,
+                            stats.gradeDistribution?.C || 0,
+                            stats.gradeDistribution?.D || 0,
+                            stats.gradeDistribution?.F || 0
+                        ],
+                        backgroundColor: ['#10b981', '#3b82f6', '#f59e0b', '#f97316', '#ef4444'],
+                        borderRadius: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+        }
+
+        // Level Performance Chart
+        const levelCtx = document.getElementById('levelChart');
+        if (levelCtx) {
+            if (levelChart) levelChart.destroy();
+            levelChart = new Chart(levelCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['100L', '200L', '300L', '400L', '500L'],
+                    datasets: [{
+                        label: 'Average Score',
+                        data: [0, 0, 0, 0, 0],
+                        backgroundColor: '#06b6d4',
+                        borderRadius: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, max: 100 }
+                    }
+                }
+            });
+        }
+    }
+
+    async function saveQuestion() {
+        try {
+            const btn = event.target.closest('button');
+            showButtonLoader(btn);
+
+            const courseId = document.getElementById('qCourseSelect').value;
+            const questionText = document.getElementById('questionText').value;
+            const questionType = document.getElementById('questionType').value;
+            const correctAnswer = document.getElementById('correctAnswer').value;
+            const options = getOptionValues();
+
+            if (!courseId || !questionText || !correctAnswer) {
+                alert('Please fill in all required fields');
+                hideButtonLoader(btn);
+                return;
+            }
+
+            const token = getAuthToken();
+
+            if (!token) {
+                throw new Error("No authentication token found.");
+            }
+
+            const questionData = {
+                course: courseId,
+                question: questionText,
+                type: questionType,
+                answer: correctAnswer,
+                options: options
+            };
+
+            const response = await fetch(`${API_BASE_URL}/lecturer/questions`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(questionData)
+            });
+
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                throw new Error(error.message || 'Failed to save question');
+            }
+
+            closeModal('addQuestionModal');
+            loadQuestions();
+            alert('Question saved successfully!');
+            document.getElementById('questionText').value = '';
+            document.getElementById('correctAnswer').value = '';
+            document.getElementById('optionsList').innerHTML = '';
+
+        } catch (error) {
+            console.error('Error saving question:', error);
+            alert('Failed to save question: ' + error.message);
+        } finally {
+            hideButtonLoader(event.target.closest('button'));
+        }
+    }
+
+    async function deleteQuestion(questionId) {
+        if (!confirm('Are you sure you want to delete this question?')) return;
+
+        try {
+            const token = getAuthToken();
+
+            if (!token) {
+                throw new Error("No authentication token found.");
+            }
+
+            const response = await fetch(`${API_BASE_URL}/lecturer/questions/${questionId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                throw new Error(error.message || 'Failed to delete question');
+            }
+
+            loadQuestions();
+            alert('Question deleted successfully!');
+
+        } catch (error) {
+            console.error('Error deleting question:', error);
+            alert('Failed to delete question: ' + error.message);
+        }
+    }
+
+    async function uploadBulkQuestions() {
+        try {
+            const btn = event.target.closest('button');
+            showButtonLoader(btn);
+
+            const courseId = document.getElementById('bulkCourseSelect').value;
+            const file = document.getElementById('csvFile').files[0];
+            
+            if (!courseId || !file) {
+                alert('Please select a course and file');
+                hideButtonLoader(btn);
+                return;
+            }
+
+            const token = getAuthToken();
+
+            if (!token) {
+                throw new Error("No authentication token found.");
+            }
+
+            const formData = new FormData();
+            formData.append('course', courseId);
+            formData.append('file', file);
+
+            const response = await fetch(`${API_BASE_URL}/lecturer/questions/bulk`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: formData
+            });
+
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                throw new Error(error.message || 'Failed to upload questions');
+            }
+            
+            closeModal('bulkUploadModal');
+            loadQuestions();
+            alert('Questions uploaded successfully!');
+            document.getElementById('csvFile').value = '';
+
+        } catch (error) {
+            console.error('Error uploading questions:', error);
+            alert('Failed to upload questions: ' + error.message);
+        } finally {
+            hideButtonLoader(event.target.closest('button'));
+        }
+    }
+
+    async function saveCourse() {
+        try {
+            const btn = event.target.closest('button');
+            showButtonLoader(btn);
+
+            const courseCode = document.getElementById('courseCode').value;
+            const courseTitle = document.getElementById('courseTitle').value;
+            const courseDesc = document.getElementById('courseDesc').value;
+
+            if (!courseTitle) {
+                alert('Course title is required');
+                hideButtonLoader(btn);
+                return;
+            }
+
+            const token = getAuthToken();
+
+            if (!token) {
+                throw new Error("No authentication token found.");
+            }
+
+            const courseData = {
+                code: courseCode,
+                title: courseTitle,
+                description: courseDesc
+            };
+
+            const response = await fetch(`${API_BASE_URL}/lecturer/courses`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(courseData)
+            });
+
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                throw new Error(error.message || 'Failed to save course');
+            }
+            
+            closeModal('addCourseModal');
+            loadCourses();
+            alert('Course saved successfully!');
+            document.getElementById('courseCode').value = '';
+            document.getElementById('courseTitle').value = '';
+            document.getElementById('courseDesc').value = '';
+
+        } catch (error) {
+            console.error('Error saving course:', error);
+            alert('Failed to save course: ' + error.message);
+        } finally {
+            hideButtonLoader(event.target.closest('button'));
+        }
+    }
+
+    async function scheduleExam() {
+        try {
+            const btn = event.target.closest('button');
+            showButtonLoader(btn);
+
+            const courseId = document.getElementById('examCourseSelect').value;
+            const examTitle = document.getElementById('examTitle').value;
+            const startDate = document.getElementById('examStart').value;
+            const endDate = document.getElementById('examEnd').value;
+            const levelSelect = document.getElementById('examLevels');
+            const levels = levelSelect ? Array.from(levelSelect.selectedOptions).map(o => o.value) : [];
+
+            if (!courseId || !examTitle || !startDate || !endDate) {
+                alert('Please fill in all required fields');
+                hideButtonLoader(btn);
+                return;
+            }
+
+            const token = getAuthToken();
+
+            if (!token) {
+                throw new Error("No authentication token found.");
+            }
+
+            const examData = {
+                course: courseId,
+                title: examTitle,
+                startDate: startDate,
+                endDate: endDate,
+                duration: 60,
+                levels: levels
+            };
+
+            const response = await fetch(`${API_BASE_URL}/lecturer/exams`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(examData)
+            });
+
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                throw new Error(error.message || 'Failed to schedule exam');
+            }
+            
+            closeModal('scheduleExamModal');
+            loadExams();
+            alert('Exam scheduled successfully!');
+            document.getElementById('examTitle').value = '';
+            document.getElementById('examStart').value = '';
+            document.getElementById('examEnd').value = '';
+
+        } catch (error) {
+            console.error('Error scheduling exam:', error);
+            alert('Failed to schedule exam: ' + error.message);
+        } finally {
+            hideButtonLoader(event.target.closest('button'));
+        }
+    }
+
+    function getOptionValues() {
+        const optionsList = document.getElementById('optionsList');
+        const options = [];
+        optionsList.querySelectorAll('input').forEach(input => {
+            if (input.value.trim()) options.push(input.value.trim());
+        });
+        return options;
+    }
+
+    function addOptionField() {
+        const optionsList = document.getElementById('optionsList');
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = 'Option';
+        input.className = 'w-full border border-slate-200 rounded-lg p-2 mb-2';
+        optionsList.appendChild(input);
+    }
+
+    function showSection(sectionName, element) {
+        document.querySelectorAll('.section').forEach(s => s.classList.add('hidden'));
+        const section = document.getElementById(sectionName + 'Section');
+        if (section) {
+            section.classList.remove('hidden');
+        }
+        
+        document.querySelectorAll('.sidebar-link').forEach(link => {
+            link.classList.remove('active', 'bg-brand-active', 'text-white');
+            link.classList.add('text-slate-300');
+            const indicator = link.querySelector('.indicator');
+            if (indicator) indicator.classList.add('opacity-0');
+        });
+        
+        if (element) {
+            element.classList.add('active', 'bg-brand-active', 'text-white');
+            element.classList.remove('text-slate-300');
+            const indicator = element.querySelector('.indicator');
+            if (indicator) indicator.classList.remove('opacity-0');
+        }
+        
+        updatePageTitle(sectionName);
+        
+        // Load section data
+        if (sectionName === 'students') loadStudents();
+        else if (sectionName === 'courses') loadCourses();
+        else if (sectionName === 'questions') loadCourses().then(() => loadQuestions());
+        else if (sectionName === 'schedules') loadExams();
+        else if (sectionName === 'results') loadResults();
+        else if (sectionName === 'grading') loadGradingStats();
+
+        // Close sidebar on mobile
+        if (window.innerWidth < 1024) {
+            closeSidebar();
+        }
+    }
+
+    function updatePageTitle(sectionName) {
+        const titles = {
+            'dashboard': 'Dashboard',
+            'students': 'My Students',
+            'courses': 'My Courses',
+            'questions': 'Questions',
+            'schedules': 'Exams',
+            'results': 'Results',
+            'grading': 'Grading',
+            'reports': 'Reports'
+        };
+        document.getElementById('pageTitle').textContent = titles[sectionName] || 'Dashboard';
+    }
+
+    function openModal(modalName) {
+        document.getElementById(modalName).classList.remove('hidden');
+    }
+
+    function closeModal(modalName) {
+        document.getElementById(modalName).classList.add('hidden');
+    }
+
+    function logout() {
+        if (confirm('Are you sure you want to logout?')) {
+            localStorage.removeItem('student_jwt_token');
+            localStorage.removeItem('token');
+            localStorage.removeItem('studentData');
+            window.location.href = '/';
+        }
+    }
+
+    // Mobile Sidebar Functions
+    function openSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebar-overlay');
+        sidebar.classList.remove('translate-x-[-100%]');
+        sidebar.classList.add('translate-x-0');
+        overlay.style.display = 'block';
+    }
+
+    function closeSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebar-overlay');
+        sidebar.classList.add('translate-x-[-100%]');
+        sidebar.classList.remove('translate-x-0');
+        overlay.style.display = 'none';
+    }
+
+    function setupEventListeners() {
+        // Course select change
+        const courseSelect = document.getElementById('courseSelect');
+        if (courseSelect) {
+            courseSelect.addEventListener('change', loadQuestions);
+        }
+
+        // Mobile menu button
+        const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+        if (mobileMenuBtn) {
+            mobileMenuBtn.addEventListener('click', () => {
+                const sidebar = document.getElementById('sidebar');
+                if (sidebar.classList.contains('translate-x-0')) {
+                    closeSidebar();
+                } else {
+                    openSidebar();
+                }
+            });
+        }
+
+        // Sidebar close button
+        const sidebarCloseBtn = document.getElementById('sidebar-close-btn');
+        if (sidebarCloseBtn) {
+            sidebarCloseBtn.addEventListener('click', closeSidebar);
+        }
+
+        // Overlay click
+        const overlay = document.getElementById('sidebar-overlay');
+        if (overlay) {
+            overlay.addEventListener('click', closeSidebar);
+        }
+
+        // Sidebar links click on mobile
+        document.querySelectorAll('.sidebar-link').forEach(link => {
+            link.addEventListener('click', () => {
+                if (window.innerWidth < 1024) {
+                    closeSidebar();
+                }
+            });
+        });
+
+        // Modal close buttons
+        document.querySelectorAll('.close-modal').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const modal = e.target.closest('.modal');
+                if (modal) {
+                    const modalBackdrop = modal.closest('.modal-backdrop');
+                    if (modalBackdrop) {
+                        modalBackdrop.classList.add('hidden');
+                    }
+                }
+            });
+        });
+    }
+</script>
+</body>
+</html>
