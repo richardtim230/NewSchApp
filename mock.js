@@ -276,6 +276,9 @@ forms.login.addEventListener('submit', async function(e) {
                         case 'admin':
                             roleMsg = "Welcome, Admin!";
                             break;
+                          case 'tutor':
+                            roleMsg = "Welcome, User!";
+                            break;
                         case 'uploader':
                             roleMsg = "Welcome, Uploader!";
                             break;
