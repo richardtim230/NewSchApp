@@ -1586,6 +1586,8 @@ function addQuestionRow() {
 // handleCreateExamSet — posts to /api/lecturer/exam-sets/create with expected payload shape
 async function handleCreateExamSet(event) {
   event.preventDefault();
+  const form = document.getElementById('createExamSetForm');
+  const editId = form && form.dataset.editId ? form.dataset.editId : null;
 
   const titleEl = document.getElementById('examSetInputTitle') || document.getElementById('examSetTitle');
   const courseSelect = document.getElementById('examSetCourseSelect');
@@ -1694,30 +1696,49 @@ async function handleCreateExamSet(event) {
   }
 
   try {
-    // POST to the route that exists on the server
-    const result = await fetchJSON('/api/lecturer/exam-sets/create', {
-      method: 'POST',
-      body: JSON.stringify(payload)
-    });
+    if (editId) {
+      // update existing exam set
+      await fetchJSON(`/api/lecturer/exam-sets/${encodeURIComponent(editId)}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          title: payload.title,
+          status: payload.status,
+          schedule: payload.schedule,
+          questions: payload.questions
+        })
+      });
+      showStatus('Exam set updated successfully.', 'info');
+    } else {
+      // create new
+      await fetchJSON('/api/lecturer/exam-sets/create', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: payload.title,
+          courseId: payload.courseId || payload.course,
+          faculty: payload.faculty,
+          department: payload.department,
+          status: payload.status,
+          schedule: payload.schedule,
+          questions: payload.questions
+        })
+      });
+      showStatus('Exam set created successfully.', 'info');
+    }
 
-    showStatus('Exam set created successfully.', 'info');
     closeModal('createExamSetModal');
 
-    // refresh local lists (best-effort)
-    try { await loadExamsForCourse(payload.courseId); renderAllFromState(); } catch (e) { console.warn('refresh failed', e); }
+    // refresh assessments display (will load question-sets and embedded exams)
+    const currentCourseId = getCourseId(pageState.selectedCourse);
+    await refreshAssessmentsForCourse(currentCourseId);
 
-    console.log('Create exam set response:', result);
   } catch (err) {
-    console.error('Create exam set failed:', err);
-    showStatus(`Failed to create exam set: ${err.message || err}`, 'error');
+    console.error('Create/update exam set error', err);
+    showStatus('Failed to save exam set: ' + (err.message || err), 'error');
   } finally {
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      if (origText) submitBtn.textContent = origText;
-      submitBtn.classList.remove('opacity-75', 'cursor-not-allowed');
-    }
+    // remove edit mode flag
+    if (form && form.dataset.editId) delete form.dataset.editId;
   }
-}    
+}
     
 /**
  * Remove Question Row
