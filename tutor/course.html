@@ -1505,172 +1505,130 @@ function addQuestionRow() {
 /**
  * Handle Create Exam Set Form Submission
  */
+// REPLACE the existing handler with this improved version
 async function handleCreateExamSet(event) {
   event.preventDefault();
-  
-  console.log('Form submitted'); 
+
+  // locate form controls
+  const titleEl = document.getElementById('examSetTitle');
+  const courseSelect = document.getElementById('examSetCourseSelect');
+  const facultyEl = document.getElementById('examSetFaculty');
+  const deptEl = document.getElementById('examSetDepartment');
+  const startEl = document.getElementById('examSetStartDate');
+  const endEl = document.getElementById('examSetEndDate');
+  const statusEl = document.getElementById('examSetStatus');
+  const submitBtn = document.getElementById('createExamSetSubmitBtn');
+
+  if (!titleEl || !courseSelect || !facultyEl || !deptEl || !statusEl) {
+    showStatus('Form element not found. Reload the page and try again.', 'error');
+    return;
+  }
+
+  // normalize values
+  const title = (titleEl.value || '').trim();
+  const courseId = (courseSelect.value || '').trim();
+  const faculty = (facultyEl.value || '').trim();
+  const department = (deptEl.value || '').trim();
+  const startDate = startEl ? startEl.value : '';
+  const endDate = endEl ? endEl.value : '';
+  const status = (statusEl.value || 'INACTIVE').trim();
+
+  // helper to mark invalid inputs visibly and focus
+  function markInvalid(el) {
+    if (!el) return;
+    el.classList.add('border-red-400', 'ring-1', 'ring-red-200');
+    try { el.focus(); } catch (_) {}
+    setTimeout(() => el.classList.remove('border-red-400', 'ring-1', 'ring-red-200'), 2500);
+  }
+
+  // field-level validation with specific messages
+  if (!title) {
+    showStatus('Please provide an Exam Set title.', 'error');
+    markInvalid(titleEl);
+    return;
+  }
+  if (!courseId) {
+    showStatus('Please select a course for the exam set.', 'error');
+    markInvalid(courseSelect);
+    return;
+  }
+  if (!faculty) {
+    showStatus('Please enter the Faculty.', 'error');
+    markInvalid(facultyEl);
+    return;
+  }
+  if (!department) {
+    showStatus('Please enter the Department.', 'error');
+    markInvalid(deptEl);
+    return;
+  }
+
+  // collect questions
+  const questionRows = Array.from(document.querySelectorAll('[data-question-row]'));
+  const questions = [];
+  questionRows.forEach((row, idx) => {
+    const qText = row.querySelector(`[data-question-${idx}-text]`);
+    const qType = row.querySelector(`[data-question-${idx}-type]`);
+    const textVal = qText && qText.value ? qText.value.trim() : '';
+    const typeVal = qType && qType.value ? qType.value : 'multiple-choice';
+    if (textVal) {
+      questions.push({ text: textVal, type: typeVal });
+    }
+  });
+
+  if (questions.length === 0) {
+    showStatus('Please add at least one question to the exam set.', 'error');
+    const addBtn = document.querySelector('button[onclick="addQuestionRow()"]');
+    if (addBtn) addBtn.focus();
+    return;
+  }
+
+  // build payload
+  const payload = {
+    title,
+    course: courseId,
+    faculty,
+    department,
+    startDate: startDate ? new Date(startDate).toISOString() : null,
+    endDate: endDate ? new Date(endDate).toISOString() : null,
+    status,
+    questions
+  };
+
+  // UI: disable submit while working
+  const origBtnText = submitBtn ? submitBtn.textContent : null;
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating…';
+    submitBtn.classList.add('opacity-75', 'cursor-not-allowed');
+  }
 
   try {
-    // Get all elements with null checks
-    const titleEl = form.querySelector('#examSetTitle');
-    const courseEl = document.getElementById('examSetCourseSelect');
-    const facultyEl = document.getElementById('examSetFaculty');
-    const departmentEl = document.getElementById('examSetDepartment');
-    const statusEl = document.getElementById('examSetStatus');
-    const startDateEl = document.getElementById('examSetStartDate');
-    const endDateEl = document.getElementById('examSetEndDate');
-
-    // Debug: Log which elements are found
-    console.log('Elements found:', {
-      titleEl: !!titleEl,
-      courseEl: !!courseEl,
-      facultyEl: !!facultyEl,
-      departmentEl: !!departmentEl,
-      statusEl: !!statusEl,
-      startDateEl: !!startDateEl,
-      endDateEl: !!endDateEl
-    });
-
-    // Check for missing elements
-    if (!titleEl || !courseEl || !facultyEl || !departmentEl || !statusEl) {
-      console.error('Missing form elements!');
-      showStatus('Form elements not found. Please refresh the page.', 'error');
-      return;
-    }
-
-    console.log(titleEl, titleEl.value);
-console.log(facultyEl, facultyEl.value);
-console.log(departmentEl, departmentEl.value);
-
-const title = (titleEl?.value ?? "").trim();
-const courseId = (courseEl?.value ?? "").trim();
-const faculty = (facultyEl?.value ?? "").trim();
-const department = (departmentEl?.value ?? "").trim();
-const status = statusEl?.value ?? "";
-
-const startDate = startDateEl?.value ?? "";
-const endDate = endDateEl?.value ?? "";
-    console.log('Form values:', { title, courseId, faculty, department, status });
-
-    if (!title || !courseId || !faculty || !department) {
-      showStatus('Please fill in all required fields', 'error');
-      return;
-    }
-
-    const questionRows = document.querySelectorAll('.question-row');
-    console.log('Question rows found:', questionRows.length);
-
-    if (questionRows.length === 0) {
-      showStatus('Please add at least one question', 'error');
-      return;
-    }
-
-    const questions = [];
-    questionRows.forEach((row, idx) => {
-      const questionTextarea = row.querySelector(`textarea[name*="[question]"]`);
-      const optionsTextarea = row.querySelector(`textarea[name*="[options]"]`);
-      const answerInput = row.querySelector(`input[name*="[answer]"]`);
-      const explanationTextarea = row.querySelector(`textarea[name*="[explanation]"]`);
-
-      if (!questionTextarea || !optionsTextarea || !answerInput) {
-        console.error(`Question ${idx + 1} missing textarea/input elements`);
-        throw new Error(`Question ${idx + 1} form elements not found`);
-      }
-
-      console.log({
-    questionTextarea,
-    optionsTextarea,
-    answerInput,
-    explanationTextarea
-});
-
-console.log({
-    questionValue: questionTextarea.value,
-    optionsValue: optionsTextarea.value,
-    answerValue: answerInput.value,
-    explanationValue: explanationTextarea?.value
-});
-
-const questionText = (questionTextarea.value ?? "").trim();
-const optionsText = (optionsTextarea.value ?? "").trim();
-const answer = (answerInput.value ?? "").trim();
-const explanation = (explanationTextarea?.value ?? "").trim();
-      if (!questionText || !optionsText || !answer) {
-        throw new Error(`Question ${idx + 1} is incomplete`);
-      }
-
-      const options = optionsText.split('\n').filter(o => o.trim()).map(text => ({
-        text: text.trim()
-      }));
-
-      if (options.length < 2) {
-        throw new Error(`Question ${idx + 1} must have at least 2 options`);
-      }
-
-      questions.push({
-        id: idx + 1,
-        question: questionText,
-        options: options,
-        answer: answer,
-        explanation: explanation,
-        questionImage: ''
-      });
-    });
-
-    console.log('Questions parsed:', questions);
-
-    showStatus('Creating exam set...', 'info');
-
-    const payload = {
-      title,
-      courseId,
-      faculty,
-      department,
-      status,
-      questions,
-      schedule: {
-        start: startDate ? new Date(startDate).toISOString() : null,
-        end: endDate ? new Date(endDate).toISOString() : null
-      }
-    };
-
-    console.log('Payload being sent:', JSON.stringify(payload, null, 2));
-
-    const response = await fetchJSON('/api/lecturer/exam-sets/create', {
+    // Use your existing fetchJSON helper which sets headers and parses JSON
+    const result = await fetchJSON('/api/lecturer/exam-sets', {
       method: 'POST',
       body: JSON.stringify(payload)
     });
 
-    console.log('Response from server:', response);
+    // success feedback
+    showStatus('Exam set created successfully.', 'info');
 
-    if (!response || !response.examSet) {
-      throw new Error('Invalid response from server');
-    }
-
-    showStatus(`Exam set "${response.examSet.title}" created with ${response.totalQuestions} questions!`, 'info');
-    
-    // Close modal
+    // close modal and refresh relevant state
     closeModal('createExamSetModal');
-    
-    // Reset form
-    const form = document.getElementById('createExamSetForm');
-    if (form) {
-      form.reset();
-    }
-    document.getElementById('examSetQuestionsContainer').innerHTML = '';
-    
-    // Reload exams
-    const cId = getCourseId(pageState.selectedCourse);
-    if (cId) {
-      await loadExamsForCourse(cId);
-      renderAssessmentsList();
-    }
 
-  } catch (e) {
-    console.error('Create exam set error (full):', e);
-    console.error('Error message:', e.message);
-    console.error('Error stack:', e.stack);
-    showStatus(`Failed to create exam set: ${e.message || 'Unknown error'}`, 'error');
+    // best-effort refresh: re-load exam list for current course (non-blocking)
+    try { await loadExamsForCourse(payload.course); renderAllFromState(); } catch (e) { console.warn('Refresh after create failed', e); }
+
+    console.log('Created exam set result:', result);
+  } catch (error) {
+    console.error('Error creating exam set:', error);
+    showStatus(`Failed to create exam set: ${error.message || error}`, 'error');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      if (origBtnText) submitBtn.textContent = origBtnText;
+      submitBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+    }
   }
 }
 
