@@ -119,7 +119,7 @@
                     </div>
                 </main>
 
-                <!-- FIXED BASE CONTROLS FOOTER PANEL: Floating beautifully on the main content surface -->
+                <!-- FIXED BASE CONTROLS FOOTER PANEL -->
                 <div class="absolute bottom-4 left-4 right-4 lg:left-8 lg:right-8 bg-white/95 backdrop-blur-md border border-slate-200 p-4 rounded-2xl shadow-floating z-20 flex items-center justify-between gap-3 transition-all duration-200">
                     <button onclick="navigatePrevious()" id="btnPrev" class="px-4 py-3 border border-slate-200 bg-white hover:bg-slate-50 rounded-xl font-bold text-xs lg:text-sm text-slate-600 transition-all flex items-center gap-2 disabled:opacity-40 disabled:pointer-events-none">
                         <i class="ph-bold ph-arrow-left"></i> Previous
@@ -138,7 +138,7 @@
             <!-- Right Grid Pane: Desktop Tracking Sidebar Dashboard -->
             <aside class="hidden lg:flex w-[320px] bg-white border-l border-slate-200 h-full flex-col shrink-0 overflow-hidden">
                 
-                <!-- ADAPTIVE BRANDING ASSIGNMENT: Injected via script execution context inside Sidebar Top Desk -->
+                <!-- ADAPTIVE BRANDING ASSIGNMENT -->
                 <div class="p-5 border-b border-slate-100 bg-slate-50/20" id="desktopBrandingPlaceholder"></div>
 
                 <!-- Collapsible Header Section for the Question Tracking Matrix Pallets -->
@@ -201,6 +201,26 @@
         </div>
     </div>
 
+    <!-- PREMIUM HIGH-FIDELITY ALERT & CONFIRM DIALOG MODAL FRAMEWORK -->
+    <div id="customNotifyModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm hidden transition-all duration-200 opacity-0 animate-fade-in" tabindex="-1">
+        <div class="bg-white rounded-2xl max-w-md w-full shadow-floating border border-slate-100 overflow-hidden transform scale-95 transition-all duration-200 ease-out" id="modalCardBody">
+            <div class="p-6">
+                <div class="flex items-start gap-4">
+                    <div id="modalIconContainer" class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0">
+                        <!-- Contextual Icon Injected via Execution Engines -->
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <h3 id="modalTitle" class="text-base font-bold text-slate-900 mb-1">Notification</h3>
+                        <p id="modalBody" class="text-sm text-slate-600 leading-relaxed whitespace-pre-line"></p>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-slate-50/80 border-t border-slate-100 px-6 py-4 flex items-center justify-end gap-3" id="modalActions">
+                <!-- Dynamic control loops injected natively -->
+            </div>
+        </div>
+    </div>
+
     <!-- REUSABLE OAU BRANDING ASSET ELEMENT TEMPLATE -->
     <template id="oauBrandingCardTemplate">
         <div class="bg-gradient-to-br from-brand-dark to-blue-900 text-white p-4 rounded-2xl shadow-premium border border-white/10 w-full flex items-center gap-3.5">
@@ -231,15 +251,17 @@
             paletteExpanded: false,
             currentUser: "Guest",
             currentUserId: null,
-            timeRemaining: 40 * 60, // 40 mins runtime fallback
+            timeRemaining: 40 * 60, 
             maxSessionQuestions: 60,
             currentQuestionIndex: 0,
             questions: [],
-            answers: {},  // Indexed by q.id to match backend API payload schemas
-            flags: {}     // Tracked via array offset references locally
+            answers: {},  
+            flags: {}     
         };
 
         let countdownTimerInterval = null;
+        let modalConfirmCallback = null;
+        let modalCloseCallback = null;
 
         // --- URL Query Parameter Parsing Utilities ---
         function getQueryParam(name) {
@@ -249,16 +271,9 @@
 
         // === ENGINE INITIALIZATION HOOK ===
         async function initializeSessionEngine() {
-            // 1. Instantiating and mapping static layout visual assets
             injectAdaptiveBrandingCards();
-
-            // 2. Slicing dynamic URL context tokens
             examSessionState.examSetId = getQueryParam('examSet');
-
-            // 3. Trigger authenticating network routing checks
             await fetchCurrentUserSession();
-
-            // 4. Download and filter structural target questions parameters
             await downloadExamQuestionsPayload();
         }
 
@@ -276,8 +291,6 @@
                 if (resp.ok && data.user && data.user.username) {
                     examSessionState.currentUser = data.user.username;
                     examSessionState.currentUserId = data.user._id || data.user.id;
-                    
-                    // Populate candidate parameters onto UI headers
                     document.getElementById('headerStudentProfile').innerText = 
                         `CANDIDATE: ${examSessionState.currentUser} • ID: ${examSessionState.currentUserId || 'N/A'}`;
                 } else {
@@ -297,7 +310,6 @@
             }
 
             try {
-                // Fetch dynamic questions array block
                 const res = await fetch(`${API_URL}questionsets/${examSessionState.examSetId}`, {
                     headers: { Authorization: "Bearer " + token }
                 });
@@ -309,11 +321,9 @@
                     return;
                 }
 
-                // Hydrate Title contexts across branding frameworks
                 examSessionState.examTitle = activeSet.title || "CBT Test";
                 document.getElementById('headerExamTitle').innerText = examSessionState.examTitle;
                 
-                // Keep structural text inside the responsive cards matching dynamically updated title references
                 const desktopBrandingTitle = document.querySelector("#desktopBrandingPlaceholder #brandingExamTitle");
                 const mobileBrandingTitle = document.querySelector("#mobileBrandingPlaceholder #brandingExamTitle");
                 if (desktopBrandingTitle) desktopBrandingTitle.innerText = examSessionState.examTitle;
@@ -321,7 +331,6 @@
 
                 const allQuestions = activeSet.questions.slice();
 
-                // Fetch student progress parameters tracking histories
                 let answeredIds = [];
                 try {
                     const progressRes = await fetch(`${API_URL}progress?examSet=${encodeURIComponent(examSessionState.examTitle)}`, {
@@ -333,20 +342,17 @@
                             answeredIds = progress.answeredIds;
                         }
                     }
-                } catch (progressError) { /* Fail silently, treat as empty history */ }
+                } catch (progressError) { /* Treat as empty history */ }
 
-                // Filter for unseen entries down inside local workspace
                 let unseenQuestions = allQuestions.filter(q => !answeredIds.includes(q.id));
                 if (unseenQuestions.length === 0) unseenQuestions = allQuestions.slice();
 
-                // Shuffle elements and apply limits constraints
                 examSessionState.questions = shuffleArray(unseenQuestions).slice(0, examSessionState.maxSessionQuestions);
                 examSessionState.answers = {};
                 examSessionState.flags = {};
                 examSessionState.currentQuestionIndex = 0;
-                examSessionState.timeRemaining = 40 * 60; // Config standard limit payload execution: 40 minutes
+                examSessionState.timeRemaining = 40 * 60; 
 
-                // Fire rendering execution loops
                 buildQuestionNavigationMatrices();
                 renderActiveQuestionCanvas();
                 startSessionCountdownMetronome();
@@ -372,6 +378,81 @@
             } catch (e) { /* fail silently */ }
         }
 
+        // === CUSTOM INTERACTIVE DIALOG MODAL LAYOUT ENGINE ===
+        function openNotifyModal() {
+            const modal = document.getElementById('customNotifyModal');
+            const card = document.getElementById('modalCardBody');
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                card.classList.remove('scale-95');
+            }, 10);
+        }
+
+        function closeNotifyModal(callbackExecutionBranch = null) {
+            const modal = document.getElementById('customNotifyModal');
+            const card = document.getElementById('modalCardBody');
+            modal.classList.add('opacity-0');
+            card.classList.add('scale-95');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                if (callbackExecutionBranch) callbackExecutionBranch();
+            }, 200);
+        }
+
+        function showCustomAlert(title, message, iconVariant = 'info', onCloseCallback = null) {
+            modalCloseCallback = onCloseCallback;
+            
+            document.getElementById('modalTitle').innerText = title;
+            document.getElementById('modalBody').innerText = message;
+            
+            const iconBox = document.getElementById('modalIconContainer');
+            iconBox.className = "w-10 h-10 rounded-xl flex items-center justify-center shrink-0";
+            
+            if (iconVariant === 'success') {
+                iconBox.classList.add('bg-emerald-50', 'text-emerald-600');
+                iconBox.innerHTML = `<i class="ph-bold ph-check-circle text-xl"></i>`;
+            } else if (iconVariant === 'warning') {
+                iconBox.classList.add('bg-amber-50', 'text-amber-600');
+                iconBox.innerHTML = `<i class="ph-bold ph-warning text-xl"></i>`;
+            } else if (iconVariant === 'error') {
+                iconBox.classList.add('bg-red-50', 'text-red-600');
+                iconBox.innerHTML = `<i class="ph-bold ph-x-circle text-xl"></i>`;
+            } else {
+                iconBox.classList.add('bg-blue-50', 'text-brand-active');
+                iconBox.innerHTML = `<i class="ph-bold ph-info text-xl"></i>`;
+            }
+
+            document.getElementById('modalActions').innerHTML = `
+                <button onclick="closeNotifyModal(modalCloseCallback)" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition-all shadow-sm">
+                    Acknowledge
+                </button>
+            `;
+            openNotifyModal();
+        }
+
+        function showCustomConfirm(title, message, onConfirm, onCancel = null) {
+            modalConfirmCallback = onConfirm;
+            modalCloseCallback = onCancel;
+
+            document.getElementById('modalTitle').innerText = title;
+            document.getElementById('modalBody').innerText = message;
+
+            const iconBox = document.getElementById('modalIconContainer');
+            iconBox.className = "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-blue-50 text-brand-active";
+            iconBox.innerHTML = `<i class="ph-bold ph-question text-xl"></i>`;
+
+            document.getElementById('modalActions').innerHTML = `
+                <button onclick="closeNotifyModal(modalCloseCallback)" class="px-4 py-2.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold text-xs rounded-xl transition-all">
+                    Cancel
+                </button>
+                <button onclick="closeNotifyModal(modalConfirmCallback)" class="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl transition-all shadow-sm">
+                    Confirm Submission
+                </button>
+            `;
+            openNotifyModal();
+        }
+
         // === RENDERING & CANVAS LAYOUT FLOW MANAGEMENT ===
         function renderVisualErrorCanvas(msgString) {
             document.getElementById('headerExamTitle').innerText = "System Synchronization Suspended";
@@ -388,13 +469,11 @@
         function injectAdaptiveBrandingCards() {
             const template = document.getElementById('oauBrandingCardTemplate');
             
-            // Render inside Mobile viewport container slot
             const mobileClone = template.content.cloneNode(true);
             const mContainer = document.getElementById('mobileBrandingPlaceholder');
             mContainer.appendChild(mobileClone);
             mContainer.classList.add("mb-5");
 
-            // Render inside Desktop Sidebar structural slot
             const desktopClone = template.content.cloneNode(true);
             document.getElementById('desktopBrandingPlaceholder').appendChild(desktopClone);
         }
@@ -440,7 +519,6 @@
 
                 timerDisplayElement.innerText = `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 
-                // Emergency visual warning rules state triggers if runtime limit dips under 5 minutes (300s)
                 if (examSessionState.timeRemaining <= 300) {
                     timerContainer.className = "flex items-center gap-3 bg-red-50 border border-red-200 px-4 py-2 rounded-2xl shadow-sm shrink-0 animate-pulse";
                     timerDisplayElement.className = "text-base lg:text-xl font-mono font-bold text-red-600 tracking-tight";
@@ -472,7 +550,6 @@
                     targetGrid.appendChild(matrixButton);
                 });
             });
-            
             updateNavigationMatricesVisualStates();
         }
 
@@ -523,7 +600,6 @@
             document.getElementById('currentQuestionBadge').innerText = `Question ${activeIdx + 1}`;
             document.getElementById('progressFractionText').innerText = `of ${totalQuestions} questions`;
 
-            // Setup question string structure safely supporting dynamic backend asset URLs
             let finalPromptHTML = q.question || q.prompt || "";
             if (q.questionImage) {
                 finalPromptHTML += `<div class="mt-4 max-w-full"><img src="${q.questionImage}" class="max-h-64 rounded-xl border border-slate-200 shadow-sm object-contain" alt="Question Resource Block"></div>`;
@@ -536,11 +612,9 @@
             const optionsContainer = document.getElementById('canvasOptionsContainer');
             optionsContainer.innerHTML = '';
 
-            // Adaptive mapping fallback ensuring compatibility with string collections or specialized object arrays
             const sourceOptionsArray = q.options || [];
 
             sourceOptionsArray.forEach((optItem) => {
-                // Read properties whether layout processes opt as a plain string string or full object configuration
                 const isObjectStructure = (optItem !== null && typeof optItem === 'object');
                 const textVal = isObjectStructure ? (optItem.text || "") : optItem;
                 const imageVal = isObjectStructure ? (optItem.image || null) : null;
@@ -572,9 +646,10 @@
             document.getElementById('btnPrev').disabled = activeIdx === 0;
             
             const nextButtonNode = document.getElementById('btnNext');
+            // MODAL UPDATE 1: Replaced "Review Overview" with an instantaneous flashing Submission Trigger on the last question
             if (activeIdx === totalQuestions - 1) {
-                nextButtonNode.innerHTML = `Review Overview <i class="ph-bold ph-magnifying-glass"></i>`;
-                nextButtonNode.className = "px-5 py-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold text-xs lg:text-sm transition-all flex items-center gap-2 shadow-sm";
+                nextButtonNode.innerHTML = `Submit Examination <i class="ph-bold ph-cloud-arrow-up"></i>`;
+                nextButtonNode.className = "px-5 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-xs lg:text-sm transition-all flex items-center gap-2 shadow-sm animate-pulse";
             } else {
                 nextButtonNode.innerHTML = `Next <i class="ph-bold ph-arrow-right"></i>`;
                 nextButtonNode.className = "px-5 py-3 bg-brand-active hover:bg-brand-dark text-white rounded-xl font-bold text-xs lg:text-sm transition-all flex items-center gap-2 shadow-sm";
@@ -595,7 +670,6 @@
                 btnFlag.className = "px-3 py-3 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl font-bold text-xs lg:text-sm transition-all flex items-center gap-2";
             }
 
-            // MathJax integration wrapper to parse formulas automatically
             if (window.MathJax && window.MathJax.typesetPromise) {
                 window.MathJax.typesetPromise();
             }
@@ -633,15 +707,8 @@
                 renderActiveQuestionCanvas();
                 updateNavigationMatricesVisualStates();
             } else {
-                if(window.innerWidth < 1024) {
-                    const drawerInst = window.FlowbiteInstances?.getInstance('drawer', 'mobileMatrixDrawer');
-                    if(drawerInst) drawerInst.show();
-                } else {
-                    if(!examSessionState.paletteExpanded) {
-                        toggleDesktopPaletteDisplay();
-                    }
-                    alert("You have reached the end of the examination. Please review your answers inside the active Overview panel before clicking Submit.");
-                }
+                // MODAL UPDATE 1: Last question action button triggers submission immediately
+                triggerExamSubmission();
             }
         }
 
@@ -655,8 +722,13 @@
 
         // === SUBMISSION ENGINE EXECUTORS ===
         function executeAutomaticTimeoutSubmission() {
-            alert("Examination timeframe allocated has fully elapsed. Your active script input sequence details are being securely finalized and transmitted.");
-            processFinalSubmissionRoutine();
+            // MODAL UPDATE 2: Replaced native alert with custom alert dialog modal
+            showCustomAlert(
+                "Time Elasped", 
+                "Examination timeframe allocated has fully elapsed. Your active script input sequence details are being securely finalized and transmitted.", 
+                "warning", 
+                () => { processFinalSubmissionRoutine(); }
+            );
         }
 
         function triggerExamSubmission() {
@@ -670,18 +742,19 @@
                 promptConfirmationMessage += `\n\nWARNING: You have left ${unattempted} question(s) blank!`;
             }
 
-            if (confirm(promptConfirmationMessage)) {
-                processFinalSubmissionRoutine();
-            }
+            // MODAL UPDATE 2: Replaced native confirm window with custom layout confirmation modal
+            showCustomConfirm(
+                "Finalize Examination", 
+                promptConfirmationMessage, 
+                () => { processFinalSubmissionRoutine(); }
+            );
         }
 
         async function processFinalSubmissionRoutine() {
             if (countdownTimerInterval) clearInterval(countdownTimerInterval);
 
-            // Toggle visual loading processing animations directly inside submission components
             setSubmissionActionButtonsState(true);
 
-            // Run structural response scoring procedures
             let calculatedScore = 0;
             examSessionState.questions.forEach(q => {
                 const userAns = examSessionState.answers[q.id];
@@ -693,7 +766,6 @@
             const sessionTimeLimitConst = 40 * 60;
             const timeTaken = sessionTimeLimitConst - examSessionState.timeRemaining;
 
-            // Generate payload structure conforming with backend schemas
             const payload = {
                 examSet: examSessionState.examSetId,
                 answers: examSessionState.answers,
@@ -720,25 +792,33 @@
                 });
 
                 if (!response.ok) {
-                    alert("Failed to securely save your test results on the server database. Please try again.");
+                    // MODAL UPDATE 2: Custom Alert Modal fallback
+                    showCustomAlert("Database Commit Failure", "Failed to securely save your test results on the server database. Please check your connections and try again.", "error");
                     setSubmissionActionButtonsState(false);
-                    startSessionCountdownMetronome(); // Resume timer fallback if network fails
+                    startSessionCountdownMetronome(); 
                     return;
                 }
 
-                // If present, flag student tasks complete down inside daily-tasks collection
                 if (examSessionState.currentUserId && examSessionState.examSetId) {
                     try { 
                         await markQuizTaskDoneOnServer(examSessionState.currentUserId, examSessionState.examSetId); 
                     } catch(e) { /* fail silently */ }
                 }
 
-                alert("Submission successful! Your answers have been committed securely to OAU ExamGuard database routing infrastructure layers.");
-                window.location.href = `result-summary?examSet=${encodeURIComponent(examSessionState.examSetId)}`;
+                // MODAL UPDATE 2: Custom Alert Modal success redirect loop handler
+                showCustomAlert(
+                    "Submission Complete", 
+                    "Submission successful! Your answers have been committed securely to OAU ExamGuard database routing infrastructure layers.", 
+                    "success", 
+                    () => {
+                        window.location.href = `result-summary?examSet=${encodeURIComponent(examSessionState.examSetId)}`;
+                    }
+                );
 
             } catch (err) {
                 console.error(err);
-                alert("Network communication timeout error encountered during script processing. Please re-submit.");
+                // MODAL UPDATE 2: Custom Alert Modal network crash handling
+                showCustomAlert("Network Communication Error", "Network communication timeout error encountered during script processing. Please re-submit.", "error");
                 setSubmissionActionButtonsState(false);
                 startSessionCountdownMetronome();
             }
@@ -747,29 +827,22 @@
         function setSubmissionActionButtonsState(isLoadingState) {
             const btnDesktop = document.getElementById("btnSubmitDesktop");
             const btnMobile = document.getElementById("btnSubmitMobile");
+            const btnNext = document.getElementById("btnNext");
             
             if (isLoadingState) {
-                if(btnDesktop) {
-                    btnDesktop.disabled = true;
-                    btnDesktop.innerHTML = `<svg class="animate-spin h-4 w-4 text-white inline-block" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Submitting...`;
-                }
-                if(btnMobile) {
-                    btnMobile.disabled = true;
-                    btnMobile.innerText = "Submitting...";
+                const layoutSpinnerHTML = `<svg class="animate-spin h-4 w-4 text-white inline-block" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Submitting...`;
+                if(btnDesktop) { btnDesktop.disabled = true; btnDesktop.innerHTML = layoutSpinnerHTML; }
+                if(btnMobile) { btnMobile.disabled = true; btnMobile.innerText = "Submitting..."; }
+                if(btnNext && examSessionState.currentQuestionIndex === examSessionState.questions.length - 1) {
+                    btnNext.disabled = true; btnNext.innerHTML = layoutSpinnerHTML;
                 }
             } else {
-                if(btnDesktop) {
-                    btnDesktop.disabled = false;
-                    btnDesktop.innerHTML = `<i class="ph-bold ph-cloud-arrow-up text-base"></i> Submit Examination`;
-                }
-                if(btnMobile) {
-                    btnMobile.disabled = false;
-                    btnMobile.innerText = "Submit Exam";
-                }
+                if(btnDesktop) { btnDesktop.disabled = false; btnDesktop.innerHTML = `<i class="ph-bold ph-cloud-arrow-up text-base"></i> Submit Examination`; }
+                if(btnMobile) { btnMobile.disabled = false; btnMobile.innerText = "Submit Exam"; }
+                renderActiveQuestionCanvas(); // Redraw Next/Submit state configurations cleanly
             }
         }
 
-        // --- Standard Array Knuth-Fisher-Yates Shuffle Utility ---
         function shuffleArray(arr) {
             for (let i = arr.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
@@ -778,7 +851,6 @@
             return arr;
         }
 
-        // Bind global engine startup event handlers
         document.addEventListener('DOMContentLoaded', initializeSessionEngine);
     </script>
 </body>
