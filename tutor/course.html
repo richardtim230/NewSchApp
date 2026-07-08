@@ -313,6 +313,26 @@
         gap: 10px;
     }
 }
+        /* Quill editor sizing + toolbar polish */
+.quill-editor { border: 1px solid #e5e7eb; border-radius: 10px; background: #fff; }
+.quill-editor .ql-toolbar { border-radius: 10px 10px 0 0; padding: 6px 8px; }
+.quill-editor .ql-container { border-radius: 0 0 10px 10px; min-height: 90px; max-height: 220px; overflow-y: auto; }
+.quill-editor .ql-editor { padding: 12px; }
+
+/* Option layout: radio on left, editor fills remaining width */
+.option-wrap { display: flex; gap: 10px; align-items: flex-start; }
+.option-wrap .correct-radio { margin-top: 8px; margin-left: 4px; }
+.option-wrap .quill-editor { flex: 1; }
+
+/* Make modal-body allow longer editors without breaking layout */
+.modal-body { overflow-y: auto; max-height: calc(100vh - 240px); }
+
+/* Improve small-screen behaviour: stack radio above editors at narrow widths */
+@media (max-width:640px) {
+  .option-wrap { flex-direction: column; }
+  .option-wrap .correct-radio { margin-left: 0; margin-top: 0; }
+  .modal { width: 100% !important; border-radius: 12px; }
+}
     </style>
 </head>
 <body class="bg-brand-light text-slate-800 font-sans antialiased">
@@ -1815,7 +1835,7 @@ async function handleCreateExamSet(event) {
   if (!faculty) { showStatus('Please enter the Faculty.', 'error'); facultyEl.focus(); return; }
   if (!department) { showStatus('Please enter the Department.', 'error'); deptEl.focus(); return; }
 
-// collect questions from .question-row, supporting both Quill and legacy textarea rows
+// Collect questions supporting Quill rows and legacy textarea rows
 const container = document.getElementById('examSetQuestionsContainer');
 const rows = container ? Array.from(container.querySelectorAll('.question-row')) : [];
 const questions = [];
@@ -1823,52 +1843,93 @@ const questions = [];
 for (let i = 0; i < rows.length; i++) {
   const row = rows[i];
 
-  // try to detect Quill-created row (we store a data-row-id and quillEditors[rowId])
+  // detect Quill-created row via data-row-id and global quillEditors
   const rowId = row.getAttribute('data-row-id') || null;
   const editors = (typeof rowId === 'string' && window.quillEditors && window.quillEditors[rowId]) ? window.quillEditors[rowId] : null;
 
   if (editors) {
-    // QUILL flow: read HTML from Quill editors
-    const qHtml = (editors.question && editors.question.root && editors.question.root.innerHTML) ? editors.question.root.innerHTML.trim() : '';
-    const optionsHtmlArr = Array.isArray(editors.options) ? editors.options.map(ed => (ed && ed.root && ed.root.innerHTML ? ed.root.innerHTML.trim() : '')).filter(Boolean) : [];
-    const explanationHtml = (editors.explanation && editors.explanation.root && editors.explanation.root.innerHTML) ? editors.explanation.root.innerHTML.trim() : '';
+    // Use getText() for validation (returns visible text)
+    const qPlain = (editors.question && typeof editors.question.getText === 'function') ? editors.question.getText().trim() : '';
+    const optionsPlain = (Array.isArray(editors.options) ? editors.options.map(ed => (ed && typeof ed.getText === 'function') ? ed.getText().trim() : '').filter(Boolean) : []);
+    const explanationPlain = (editors.explanation && typeof editors.explanation.getText === 'function') ? editors.explanation.getText().trim() : '';
 
-    // find selected correct option radio for this quill row
+    if (!qPlain) {
+      showStatus(`Question ${i+1} needs text.`, 'error');
+      try { editors.question.focus(); } catch (e) {}
+      return;
+    }
+
+    if (optionsPlain.length === 0) {
+      showStatus(`Question ${i+1}: please provide at least one option.`, 'error');
+      try { if (editors.options && editors.options[0]) editors.options[0].focus(); } catch (e) {}
+      return;
+    }
+
+    // Find selected correct option radio (by name pattern)
     let correctIndex = null;
     try {
       const radios = row.querySelectorAll(`input[name="${rowId}-correct"]`);
       radios.forEach(r => { if (r.checked) correctIndex = parseInt(r.value, 10); });
     } catch (e) { /* ignore */ }
+    if (correctIndex === null) correctIndex = 0; // default to first if none selected
 
-    // validations
-    if (!qHtml || qHtml === '<p><br></p>') {
-      showStatus(`Question ${i+1} needs text.`, 'error');
-      // focus quill editor if possible
-      try { editors.question.focus(); } catch (_) {}
-      return;
-    }
-    if (optionsHtmlArr.length === 0) {
-      showStatus(`Question ${i+1}: please provide at least one option.`, 'error');
-      try { if (editors.options && editors.options[0]) editors.options[0].focus(); } catch (_) {}
-      return;
-    }
-    if (correctIndex === null) {
-      // default to first option if none chosen
-      correctIndex = 0;
-    }
-    if (correctIndex < 0 || correctIndex >= optionsHtmlArr.length) correctIndex = 0;
+    const optionsHtml = editors.options.map(ed => (ed && ed.root && ed.root.innerHTML) ? ed.root.innerHTML.trim() : '').filter(Boolean);
+    const explanationHtml = (editors.explanation && editors.explanation.root && editors.explanation.root.innerHTML) ? editors.explanation.root.innerHTML.trim() : '';
+    const questionHtml = (editors.question && editors.question.root && editors.question.root.innerHTML) ? editors.question.root.innerHTML.trim() : '';
 
-    // build options objects expected by backend
-    const mappedOptions = optionsHtmlArr.map(html => ({ text: html }));
+    // Build payload option objects
+    const mappedOptions = optionsHtml.map(html => ({ text: html }));
 
     questions.push({
-      question: qHtml,
+      question: questionHtml,
       options: mappedOptions,
-      // answer uses the option HTML as the authoritative answer (backend accepts text)
-      answer: mappedOptions[correctIndex] ? mappedOptions[correctIndex].text : '',
+      answer: mappedOptions[correctIndex] ? mappedOptions[correctIndex].text : mappedOptions[0].text,
       explanation: explanationHtml || '',
-      questionImage: '' // you can set a separate top-level image if needed
+      questionImage: ''
     });
+
+  } else {
+    // Legacy textarea-based row fallback
+    const qTextEl = row.querySelector('textarea[name*="[question]"], textarea[data-question-text]');
+    const optionsEl = row.querySelector('textarea[name*="[options]"]');
+    const answerEl = row.querySelector('input[name*="[answer]"], input[data-answer]');
+    const explEl = row.querySelector('textarea[name*="[explanation]"]');
+
+    const qText = qTextEl ? (qTextEl.value || '').trim() : '';
+    const rawOptions = optionsEl ? (optionsEl.value || '') : '';
+    const options = rawOptions.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    const answer = answerEl ? (answerEl.value || '').trim() : '';
+    const explanation = explEl ? (explEl.value || '').trim() : '';
+
+    if (!qText) {
+      showStatus(`Question ${i+1} needs text.`, 'error');
+      if (qTextEl) qTextEl.focus();
+      return;
+    }
+    if (options.length > 0) {
+      if (options.length < 2) {
+        showStatus(`Question ${i+1}: provide at least two options.`, 'error');
+        if (optionsEl) optionsEl.focus();
+        return;
+      }
+      if (!answer) {
+        showStatus(`Question ${i+1}: specify the correct answer.`, 'error');
+        if (answerEl) answerEl.focus();
+        return;
+      }
+    }
+
+    const mappedOptions = options.map(opt => ({ text: opt }));
+
+    questions.push({
+      question: qText,
+      options: mappedOptions,
+      answer: answer || '',
+      explanation: explanation || '',
+      questionImage: ''
+    });
+  }
+}
 
   } else {
     // LEGACY flow: fall back to textarea / inputs
