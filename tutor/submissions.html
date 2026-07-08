@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=0.9"/>
+    <title>OAU ExamGuard - Submissions Report</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com"/>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        brand: {
+                            dark: '#1e3a8a',
+                            active: '#2563eb',
+                            accent: '#3b82f6',
+                            light: '#f8fafc'
+                        }
+                    },
+                    boxShadow: {
+                        'premium': '0 2px 10px -3px rgba(0,0,0,0.05), 0 4px 6px -4px rgba(0,0,0,0.02)',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.css" rel="stylesheet" />
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        #sidebar { transition: transform 0.3s ease-in-out; }
+        #sidebar.sidebar-hidden { transform: translateX(-100%); }
+        #sidebar.sidebar-visible { transform: translateX(0); }
+
+        @media (max-width: 1024px) {
+            #sidebar { transform: translateX(-100%); }
+            main { padding-bottom: 96px !important; }
+        }
+        @media (min-width: 1024px) {
+            #sidebar { transform: none !important; }
+        }
+
+        .mobile-bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; background: white; border-top: 1px solid #e5e7eb; display: none; z-index: 30; }
+        @media (max-width: 1024px) { .mobile-bottom-nav { display: flex; } }
+        .mobile-nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12px 0; cursor: pointer; color: #6b7280; font-size: 11px; transition: all 0.2s; }
+        .mobile-nav-item.active { color: #1e3a8a; border-top-color: #1e3a8a; font-weight: 600; }
+        .mobile-nav-item i { font-size: 22px; margin-bottom: 2px; }
+
+        .badge-status { display:inline-block; padding:4px 12px; border-radius:12px; font-size:12px; font-weight:600; }
+        .badge-pass { background-color:#dcfce7; color:#166534; }
+        .badge-fail { background-color:#fee2e2; color:#991b1b; }
+        .badge-pending { background-color:#fef9c3; color:#713f12; }
+    </style>
+</head>
+<body class="bg-brand-light text-slate-800 font-sans antialiased">
+
+    <div id="sidebar-overlay" class="fixed inset-0 bg-slate-900/50 z-40 hidden"></div>
+
+    <div class="flex h-screen">
+        <aside id="sidebar" class="sidebar-hidden fixed inset-y-0 left-0 w-[270px] bg-brand-dark h-full text-white transition-transform duration-300 z-50 flex flex-col lg:relative lg:sidebar-visible">
+            <div class="h-20 flex items-center px-6 border-b border-white/10 shrink-0">
+                <div class="flex items-center gap-3 w-full">
+                    <div class="w-10 h-10 bg-white rounded-xl flex items-center justify-center p-1.5 shadow-md">
+                        <svg class="w-full h-full text-brand-dark" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                        </svg>
+                    </div>
+                    <div class="flex-1">
+                        <h1 class="font-bold text-base leading-tight tracking-wide">OAU ExamGuard</h1>
+                        <p class="text-[10px] text-blue-300 uppercase tracking-widest font-semibold">Course Manager</p>
+                    </div>
+                    <button id="sidebar-close-btn" class="lg:hidden ml-auto bg-white/10 hover:bg-white/20 p-1.5 rounded-lg transition-colors">
+                        <i class="ph ph-x text-lg"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="px-5 py-4 bg-white/5 border-b border-white/10">
+                <span class="text-[10px] bg-indigo-500/30 text-indigo-200 font-bold px-2 py-0.5 rounded uppercase tracking-wider">Report Workspace</span>
+                <h3 class="text-sm font-bold text-white mt-1.5 truncate" id="sidebarExamName">Loading Exam...</h3>
+                <p class="text-xs text-slate-400 truncate" id="sidebarCourseCode">—</p>
+            </div>
+
+            <div class="flex-1 overflow-y-auto py-4 px-4 space-y-1 hide-scrollbar" id="sidebarNav">
+                <a href="#" class="sidebar-link active flex items-center gap-3 px-4 py-3 bg-brand-active text-white rounded-xl relative group">
+                    <div class="indicator absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-blue-400 rounded-r-md"></div>
+                    <i class="ph-fill ph-chart-bar text-xl text-blue-300"></i>
+                    <span class="font-medium text-sm">Exam Analytics</span>
+                </a>
+            </div>
+
+            <div class="mt-auto p-4 border-t border-white/10 shrink-0">
+                <a href="#" onclick="goBackToCourse()" class="w-full flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors text-left text-sm font-medium text-slate-300 hover:text-white">
+                    <i class="ph ph-arrow-left text-lg"></i>
+                    <span>Back to Course</span>
+                </a>
+            </div>
+        </aside>
+
+        <div id="mainContent" class="flex-1 flex flex-col h-screen overflow-hidden relative w-full">
+            <header class="hidden lg:flex items-center justify-between bg-white border-b border-slate-200 px-8 h-20 shrink-0 z-20">
+                <div>
+                    <div class="flex items-center gap-2 text-xs text-slate-500 font-medium uppercase tracking-wider mb-0.5">
+                        <span id="breadcrumbCourse">Course</span> <i class="ph ph-caret-right"></i> <span>Assessments</span> <i class="ph ph-caret-right"></i> <span id="breadcrumbExam" class="font-bold text-slate-700">Submissions</span>
+                    </div>
+                    <h2 class="text-2xl font-bold text-slate-900">Submission Report</h2>
+                </div>
+
+                <div class="flex items-center gap-4">
+                    <button onclick="exportToCSV()" class="bg-brand-dark hover:bg-brand-active text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 shadow-sm">
+                        <i class="ph ph-download-simple text-sm"></i> Export CSV
+                    </button>
+                </div>
+            </header>
+
+            <header class="lg:hidden flex items-center justify-between bg-white border-b border-slate-200 px-4 h-16 shrink-0 z-20">
+                <div class="flex items-center gap-3">
+                    <button id="mobile-menu-btn" class="text-slate-500 hover:text-slate-800 p-2 focus:outline-none">
+                        <i class="ph ph-list text-2xl"></i>
+                    </button>
+                    <div>
+                        <h1 class="font-bold text-sm leading-tight text-slate-900">Submissions</h1>
+                        <p class="text-[10px] text-slate-400 font-medium" id="mobileHeaderSubtitle">Report</p>
+                    </div>
+                </div>
+                <button onclick="exportToCSV()" class="p-2 text-brand-dark hover:bg-blue-50 rounded">
+                    <i class="ph ph-download-simple text-xl"></i>
+                </button>
+            </header>
+
+            <main class="flex-1 overflow-y-auto px-4 lg:px-8 py-6 bg-[#f8fafc] relative">
+                <div id="statusBanner" class="mb-4 hidden"></div>
+
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/60 shadow-premium flex flex-col justify-between">
+                        <div class="flex items-center justify-between mb-4">
+                            <span class="text-xs lg:text-sm font-semibold text-slate-500">Total Scripts</span>
+                            <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center"><i class="ph ph-files text-lg"></i></div>
+                        </div>
+                        <div><h3 class="text-2xl lg:text-3xl font-bold text-slate-900" id="statTotalScripts">—</h3><p class="text-[11px] text-slate-400 font-medium mt-1">Submitted</p></div>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/60 shadow-premium flex flex-col justify-between">
+                        <div class="flex items-center justify-between mb-4">
+                            <span class="text-xs lg:text-sm font-semibold text-slate-500">Average Score</span>
+                            <div class="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center"><i class="ph ph-percent text-lg"></i></div>
+                        </div>
+                        <div><h3 class="text-2xl lg:text-3xl font-bold text-slate-900" id="statAvgScore">—</h3><p class="text-[11px] text-slate-400 font-medium mt-1">Mean Performance</p></div>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/60 shadow-premium flex flex-col justify-between">
+                        <div class="flex items-center justify-between mb-4">
+                            <span class="text-xs lg:text-sm font-semibold text-slate-500">Pass Rate</span>
+                            <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center"><i class="ph ph-trend-up text-lg"></i></div>
+                        </div>
+                        <div><h3 class="text-2xl lg:text-3xl font-bold text-slate-900" id="statPassRate">—</h3><p class="text-[11px] text-emerald-600 font-medium mt-1">Score ≥ 40%</p></div>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/60 shadow-premium flex flex-col justify-between">
+                        <div class="flex items-center justify-between mb-4">
+                            <span class="text-xs lg:text-sm font-semibold text-slate-500">Highest Score</span>
+                            <div class="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center"><i class="ph ph-trophy text-lg"></i></div>
+                        </div>
+                        <div><h3 class="text-2xl lg:text-3xl font-bold text-slate-900" id="statHighScore">—</h3><p class="text-[11px] text-amber-600 font-medium mt-1">Top Performer</p></div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/60 shadow-premium lg:col-span-1">
+                        <h3 class="text-base font-bold text-slate-900 mb-4 flex items-center gap-2"><i class="ph ph-chart-polar text-blue-600"></i> Score Distribution</h3>
+                        <div class="h-64"><canvas id="submissionsChart"></canvas></div>
+                    </div>
+                    
+                    <div class="bg-white rounded-2xl border border-slate-200/60 shadow-premium lg:col-span-2 flex flex-col h-[350px]">
+                        <div class="p-5 border-b border-slate-100 flex items-center justify-between shrink-0">
+                            <h3 class="text-base font-bold text-slate-900">Submission Logs</h3>
+                            <div class="flex items-center gap-2">
+                                <i class="ph ph-magnifying-glass text-slate-400"></i>
+                                <input type="text" id="searchSubmissions" onkeyup="filterTable()" placeholder="Search matric or name..." class="bg-transparent border-none text-sm focus:ring-0 p-0 w-48" />
+                            </div>
+                        </div>
+                        <div class="flex-1 overflow-auto p-0">
+                            <table class="w-full text-sm text-left text-slate-600" id="submissionsTable">
+                                <thead class="text-[11px] text-slate-500 uppercase bg-slate-50 sticky top-0">
+                                    <tr>
+                                        <th class="py-3 px-5">Student</th>
+                                        <th class="py-3 px-5">Score</th>
+                                        <th class="py-3 px-5">Duration</th>
+                                        <th class="py-3 px-5">Submitted At</th>
+                                        <th class="py-3 px-5 text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="submissionsTbody">
+                                    </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </main>
+
+            <nav class="mobile-bottom-nav">
+                <div class="mobile-nav-item active">
+                    <i class="ph ph-chart-bar"></i><span class="text-[11px]">Analytics</span>
+                </div>
+                <div onclick="goBackToCourse()" class="mobile-nav-item">
+                    <i class="ph ph-arrow-left"></i><span class="text-[11px]">Back</span>
+                </div>
+            </nav>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://examguide.onrender.com';
+        const TOKEN_KEY = 'token';
+        let state = {
+            examId: new URLSearchParams(window.location.search).get('examId'),
+            examDetails: null,
+            submissions: [],
+            chart: null
+        };
+
+        function getAuthHeaders() {
+            const token = localStorage.getItem(TOKEN_KEY);
+            return token ? { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } : { 'Content-Type': 'application/json' };
+        }
+
+        function showStatus(msg, type = 'info') {
+            const banner = document.getElementById('statusBanner');
+            banner.innerHTML = `<div class="rounded-md p-3 ${type === 'error' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}">${msg}</div>`;
+            banner.classList.remove('hidden');
+            setTimeout(() => banner.classList.add('hidden'), 5000);
+        }
+
+        function goBackToCourse() {
+            if (state.examDetails && state.examDetails.courseId) {
+                window.location.href = `course.html?courseId=${state.examDetails.courseId}`;
+            } else {
+                window.history.back();
+            }
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[s]);
+        }
+
+        async function initPage() {
+            if (!state.examId) {
+                showStatus('No Exam ID provided in URL.', 'error');
+                return;
+            }
+            try {
+                // Fetch Exam Details
+                const examRes = await fetch(`${API_BASE}/api/lecturer/exam-sets/${state.examId}`, { headers: getAuthHeaders() });
+                if (examRes.ok) {
+                    state.examDetails = await examRes.json();
+                    document.getElementById('sidebarExamName').innerText = state.examDetails.title || 'Unknown Exam';
+                    document.getElementById('breadcrumbExam').innerText = state.examDetails.title || 'Details';
+                    if (state.examDetails.courseId) document.getElementById('sidebarCourseCode').innerText = 'Course Linked';
+                }
+
+                // Fetch Submissions
+                const subRes = await fetch(`${API_BASE}/api/lecturer/exam-sets/${state.examId}/submissions`, { headers: getAuthHeaders() });
+                if (subRes.ok) {
+                    const data = await subRes.json();
+                    state.submissions = data.submissions || (Array.isArray(data) ? data : []);
+                } else {
+                    // Fallback to simulated data if endpoint doesn't exist yet for visual layout
+                    state.submissions = generateMockSubmissions();
+                    showStatus('Using simulated data. Ensure backend endpoint /submissions is live.', 'info');
+                }
+
+                renderAnalytics();
+            } catch (err) {
+                showStatus('Network error loading submissions.', 'error');
+                console.error(err);
+            }
+            
+            // Mobile sidebar setup
+            document.getElementById('mobile-menu-btn')?.addEventListener('click', () => {
+                document.getElementById('sidebar').classList.remove('sidebar-hidden');
+                document.getElementById('sidebar').classList.add('sidebar-visible');
+                document.getElementById('sidebar-overlay').classList.remove('hidden');
+            });
+            document.getElementById('sidebar-close-btn')?.addEventListener('click', closeMobileMenu);
+            document.getElementById('sidebar-overlay')?.addEventListener('click', closeMobileMenu);
+        }
+
+        function closeMobileMenu() {
+            document.getElementById('sidebar').classList.add('sidebar-hidden');
+            document.getElementById('sidebar').classList.remove('sidebar-visible');
+            document.getElementById('sidebar-overlay').classList.add('hidden');
+        }
+
+        function renderAnalytics() {
+            const subs = state.submissions;
+            const total = subs.length;
+            let sum = 0, passes = 0, highest = 0;
+
+            const tableBody = document.getElementById('submissionsTbody');
+            tableBody.innerHTML = '';
+
+            if (total === 0) {
+                document.getElementById('statTotalScripts').innerText = '0';
+                tableBody.innerHTML = `<tr><td colspan="5" class="p-5 text-center text-slate-400">No submissions found.</td></tr>`;
+                return;
+            }
+
+            subs.forEach(s => {
+                const score = parseFloat(s.score) || 0;
+                sum += score;
+                if (score >= 40) passes++;
+                if (score > highest) highest = score;
+
+                const tr = document.createElement('tr');
+                tr.className = 'border-b border-slate-50 hover:bg-slate-50/80 transition-colors';
+                tr.innerHTML = `
+                    <td class="py-3 px-5">
+                        <div class="font-semibold text-slate-900">${escapeHtml(s.studentName || 'Anonymous')}</div>
+                        <div class="text-[10px] font-mono text-slate-400">${escapeHtml(s.matric || 'N/A')}</div>
+                    </td>
+                    <td class="py-3 px-5">
+                        <span class="font-bold ${score >= 40 ? 'text-emerald-600' : 'text-red-600'}">${score}%</span>
+                    </td>
+                    <td class="py-3 px-5 text-xs">${escapeHtml(s.timeTaken || '—')} mins</td>
+                    <td class="py-3 px-5 text-xs text-slate-500">${new Date(s.submittedAt || Date.now()).toLocaleString()}</td>
+                    <td class="py-3 px-5 text-right">
+                        <button class="text-brand-active text-xs font-bold hover:underline" onclick="viewScript('${escapeHtml(s._id)}')">View</button>
+                    </td>
+                `;
+                tableBody.appendChild(tr);
+            });
+
+            document.getElementById('statTotalScripts').innerText = total;
+            document.getElementById('statAvgScore').innerText = (sum / total).toFixed(1) + '%';
+            document.getElementById('statPassRate').innerText = ((passes / total) * 100).toFixed(1) + '%';
+            document.getElementById('statHighScore').innerText = highest + '%';
+
+            renderChart(subs);
+        }
+
+        function renderChart(subs) {
+            const ctx = document.getElementById('submissionsChart');
+            if (!ctx) return;
+
+            const bins = [0, 0, 0, 0, 0]; // 0-39, 40-49, 50-59, 60-69, 70+
+            subs.forEach(s => {
+                const sc = parseFloat(s.score) || 0;
+                if (sc < 40) bins[0]++;
+                else if (sc < 50) bins[1]++;
+                else if (sc < 60) bins[2]++;
+                else if (sc < 70) bins[3]++;
+                else bins[4]++;
+            });
+
+            if (state.chart) state.chart.destroy();
+            state.chart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Fail (0-39)', 'D (40-49)', 'C (50-59)', 'B (60-69)', 'A (70+)'],
+                    datasets: [{
+                        data: bins,
+                        backgroundColor: ['#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6', '#10b981'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } }
+                }
+            });
+        }
+
+        function filterTable() {
+            const query = document.getElementById('searchSubmissions').value.toLowerCase();
+            const rows = document.querySelectorAll('#submissionsTable tbody tr');
+            rows.forEach(row => {
+                const text = row.cells[0].innerText.toLowerCase();
+                row.style.display = text.includes(query) ? "" : "none";
+            });
+        }
+
+        function exportToCSV() {
+            if (!state.submissions.length) return alert('No data to export');
+            let csvContent = "data:text/csv;charset=utf-8,Name,Matric,Score,Time Taken (mins),Submitted At\n";
+            state.submissions.forEach(s => {
+                csvContent += `${s.studentName || 'N/A'},${s.matric || 'N/A'},${s.score || 0},${s.timeTaken || 0},${s.submittedAt || ''}\n`;
+            });
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "Exam_Submissions.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function viewScript(id) {
+            alert(`Detailed script view for submission ${id} would open here. Combine with student responses endpoint.`);
+        }
+
+        function generateMockSubmissions() {
+            return [
+                { _id: '1', studentName: 'Adebayo Tunde', matric: 'CHM/2023/105', score: 72, timeTaken: 45, submittedAt: new Date().toISOString() },
+                { _id: '2', studentName: 'Okafor Chinedu', matric: 'CHM/2023/088', score: 58, timeTaken: 60, submittedAt: new Date(Date.now() - 3600000).toISOString() },
+                { _id: '3', studentName: 'Bello Fatima', matric: 'CHM/2023/042', score: 38, timeTaken: 30, submittedAt: new Date(Date.now() - 7200000).toISOString() },
+                { _id: '4', studentName: 'Eze Emmanuel', matric: 'CHM/2023/110', score: 85, timeTaken: 55, submittedAt: new Date(Date.now() - 8000000).toISOString() }
+            ];
+        }
+
+        document.addEventListener('DOMContentLoaded', initPage);
+    </script>
+</body>
+</html>
