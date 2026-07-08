@@ -42,18 +42,8 @@
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
 
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        
-        #sidebar { transition: transform 0.3s ease-in-out; }
-        #sidebar.sidebar-hidden { transform: translateX(-100%); }
-        #sidebar.sidebar-visible { transform: translateX(0); }
-
         @media (max-width: 1024px) {
-            #sidebar { transform: translateX(-100%); }
             main { padding-bottom: 96px !important; }
-        }
-        @media (min-width: 1024px) {
-            #sidebar { transform: none !important; }
         }
 
         .mobile-bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; background: white; border-top: 1px solid #e5e7eb; display: none; z-index: 30; }
@@ -61,19 +51,22 @@
         .mobile-nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12px 0; cursor: pointer; color: #6b7280; font-size: 11px; transition: all 0.2s; }
         .mobile-nav-item.active { color: #1e3a8a; border-top-color: #1e3a8a; font-weight: 600; }
         .mobile-nav-item i { font-size: 22px; margin-bottom: 2px; }
-
-        .badge-status { display:inline-block; padding:4px 12px; border-radius:12px; font-size:12px; font-weight:600; }
-        .badge-pass { background-color:#dcfce7; color:#166534; }
-        .badge-fail { background-color:#fee2e2; color:#991b1b; }
-        .badge-pending { background-color:#fef9c3; color:#713f12; }
     </style>
 </head>
-<body class="bg-brand-light text-slate-800 font-sans antialiased">
+<body class="bg-brand-light text-slate-800 font-sans antialiased overflow-hidden">
 
-    <div id="sidebar-overlay" class="fixed inset-0 bg-slate-900/50 z-40 hidden"></div>
+    <div id="lazyLoader" class="fixed inset-0 z-[9999] bg-[#f8fafc] flex flex-col items-center justify-center transition-opacity duration-500">
+        <div class="relative w-16 h-16">
+            <div class="absolute inset-0 border-4 border-blue-100 rounded-full"></div>
+            <div class="absolute inset-0 border-4 border-brand-active rounded-full border-t-transparent animate-spin"></div>
+        </div>
+        <div class="mt-4 text-sm font-bold text-slate-700 tracking-wide animate-pulse">Compiling Submissions...</div>
+    </div>
+
+    <div id="sidebar-overlay" class="fixed inset-0 bg-slate-900/50 z-40 hidden transition-opacity"></div>
 
     <div class="flex h-screen">
-        <aside id="sidebar" class="sidebar-hidden fixed inset-y-0 left-0 w-[270px] bg-brand-dark h-full text-white transition-transform duration-300 z-50 flex flex-col lg:relative lg:sidebar-visible">
+        <aside id="sidebar" class="fixed inset-y-0 left-0 w-[270px] bg-brand-dark h-full text-white transition-transform duration-300 z-50 flex flex-col -translate-x-full lg:translate-x-0 lg:relative">
             <div class="h-20 flex items-center px-6 border-b border-white/10 shrink-0">
                 <div class="flex items-center gap-3 w-full">
                     <div class="w-10 h-10 bg-white rounded-xl flex items-center justify-center p-1.5 shadow-md">
@@ -263,6 +256,7 @@
         async function initPage() {
             if (!state.examId) {
                 showStatus('No Exam ID provided in URL.', 'error');
+                removeLoader();
                 return;
             }
             try {
@@ -290,21 +284,30 @@
             } catch (err) {
                 showStatus('Network error loading submissions.', 'error');
                 console.error(err);
+            } finally {
+                removeLoader();
             }
             
-            // Mobile sidebar setup
+            // Mobile sidebar setup (Updated to use Tailwind native classes)
             document.getElementById('mobile-menu-btn')?.addEventListener('click', () => {
-                document.getElementById('sidebar').classList.remove('sidebar-hidden');
-                document.getElementById('sidebar').classList.add('sidebar-visible');
+                document.getElementById('sidebar').classList.remove('-translate-x-full');
                 document.getElementById('sidebar-overlay').classList.remove('hidden');
             });
             document.getElementById('sidebar-close-btn')?.addEventListener('click', closeMobileMenu);
             document.getElementById('sidebar-overlay')?.addEventListener('click', closeMobileMenu);
         }
 
+        function removeLoader() {
+            const loader = document.getElementById('lazyLoader');
+            loader.classList.add('opacity-0');
+            setTimeout(() => {
+                loader.classList.add('hidden');
+                document.body.classList.remove('overflow-hidden');
+            }, 500);
+        }
+
         function closeMobileMenu() {
-            document.getElementById('sidebar').classList.add('sidebar-hidden');
-            document.getElementById('sidebar').classList.remove('sidebar-visible');
+            document.getElementById('sidebar').classList.add('-translate-x-full');
             document.getElementById('sidebar-overlay').classList.add('hidden');
         }
 
