@@ -934,6 +934,7 @@
                     loadResourcesForCourse(getCourseId(selected))
                 ]);
                 renderAllFromState();
+                await refreshAssessmentsForCourse(getCourseId(selected));
                 showStatus('Course data loaded.', 'info');
             } catch (e) {
                 console.error('Initial load error:', e);
@@ -986,6 +987,52 @@
                 pageState.exams = [];
             }
         }
+
+        // Load QuestionSet documents authored by lecturer and store normalized items
+async function loadQuestionSets() {
+  try {
+    const data = await fetchJSON('/api/lecturer/question-sets?includeQuestions=true');
+    const sets = data.questionSets || [];
+    // normalize to the same shape renderAssessmentsList expects
+    pageState.questionSets = sets.map(s => ({
+      _id: s._id,
+      title: s.title,
+      questions: s.questions || [],
+      duration: s.duration || null,
+      startDate: s.schedule?.start || null,
+      endDate: s.schedule?.end || null,
+      status: s.status || 'INACTIVE',
+      faculty: s.faculty || null,
+      department: s.department || null,
+      source: 'questionset',
+      createdAt: s.createdAt
+    }));
+  } catch (e) {
+    console.warn('Failed to load question sets', e);
+    pageState.questionSets = [];
+  }
+}
+
+// Refresh the assessments display by combining embedded exams + questionSets
+async function refreshAssessmentsForCourse(courseId) {
+  // load embedded exams (keeps existing behaviour)
+  await loadExamsForCourse(courseId);
+
+  // load QuestionSet docs authored by lecturer
+  await loadQuestionSets();
+
+  // combine: pageState.exams currently holds the embedded exams filtered by course
+  // but questionSets may not have a course id; include all questionSets authored by lecturer
+  const embedded = Array.isArray(pageState.exams) ? pageState.exams : [];
+  const sets = Array.isArray(pageState.questionSets) ? pageState.questionSets : [];
+
+  // Optionally filter questionSets by department or faculty if you want them scoped to course.
+  // For now include all sets created by the lecturer (so they appear in the list).
+  pageState.examsCombined = embedded.concat(sets);
+
+  // call renderer (renderAssessmentsList should be updated to use pageState.examsCombined)
+  renderAssessmentsList();
+}
 
         // Load students: try to extract enrolled students from course object, else fetch /api/lecturer/students and attempt to filter
         async function loadStudentsForCourse(courseId) {
@@ -1141,35 +1188,47 @@
         }
 
         function renderAssessmentsList() {
-            const list = document.getElementById('assessmentsList');
-            list.innerHTML = '';
-            if (!pageState.exams || pageState.exams.length === 0) {
-                list.innerHTML = `<div class="text-sm muted p-4">No linked CBT assessments found.</div>`;
-                return;
-            }
-            pageState.exams.forEach(e => {
-                const div = document.createElement('div');
-                div.className = 'p-4 rounded-xl border border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4';
-                div.innerHTML = `
-                    <div class="flex items-start gap-3">
-                        <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 mt-0.5"><i class="ph ph-file-text text-xl"></i></div>
-                        <div>
-                            <h4 class="text-sm font-bold text-slate-900">${escapeHtml(e.title || e.name || 'Exam')}</h4>
-                            <p class="text-xs text-slate-500 mt-0.5">${e.questions?.length || 'N/A'} Questions | Duration: ${e.duration || 'N/A'} mins</p>
-                            <div class="flex items-center gap-4 mt-2 text-[11px] font-medium text-slate-400">
-                                <span><i class="ph ph-calendar"></i> ${e.startDate ? new Date(e.startDate).toLocaleDateString() : '—'}</span>
-                                <span><i class="ph ph-clock"></i> ${e.startDate ? new Date(e.startDate).toLocaleTimeString() : '—'}</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-3 sm:self-center">
-                        <span class="badge-status ${e.status === 'ready' || e.status === 'scheduled' ? 'badge-active' : 'badge-pending'}">${escapeHtml(e.status || 'scheduled')}</span>
-                        <button class="bg-white border border-slate-200 text-slate-700 text-xs font-bold px-3 py-2 rounded-lg hover:bg-slate-50 transition-all" onclick="openExamEditor('${escapeHtml(e._id || e.id || '')}')">Edit Parameters</button>
-                    </div>
-                `;
-                list.appendChild(div);
-            });
-        }
+  const list = document.getElementById('assessmentsList');
+  list.innerHTML = '';
+
+  const exams = pageState.examsCombined || pageState.exams || [];
+
+  if (!exams || exams.length === 0) {
+    list.innerHTML = `<div class="text-sm muted p-4">No linked CBT assessments found.</div>`;
+    return;
+  }
+
+  exams.forEach(e => {
+    const div = document.createElement('div');
+    div.className = 'p-4 rounded-xl border border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4';
+
+    const title = escapeHtml(e.title || e.name || 'Exam');
+    const qCount = Array.isArray(e.questions) ? e.questions.length : (e.questionsCount || 'N/A');
+    const start = e.startDate ? new Date(e.startDate).toLocaleString() : '—';
+    const duration = e.duration || 'N/A';
+    const source = e.source || (e._id ? 'questionset' : 'embedded'); // fallback
+
+    div.innerHTML = `
+      <div class="flex items-start gap-3">
+        <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 mt-0.5"><i class="ph ph-file-text text-xl"></i></div>
+        <div>
+          <h4 class="text-sm font-bold text-slate-900">${title}</h4>
+          <p class="text-xs text-slate-500 mt-0.5">${qCount} Questions | Duration: ${duration} mins</p>
+          <div class="flex items-center gap-4 mt-2 text-[11px] font-medium text-slate-400">
+            <span><i class="ph ph-calendar"></i> ${start}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button class="text-brand-active text-xs font-bold hover:underline flex items-center gap-1" onclick="openEditExamSetModal('${escapeHtml(e._id || '')}')">Edit</button>
+        <button class="text-xs px-2 py-1 rounded bg-slate-50 border" onclick="openAddQuestionToSetModal('${escapeHtml(e._id || '')}')">Add Questions</button>
+        <button class="text-xs px-2 py-1 rounded bg-red-50 text-red-700 border" onclick="deleteExamSet('${escapeHtml(e._id || '')}')">Delete</button>
+      </div>
+    `;
+    list.appendChild(div);
+  });
+}
 
         function renderResourcesGrid() {
             const grid = document.getElementById('resourcesGrid');
@@ -1720,6 +1779,81 @@ function removeQuestionRow(button) {
             });
         }
 
+        
+
+        // Open Create modal prefilled for editing a QuestionSet
+async function openEditExamSetModal(examSetId) {
+  try {
+    const data = await fetchJSON(`/api/lecturer/exam-sets/${encodeURIComponent(examSetId)}`);
+    // open modal
+    openModal('createExamSetModal');
+    const form = document.getElementById('createExamSetForm');
+    form.dataset.editId = examSetId; // mark edit mode
+
+    // populate top-level fields
+    document.getElementById('examSetInputTitle').value = data.title || '';
+    document.getElementById('examSetFaculty').value = data.faculty || '';
+    document.getElementById('examSetDepartment').value = data.department || '';
+    document.getElementById('examSetStatus').value = data.status || 'INACTIVE';
+    if (data.schedule && data.schedule.start) document.getElementById('examSetStartDate').value = new Date(data.schedule.start).toISOString().slice(0,16);
+    if (data.schedule && data.schedule.end) document.getElementById('examSetEndDate').value = new Date(data.schedule.end).toISOString().slice(0,16);
+
+    // clear existing question rows and add rows from data.questions
+    const container = document.getElementById('examSetQuestionsContainer');
+    container.innerHTML = '';
+    (data.questions || []).forEach((q, idx) => {
+      const html = `
+        <div class="question-row border border-slate-200 p-4 rounded-xl mb-4 bg-slate-50">
+          <div class="flex items-center justify-between mb-3">
+            <h4 class="font-semibold text-sm text-slate-900">Question ${idx+1}</h4>
+            <button type="button" onclick="this.closest('.question-row').remove()" class="text-red-600 hover:text-red-800 text-xs font-bold">Remove</button>
+          </div>
+          <div class="form-group">
+            <label>Question Text</label>
+            <textarea name="questions[${idx}][question]" required class="w-full border border-slate-200 rounded-lg p-3 text-sm">${escapeHtml(q.question || q.text || '')}</textarea>
+          </div>
+          <div class="form-group">
+            <label>Options (one per line)</label>
+            <textarea name="questions[${idx}][options]" placeholder="Option A\nOption B" class="w-full border border-slate-200 rounded-lg p-3 text-sm h-24">${(Array.isArray(q.options) ? q.options.map(o => escapeHtml(o.text || '')).join('\\n') : '')}</textarea>
+          </div>
+          <div class="form-group">
+            <label>Correct Answer</label>
+            <input type="text" name="questions[${idx}][answer]" required class="w-full border border-slate-200 rounded-lg p-3 text-sm" value="${escapeHtml(q.answer || '')}">
+          </div>
+          <div class="form-group">
+            <label>Explanation (Optional)</label>
+            <textarea name="questions[${idx}][explanation]" class="w-full border border-slate-200 rounded-lg p-3 text-sm">${escapeHtml(q.explanation || '')}</textarea>
+          </div>
+        </div>
+      `;
+      container.insertAdjacentHTML('beforeend', html);
+    });
+
+  } catch (e) {
+    console.error('Failed to load exam set for edit', e);
+    showStatus('Failed to load exam set for edit: ' + (e.message || e), 'error');
+  }
+}
+        async function deleteExamSet(id) {
+  if (!confirm('Delete this exam set? This cannot be undone.')) return;
+  try {
+    await fetchJSON(`/api/lecturer/exam-sets/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    showStatus('Exam set deleted', 'info');
+    await refreshAssessmentsForCourse(getCourseId(pageState.selectedCourse));
+  } catch (e) {
+    console.error('Delete failed', e);
+    showStatus('Delete failed: ' + (e.message || e), 'error');
+  }
+}
+
+// Open modal to quickly add question rows to existing set (simple UX: open Edit modal and set focus)
+function openAddQuestionToSetModal(id) {
+  // open edit modal first so we get existing data
+  openEditExamSetModal(id).then(() => {
+    // add an empty question row for quick adding
+    addQuestionRow();
+  });
+}
         // Enroll & upload handlers (local UI)
         function handleEnrollStudent(e) {
             e.preventDefault();
