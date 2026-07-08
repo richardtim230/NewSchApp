@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=0.9"/>
+    <title>OAU ExamGuard - Student Submission</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com"/>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        brand: {
+                            dark: '#1e3a8a',
+                            active: '#2563eb',
+                            accent: '#3b82f6',
+                            light: '#f8fafc'
+                        }
+                    },
+                    boxShadow: {
+                        'premium': '0 2px 10px -3px rgba(0,0,0,0.05), 0 4px 6px -4px rgba(0,0,0,0.02)',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.css" rel="stylesheet" />
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+
+        @media (max-width: 1024px) {
+            main { padding-bottom: 96px !important; }
+        }
+
+        .mobile-bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; background: white; border-top: 1px solid #e5e7eb; display: none; z-index: 30; }
+        @media (max-width: 1024px) { .mobile-bottom-nav { display: flex; } }
+        .mobile-nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12px 0; cursor: pointer; color: #6b7280; font-size: 11px; transition: all 0.2s; }
+        .mobile-nav-item.active { color: #1e3a8a; border-top-color: #1e3a8a; font-weight: 600; }
+        .mobile-nav-item i { font-size: 22px; margin-bottom: 2px; }
+
+        /* Custom Styles for Question Options */
+        .option-correct { border-color: #10b981; background-color: #ecfdf5; color: #065f46; }
+        .option-wrong { border-color: #ef4444; background-color: #fef2f2; color: #991b1b; }
+        .option-neutral { border-color: #e2e8f0; background-color: #ffffff; color: #475569; }
+    </style>
+</head>
+<body class="bg-brand-light text-slate-800 font-sans antialiased overflow-hidden">
+
+    <div id="lazyLoader" class="fixed inset-0 z-[9999] bg-[#f8fafc] flex flex-col items-center justify-center transition-opacity duration-500">
+        <div class="relative w-16 h-16">
+            <div class="absolute inset-0 border-4 border-blue-100 rounded-full"></div>
+            <div class="absolute inset-0 border-4 border-brand-active rounded-full border-t-transparent animate-spin"></div>
+        </div>
+        <div class="mt-4 text-sm font-bold text-slate-700 tracking-wide animate-pulse">Loading Submission...</div>
+    </div>
+
+    <div id="sidebar-overlay" class="fixed inset-0 bg-slate-900/50 z-40 hidden transition-opacity"></div>
+
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <aside id="sidebar" class="fixed inset-y-0 left-0 w-[270px] bg-brand-dark h-full text-white transition-transform duration-300 z-50 flex flex-col -translate-x-full lg:translate-x-0 lg:relative">
+            <div class="h-20 flex items-center px-6 border-b border-white/10 shrink-0">
+                <div class="flex items-center gap-3 w-full">
+                    <div class="w-10 h-10 bg-white rounded-xl flex items-center justify-center p-1.5 shadow-md">
+                        <svg class="w-full h-full text-brand-dark" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                        </svg>
+                    </div>
+                    <div class="flex-1">
+                        <h1 class="font-bold text-base leading-tight tracking-wide">OAU ExamGuard</h1>
+                        <p class="text-[10px] text-blue-300 uppercase tracking-widest font-semibold">Course Manager</p>
+                    </div>
+                    <button id="sidebar-close-btn" class="lg:hidden ml-auto bg-white/10 hover:bg-white/20 p-1.5 rounded-lg transition-colors">
+                        <i class="ph ph-x text-lg"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="px-5 py-4 bg-white/5 border-b border-white/10">
+                <span class="text-[10px] bg-indigo-500/30 text-indigo-200 font-bold px-2 py-0.5 rounded uppercase tracking-wider">Submission View</span>
+                <h3 class="text-sm font-bold text-white mt-1.5 truncate" id="sidebarExamName">Loading Exam...</h3>
+                <p class="text-xs text-slate-400 truncate" id="sidebarStudentName">—</p>
+            </div>
+
+            <div class="flex-1 overflow-y-auto py-4 px-4 space-y-1 hide-scrollbar" id="sidebarNav">
+                <a href="#" class="sidebar-link active flex items-center gap-3 px-4 py-3 bg-brand-active text-white rounded-xl relative group">
+                    <div class="indicator absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-blue-400 rounded-r-md"></div>
+                    <i class="ph-fill ph-file-text text-xl text-blue-300"></i>
+                    <span class="font-medium text-sm">Detailed Script</span>
+                </a>
+            </div>
+
+            <div class="mt-auto p-4 border-t border-white/10 shrink-0">
+                <a href="#" onclick="goBack()" class="w-full flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors text-left text-sm font-medium text-slate-300 hover:text-white">
+                    <i class="ph ph-arrow-left text-lg"></i>
+                    <span>Back to Report</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <div id="mainContent" class="flex-1 flex flex-col h-screen overflow-hidden relative w-full">
+            <header class="hidden lg:flex items-center justify-between bg-white border-b border-slate-200 px-8 h-20 shrink-0 z-20">
+                <div>
+                    <div class="flex items-center gap-2 text-xs text-slate-500 font-medium uppercase tracking-wider mb-0.5">
+                        <span id="breadcrumbExam">Exam</span> <i class="ph ph-caret-right"></i> <span>Submissions</span> <i class="ph ph-caret-right"></i> <span id="breadcrumbStudent" class="font-bold text-slate-700">Student Script</span>
+                    </div>
+                    <h2 class="text-2xl font-bold text-slate-900">Submission Details</h2>
+                </div>
+
+                <div class="flex items-center gap-4">
+                    <button onclick="window.print()" class="bg-brand-dark hover:bg-brand-active text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 shadow-sm">
+                        <i class="ph ph-printer text-sm"></i> Print Script
+                    </button>
+                </div>
+            </header>
+
+            <header class="lg:hidden flex items-center justify-between bg-white border-b border-slate-200 px-4 h-16 shrink-0 z-20">
+                <div class="flex items-center gap-3">
+                    <button id="mobile-menu-btn" class="text-slate-500 hover:text-slate-800 p-2 focus:outline-none">
+                        <i class="ph ph-list text-2xl"></i>
+                    </button>
+                    <div>
+                        <h1 class="font-bold text-sm leading-tight text-slate-900">Submission Details</h1>
+                        <p class="text-[10px] text-slate-400 font-medium" id="mobileHeaderSubtitle">Script View</p>
+                    </div>
+                </div>
+                <button onclick="window.print()" class="p-2 text-brand-dark hover:bg-blue-50 rounded">
+                    <i class="ph ph-printer text-xl"></i>
+                </button>
+            </header>
+
+            <main class="flex-1 overflow-y-auto px-4 lg:px-8 py-6 bg-[#f8fafc] relative">
+                <div id="statusBanner" class="mb-4 hidden"></div>
+
+                <!-- Metrics Top Row -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                    <!-- Student Profile -->
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/60 shadow-premium flex flex-col justify-between">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs lg:text-sm font-semibold text-slate-500">Student Info</span>
+                            <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center"><i class="ph ph-user text-lg"></i></div>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold text-slate-900 truncate" id="infoStudentName">—</h3>
+                            <p class="text-xs text-slate-500 font-mono mt-0.5" id="infoStudentMatric">—</p>
+                        </div>
+                    </div>
+
+                    <!-- Score Profile -->
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/60 shadow-premium flex flex-col justify-between">
+                        <div class="flex items-center justify-between mb-4">
+                            <span class="text-xs lg:text-sm font-semibold text-slate-500">Final Score</span>
+                            <div id="scoreIconContainer" class="w-8 h-8 rounded-lg bg-slate-50 text-slate-600 flex items-center justify-center"><i class="ph ph-target text-lg"></i></div>
+                        </div>
+                        <div>
+                            <h3 class="text-2xl lg:text-3xl font-bold" id="infoScore">—</h3>
+                            <p class="text-[11px] text-slate-400 font-medium mt-1">Percentage Grade</p>
+                        </div>
+                    </div>
+
+                    <!-- Time Taken -->
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/60 shadow-premium flex flex-col justify-between">
+                        <div class="flex items-center justify-between mb-4">
+                            <span class="text-xs lg:text-sm font-semibold text-slate-500">Duration</span>
+                            <div class="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center"><i class="ph ph-clock text-lg"></i></div>
+                        </div>
+                        <div>
+                            <h3 class="text-2xl lg:text-3xl font-bold text-slate-900" id="infoTimeTaken">—</h3>
+                            <p class="text-[11px] text-slate-400 font-medium mt-1">Minutes elapsed</p>
+                        </div>
+                    </div>
+
+                    <!-- Submitted At -->
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/60 shadow-premium flex flex-col justify-between">
+                        <div class="flex items-center justify-between mb-4">
+                            <span class="text-xs lg:text-sm font-semibold text-slate-500">Submission Time</span>
+                            <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center"><i class="ph ph-calendar-check text-lg"></i></div>
+                        </div>
+                        <div>
+                            <h3 class="text-base font-bold text-slate-900" id="infoSubmittedAt">—</h3>
+                            <p class="text-[11px] text-slate-400 font-medium mt-1">Timestamp</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Detailed Breakdown Container -->
+                <div class="bg-white rounded-2xl border border-slate-200/60 shadow-premium flex flex-col mb-8">
+                    <div class="p-5 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/50 rounded-t-2xl">
+                        <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                            <i class="ph ph-list-numbers text-brand-active"></i> Question Breakdown
+                        </h3>
+                        <div class="text-sm font-medium text-slate-500" id="questionCountText">Loading...</div>
+                    </div>
+                    
+                    <div class="p-5 lg:p-8 space-y-6" id="questionsContainer">
+                        <!-- Questions injected dynamically here -->
+                    </div>
+                </div>
+            </main>
+
+            <nav class="mobile-bottom-nav">
+                <div class="mobile-nav-item active">
+                    <i class="ph ph-file-text"></i><span class="text-[11px]">Script</span>
+                </div>
+                <div onclick="goBack()" class="mobile-nav-item">
+                    <i class="ph ph-arrow-left"></i><span class="text-[11px]">Back</span>
+                </div>
+            </nav>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://examguide.onrender.com';
+        const TOKEN_KEY = 'token';
+        let state = {
+            submissionId: new URLSearchParams(window.location.search).get('submissionId'),
+            data: null
+        };
+
+        function getAuthHeaders() {
+            const token = localStorage.getItem(TOKEN_KEY);
+            return token ? { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } : { 'Content-Type': 'application/json' };
+        }
+
+        function showStatus(msg, type = 'info') {
+            const banner = document.getElementById('statusBanner');
+            banner.innerHTML = `<div class="rounded-md p-3 ${type === 'error' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}">${msg}</div>`;
+            banner.classList.remove('hidden');
+            setTimeout(() => banner.classList.add('hidden'), 5000);
+        }
+
+        function goBack() {
+            window.history.back();
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[s]);
+        }
+
+        async function initPage() {
+            if (!state.submissionId) {
+                showStatus('No Submission ID provided in URL.', 'error');
+                removeLoader();
+                return;
+            }
+            try {
+                // Fetch Single Submission
+                const response = await fetch(`${API_BASE}/api/lecturer/submissions/${state.submissionId}`, { headers: getAuthHeaders() });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    state.data = result.submission;
+                } else {
+                    // Fallback to mock data for layout demonstration purposes
+                    state.data = generateMockSubmission();
+                    showStatus('Using simulated data. Ensure backend endpoint is live.', 'info');
+                }
+
+                populateUI();
+
+            } catch (err) {
+                showStatus('Network error loading submission details.', 'error');
+                console.error(err);
+            } finally {
+                removeLoader();
+            }
+            
+            // Mobile sidebar setup
+            document.getElementById('mobile-menu-btn')?.addEventListener('click', () => {
+                document.getElementById('sidebar').classList.remove('-translate-x-full');
+                document.getElementById('sidebar-overlay').classList.remove('hidden');
+            });
+            document.getElementById('sidebar-close-btn')?.addEventListener('click', closeMobileMenu);
+            document.getElementById('sidebar-overlay')?.addEventListener('click', closeMobileMenu);
+        }
+
+        function removeLoader() {
+            const loader = document.getElementById('lazyLoader');
+            loader.classList.add('opacity-0');
+            setTimeout(() => {
+                loader.classList.add('hidden');
+                document.body.classList.remove('overflow-hidden');
+            }, 500);
+        }
+
+        function closeMobileMenu() {
+            document.getElementById('sidebar').classList.add('-translate-x-full');
+            document.getElementById('sidebar-overlay').classList.add('hidden');
+        }
+
+        function populateUI() {
+            const sub = state.data;
+            if (!sub) return;
+
+            // Populate Headers
+            document.getElementById('sidebarExamName').innerText = sub.examTitle || 'Practice Assessment';
+            document.getElementById('sidebarStudentName').innerText = sub.student?.fullname || 'Unknown Student';
+            document.getElementById('breadcrumbExam').innerText = sub.examTitle || 'Exam';
+            document.getElementById('breadcrumbStudent').innerText = sub.student?.fullname || 'Student';
+
+            // Populate Metrics
+            document.getElementById('infoStudentName').innerText = sub.student?.fullname || 'Anonymous';
+            document.getElementById('infoStudentMatric').innerText = sub.student?.matricNumber || sub.student?.studentId || 'No Matric No.';
+            
+            const scoreEl = document.getElementById('infoScore');
+            const scoreIconCont = document.getElementById('scoreIconContainer');
+            const scoreNum = parseFloat(sub.score) || 0;
+            scoreEl.innerText = `${scoreNum}%`;
+            
+            // Pass/Fail Coloring
+            if(scoreNum >= 40) {
+                scoreEl.className = "text-2xl lg:text-3xl font-bold text-emerald-600";
+                scoreIconCont.className = "w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center";
+            } else {
+                scoreEl.className = "text-2xl lg:text-3xl font-bold text-red-600";
+                scoreIconCont.className = "w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center";
+            }
+
+            document.getElementById('infoTimeTaken').innerText = sub.timeTaken ? `${sub.timeTaken}` : '—';
+            
+            const submitDate = new Date(sub.submittedAt);
+            document.getElementById('infoSubmittedAt').innerText = !isNaN(submitDate) 
+                ? submitDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', month:'short', day:'numeric'}) 
+                : '—';
+
+            // Populate Questions
+            const qContainer = document.getElementById('questionsContainer');
+            qContainer.innerHTML = '';
+
+            if(!sub.questions || sub.questions.length === 0) {
+                document.getElementById('questionCountText').innerText = "0 Questions";
+                qContainer.innerHTML = `<p class="text-slate-500 text-center py-4">No question details available for this script.</p>`;
+                return;
+            }
+
+            document.getElementById('questionCountText').innerText = `${sub.questions.length} Questions`;
+
+            sub.questions.forEach((q, index) => {
+                const isCorrect = q.isCorrect;
+                const statusBadge = isCorrect 
+                    ? `<span class="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1"><i class="ph-bold ph-check"></i> Correct</span>`
+                    : `<span class="bg-red-100 text-red-700 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1"><i class="ph-bold ph-x"></i> Incorrect</span>`;
+
+                let optionsHtml = '';
+                
+                // Build the options view
+                (q.options || []).forEach((opt, optIndex) => {
+                    const isStudentChoice = (opt === q.selectedAnswer);
+                    const isActualAnswer = (opt === q.correctAnswer);
+                    
+                    let optionClass = "option-neutral";
+                    let iconHtml = `<div class="w-5 h-5 rounded-full border-2 border-slate-300 mr-3 flex-shrink-0 flex items-center justify-center"></div>`;
+
+                    if (isActualAnswer) {
+                        optionClass = "option-correct";
+                        iconHtml = `<div class="w-5 h-5 rounded-full bg-emerald-500 text-white mr-3 flex-shrink-0 flex items-center justify-center"><i class="ph-bold ph-check text-[10px]"></i></div>`;
+                    } else if (isStudentChoice && !isActualAnswer) {
+                        optionClass = "option-wrong";
+                        iconHtml = `<div class="w-5 h-5 rounded-full bg-red-500 text-white mr-3 flex-shrink-0 flex items-center justify-center"><i class="ph-bold ph-x text-[10px]"></i></div>`;
+                    }
+
+                    optionsHtml += `
+                        <div class="flex items-center p-3 rounded-xl border ${optionClass} transition-colors mb-2">
+                            ${iconHtml}
+                            <span class="text-sm font-medium">${escapeHtml(opt)}</span>
+                            ${isStudentChoice ? `<span class="ml-auto text-[10px] font-bold uppercase tracking-wider opacity-70">Selected</span>` : ''}
+                        </div>
+                    `;
+                });
+
+                // Check for "No answer"
+                if (q.selectedAnswer === "No answer" || !q.selectedAnswer) {
+                    optionsHtml += `<p class="text-xs text-amber-600 font-semibold mt-2 flex items-center gap-1"><i class="ph-bold ph-warning-circle"></i> Student skipped this question.</p>`;
+                }
+
+                const cardHtml = `
+                    <div class="pb-6 border-b border-slate-100 last:border-0 last:pb-0">
+                        <div class="flex items-start justify-between mb-3">
+                            <h4 class="text-sm font-bold text-slate-800 flex-1 pr-4">
+                                <span class="text-brand-active mr-1">${index + 1}.</span> ${escapeHtml(q.question)}
+                            </h4>
+                            <div class="shrink-0">${statusBadge}</div>
+                        </div>
+                        <div class="pl-5 space-y-1">
+                            ${optionsHtml}
+                        </div>
+                    </div>
+                `;
+
+                qContainer.innerHTML += cardHtml;
+            });
+        }
+
+        // Mock Data specifically designed around the endpoint response provided
+        function generateMockSubmission() {
+            return {
+                _id: state.submissionId || "mock_123",
+                student: {
+                    fullname: "Adebayo Tunde",
+                    username: "adebayot",
+                    studentId: "STU-9901",
+                    matricNumber: "CHM/2023/105",
+                    email: "tunde@student.oauife.edu.ng"
+                },
+                examTitle: "MTH 101 Mid Semester Test",
+                score: 85,
+                timeTaken: 45,
+                submittedAt: new Date().toISOString(),
+                questions: [
+                    {
+                        question: "What is the derivative of x^2?",
+                        options: ["x", "2x", "x^3/3", "2"],
+                        correctAnswer: "2x",
+                        selectedAnswer: "2x",
+                        isCorrect: true
+                    },
+                    {
+                        question: "Identify the limit of (sin x)/x as x approaches 0.",
+                        options: ["0", "1", "Infinity", "Undefined"],
+                        correctAnswer: "1",
+                        selectedAnswer: "0",
+                        isCorrect: false
+                    },
+                    {
+                        question: "What is the integral of 1/x?",
+                        options: ["ln(x)", "e^x", "-1/x^2", "x^2/2"],
+                        correctAnswer: "ln(x)",
+                        selectedAnswer: "No answer",
+                        isCorrect: false
+                    }
+                ]
+            };
+        }
+
+        document.addEventListener('DOMContentLoaded', initPage);
+    </script>
+</body>
+</html>
