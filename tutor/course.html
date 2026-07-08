@@ -1803,10 +1803,47 @@ function removeQuestionRow(button) {
         
 
         // Open Create modal prefilled for editing a QuestionSet
+// Populate the course dropdown used by the Create/Edit Exam Set modal
+function populateExamSetCourseSelect() {
+  const select = document.getElementById('examSetCourseSelect');
+  if (!select) return;
+
+  // clear and add default
+  select.innerHTML = '';
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = 'Select a course...';
+  select.appendChild(placeholder);
+
+  const courses = Array.isArray(pageState.courses) ? pageState.courses : [];
+  if (courses.length === 0) {
+    const noopt = document.createElement('option');
+    noopt.value = '';
+    noopt.textContent = 'No courses available';
+    noopt.disabled = true;
+    select.appendChild(noopt);
+    return;
+  }
+
+  courses.forEach(course => {
+    const courseId = getCourseId(course);
+    const label = (course.code ? `${course.code} ` : '') + (course.title || course.name || course.courseName || 'Unnamed Course');
+    const opt = document.createElement('option');
+    opt.value = courseId || '';
+    opt.textContent = label;
+    select.appendChild(opt);
+  });
+}
+
+// Open Create modal prefilled for editing a QuestionSet (updated to populate course select)
 async function openEditExamSetModal(examSetId) {
   try {
+    // ensure the course select is populated first (data comes from pageState.courses)
+    populateExamSetCourseSelect();
+
     const data = await fetchJSON(`/api/lecturer/exam-sets/${encodeURIComponent(examSetId)}`);
-    // open modal
+
+    // open modal and set edit mode
     openModal('createExamSetModal');
     const form = document.getElementById('createExamSetForm');
     form.dataset.editId = examSetId; // mark edit mode
@@ -1816,14 +1853,49 @@ async function openEditExamSetModal(examSetId) {
     document.getElementById('examSetFaculty').value = data.faculty || '';
     document.getElementById('examSetDepartment').value = data.department || '';
     document.getElementById('examSetStatus').value = data.status || 'INACTIVE';
-    if (data.schedule && data.schedule.start) document.getElementById('examSetStartDate').value = new Date(data.schedule.start).toISOString().slice(0,16);
-    if (data.schedule && data.schedule.end) document.getElementById('examSetEndDate').value = new Date(data.schedule.end).toISOString().slice(0,16);
+
+    // set schedule if present (convert to local datetime-local value)
+    if (data.schedule?.start || data.schedule?.start === undefined) {
+      const start = data.schedule?.start || data.startDate || null;
+      if (start) document.getElementById('examSetStartDate').value = new Date(start).toISOString().slice(0,16);
+      else document.getElementById('examSetStartDate').value = '';
+    }
+    if (data.schedule?.end || data.schedule?.end === undefined) {
+      const end = data.schedule?.end || data.endDate || null;
+      if (end) document.getElementById('examSetEndDate').value = new Date(end).toISOString().slice(0,16);
+      else document.getElementById('examSetEndDate').value = '';
+    }
+
+    // Try to select the course in the populated select.
+    // The QuestionSet may name the field 'course', 'courseId', or not include it.
+    const courseSelect = document.getElementById('examSetCourseSelect');
+    if (courseSelect) {
+      const candidateCourse = data.course || data.courseId || data.department || null;
+      // match by string id or _id inside object
+      let matched = false;
+      if (candidateCourse) {
+        const candidateId = (typeof candidateCourse === 'object' && candidateCourse._id) ? String(candidateCourse._id) : String(candidateCourse);
+        Array.from(courseSelect.options).forEach(opt => {
+          if (String(opt.value) === candidateId) {
+            courseSelect.value = opt.value;
+            matched = true;
+          }
+        });
+      }
+      // fallback: if nothing matched, prefer currently selected course in pageState
+      if (!matched && pageState.selectedCourse) {
+        const selectedId = getCourseId(pageState.selectedCourse);
+        if (selectedId) courseSelect.value = selectedId;
+      }
+    }
 
     // clear existing question rows and add rows from data.questions
     const container = document.getElementById('examSetQuestionsContainer');
     container.innerHTML = '';
     (data.questions || []).forEach((q, idx) => {
-      const html = `
+      // produce the same HTML structure used by addQuestionRow()
+      const optionsText = Array.isArray(q.options) ? q.options.map(o => o.text || o).join('\n') : '';
+      const questionHtml = `
         <div class="question-row border border-slate-200 p-4 rounded-xl mb-4 bg-slate-50">
           <div class="flex items-center justify-between mb-3">
             <h4 class="font-semibold text-sm text-slate-900">Question ${idx+1}</h4>
@@ -1831,15 +1903,15 @@ async function openEditExamSetModal(examSetId) {
           </div>
           <div class="form-group">
             <label>Question Text</label>
-            <textarea name="questions[${idx}][question]" required class="w-full border border-slate-200 rounded-lg p-3 text-sm">${escapeHtml(q.question || q.text || '')}</textarea>
+            <textarea name="questions[${idx}][question]" required class="w-full border border-slate-200 rounded-lg p-3 text-sm">${escapeHtml(q.question || '')}</textarea>
           </div>
           <div class="form-group">
             <label>Options (one per line)</label>
-            <textarea name="questions[${idx}][options]" placeholder="Option A\nOption B" class="w-full border border-slate-200 rounded-lg p-3 text-sm h-24">${(Array.isArray(q.options) ? q.options.map(o => escapeHtml(o.text || '')).join('\\n') : '')}</textarea>
+            <textarea name="questions[${idx}][options]" class="w-full border border-slate-200 rounded-lg p-3 text-sm h-24">${escapeHtml(optionsText)}</textarea>
           </div>
           <div class="form-group">
             <label>Correct Answer</label>
-            <input type="text" name="questions[${idx}][answer]" required class="w-full border border-slate-200 rounded-lg p-3 text-sm" value="${escapeHtml(q.answer || '')}">
+            <input type="text" name="questions[${idx}][answer]" class="w-full border border-slate-200 rounded-lg p-3 text-sm" value="${escapeHtml(q.answer || '')}">
           </div>
           <div class="form-group">
             <label>Explanation (Optional)</label>
@@ -1847,7 +1919,7 @@ async function openEditExamSetModal(examSetId) {
           </div>
         </div>
       `;
-      container.insertAdjacentHTML('beforeend', html);
+      container.insertAdjacentHTML('beforeend', questionHtml);
     });
 
   } catch (e) {
