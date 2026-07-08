@@ -111,7 +111,7 @@
             </div>
         </aside>
 
-        <!-- Main Content -->
+        <!-- Main Content Wrapper -->
         <div id="mainContent" class="flex-1 flex flex-col h-screen overflow-hidden relative min-w-0 w-full">
             <header class="hidden lg:flex items-center justify-between bg-white border-b border-slate-200 px-8 h-20 shrink-0 z-20">
                 <div>
@@ -146,7 +146,7 @@
             <main class="flex-1 overflow-y-auto overflow-x-hidden px-4 lg:px-8 py-6 bg-[#f8fafc] relative min-w-0 w-full">
                 <div id="statusBanner" class="mb-4 hidden"></div>
 
-                <!-- Metrics Top Row: 2x2 grid on mobile, 4 columns on desktop -->
+                <!-- Metrics Top Row: 2x2 grid layout on mobile viewport -->
                 <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 mb-6">
                     <!-- Student Profile -->
                     <div class="bg-white p-4 lg:p-5 rounded-2xl border border-slate-200/60 shadow-premium flex flex-col justify-between">
@@ -180,7 +180,7 @@
                         </div>
                         <div>
                             <h3 class="text-xl lg:text-3xl font-bold text-slate-900" id="infoTimeTaken">—</h3>
-                            <p class="text-[10px] lg:text-[11px] text-slate-400 font-medium mt-1">Minutes elapsed</p>
+                            <p class="text-[10px] lg:text-[11px] text-slate-400 font-medium mt-1">Mins taken</p>
                         </div>
                     </div>
 
@@ -228,7 +228,8 @@
         const TOKEN_KEY = 'token';
         let state = {
             submissionId: new URLSearchParams(window.location.search).get('submissionId'),
-            data: null
+            data: null,
+            rawResultAnswers: null // Store original answers dictionary if fetched
         };
 
         function getAuthHeaders() {
@@ -247,6 +248,12 @@
             window.history.back();
         }
 
+        // Helper to cleanly normalize text for loose evaluation parameters
+        function cleanString(str) {
+            if (!str) return '';
+            return String(str).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+        }
+
         async function initPage() {
             if (!state.submissionId) {
                 showStatus('No Submission ID provided in URL.', 'error');
@@ -260,8 +267,9 @@
                 if (response.ok) {
                     const result = await response.json();
                     state.data = result.submission;
+                    // Keep tracking configuration safe if matching layers are updated
+                    state.rawResultAnswers = result.rawAnswers || null;
                 } else {
-                    // Fallback to mock data for layout demonstration purposes
                     state.data = generateMockSubmission();
                     showStatus('Using simulated data. Ensure backend endpoint is live.', 'info');
                 }
@@ -302,13 +310,11 @@
             const sub = state.data;
             if (!sub) return;
 
-            // Populate Headers
             document.getElementById('sidebarExamName').innerText = sub.examTitle || 'Practice Assessment';
             document.getElementById('sidebarStudentName').innerText = sub.student?.fullname || 'Unknown Student';
             document.getElementById('breadcrumbExam').innerText = sub.examTitle || 'Exam';
             document.getElementById('breadcrumbStudent').innerText = sub.student?.fullname || 'Student';
 
-            // Populate Metrics
             document.getElementById('infoStudentName').innerText = sub.student?.fullname || 'Anonymous';
             document.getElementById('infoStudentMatric').innerText = sub.student?.matricNumber || sub.student?.studentId || 'No Matric No.';
             
@@ -317,7 +323,6 @@
             const scoreNum = parseFloat(sub.score) || 0;
             scoreEl.innerText = `${scoreNum}%`;
             
-            // Pass/Fail Coloring
             if(scoreNum >= 40) {
                 scoreEl.className = "text-xl lg:text-3xl font-bold text-emerald-600";
                 scoreIconCont.className = "w-7 h-7 lg:w-8 lg:h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center";
@@ -333,7 +338,6 @@
                 ? submitDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', month:'short', day:'numeric'}) 
                 : '—';
 
-            // Populate Questions
             const qContainer = document.getElementById('questionsContainer');
             qContainer.innerHTML = '';
 
@@ -346,17 +350,35 @@
             document.getElementById('questionCountText').innerText = `${sub.questions.length} Questions`;
 
             sub.questions.forEach((q, index) => {
-                const isCorrect = q.isCorrect;
-                const statusBadge = isCorrect 
-                    ? `<span class="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1 shrink-0"><i class="ph-bold ph-check"></i> Correct</span>`
-                    : `<span class="bg-red-100 text-red-700 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1 shrink-0"><i class="ph-bold ph-x"></i> Incorrect</span>`;
+                const questionNumberKey = String(index + 1);
+                
+                // Intelligent fallback engine routing matching logic
+                let currentSelectedAnswer = q.selectedAnswer;
+                if ((currentSelectedAnswer === "No answer" || !currentSelectedAnswer) && state.rawResultAnswers && state.rawResultAnswers[questionNumberKey]) {
+                    currentSelectedAnswer = state.rawResultAnswers[questionNumberKey];
+                }
+
+                // Check explicitly if skipped via text or data keys
+                const isSkipped = !currentSelectedAnswer || currentSelectedAnswer === "No answer" || cleanString(currentSelectedAnswer) === 'no answer';
+                
+                // Correct evaluation matching using text normalization overrides
+                let isCorrectEvaluated = q.isCorrect;
+                if (!isSkipped && (cleanString(currentSelectedAnswer) === cleanString(q.correctAnswer))) {
+                    isCorrectEvaluated = true;
+                }
+
+                let statusBadge = '';
+                if (isSkipped) {
+                    statusBadge = `<span class="bg-amber-100 text-amber-700 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1 shrink-0"><i class="ph-bold ph-warning-circle"></i> Skipped</span>`;
+                } else if (isCorrectEvaluated) {
+                    statusBadge = `<span class="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1 shrink-0"><i class="ph-bold ph-check"></i> Correct</span>`;
+                } else {
+                    statusBadge = `<span class="bg-red-100 text-red-700 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1 shrink-0"><i class="ph-bold ph-x"></i> Incorrect</span>`;
+                }
 
                 let optionsHtml = '';
                 
-                (q.options || []).forEach((opt, optIndex) => {
-                    
-                    // Safely extract text if the backend returns objects instead of standard string arrays 
-                    // i.e preventing "[object Object]" render issues
+                (q.options || []).forEach((opt) => {
                     let optText = opt;
                     let optVal = opt;
                     if (typeof opt === 'object' && opt !== null) {
@@ -364,9 +386,13 @@
                         optVal = opt._id || opt.id || optText;
                     }
 
-                    // Broadened match criteria to handle object IDs or text
-                    const isStudentChoice = (opt === q.selectedAnswer || optVal === q.selectedAnswer || optText === q.selectedAnswer);
-                    const isActualAnswer = (opt === q.correctAnswer || optVal === q.correctAnswer || optText === q.correctAnswer);
+                    const normalizedOptText = cleanString(optText);
+                    const normalizedOptVal = cleanString(optVal);
+                    const normalizedSelected = cleanString(currentSelectedAnswer);
+                    const normalizedCorrect = cleanString(q.correctAnswer);
+
+                    const isStudentChoice = !isSkipped && (normalizedOptText === normalizedSelected || normalizedOptVal === normalizedSelected || optVal === currentSelectedAnswer || optText === currentSelectedAnswer);
+                    const isActualAnswer = (normalizedOptText === normalizedCorrect || normalizedOptVal === normalizedCorrect || optVal === q.correctAnswer || optText === q.correctAnswer);
                     
                     let optionClass = "option-neutral";
                     let iconHtml = `<div class="w-5 h-5 rounded-full border-2 border-slate-300 mr-3 flex-shrink-0 flex items-center justify-center"></div>`;
@@ -379,22 +405,26 @@
                         iconHtml = `<div class="w-5 h-5 rounded-full bg-red-500 text-white mr-3 flex-shrink-0 flex items-center justify-center"><i class="ph-bold ph-x text-[10px]"></i></div>`;
                     }
 
-                    // Option HTML block rendering (with overflow and image guards)
                     optionsHtml += `
                         <div class="flex items-center p-3 rounded-xl border ${optionClass} transition-colors mb-2 min-w-0 w-full overflow-hidden">
                             ${iconHtml}
                             <div class="text-sm font-medium break-words overflow-hidden [&_img]:max-w-full [&_img]:h-auto flex-1 min-w-0">${optText}</div>
-                            ${isStudentChoice ? `<span class="ml-3 shrink-0 text-[10px] font-bold uppercase tracking-wider opacity-70">Selected</span>` : ''}
+                            ${isStudentChoice ? `<span class="ml-3 shrink-0 text-[10px] font-bold uppercase tracking-wider bg-slate-200/60 px-2 py-0.5 rounded text-slate-700">Student's Choice</span>` : ''}
                         </div>
                     `;
                 });
 
-                // Check for "No answer"
-                if (q.selectedAnswer === "No answer" || !q.selectedAnswer) {
-                    optionsHtml += `<p class="text-xs text-amber-600 font-semibold mt-2 flex items-center gap-1"><i class="ph-bold ph-warning-circle"></i> Student skipped this question.</p>`;
+                // Descriptive dynamic evaluation strip placed below choices
+                let responseSummaryStrip = '';
+                if (isSkipped) {
+                    responseSummaryStrip = `<div class="mt-3 text-xs bg-amber-50 text-amber-700 px-3 py-2 rounded-xl font-medium flex items-center gap-1.5"><i class="ph-bold ph-warning-circle text-amber-500 text-sm"></i> <span>Student <strong>skipped</strong> this question.</span></div>`;
+                } else {
+                    responseSummaryStrip = `<div class="mt-3 text-xs bg-slate-50 text-slate-600 px-3 py-2 rounded-xl font-medium flex items-start gap-1.5 min-w-0 w-full">
+                        <i class="ph-bold ph-info text-blue-500 text-sm shrink-0 mt-0.5"></i>
+                        <div class="break-words min-w-0 w-full">Student attempted this question and selected: <strong class="text-slate-800">${currentSelectedAnswer}</strong></div>
+                    </div>`;
                 }
 
-                // Question container with max-width limits, wrap logic, and safe HTML insertion
                 const cardHtml = `
                     <div class="pb-6 border-b border-slate-100 last:border-0 last:pb-0 w-full min-w-0 overflow-hidden">
                         <div class="flex items-start justify-between mb-3 w-full">
@@ -409,6 +439,9 @@
                         <div class="pl-0 md:pl-5 space-y-1 w-full min-w-0">
                             ${optionsHtml}
                         </div>
+                        <div class="pl-0 md:pl-5 w-full min-w-0">
+                            ${responseSummaryStrip}
+                        </div>
                     </div>
                 `;
 
@@ -417,6 +450,13 @@
         }
 
         function generateMockSubmission() {
+            // Simulated backend schema output modeled from database screenshots 
+            state.rawResultAnswers = {
+                "1": "Hydrogenation with H2 and Ni catalyst",
+                "2": "No answer",
+                "3": "A"
+            };
+
             return {
                 _id: state.submissionId || "mock_123",
                 student: {
@@ -426,34 +466,30 @@
                     matricNumber: "ADMIN",
                     email: "richard@oauife.edu.ng"
                 },
-                examTitle: "MTH 101 Mid Semester Test",
-                score: 1,
-                timeTaken: 48,
-                submittedAt: new Date().toISOString(),
+                examTitle: "CHM 101 Mid Semester Examination",
+                score: 33.3,
+                timeTaken: 521,
+                submittedAt: "2026-06-16T18:33:35.222Z",
                 questions: [
                     {
-                        question: "<p>Hhh yet try</p>",
-                        options: [
-                            { _id: '1', text: 'Option A' }, 
-                            { _id: '2', text: 'Option B' }, 
-                            { _id: '3', text: 'Option C' }
-                        ],
-                        correctAnswer: "Option A",
+                        question: "Which process converts unsaturated vegetable oil to a more solid margarine?",
+                        options: ["Hydrogenation with H<sub>2</sub> and Ni catalyst", "Hydrolysis with H<sub>2</sub>O at room temperature", "Oxidation with O<sub>2</sub> in air", "Halogenation with Cl<sub>2</sub> in cold solvent"],
+                        correctAnswer: "Hydrogenation with H<sub>2</sub> and Ni catalyst",
+                        selectedAnswer: "No answer", // Mismatched key simulation from backend
+                        isCorrect: false
+                    },
+                    {
+                        question: "Which ligand field effect leads to strong colours in many transition metal complexes?",
+                        options: ["Crystal field splitting of d-orbitals and d-d transitions", "Complete pairing of all electrons in s orbitals", "Absence of unpaired electrons", "Ligand protonation only"],
+                        correctAnswer: "Crystal field splitting of d-orbitals and d-d transitions",
                         selectedAnswer: "No answer",
                         isCorrect: false
                     },
                     {
-                        question: "<p>Nut hhh it uttuu yt Uty</p>",
-                        options: ["Choice 1", "Choice 2", "Choice 3"],
-                        correctAnswer: "Choice 2",
+                        question: "For the complex [Co(NH<sub>3</sub>)<sub>5</sub>Cl]Cl<sub>2</sub>, the oxidation state of cobalt and the coordination number are:",
+                        options: ["+3 and 6", "+2 and 5", "+3 and 5", "+2 and 6"],
+                        correctAnswer: "+3 and 6",
                         selectedAnswer: "No answer",
-                        isCorrect: false
-                    },
-                    {
-                        question: "<p><img src='https://res.cloudinary.com/da7o22rnq/image/upload/v1783484139/editor-uploads/pnnixmvtn5siahc98lxi.png'/></p><p><br></p><p>WAT</p>",
-                        options: ["A", "B", "C"],
-                        correctAnswer: "B",
-                        selectedAnswer: "A",
                         isCorrect: false
                     }
                 ]
