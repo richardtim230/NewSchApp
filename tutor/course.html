@@ -1523,11 +1523,12 @@ function addQuestionRow() {
  * Handle Create Exam Set Form Submission
  */
 // REPLACE the existing handler with this improved version
+// Replacement: handleCreateExamSet that matches .question-row structure
 async function handleCreateExamSet(event) {
   event.preventDefault();
 
-  // locate form controls
-  const titleEl = document.getElementById('examSetInputTitle');
+  // locate form controls (fallback to older id if needed)
+  const titleEl = document.getElementById('examSetInputTitle') || document.getElementById('examSetTitle');
   const courseSelect = document.getElementById('examSetCourseSelect');
   const facultyEl = document.getElementById('examSetFaculty');
   const deptEl = document.getElementById('examSetDepartment');
@@ -1541,7 +1542,6 @@ async function handleCreateExamSet(event) {
     return;
   }
 
-  // normalize values
   const title = (titleEl.value || '').trim();
   const courseId = (courseSelect.value || '').trim();
   const faculty = (facultyEl.value || '').trim();
@@ -1550,47 +1550,70 @@ async function handleCreateExamSet(event) {
   const endDate = endEl ? endEl.value : '';
   const status = (statusEl.value || 'INACTIVE').trim();
 
-  // helper to mark invalid inputs visibly and focus
+  // validation
   function markInvalid(el) {
     if (!el) return;
     el.classList.add('border-red-400', 'ring-1', 'ring-red-200');
-    try { el.focus(); } catch (_) {}
+    try { el.focus(); } catch (e) {}
     setTimeout(() => el.classList.remove('border-red-400', 'ring-1', 'ring-red-200'), 2500);
   }
 
-  // field-level validation with specific messages
-  if (!title) {
-    showStatus('Please provide an Exam Set title.', 'error');
-    markInvalid(titleEl);
-    return;
-  }
-  if (!courseId) {
-    showStatus('Please select a course for the exam set.', 'error');
-    markInvalid(courseSelect);
-    return;
-  }
-  if (!faculty) {
-    showStatus('Please enter the Faculty.', 'error');
-    markInvalid(facultyEl);
-    return;
-  }
-  if (!department) {
-    showStatus('Please enter the Department.', 'error');
-    markInvalid(deptEl);
-    return;
-  }
+  if (!title) { showStatus('Please provide an Exam Set title.', 'error'); markInvalid(titleEl); return; }
+  if (!courseId) { showStatus('Please select a course for the exam set.', 'error'); markInvalid(courseSelect); return; }
+  if (!faculty) { showStatus('Please enter the Faculty.', 'error'); markInvalid(facultyEl); return; }
+  if (!department) { showStatus('Please enter the Department.', 'error'); markInvalid(deptEl); return; }
 
-  // collect questions
-  const questionRows = Array.from(document.querySelectorAll('[data-question-row]'));
+  // collect questions from .question-row elements (matches addQuestionRow)
+  const container = document.getElementById('examSetQuestionsContainer');
+  const rows = container ? Array.from(container.querySelectorAll('.question-row')) : [];
   const questions = [];
-  questionRows.forEach((row, idx) => {
-    const qText = row.querySelector(`[data-question-${idx}-text]`);
-    const qType = row.querySelector(`[data-question-${idx}-type]`);
-    const textVal = qText && qText.value ? qText.value.trim() : '';
-    const typeVal = qType && qType.value ? qType.value : 'multiple-choice';
-    if (textVal) {
-      questions.push({ text: textVal, type: typeVal });
+
+  rows.forEach((row, idx) => {
+    const qTextEl = row.querySelector('textarea[name*="[question]"]');
+    const optionsEl = row.querySelector('textarea[name*="[options]"]');
+    const answerEl = row.querySelector('input[name*="[answer]"]');
+    const explEl = row.querySelector('textarea[name*="[explanation]"]');
+
+    const qText = qTextEl ? (qTextEl.value || '').trim() : '';
+    const rawOptions = optionsEl ? (optionsEl.value || '') : '';
+    const options = rawOptions.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    const answer = answerEl ? (answerEl.value || '').trim() : '';
+    const explanation = explEl ? (explEl.value || '').trim() : null;
+
+    // Skip entirely-empty rows
+    if (!qText && options.length === 0 && !answer && !explanation) return;
+
+    // Validate per-row basics: must have question text
+    if (!qText) {
+      showStatus(`Question ${idx+1} is missing the question text.`, 'error');
+      markInvalid(qTextEl || row);
+      throw new Error('validation');
     }
+
+    // Determine type: multiple-choice if options provided, else short-answer
+    const type = options.length > 0 ? 'multiple-choice' : 'short-answer';
+
+    // If multiple-choice, require at least two options and an answer
+    if (type === 'multiple-choice') {
+      if (options.length < 2) {
+        showStatus(`Question ${idx+1}: please provide at least two options.`, 'error');
+        markInvalid(optionsEl || row);
+        throw new Error('validation');
+      }
+      if (!answer) {
+        showStatus(`Question ${idx+1}: please provide the correct answer.`, 'error');
+        markInvalid(answerEl || row);
+        throw new Error('validation');
+      }
+    }
+
+    questions.push({
+      text: qText,
+      options,
+      answer: answer || null,
+      explanation: explanation || null,
+      type
+    });
   });
 
   if (questions.length === 0) {
@@ -1600,7 +1623,6 @@ async function handleCreateExamSet(event) {
     return;
   }
 
-  // build payload
   const payload = {
     title,
     course: courseId,
@@ -1612,7 +1634,7 @@ async function handleCreateExamSet(event) {
     questions
   };
 
-  // UI: disable submit while working
+  // disable submit UI
   const origBtnText = submitBtn ? submitBtn.textContent : null;
   if (submitBtn) {
     submitBtn.disabled = true;
@@ -1621,25 +1643,23 @@ async function handleCreateExamSet(event) {
   }
 
   try {
-    // Use your existing fetchJSON helper which sets headers and parses JSON
     const result = await fetchJSON('/api/lecturer/exam-sets', {
       method: 'POST',
       body: JSON.stringify(payload)
     });
 
-    // success feedback
     showStatus('Exam set created successfully.', 'info');
-
-    // close modal and refresh relevant state
     closeModal('createExamSetModal');
 
-    // best-effort refresh: re-load exam list for current course (non-blocking)
-    try { await loadExamsForCourse(payload.course); renderAllFromState(); } catch (e) { console.warn('Refresh after create failed', e); }
+    // refresh local state gracefully
+    try { await loadExamsForCourse(payload.course); renderAllFromState(); } catch (e) { console.warn('refresh after create failed', e); }
 
-    console.log('Created exam set result:', result);
-  } catch (error) {
-    console.error('Error creating exam set:', error);
-    showStatus(`Failed to create exam set: ${error.message || error}`, 'error');
+    console.log('Exam set create response:', result);
+  } catch (err) {
+    if (err.message !== 'validation') {
+      console.error('Error creating exam set:', err);
+      showStatus(`Failed to create exam set: ${err.message || err}`, 'error');
+    }
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
@@ -1647,9 +1667,7 @@ async function handleCreateExamSet(event) {
       submitBtn.classList.remove('opacity-75', 'cursor-not-allowed');
     }
   }
-}
-
-    
+}      
     
 /**
  * Remove Question Row
