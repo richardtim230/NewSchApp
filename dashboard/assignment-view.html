@@ -342,9 +342,49 @@
             document.querySelectorAll('.dynamic-course-code').forEach(el => el.innerText = data.courseCode || "Course");
 
             // Check if already submitted
-            if(data.hasSubmitted) {
-                updateSubmissionUIState('submitted');
-            }
+            if (data.hasSubmitted && data.submission) {
+
+    updateSubmissionUIState("submitted");
+
+    if (data.submission.type === "text") {
+        studentEditor.root.innerHTML = data.submission.content || "";
+    }
+
+    if (data.submission.type === "file") {
+        switchSubmissionTab("file");
+
+        document.getElementById("selectedFileName")
+            .classList.remove("hidden");
+
+        document.getElementById("selectedFileName")
+            .innerHTML = `
+                Uploaded Document
+                <br>
+                <a href="${data.submission.fileUrl}" target="_blank"
+                   class="text-blue-600 underline">
+                   View File
+                </a>
+            `;
+    }
+
+    if (data.submission.type === "media") {
+        switchSubmissionTab("media");
+
+        document.getElementById("selectedMediaName")
+            .classList.remove("hidden");
+
+        document.getElementById("selectedMediaName")
+            .innerHTML = `
+                Uploaded Media
+                <br>
+                <a href="${data.submission.fileUrl}" target="_blank"
+                   class="text-blue-600 underline">
+                   View Media
+                </a>
+            `;
+    }
+
+}
         }
 
         function initializeQuill() {
@@ -400,59 +440,79 @@
         }
 
         async function handleAssignmentSubmission() {
-            const btn = document.getElementById('submitAssignmentBtn');
-            btn.innerHTML = `<i class="ph ph-spinner animate-spin text-lg mr-2"></i> Submitting...`;
-            btn.disabled = true;
+    if (!currentAssignmentData?._id) {
+        showStatus("Assignment not found.", "error");
+        return;
+    }
 
-            let payload;
-            let isFormData = false;
+    const btn = document.getElementById("submitAssignmentBtn");
 
-            if (activeSubmissionType === 'text') {
-                const content = studentEditor.root.innerHTML;
-                if(studentEditor.getText().trim() === '') {
-                    showStatus("Cannot submit an empty text response.", "error");
-                    resetBtn(btn);
-                    return;
-                }
-                payload = JSON.stringify({ type: 'text', content: content });
-            } else if (activeSubmissionType === 'file') {
-                const file = document.getElementById('fileUploadInput').files[0];
-                if(!file) {
-                    showStatus("Please select a document to upload.", "error");
-                    resetBtn(btn);
-                    return;
-                }
-                payload = new FormData();
-                payload.append('file', file);
-                payload.append('type', 'document');
-                isFormData = true;
-            } else if (activeSubmissionType === 'media') {
-                const file = document.getElementById('mediaUploadInput').files[0];
-                if(!file) {
-                    showStatus("Please select a video or audio file to upload.", "error");
-                    resetBtn(btn);
-                    return;
-                }
-                payload = new FormData();
-                payload.append('file', file);
-                payload.append('type', 'media');
-                isFormData = true;
+    btn.disabled = true;
+    btn.innerHTML = `<i class="ph ph-spinner animate-spin mr-2"></i>Submitting...`;
+
+    try {
+        let body;
+        let headers = {
+            Authorization: `Bearer ${localStorage.getItem("token")}`
+        };
+
+        if (activeSubmissionType === "text") {
+            const content = studentEditor.root.innerHTML;
+
+            if (studentEditor.getText().trim() === "") {
+                throw new Error("Please write your answer.");
             }
 
-            try {
-                // Simulate network request for UI purposes
-                // Replace with actual fetch to: `${API_BASE}/student/assignments/${currentAssignmentData._id}/submit`
-                await new Promise(resolve => setTimeout(resolve, 1500));
-                
-                showStatus("Assignment submitted successfully!", "success");
-                updateSubmissionUIState('submitted');
-                
-            } catch (err) {
-                showStatus("Failed to submit assignment. Try again.", "error");
-            } finally {
-                resetBtn(btn);
+            headers["Content-Type"] = "application/json";
+
+            body = JSON.stringify({
+                type: "text",
+                content
+            });
+
+        } else {
+
+            const input =
+                activeSubmissionType === "file"
+                    ? document.getElementById("fileUploadInput")
+                    : document.getElementById("mediaUploadInput");
+
+            const file = input.files[0];
+
+            if (!file) {
+                throw new Error("Please select a file.");
             }
+
+            body = new FormData();
+            body.append("file", file);
+            body.append("type", activeSubmissionType);
         }
+
+        const res = await fetch(
+            `${API_BASE}/student/assignments/${currentAssignmentData._id}/submit`,
+            {
+                method: "POST",
+                headers,
+                body
+            }
+        );
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            throw new Error(data.message || "Submission failed");
+        }
+
+        showStatus(data.message || "Assignment submitted successfully!", "success");
+        updateSubmissionUIState("submitted");
+
+    } catch (err) {
+        showStatus(err.message, "error");
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = "Submit Assignment";
+}
 
         function resetBtn(btn) {
             btn.innerHTML = `Submit Assignment`;
