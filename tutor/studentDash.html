@@ -309,6 +309,39 @@
                 </div>
 
             </main>
+            <div
+id="scoreModal"
+class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-[999] p-4">
+
+<div class="bg-white rounded-3xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-2xl">
+
+    <div class="bg-gradient-to-r from-blue-700 to-indigo-700 text-white px-7 py-5 flex justify-between items-center">
+
+        <div>
+
+            <h2 class="text-xl font-bold">
+                Assignment Result
+            </h2>
+
+            <p id="scoreCourse" class="text-sm text-blue-100 mt-1"></p>
+
+        </div>
+
+        <button onclick="closeScoreModal()">
+            <i class="ph ph-x text-2xl"></i>
+        </button>
+
+    </div>
+
+    <div
+    id="scoreBody"
+    class="overflow-y-auto max-h-[75vh] p-7">
+
+    </div>
+
+</div>
+
+</div>
 
             <nav class="mobile-bottom-nav">
                 <div onclick="switchMobileTab('overview')" id="mobNav-overview" class="mobile-nav-item active">
@@ -453,7 +486,7 @@ state.activeQuestions = data.activeQuestions || [];
             `;
         }
 
-        function renderAssignments() {
+function renderAssignments() {
     const grid = document.getElementById("assignmentsGrid");
     grid.innerHTML = "";
 
@@ -490,13 +523,25 @@ state.activeQuestions = data.activeQuestions || [];
                 </span>
             `;
 
-        const buttonHTML = submitted
+        const actionButtons = submitted
             ? `
-                <button
-                    disabled
-                    class="px-4 py-2 rounded-xl bg-green-600 text-white font-bold text-xs cursor-not-allowed">
-                    Submitted
-                </button>
+                <div class="flex flex-wrap gap-2 justify-end w-full">
+
+                    <button
+                        disabled
+                        class="px-4 py-2 rounded-xl bg-green-600 text-white font-bold text-xs cursor-not-allowed flex items-center gap-2">
+                        <i class="ph ph-check-circle"></i>
+                        Submitted
+                    </button>
+
+                    <button
+                        onclick="viewAssignmentScore('${q._id}')"
+                        class="px-4 py-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold text-xs flex items-center gap-2 transition">
+                        <i class="ph ph-chart-bar"></i>
+                        View Score
+                    </button>
+
+                </div>
             `
             : `
                 <button
@@ -508,7 +553,8 @@ state.activeQuestions = data.activeQuestions || [];
 
         const submittedDate = submitted && q.submission?.submittedAt
             ? `
-                <p class="text-xs text-green-600 mt-2">
+                <p class="text-xs text-green-600 mt-2 flex items-center gap-1">
+                    <i class="ph ph-calendar-check"></i>
                     Submitted on
                     ${new Date(q.submission.submittedAt).toLocaleString()}
                 </p>
@@ -516,7 +562,7 @@ state.activeQuestions = data.activeQuestions || [];
             : "";
 
         grid.innerHTML += `
-            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-premium flex flex-col justify-between">
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-premium flex flex-col justify-between hover:shadow-lg transition">
 
                 <div>
 
@@ -543,7 +589,7 @@ state.activeQuestions = data.activeQuestions || [];
                 </div>
 
                 <div class="mt-6 pt-4 border-t border-slate-100 flex justify-end">
-                    ${buttonHTML}
+                    ${actionButtons}
                 </div>
 
             </div>
@@ -643,7 +689,164 @@ state.activeQuestions = data.activeQuestions || [];
         function startExam(examId) {
     window.location.href = `/testsession?examSet=${encodeURIComponent(examId)}`;
 }
+async function viewAssignmentScore(id){
 
+    try{
+
+        const data = await fetchAPI(`/api/student/assignments/${id}/result`);
+
+        const result = data.submission;
+
+        let attachments = "";
+
+        (result.feedbackAttachments || []).forEach(file=>{
+
+            if(file.type==="image"){
+
+                attachments += `
+                    <img
+                    src="${file.url}"
+                    class="rounded-2xl border mt-4">
+                `;
+
+            }else{
+
+                attachments += `
+                    <a
+                    href="${file.url}"
+                    target="_blank"
+                    class="mt-3 flex items-center gap-2 p-3 rounded-xl border hover:bg-slate-50">
+
+                        <i class="ph ph-file-pdf text-red-600 text-xl"></i>
+
+                        View Attachment
+
+                    </a>
+                `;
+
+            }
+
+        });
+
+        document.getElementById("scoreCourse").innerHTML=
+        data.assignment.title;
+
+        document.getElementById("scoreBody").innerHTML=`
+
+            <div class="grid md:grid-cols-2 gap-6">
+
+                <div class="bg-slate-50 rounded-2xl p-5">
+
+                    <p class="text-sm text-slate-500">
+                        Score
+                    </p>
+
+                    <h1 class="text-5xl font-extrabold text-blue-700 mt-2">
+
+                        ${result.score ?? "--"}
+
+                        <span class="text-xl text-slate-500">
+                        / ${result.maxScore ?? 100}
+                        </span>
+
+                    </h1>
+
+                </div>
+
+                <div class="bg-green-50 rounded-2xl p-5">
+
+                    <p class="text-sm text-slate-500">
+                        Status
+                    </p>
+
+                    <h2 class="text-2xl font-bold text-green-700 mt-2">
+
+                        ${result.status}
+
+                    </h2>
+
+                </div>
+
+            </div>
+
+            <div class="mt-8">
+
+                <h3 class="font-bold text-slate-800 mb-3">
+
+                    Lecturer's Feedback
+
+                </h3>
+
+                <div class="rounded-2xl border bg-slate-50 p-5 leading-7">
+
+                    ${result.feedback || "No feedback yet."}
+
+                    ${attachments}
+
+                </div>
+
+            </div>
+
+            <div class="mt-8 grid md:grid-cols-2 gap-5 text-sm">
+
+                <div>
+
+                    <span class="font-semibold">
+                    Submitted:
+                    </span>
+
+                    ${new Date(result.submittedAt).toLocaleString()}
+
+                </div>
+
+                <div>
+
+                    <span class="font-semibold">
+                    Graded:
+                    </span>
+
+                    ${
+                        result.gradedAt
+                        ? new Date(result.gradedAt).toLocaleString()
+                        : "-"
+                    }
+
+                </div>
+
+                <div>
+
+                    <span class="font-semibold">
+                    Lecturer:
+                    </span>
+
+                    ${result.gradedBy || "-"}
+
+                </div>
+
+            </div>
+
+        `;
+
+        document.getElementById("scoreModal").classList.remove("hidden");
+        document.getElementById("scoreModal").classList.add("flex");
+
+    }catch(e){
+
+        showStatus(e.message,"error");
+
+    }
+
+}
+function closeScoreModal(){
+
+    const modal=document.getElementById("scoreModal");
+
+    modal.classList.remove("flex");
+
+    modal.classList.add("hidden");
+
+}
+        
         // --- Tab Switching Logic ---
         function switchTab(sectionId, targetElement = null) {
             document.querySelectorAll('.section-container').forEach(el => el.classList.add('hidden'));
