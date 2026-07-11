@@ -762,39 +762,51 @@
 
     <!-- createAssignmentModal -->
     <div id="createAssignmentModal" class="modal-backdrop hidden" aria-hidden="true">
-        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="createAsTitle">
-            <div class="modal-header">
-                <div class="modal-title">
-                    <div class="modal-icon bg-purple-50 text-purple-600"><i class="ph ph-clipboard-text"></i></div>
-                    <div>
-                        <h2 id="createAsTitle">Create New Assignment</h2>
-                        <p>Deploy assignment requirements token to enrolled list</p>
-                    </div>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="createAsTitle">
+        <div class="modal-header">
+            <div class="modal-title">
+                <div class="modal-icon bg-purple-50 text-purple-600"><i class="ph ph-clipboard-text"></i></div>
+                <div>
+                    <h2 id="createAsTitle">Create New Assignment</h2>
+                    <p>Deploy assignment requirements token to enrolled list</p>
                 </div>
-                <button onclick="closeModal('createAssignmentModal')" class="close-modal"><i class="ph ph-x"></i></button>
             </div>
-            <form id="createAssignmentForm" onsubmit="handleCreateAssignment(event)">
-                <div class="modal-body">
-                    <div class="form-group">
-                        <label>Assignment Title</label>
-                        <input id="asTitle" type="text" required placeholder="e.g. Carboxylic Acid Carbonyl Testing">
-                    </div>
-                    <div class="form-group">
-                        <label>Submission Deadline Date</label>
-                        <input id="asDue" type="date" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Instructions & Resource Guidelines</label>
-                        <textarea id="asInstructions" placeholder="Provide specific operational step instructions explicitly..."></textarea>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" onclick="closeModal('createAssignmentModal')" class="btn btn-secondary">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Deploy Assignment Track</button>
-                </div>
-            </form>
+            <button onclick="closeModal('createAssignmentModal')" class="close-modal"><i class="ph ph-x"></i></button>
         </div>
+        <form id="createAssignmentForm" onsubmit="handleCreateAssignment(event)">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Assignment Title</label>
+                    <input id="asTitle" type="text" required placeholder="e.g. Carboxylic Acid Carbonyl Testing">
+                </div>
+
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="asDescription" placeholder="Brief description of the assignment (optional)"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>Submission Deadline Date & Time</label>
+                    <input id="asDue" type="datetime-local" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Instructions & Resource Guidelines</label>
+                    <textarea id="asInstructions" required placeholder="Provide specific operational step instructions explicitly..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>Maximum Score</label>
+                    <input id="asMaxScore" type="number" min="1" max="1000" value="100" placeholder="e.g. 100">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" onclick="closeModal('createAssignmentModal')" class="btn btn-secondary">Cancel</button>
+                <button type="submit" class="btn btn-primary">Deploy Assignment Track</button>
+            </div>
+        </form>
     </div>
+</div>
 
 <div id="createExamSetModal" class="modal-backdrop hidden" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="createExamSetModalTitle">
@@ -1481,31 +1493,68 @@ function initializeQuillForExistingRow(rowEl, existingQuestionData, idx) {
             }
         }
 
-        // Create new assignment (calls backend /api/lecturer/questions)
         async function handleCreateAssignment(e) {
-            e.preventDefault();
-            const title = document.getElementById('asTitle').value.trim();
-            const due = document.getElementById('asDue').value;
-            const instructions = document.getElementById('asInstructions').value.trim();
-            if (!title || !due) { alert('Title and Due date required'); return; }
-            try {
-                const body = {
-                    course: getCourseId(pageState.selectedCourse),
-                    question: title + (instructions ? '\n\n' + instructions : ''),
-                    type: 'assignment',
-                    options: [],
-                    answer: ''
-                };
-                await fetchJSON('/api/lecturer/questions', { method: 'POST', body: JSON.stringify(body) });
-                showStatus('Assignment created successfully.', 'info');
-                await loadQuestionsForCourse(getCourseId(pageState.selectedCourse));
-                renderAssignmentsGrid();
-                closeModal('createAssignmentModal');
-            } catch (err) {
-                console.error('Create assignment error', err);
-                showStatus('Failed to create assignment: ' + err.message, 'error');
-            }
+    e.preventDefault();
+    
+    const title = document.getElementById('asTitle').value.trim();
+    const description = document.getElementById('asDescription').value.trim();
+    const due = document.getElementById('asDue').value;
+    const instructions = document.getElementById('asInstructions').value.trim();
+    const maxScore = parseInt(document.getElementById('asMaxScore').value) || 100;
+    
+    // Validation
+    if (!title || !due || !instructions) { 
+        alert('Title, Due date, and Instructions are required'); 
+        return; 
+    }
+    
+    if (!pageState.selectedCourse) {
+        alert('Please select a course first');
+        return;
+    }
+    
+    try {
+        // Convert datetime-local to ISO string for backend
+        const dueDate = new Date(due);
+        if (isNaN(dueDate.getTime())) {
+            alert('Invalid due date format');
+            return;
         }
+
+        const body = {
+            course: getCourseId(pageState.selectedCourse),
+            title: title,
+            description: description || title, // Use title as fallback description
+            question: title, // Main question text
+            instructions: instructions, // Separate instructions field
+            dueDate: dueDate.toISOString(), // Convert to ISO string
+            maxScore: maxScore,
+            type: 'assignment',
+            options: [],
+            answer: ''
+        };
+
+        const response = await fetchJSON('/api/lecturer/questions', { 
+            method: 'POST', 
+            body: JSON.stringify(body) 
+        });
+
+        showStatus('Assignment created successfully.', 'info');
+        
+        // Clear form fields
+        document.getElementById('createAssignmentForm').reset();
+        document.getElementById('asMaxScore').value = '100';
+        
+        // Reload assignments
+        await loadQuestionsForCourse(getCourseId(pageState.selectedCourse));
+        renderAssignmentsGrid();
+        closeModal('createAssignmentModal');
+        
+    } catch (err) {
+        console.error('Create assignment error', err);
+        showStatus('Failed to create assignment: ' + err.message, 'error');
+    }
+}
 
         // Exam set importer: open modal and populate
         async function openExamSetImporter() {
