@@ -1501,6 +1501,7 @@ function initializeQuillForExistingRow(rowEl, existingQuestionData, idx) {
         }
 
 // Initialize Quill editors for assignment modal with Cloudinary image uploads
+// Initialize Quill editors for assignment modal with Cloudinary image uploads
 function initializeAssignmentQuillEditors() {
     // Description Editor
     if (!window.asDescriptionQuill) {
@@ -1515,14 +1516,10 @@ function initializeAssignmentQuillEditors() {
                     [{ 'list': 'ordered'}, { 'list': 'bullet' }],
                     ['link', 'image'],
                     ['clean']
-                ],
-                imageResize: {
-                    displaySize: true
-                }
+                ]
             }
         });
-
-        // Handle image uploads for description editor
+        // Setup image handler for description editor
         setupQuillImageHandler(window.asDescriptionQuill);
     }
 
@@ -1539,21 +1536,18 @@ function initializeAssignmentQuillEditors() {
                     [{ 'list': 'ordered'}, { 'list': 'bullet' }],
                     ['link', 'image'],
                     ['clean']
-                ],
-                imageResize: {
-                    displaySize: true
-                }
+                ]
             }
         });
-
-        // Handle image uploads for instructions editor
+        // Setup image handler for instructions editor
         setupQuillImageHandler(window.asInstructionsQuill);
     }
 }
 
-// Setup image handler for Quill editor
+// Setup Cloudinary image handler for Quill editor
 function setupQuillImageHandler(quill) {
-    const imageButton = quill.getModule('toolbar').container.querySelector('button.ql-image');
+    const toolbar = quill.getModule('toolbar');
+    const imageButton = toolbar.container.querySelector('button.ql-image');
     
     if (imageButton) {
         imageButton.addEventListener('click', () => {
@@ -1566,15 +1560,19 @@ function setupQuillImageHandler(quill) {
                 const file = input.files[0];
                 if (!file) return;
 
-                // Show loading indicator
+                // Get current cursor position
                 const range = quill.getSelection();
+                if (!range) return;
+
+                // Show loading indicator
                 quill.insertText(range.index, 'Uploading image...');
 
                 try {
-                    // Upload to Cloudinary
+                    // Create FormData for file upload
                     const formData = new FormData();
                     formData.append('image', file);
 
+                    // Upload to Cloudinary via backend endpoint
                     const response = await fetch(`${API_BASE}/images`, {
                         method: 'POST',
                         headers: {
@@ -1584,7 +1582,8 @@ function setupQuillImageHandler(quill) {
                     });
 
                     if (!response.ok) {
-                        throw new Error('Image upload failed');
+                        const errorData = await response.json();
+                        throw new Error(errorData.message || 'Image upload failed');
                     }
 
                     const data = await response.json();
@@ -1598,6 +1597,8 @@ function setupQuillImageHandler(quill) {
 
                     // Move cursor after image
                     quill.setSelection(range.index + 1);
+
+                    console.log('Image uploaded successfully:', imageUrl);
 
                 } catch (error) {
                     console.error('Image upload error:', error);
@@ -1621,12 +1622,10 @@ async function handleCreateAssignment(e) {
     const due = document.getElementById('asDue').value;
     const maxScore = parseInt(document.getElementById('asMaxScore').value) || 100;
     
-    // Get Quill editor content (both HTML and plain text)
-    const descriptionContent = window.asDescriptionQuill ? window.asDescriptionQuill.getContents() : null;
+    // Get Quill editor content as HTML (includes Cloudinary image URLs)
     const descriptionHtml = window.asDescriptionQuill ? window.asDescriptionQuill.root.innerHTML : '';
     const descriptionText = window.asDescriptionQuill ? window.asDescriptionQuill.getText().trim() : '';
     
-    const instructionsContent = window.asInstructionsQuill ? window.asInstructionsQuill.getContents() : null;
     const instructionsHtml = window.asInstructionsQuill ? window.asInstructionsQuill.root.innerHTML : '';
     const instructionsText = window.asInstructionsQuill ? window.asInstructionsQuill.getText().trim() : '';
     
@@ -1654,20 +1653,21 @@ async function handleCreateAssignment(e) {
             return;
         }
 
+        // Prepare request body with all required fields
         const body = {
             course: getCourseId(pageState.selectedCourse),
             title: title,
-            description: descriptionHtml || title, // Rich HTML with images
+            description: descriptionHtml || title, // Rich HTML with Cloudinary image URLs
             question: title, // Main question text
             instructions: instructionsHtml, // Rich HTML instructions with Cloudinary images
-            dueDate: dueDate.toISOString(), // Convert to ISO string
+            dueDate: dueDate.toISOString(),
             maxScore: maxScore,
             type: 'assignment',
             options: [],
             answer: ''
         };
 
-        console.log('Sending assignment payload:', body); // Debug log
+        console.log('Sending assignment payload:', body);
 
         const response = await fetchJSON('/api/lecturer/questions', { 
             method: 'POST', 
@@ -1695,14 +1695,15 @@ async function handleCreateAssignment(e) {
     }
 }
 
-// Update openAssignmentModal to initialize editors
+// Open assignment modal and initialize editors
 function openAssignmentModal() {
     openModal('createAssignmentModal');
     // Initialize Quill editors when modal is opened
     setTimeout(() => {
         initializeAssignmentQuillEditors();
     }, 100);
-}
+}                    
+                                
         
 
         // Exam set importer: open modal and populate
