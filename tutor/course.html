@@ -1500,7 +1500,7 @@ function initializeQuillForExistingRow(rowEl, existingQuestionData, idx) {
             }
         }
 
-// Initialize Quill editors for assignment modal
+// Initialize Quill editors for assignment modal with Cloudinary image uploads
 function initializeAssignmentQuillEditors() {
     // Description Editor
     if (!window.asDescriptionQuill) {
@@ -1515,9 +1515,15 @@ function initializeAssignmentQuillEditors() {
                     [{ 'list': 'ordered'}, { 'list': 'bullet' }],
                     ['link', 'image'],
                     ['clean']
-                ]
+                ],
+                imageResize: {
+                    displaySize: true
+                }
             }
         });
+
+        // Handle image uploads for description editor
+        setupQuillImageHandler(window.asDescriptionQuill);
     }
 
     // Instructions Editor
@@ -1533,13 +1539,81 @@ function initializeAssignmentQuillEditors() {
                     [{ 'list': 'ordered'}, { 'list': 'bullet' }],
                     ['link', 'image'],
                     ['clean']
-                ]
+                ],
+                imageResize: {
+                    displaySize: true
+                }
             }
+        });
+
+        // Handle image uploads for instructions editor
+        setupQuillImageHandler(window.asInstructionsQuill);
+    }
+}
+
+// Setup image handler for Quill editor
+function setupQuillImageHandler(quill) {
+    const imageButton = quill.getModule('toolbar').container.querySelector('button.ql-image');
+    
+    if (imageButton) {
+        imageButton.addEventListener('click', () => {
+            const input = document.createElement('input');
+            input.setAttribute('type', 'file');
+            input.setAttribute('accept', 'image/*');
+            input.click();
+
+            input.onchange = async () => {
+                const file = input.files[0];
+                if (!file) return;
+
+                // Show loading indicator
+                const range = quill.getSelection();
+                quill.insertText(range.index, 'Uploading image...');
+
+                try {
+                    // Upload to Cloudinary
+                    const formData = new FormData();
+                    formData.append('image', file);
+
+                    const response = await fetch(`${API_BASE}/images`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${localStorage.getItem(TOKEN_KEY)}`
+                        },
+                        body: formData
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('Image upload failed');
+                    }
+
+                    const data = await response.json();
+                    const imageUrl = data.url;
+
+                    // Remove the "Uploading image..." text
+                    quill.deleteText(range.index, 17);
+
+                    // Insert the image with the Cloudinary URL
+                    quill.insertEmbed(range.index, 'image', imageUrl);
+
+                    // Move cursor after image
+                    quill.setSelection(range.index + 1);
+
+                } catch (error) {
+                    console.error('Image upload error:', error);
+                    
+                    // Remove the "Uploading image..." text
+                    quill.deleteText(range.index, 17);
+                    
+                    // Show error message
+                    showStatus('Failed to upload image: ' + error.message, 'error');
+                }
+            };
         });
     }
 }
 
-// Updated handler for creating assignment with rich text
+// Updated handler for creating assignment with rich text and Cloudinary images
 async function handleCreateAssignment(e) {
     e.preventDefault();
     
@@ -1583,9 +1657,9 @@ async function handleCreateAssignment(e) {
         const body = {
             course: getCourseId(pageState.selectedCourse),
             title: title,
-            description: descriptionHtml || title, // Use rich HTML or plain title
+            description: descriptionHtml || title, // Rich HTML with images
             question: title, // Main question text
-            instructions: instructionsHtml, // Rich HTML instructions with images
+            instructions: instructionsHtml, // Rich HTML instructions with Cloudinary images
             dueDate: dueDate.toISOString(), // Convert to ISO string
             maxScore: maxScore,
             type: 'assignment',
@@ -1600,7 +1674,7 @@ async function handleCreateAssignment(e) {
             body: JSON.stringify(body) 
         });
 
-        showStatus('Assignment created successfully with rich content!', 'info');
+        showStatus('Assignment created successfully with rich content and images!', 'info');
         
         // Clear form fields
         document.getElementById('createAssignmentForm').reset();
@@ -1621,7 +1695,7 @@ async function handleCreateAssignment(e) {
     }
 }
 
-// Add this to your openModal function to initialize editors when modal opens
+// Update openAssignmentModal to initialize editors
 function openAssignmentModal() {
     openModal('createAssignmentModal');
     // Initialize Quill editors when modal is opened
@@ -1629,6 +1703,7 @@ function openAssignmentModal() {
         initializeAssignmentQuillEditors();
     }, 100);
 }
+        
 
         // Exam set importer: open modal and populate
         async function openExamSetImporter() {
