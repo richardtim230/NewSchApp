@@ -620,9 +620,10 @@
                         </div>
                         <div class="flex items-center gap-3">
                             <button id="importExamSetBtn" class="bg-white border border-slate-200 text-slate-700 text-xs font-bold px-3 py-2 rounded-lg hover:bg-slate-50 transition-all">Import from Exam Set</button>
-                            <button onclick="openModal('createAssignmentModal')" class="bg-brand-dark hover:bg-brand-active text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all flex items-center gap-2">
-                                <i class="ph ph-plus text-sm"></i> New Assignment
-                            </button>
+                            <!-- Replace the old button with this: -->
+<button onclick="openAssignmentModal()" class="bg-brand-dark hover:bg-brand-active text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all flex items-center gap-2">
+    <i class="ph ph-plus text-sm"></i> New Assignment
+</button>
                         </div>
                     </div>
 
@@ -754,13 +755,12 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" onclick="closeModal('enrollStudentModal')" class="btn btn-secondary">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Authorize Roster Placement</button>
+                    <button type="submit" class="btn btn-primary">Authorize Enrolment</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- createAssignmentModal -->
     <div id="createAssignmentModal" class="modal-backdrop hidden" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="createAsTitle">
         <div class="modal-header">
@@ -768,33 +768,40 @@
                 <div class="modal-icon bg-purple-50 text-purple-600"><i class="ph ph-clipboard-text"></i></div>
                 <div>
                     <h2 id="createAsTitle">Create New Assignment</h2>
-                    <p>Deploy assignment requirements token to enrolled list</p>
+                    <p>Deploy assignment requirements token to enrolled list with rich text & media</p>
                 </div>
             </div>
             <button onclick="closeModal('createAssignmentModal')" class="close-modal"><i class="ph ph-x"></i></button>
         </div>
         <form id="createAssignmentForm" onsubmit="handleCreateAssignment(event)">
             <div class="modal-body">
+                <!-- Assignment Title -->
                 <div class="form-group">
                     <label>Assignment Title</label>
                     <input id="asTitle" type="text" required placeholder="e.g. Carboxylic Acid Carbonyl Testing">
                 </div>
 
+                <!-- Description with Quill -->
                 <div class="form-group">
                     <label>Description</label>
-                    <textarea id="asDescription" placeholder="Brief description of the assignment (optional)"></textarea>
+                    <div id="asDescriptionEditor" class="quill-editor"></div>
+                    <input id="asDescriptionHidden" type="hidden">
                 </div>
 
+                <!-- Due Date -->
                 <div class="form-group">
                     <label>Submission Deadline Date & Time</label>
                     <input id="asDue" type="datetime-local" required>
                 </div>
 
+                <!-- Instructions with Quill -->
                 <div class="form-group">
                     <label>Instructions & Resource Guidelines</label>
-                    <textarea id="asInstructions" required placeholder="Provide specific operational step instructions explicitly..."></textarea>
+                    <div id="asInstructionsEditor" class="quill-editor"></div>
+                    <input id="asInstructionsHidden" type="hidden">
                 </div>
 
+                <!-- Maximum Score -->
                 <div class="form-group">
                     <label>Maximum Score</label>
                     <input id="asMaxScore" type="number" min="1" max="1000" value="100" placeholder="e.g. 100">
@@ -1493,19 +1500,71 @@ function initializeQuillForExistingRow(rowEl, existingQuestionData, idx) {
             }
         }
 
-        async function handleCreateAssignment(e) {
+// Initialize Quill editors for assignment modal
+function initializeAssignmentQuillEditors() {
+    // Description Editor
+    if (!window.asDescriptionQuill) {
+        window.asDescriptionQuill = new Quill('#asDescriptionEditor', {
+            theme: 'snow',
+            placeholder: 'Brief description of the assignment (optional)',
+            modules: {
+                toolbar: [
+                    [{ 'header': [1, 2, 3, false] }],
+                    ['bold', 'italic', 'underline', 'strike'],
+                    ['blockquote', 'code-block'],
+                    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                    ['link', 'image'],
+                    ['clean']
+                ]
+            }
+        });
+    }
+
+    // Instructions Editor
+    if (!window.asInstructionsQuill) {
+        window.asInstructionsQuill = new Quill('#asInstructionsEditor', {
+            theme: 'snow',
+            placeholder: 'Provide specific operational step instructions explicitly...',
+            modules: {
+                toolbar: [
+                    [{ 'header': [1, 2, 3, false] }],
+                    ['bold', 'italic', 'underline', 'strike'],
+                    ['blockquote', 'code-block'],
+                    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                    ['link', 'image'],
+                    ['clean']
+                ]
+            }
+        });
+    }
+}
+
+// Updated handler for creating assignment with rich text
+async function handleCreateAssignment(e) {
     e.preventDefault();
     
     const title = document.getElementById('asTitle').value.trim();
-    const description = document.getElementById('asDescription').value.trim();
     const due = document.getElementById('asDue').value;
-    const instructions = document.getElementById('asInstructions').value.trim();
     const maxScore = parseInt(document.getElementById('asMaxScore').value) || 100;
     
+    // Get Quill editor content (both HTML and plain text)
+    const descriptionContent = window.asDescriptionQuill ? window.asDescriptionQuill.getContents() : null;
+    const descriptionHtml = window.asDescriptionQuill ? window.asDescriptionQuill.root.innerHTML : '';
+    const descriptionText = window.asDescriptionQuill ? window.asDescriptionQuill.getText().trim() : '';
+    
+    const instructionsContent = window.asInstructionsQuill ? window.asInstructionsQuill.getContents() : null;
+    const instructionsHtml = window.asInstructionsQuill ? window.asInstructionsQuill.root.innerHTML : '';
+    const instructionsText = window.asInstructionsQuill ? window.asInstructionsQuill.getText().trim() : '';
+    
     // Validation
-    if (!title || !due || !instructions) { 
-        alert('Title, Due date, and Instructions are required'); 
+    if (!title || !due) { 
+        alert('Title and Due date are required'); 
         return; 
+    }
+
+    if (!instructionsText || instructionsText === '') {
+        alert('Instructions are required');
+        return;
     }
     
     if (!pageState.selectedCourse) {
@@ -1524,9 +1583,9 @@ function initializeQuillForExistingRow(rowEl, existingQuestionData, idx) {
         const body = {
             course: getCourseId(pageState.selectedCourse),
             title: title,
-            description: description || title, // Use title as fallback description
+            description: descriptionHtml || title, // Use rich HTML or plain title
             question: title, // Main question text
-            instructions: instructions, // Separate instructions field
+            instructions: instructionsHtml, // Rich HTML instructions with images
             dueDate: dueDate.toISOString(), // Convert to ISO string
             maxScore: maxScore,
             type: 'assignment',
@@ -1534,16 +1593,22 @@ function initializeQuillForExistingRow(rowEl, existingQuestionData, idx) {
             answer: ''
         };
 
+        console.log('Sending assignment payload:', body); // Debug log
+
         const response = await fetchJSON('/api/lecturer/questions', { 
             method: 'POST', 
             body: JSON.stringify(body) 
         });
 
-        showStatus('Assignment created successfully.', 'info');
+        showStatus('Assignment created successfully with rich content!', 'info');
         
         // Clear form fields
         document.getElementById('createAssignmentForm').reset();
         document.getElementById('asMaxScore').value = '100';
+        
+        // Clear Quill editors
+        if (window.asDescriptionQuill) window.asDescriptionQuill.setContents([]);
+        if (window.asInstructionsQuill) window.asInstructionsQuill.setContents([]);
         
         // Reload assignments
         await loadQuestionsForCourse(getCourseId(pageState.selectedCourse));
@@ -1554,6 +1619,15 @@ function initializeQuillForExistingRow(rowEl, existingQuestionData, idx) {
         console.error('Create assignment error', err);
         showStatus('Failed to create assignment: ' + err.message, 'error');
     }
+}
+
+// Add this to your openModal function to initialize editors when modal opens
+function openAssignmentModal() {
+    openModal('createAssignmentModal');
+    // Initialize Quill editors when modal is opened
+    setTimeout(() => {
+        initializeAssignmentQuillEditors();
+    }, 100);
 }
 
         // Exam set importer: open modal and populate
