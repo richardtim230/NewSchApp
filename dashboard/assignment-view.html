@@ -72,6 +72,12 @@
         
         .tab-btn { border-bottom: 2px solid transparent; transition: all 0.2s; }
         .tab-btn.active { border-bottom-color: #2563eb; color: #1e3a8a; font-weight: 700; }
+
+        /* Prose styling for rich content */
+        .prose-content img { max-width: 100%; height: auto; border-radius: 8px; margin: 12px 0; }
+        .prose-content p { margin-bottom: 12px; }
+        .prose-content h1, .prose-content h2, .prose-content h3 { margin-bottom: 8px; margin-top: 16px; }
+        .prose-content ul, .prose-content ol { margin-left: 20px; margin-bottom: 12px; }
     </style>
 </head>
 <body class="bg-brand-light text-slate-800 font-sans antialiased">
@@ -168,7 +174,7 @@
                                 </div>
                             </div>
 
-                            <div class="prose prose-slate max-w-none text-sm lg:text-base text-slate-700 leading-relaxed" id="assignmentInstructions">
+                            <div class="prose-content max-w-none text-sm lg:text-base text-slate-700 leading-relaxed" id="assignmentInstructions">
                                 <div class="animate-pulse flex space-x-4">
                                     <div class="flex-1 space-y-4 py-1">
                                         <div class="h-4 bg-slate-200 rounded w-3/4"></div>
@@ -305,79 +311,99 @@
 
         async function fetchAssignmentDetails(assignmentId) {
             try {
-                // In a full implementation, you'd fetch the specific assignment.
-                // Assuming we use the questions endpoint tailored for fetching a single assignment
-                const res = await fetch(`${API_BASE}/student/assignments/${assignmentId}`, { headers: getHeaders() }); 
+                console.log('Fetching assignment:', assignmentId);
+                const res = await fetch(`${API_BASE}/lecturer/assignments/${assignmentId}`, { headers: getHeaders() }); 
                 
-                // Mocking response structure based on previous patterns if endpoint isn't fully ready
                 if(!res.ok) {
-                    throw new Error("Could not fetch assignment details. Using fallback for UI preview.");
+                    throw new Error("Could not fetch assignment details.");
                 }
+                
                 const data = await res.json();
-                renderAssignment(data.assignment);
+                console.log('Assignment data received:', data);
+                
+                // Handle both nested and flat response structures
+                const assignmentData = data.assignment || data;
+                renderAssignment(assignmentData);
+                
             } catch(e) {
-                console.warn(e.message);
-                // Fallback rendering for UI verification based on your screenshot
-                renderAssignment({
-                    title: "Introduction to Sciuridae",
-                    instructions: "<p>Please submit your detailed research assignment on the classification, distribution, and economic importance of the Sciuridae family. Ensure you include relevant references.</p>",
-                    dueDate: "2026-07-15T23:59:00Z",
-                    courseCode: "ZOO300"
-                });
+                console.error('Fetch error:', e.message);
+                showStatus("Failed to load assignment: " + e.message, "error");
             }
         }
 
         function renderAssignment(data) {
-    currentAssignmentData = data;
-    document.getElementById('assignmentTitle').innerText = data.title || "Assignment Task";
-    
-    // FIX: Use instructions field instead of question field
-    // Display instructions HTML, or description if instructions is empty
-    const instructionsContent = data.instructions || data.description || data.question || "No specific instructions provided.";
-    document.getElementById('assignmentInstructions').innerHTML = instructionsContent;
-    
-    if(data.dueDate) {
-        const dateOpts = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
-        document.getElementById('assignmentDeadline').innerText = new Date(data.dueDate).toLocaleString('en-US', dateOpts);
-    } else {
-        document.getElementById('assignmentDeadline').innerText = "No specific deadline";
-    }
+            console.log('Rendering assignment with data:', data);
+            
+            currentAssignmentData = data;
+            
+            // Set title
+            document.getElementById('assignmentTitle').innerText = data.title || "Assignment Task";
+            
+            // CRITICAL FIX: Correctly prioritize instructions field
+            // Priority: instructions > description > question (fallback to empty)
+            let instructionsContent = "";
+            
+            if (data.instructions && data.instructions.trim()) {
+                instructionsContent = data.instructions;
+            } else if (data.description && data.description.trim()) {
+                instructionsContent = data.description;
+            } else if (data.question && data.question.trim()) {
+                instructionsContent = data.question;
+            } else {
+                instructionsContent = "<p>No specific instructions provided.</p>";
+            }
+            
+            console.log('Using instructions content:', instructionsContent.substring(0, 100) + '...');
+            document.getElementById('assignmentInstructions').innerHTML = instructionsContent;
+            
+            // Set deadline
+            if(data.dueDate) {
+                try {
+                    const dateOpts = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+                    document.getElementById('assignmentDeadline').innerText = new Date(data.dueDate).toLocaleString('en-US', dateOpts);
+                } catch (e) {
+                    document.getElementById('assignmentDeadline').innerText = data.dueDate;
+                }
+            } else {
+                document.getElementById('assignmentDeadline').innerText = "No specific deadline";
+            }
 
-    document.querySelectorAll('.dynamic-course-code').forEach(el => el.innerText = data.courseCode || "Course");
+            // Set course code
+            document.querySelectorAll('.dynamic-course-code').forEach(el => el.innerText = data.courseCode || data.course || "Course");
 
-    // Check if already submitted
-    if (data.hasSubmitted && data.submission) {
-        updateSubmissionUIState("submitted");
+            // Check if already submitted
+            if (data.hasSubmitted && data.submission) {
+                updateSubmissionUIState("submitted", data.submission);
 
-        if (data.submission.type === "text") {
-            studentEditor.root.innerHTML = data.submission.content || "";
+                if (data.submission.type === "text") {
+                    studentEditor.root.innerHTML = data.submission.content || "";
+                }
+
+                if (data.submission.type === "file") {
+                    switchSubmissionTab("file");
+                    document.getElementById("selectedFileName").classList.remove("hidden");
+                    document.getElementById("selectedFileName").innerHTML = `
+                        Uploaded Document
+                        <br>
+                        <a href="${data.submission.fileUrl}" target="_blank" class="text-blue-600 underline">
+                           View File
+                        </a>
+                    `;
+                }
+
+                if (data.submission.type === "media") {
+                    switchSubmissionTab("media");
+                    document.getElementById("selectedMediaName").classList.remove("hidden");
+                    document.getElementById("selectedMediaName").innerHTML = `
+                        Uploaded Media
+                        <br>
+                        <a href="${data.submission.fileUrl}" target="_blank" class="text-blue-600 underline">
+                           View Media
+                        </a>
+                    `;
+                }
+            }
         }
-
-        if (data.submission.type === "file") {
-            switchSubmissionTab("file");
-            document.getElementById("selectedFileName").classList.remove("hidden");
-            document.getElementById("selectedFileName").innerHTML = `
-                Uploaded Document
-                <br>
-                <a href="${data.submission.fileUrl}" target="_blank" class="text-blue-600 underline">
-                   View File
-                </a>
-            `;
-        }
-
-        if (data.submission.type === "media") {
-            switchSubmissionTab("media");
-            document.getElementById("selectedMediaName").classList.remove("hidden");
-            document.getElementById("selectedMediaName").innerHTML = `
-                Uploaded Media
-                <br>
-                <a href="${data.submission.fileUrl}" target="_blank" class="text-blue-600 underline">
-                   View Media
-                </a>
-            `;
-        }
-    }
-}
 
         function initializeQuill() {
             studentEditor = new Quill('#studentQuillEditor', {
@@ -388,7 +414,7 @@
                         [{ 'header': [1, 2, false] }],
                         ['bold', 'italic', 'underline'],
                         [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-                        ['link', 'clean']
+                        ['link', 'image', 'clean']
                     ]
                 }
             });
@@ -404,7 +430,7 @@
             });
 
             // Set new active state
-            document.getElementById(`tab-${type}`).classList.add('active');
+            document.getElementById(`tab-${type}`).classList.add('active', 'text-brand-active');
             document.getElementById(`panel-${type}`).classList.remove('hidden');
         }
 
@@ -432,123 +458,113 @@
         }
 
         async function handleAssignmentSubmission() {
-    if (!currentAssignmentData?._id) {
-        showStatus("Assignment not found.", "error");
-        return;
-    }
-
-    const btn = document.getElementById("submitAssignmentBtn");
-
-    btn.disabled = true;
-    btn.innerHTML = `<i class="ph ph-spinner animate-spin mr-2"></i>Submitting...`;
-
-    try {
-        let body;
-        let headers = {
-            Authorization: `Bearer ${localStorage.getItem("token")}`
-        };
-
-        if (activeSubmissionType === "text") {
-            const content = studentEditor.root.innerHTML;
-
-            if (studentEditor.getText().trim() === "") {
-                throw new Error("Please write your answer.");
+            if (!currentAssignmentData?._id) {
+                showStatus("Assignment not found.", "error");
+                return;
             }
 
-            headers["Content-Type"] = "application/json";
+            const btn = document.getElementById("submitAssignmentBtn");
+            btn.disabled = true;
+            btn.innerHTML = `<i class="ph ph-spinner animate-spin mr-2"></i>Submitting...`;
 
-            body = JSON.stringify({
-                type: "text",
-                content
-            });
+            try {
+                let body;
+                let headers = {
+                    Authorization: `Bearer ${localStorage.getItem("token")}`
+                };
 
-        } else {
+                if (activeSubmissionType === "text") {
+                    const content = studentEditor.root.innerHTML;
 
-            const input =
-                activeSubmissionType === "file"
-                    ? document.getElementById("fileUploadInput")
-                    : document.getElementById("mediaUploadInput");
+                    if (studentEditor.getText().trim() === "") {
+                        throw new Error("Please write your answer.");
+                    }
 
-            const file = input.files[0];
+                    headers["Content-Type"] = "application/json";
 
-            if (!file) {
-                throw new Error("Please select a file.");
+                    body = JSON.stringify({
+                        type: "text",
+                        content
+                    });
+
+                } else {
+
+                    const input =
+                        activeSubmissionType === "file"
+                            ? document.getElementById("fileUploadInput")
+                            : document.getElementById("mediaUploadInput");
+
+                    const file = input.files[0];
+
+                    if (!file) {
+                        throw new Error("Please select a file.");
+                    }
+
+                    body = new FormData();
+                    body.append("file", file);
+                    body.append("type", activeSubmissionType);
+                }
+
+                const res = await fetch(
+                    `${API_BASE}/student/assignments/${currentAssignmentData._id}/submit`,
+                    {
+                        method: "POST",
+                        headers,
+                        body
+                    }
+                );
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.message || "Submission failed");
+                }
+
+                showStatus(data.message || "Assignment submitted successfully!", "success");
+                updateSubmissionUIState("submitted", data.submission);
+
+            } catch (err) {
+                showStatus(err.message, "error");
+                btn.disabled = false;
+                btn.innerHTML = "Submit Assignment";
             }
-
-            body = new FormData();
-            body.append("file", file);
-            body.append("type", activeSubmissionType);
-        }
-
-        const res = await fetch(
-            `${API_BASE}/student/assignments/${currentAssignmentData._id}/submit`,
-            {
-                method: "POST",
-                headers,
-                body
-            }
-        );
-
-        const data = await res.json();
-
-        if (!res.ok) {
-            throw new Error(data.message || "Submission failed");
-        }
-
-        showStatus(data.message || "Assignment submitted successfully!", "success");
-        updateSubmissionUIState("submitted");
-
-    } catch (err) {
-        showStatus(err.message, "error");
-    }
-
-    btn.disabled = false;
-    btn.innerHTML = "Submit Assignment";
-}
-
-        function resetBtn(btn) {
-            btn.innerHTML = `Submit Assignment`;
-            btn.disabled = false;
         }
 
         function updateSubmissionUIState(state, submission = null) {
-    const box = document.getElementById("submissionStatusBox");
-    const icon = document.getElementById("submissionStatusIcon");
-    const text = document.getElementById("submissionStatusText");
-    const submitBtn = document.getElementById("submitAssignmentBtn");
+            const box = document.getElementById("submissionStatusBox");
+            const icon = document.getElementById("submissionStatusIcon");
+            const text = document.getElementById("submissionStatusText");
+            const submitBtn = document.getElementById("submitAssignmentBtn");
 
-    if (state === "submitted") {
-        box.classList.replace("bg-slate-50", "bg-emerald-50");
+            if (state === "submitted") {
+                box.classList.replace("bg-slate-50", "bg-emerald-50");
+                icon.classList.replace("bg-slate-200", "bg-emerald-100");
+                icon.classList.replace("text-slate-500", "text-emerald-600");
+                icon.innerHTML = `<i class="ph ph-check text-xl"></i>`;
 
-        icon.classList.replace("bg-slate-200", "bg-emerald-100");
-        icon.classList.replace("text-slate-500", "text-emerald-600");
-        icon.innerHTML = `<i class="ph ph-check text-xl"></i>`;
+                let message = "Submitted successfully.";
 
-        let message = "Submitted successfully.";
+                if (submission?.status) {
+                    message += ` Status: ${submission.status}`;
+                }
 
-        if (submission?.status) {
-            message += ` Status: ${submission.status}`;
+                if (submission?.submittedAt) {
+                    message += ` (${new Date(submission.submittedAt).toLocaleString()})`;
+                }
+
+                text.innerText = message;
+                text.classList.remove("text-slate-500");
+                text.classList.add("text-emerald-700");
+
+                submitBtn.innerText = "Update Submission";
+                submitBtn.classList.remove("btn-primary");
+                submitBtn.classList.add("btn-secondary");
+            }
         }
-
-        if (submission?.submittedAt) {
-            message += ` (${new Date(submission.submittedAt).toLocaleString()})`;
-        }
-
-        text.innerText = message;
-
-        text.classList.remove("text-slate-500");
-        text.classList.add("text-emerald-700");
-
-        submitBtn.innerText = "Update Submission";
-        submitBtn.classList.remove("btn-primary");
-        submitBtn.classList.add("btn-secondary");
-    }
-}
 
         function goBackToCourse() {
-    window.history.back();
-}
-
+            window.history.back();
+        }
 
         function showStatus(msg, type = 'info') {
             const b = document.getElementById('statusBanner');
@@ -565,6 +581,7 @@
             document.getElementById('sidebar-close-btn')?.addEventListener('click', closeMobileSidebar);
             o?.addEventListener('click', closeMobileSidebar);
         }
+        
         function closeMobileSidebar() {
             document.getElementById('sidebar').classList.replace('sidebar-visible','sidebar-hidden');
             document.getElementById('sidebar-overlay').classList.add('hidden');
