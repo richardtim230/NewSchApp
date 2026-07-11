@@ -1152,34 +1152,40 @@ async function refreshAssessmentsForCourse(courseId) {
   // call renderer (renderAssessmentsList should be updated to use pageState.examsCombined)
   renderAssessmentsList();
 }
-
-        // Load students: try to extract enrolled students from course object, else fetch /api/lecturer/students and attempt to filter
-        async function loadStudentsForCourse(courseId) {
-            try {
-                const c = pageState.selectedCourse;
-                if (c && Array.isArray(c.students) && c.students.length > 0) {
-                    pageState.students = c.students.map(s => normalizeStudentObject(s));
-                    return;
-                }
-                const data = await fetchJSON('/api/lecturer/students');
-                const students = data.students || (Array.isArray(data) ? data : []);
-                const filtered = students.filter(s => {
-                    if (!s) return false;
-                    if (Array.isArray(s.courses) && s.courses.length > 0) {
-                        return s.courses.some(cs => {
-                            const val = (typeof cs === 'object' && cs._id) ? (cs._id.toString ? cs._id.toString() : String(cs._id)) : String(cs);
-                            return String(val) === String(courseId);
-                        });
-                    }
-                    if (Array.isArray(s.enrolledCourses) && s.enrolledCourses.some(cs => String(cs) === String(courseId))) return true;
-                    return false;
-                });
-                pageState.students = (filtered.length > 0) ? filtered.map(normalizeStudentObject) : students.map(normalizeStudentObject);
-            } catch (e) {
-                console.warn('Failed to load students', e);
-                pageState.students = [];
+async function loadStudentsForCourse(courseId) {
+    try {
+        const c = pageState.selectedCourse;
+        
+        // Check if course.students contains full objects (not just IDs)
+        if (c && Array.isArray(c.students) && c.students.length > 0) {
+            // If the first student is an object with fullname, use it directly
+            if (typeof c.students[0] === 'object' && c.students[0].fullname) {
+                pageState.students = c.students.map(s => normalizeStudentObject(s));
+                console.log('Loaded students from course object:', pageState.students);
+                return;
             }
         }
+        
+        // Fallback: fetch all students for the faculty
+        const data = await fetchJSON('/api/lecturer/students');
+        const students = data.students || (Array.isArray(data) ? data : []);
+        const filtered = students.filter(s => {
+            if (!s) return false;
+            if (Array.isArray(s.courses) && s.courses.length > 0) {
+                return s.courses.some(cs => {
+                    const val = (typeof cs === 'object' && cs._id) ? (cs._id.toString ? cs._id.toString() : String(cs._id)) : String(cs);
+                    return String(val) === String(courseId);
+                });
+            }
+            if (Array.isArray(s.enrolledCourses) && s.enrolledCourses.some(cs => String(cs) === String(courseId))) return true;
+            return false;
+        });
+        pageState.students = (filtered.length > 0) ? filtered.map(normalizeStudentObject) : students.map(normalizeStudentObject);
+    } catch (e) {
+        console.warn('Failed to load students', e);
+        pageState.students = [];
+    }
+}
 
         // Load resources: rely on course.resources if present
         async function loadResourcesForCourse(courseId) {
@@ -1192,17 +1198,16 @@ async function refreshAssessmentsForCourse(courseId) {
         }
 
         function normalizeStudentObject(s) {
-            return {
-                _id: s._id || s._id?.$oid || s.id || Math.random().toString(36).slice(2),
-                fullname: s.fullname || s.name || s.username || 'Unnamed',
-                studentId: s.studentId || s.matricNumber || s.matric || s.registrationNumber || 'N/A',
-                level: s.level || s.year || 'N/A',
-                email: s.email || '',
-                status: (s.active === false ? 'Inactive' : (s.status || 'Active')),
-                engagement: s.engagement || Math.floor(Math.random()*100)
-            };
-        }
-
+    return {
+        _id: s._id || s.id || Math.random().toString(36).slice(2),
+        fullname: s.fullname || s.name || s.username || 'Unnamed',
+        studentId: s.studentId || s.matricNumber || s.matric || s.registrationNumber || 'N/A',
+        level: s.level || s.year || 'N/A',
+        email: s.email || '',
+        status: (s.active === false ? 'Inactive' : (s.status || 'Active')),
+        engagement: s.engagement || Math.floor(Math.random()*100)
+    };
+}
         function renderAllFromState() {
     const course = pageState.selectedCourse;
     if (!course) return;
