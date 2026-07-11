@@ -420,19 +420,87 @@
         }
 
         function initializeQuill() {
-            studentEditor = new Quill('#studentQuillEditor', {
-                theme: 'snow',
-                placeholder: 'Type your detailed answer here...',
-                modules: {
-                    toolbar: [
-                        [{ 'header': [1, 2, false] }],
-                        ['bold', 'italic', 'underline'],
-                        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-                        ['link', 'image', 'clean']
-                    ]
-                }
-            });
+    studentEditor = new Quill('#studentQuillEditor', {
+        theme: 'snow',
+        placeholder: 'Type your detailed answer here...',
+        modules: {
+            toolbar: [
+                [{ 'header': [1, 2, false] }],
+                ['bold', 'italic', 'underline'],
+                [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                ['link', 'image', 'clean']
+            ]
         }
+    });
+
+    // Setup image handler for student submission
+    setupQuillImageHandler(studentEditor);
+}
+
+// Reuse the same image handler function in assignment-view.html
+function setupQuillImageHandler(quill) {
+    const imageButton = quill.getModule('toolbar').container.querySelector('button.ql-image');
+    
+    if (imageButton) {
+        imageButton.addEventListener('click', () => {
+            const input = document.createElement('input');
+            input.setAttribute('type', 'file');
+            input.setAttribute('accept', 'image/*');
+            input.click();
+
+            input.onchange = async () => {
+                const file = input.files[0];
+                if (!file) return;
+
+                // Show loading indicator
+                const range = quill.getSelection();
+                quill.insertText(range.index, 'Uploading image...');
+
+                try {
+                    // Upload to Cloudinary
+                    const formData = new FormData();
+                    formData.append('image', file);
+
+                    const response = await fetch(
+                        'https://examguide.onrender.com/api/images',
+                        {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${localStorage.getItem('token')}`
+                            },
+                            body: formData
+                        }
+                    );
+
+                    if (!response.ok) {
+                        throw new Error('Image upload failed');
+                    }
+
+                    const data = await response.json();
+                    const imageUrl = data.url;
+
+                    // Remove the "Uploading image..." text
+                    quill.deleteText(range.index, 17);
+
+                    // Insert the image with the Cloudinary URL
+                    quill.insertEmbed(range.index, 'image', imageUrl);
+
+                    // Move cursor after image
+                    quill.setSelection(range.index + 1);
+
+                } catch (error) {
+                    console.error('Image upload error:', error);
+                    
+                    // Remove the "Uploading image..." text
+                    quill.deleteText(range.index, 17);
+                    
+                    // Show error message
+                    showStatus('Failed to upload image: ' + error.message, 'error');
+                }
+            };
+        });
+    }
+}
 
         function switchSubmissionTab(type) {
             activeSubmissionType = type;
