@@ -2529,6 +2529,201 @@ function removeQuestionRow(button) {
   button.closest('.question-row').remove();
 }
 
+        // ---------- Resource upload & list utilities for Course page ----------
+
+async function fetchCourseResources() {
+    try {
+        const courseId = pageState.selectedCourse?._id;
+        if (!courseId) return;
+
+        const token = localStorage.getItem(TOKEN_KEY);
+        const res = await fetch(`${API_BASE}/api/lecturer/courses/${courseId}/resources`, {
+            method: 'GET',
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        });
+
+        if (!res.ok) {
+            const text = await res.text();
+            console.warn("Fetch resources failed:", res.status, text);
+            return;
+        }
+
+        const data = await res.json();
+        renderCourseResources(data.resources || []);
+    } catch (err) {
+        console.error("fetchCourseResources error:", err);
+    }
+}
+
+function renderCourseResources(resources) {
+    const container = document.getElementById('resourcesGrid');
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (!resources || resources.length === 0) {
+        container.innerHTML = `<div class="col-span-3 p-6 text-sm text-slate-500">No resources uploaded yet.</div>`;
+        return;
+    }
+
+    resources.forEach(r => {
+        const card = document.createElement('div');
+        card.className = "bg-white rounded-2xl border border-slate-200/60 p-4 flex flex-col items-start gap-3";
+
+        const title = document.createElement('div');
+        title.className = "w-full flex items-center justify-between gap-3";
+        title.innerHTML = `<div>
+            <div class="font-semibold text-slate-900">${escapeHtml(r.label || r.name)}</div>
+            <div class="text-xs text-slate-400">${r.mimeType || ''} • ${formatBytes(r.size || 0)}</div>
+        </div>`;
+
+        const actions = document.createElement('div');
+        actions.className = "flex items-center gap-2";
+
+        const downloadBtn = document.createElement('a');
+        downloadBtn.className = "px-3 py-2 rounded-lg bg-slate-50 text-slate-700 text-xs hover:bg-slate-100";
+        // For cloudinary just use r.url; for gridfs use r.url which maps to download route
+        downloadBtn.href = r.url;
+        downloadBtn.target = '_blank';
+        downloadBtn.rel = 'noopener noreferrer';
+        downloadBtn.innerText = 'Download';
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = "px-3 py-2 rounded-lg bg-rose-50 text-rose-600 text-xs hover:bg-rose-100";
+        deleteBtn.innerText = 'Delete';
+        deleteBtn.onclick = (ev) => {
+            ev.preventDefault();
+            if (!confirm('Delete this resource? This action cannot be undone.')) return;
+            deleteCourseResource(r.fileId || r.publicId || r._id);
+        };
+
+        actions.appendChild(downloadBtn);
+        actions.appendChild(deleteBtn);
+
+        card.appendChild(title);
+        card.appendChild(actions);
+
+        container.appendChild(card);
+    });
+}
+
+async function handleUploadResource(event) {
+    try {
+        event.preventDefault();
+        const courseId = pageState.selectedCourse?._id;
+        if (!courseId) {
+            showStatus('No course selected', 'error');
+            return;
+        }
+
+        const fileInput = document.getElementById('resFile');
+        const labelInput = document.getElementById('resLabel');
+        if (!fileInput || fileInput.files.length === 0) {
+            showStatus('Please select a file to upload', 'error');
+            return;
+        }
+
+        const file = fileInput.files[0];
+
+        // Optional: front-end file size guard (50MB max)
+        const MAX_BYTES = 50 * 1024 * 1024;
+        if (file.size > MAX_BYTES) {
+            showStatus('File too large. Max allowed is 50MB.', 'error');
+            return;
+        }
+
+        const token = localStorage.getItem(TOKEN_KEY);
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('label', labelInput?.value || file.name);
+
+        const uploadingText = document.getElementById('uploadResourceModal')?.querySelector('.modal-footer button.btn-primary');
+        if (uploadingText) {
+            uploadingText.disabled = true;
+            uploadingText.innerHTML = '<i class="ph ph-spinner animate-spin mr-2"></i>Uploading...';
+        }
+
+        const res = await fetch(`${API_BASE}/api/lecturer/courses/${courseId}/resources`, {
+            method: 'POST',
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+            body: formData
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+            showStatus(data.message || 'Upload failed', 'error');
+            return;
+        }
+
+        showStatus(data.message || 'Resource uploaded', 'success');
+
+        // Close modal and reset form
+        closeModal('uploadResourceModal');
+        document.getElementById('uploadResourceForm')?.reset();
+
+        // Refresh resources list
+        await fetchCourseResources();
+    } catch (err) {
+        console.error("handleUploadResource error:", err);
+        showStatus('Upload failed: ' + (err.message || err), 'error');
+    } finally {
+        const uploadingText = document.getElementById('uploadResourceModal')?.querySelector('.modal-footer button.btn-primary');
+        if (uploadingText) {
+            uploadingText.disabled = false;
+            uploadingText.innerHTML = 'Publish Material';
+        }
+    }
+}
+
+async function deleteCourseResource(id) {
+    try {
+        const token = localStorage.getItem(TOKEN_KEY);
+        const res = await fetch(`${API_BASE}/api/lecturer/courses/resources/${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            showStatus(data.message || 'Delete failed', 'error');
+            return;
+        }
+        showStatus(data.message || 'Resource deleted', 'success');
+        await fetchCourseResources();
+    } catch (err) {
+        console.error("deleteCourseResource error:", err);
+        showStatus('Delete failed: ' + (err.message || err), 'error');
+    }
+}
+
+// Small utilities
+function formatBytes(bytes, decimals = 1) {
+    if (!bytes) return '0 B';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
+function escapeHtml(unsafe) {
+    if (!unsafe) return '';
+    return String(unsafe)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+// Hook up form handler (ensure existing form has id="uploadResourceForm")
+document.addEventListener('DOMContentLoaded', () => {
+    const uploadForm = document.getElementById('uploadResourceForm');
+    if (uploadForm) uploadForm.addEventListener('submit', handleUploadResource);
+
+    // When course selection changes, or after loading the page, call fetchCourseResources
+    // If your page sets pageState.selectedCourse somewhere after load, call fetchCourseResources() there too.
+    if (pageState.selectedCourse && pageState.selectedCourse._id) {
+      fetchCourseResources();
+    }
+});
         // Section router
         function switchTab(sectionId, targetElement) {
             document.querySelectorAll('.section-container').forEach(el => el.classList.add('hidden'));
