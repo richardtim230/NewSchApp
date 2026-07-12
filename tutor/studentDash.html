@@ -778,7 +778,7 @@
             });
         }
 
-        function renderResources() {
+function renderResources() {
     const grid = document.getElementById('resourcesGrid');
     grid.innerHTML = '';
 
@@ -793,19 +793,15 @@
     }
 
     materials.forEach(mat => {
-        // Normalize fields (backend may provide different names)
         const title = mat.label || mat.name || mat.title || 'Course Material';
         const mime = mat.mimeType || mat.type || '';
         const size = mat.size || mat.fileSize || 0;
-        // If backend returned a relative url (e.g., /api/...), prefix API_BASE
         let url = mat.url || mat.downloadUrl || '';
         if (url && url.startsWith('/')) url = API_BASE.replace(/\/$/, '') + url;
-        // If there's no url but a gridfs fileId, construct download route (student may need a student endpoint)
         if (!url && mat.fileId) {
             url = `${API_BASE}/api/lecturer/courses/resources/${mat.fileId}/download`;
         }
 
-        // Create card
         const item = document.createElement('div');
         item.className = 'p-4 border border-slate-200/60 rounded-xl bg-white flex items-start gap-3 hover:shadow-md transition-all';
 
@@ -837,7 +833,6 @@
             downloadAnchor.target = '_blank';
             downloadAnchor.rel = 'noopener noreferrer';
         } else {
-            // If no URL available, disable the link and show unavailable
             downloadAnchor.href = '#';
             downloadAnchor.onclick = (e) => { e.preventDefault(); showStatus('Download unavailable for this resource.', 'error'); };
         }
@@ -858,7 +853,6 @@
         grid.appendChild(item);
     });
 }
-
         // --- Interaction Handlers ---
         function showStatus(msg, type = 'info') {
             const banner = document.getElementById('statusBanner');
@@ -959,68 +953,45 @@
         }
 
         // -------------------------
-// Resource fetching + helpers
+// -------------------------
+// Fetch course resources (student-side) + helpers
 // -------------------------
 async function fetchCourseResources() {
     try {
         const courseId = COURSE_ID || state.course?._id;
         if (!courseId) return;
 
-        // If resources already included in course payload, use them
+        const token = localStorage.getItem(TOKEN_KEY);
+
+        // If server already included resources in workspace payload, use them.
         if (state.course && Array.isArray(state.course.resources) && state.course.resources.length > 0) {
-            renderResources(); // uses state.course.resources
+            renderResources();
             return;
         }
 
-        const token = localStorage.getItem(TOKEN_KEY);
-        let resources = [];
+        // Otherwise call the student resources endpoint
+        const res = await fetch(`${API_BASE}/api/student/courses/${courseId}/resources`, {
+            method: 'GET',
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        });
 
-        // 1) Try dedicated student endpoint (preferred if backend provides it)
-        try {
-            const res = await fetch(`${API_BASE}/api/student/courses/${courseId}/resources`, {
-                method: 'GET',
-                headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-            });
-
-            if (res.ok) {
-                const data = await res.json();
-                resources = data.resources || data.course?.resources || [];
-            } else {
-                // If 404/403, we'll try fallback endpoints below
-                console.debug('Student resources endpoint returned', res.status);
-            }
-        } catch (e) {
-            console.debug('Student resources endpoint failed:', e?.message || e);
+        if (!res.ok) {
+            // If endpoint unavailable, fall back to any existing course.resources or show empty UI
+            console.debug('Student resources endpoint returned', res.status);
+            state.course = state.course || {};
+            state.course.resources = state.course.resources || [];
+            renderResources();
+            return;
         }
 
-        // 2) Fallback: try lecturer endpoint (may be protected depending on server)
-        if (!resources.length) {
-            try {
-                const res2 = await fetch(`${API_BASE}/api/lecturer/courses/${courseId}/resources`, {
-                    method: 'GET',
-                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-                });
-
-                if (res2.ok) {
-                    const d = await res2.json();
-                    resources = d.resources || [];
-                } else {
-                    console.debug('Lecturer resources endpoint returned', res2.status);
-                }
-            } catch (e2) {
-                console.debug('Lecturer resources endpoint failed:', e2?.message || e2);
-            }
-        }
-
-        // Attach to state and render
+        const data = await res.json();
         state.course = state.course || {};
-        state.course.resources = Array.isArray(resources) ? resources : [];
+        state.course.resources = data.resources || [];
         renderResources();
     } catch (err) {
-        console.error('fetchCourseResources error:', err);
-        // Render empty state to keep UI responsive
+        console.error("fetchCourseResources error:", err);
         state.course = state.course || {};
-        state.course.resources = [];
+        state.course.resources = state.course.resources || [];
         renderResources();
     }
 }
@@ -1040,12 +1011,13 @@ function getFileIconClass(mimeType = '') {
     if (mimeType === 'application/pdf') return 'ph-file-pdf text-red-600';
     if (mimeType.startsWith('video/')) return 'ph-video-camera text-purple-600';
     if (mimeType.startsWith('audio/')) return 'ph-music-note text-indigo-600';
-    if (mimeType.includes('word') || mimeType.includes('document')) return 'ph-file-text text-blue-600';
+    if ((mimeType.includes('word') || mimeType.includes('document'))) return 'ph-file-text text-blue-600';
     if (mimeType.includes('presentation')) return 'ph-presentation text-amber-600';
     if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) return 'ph-table text-emerald-600';
     return 'ph-file text-slate-500';
 }
-        
+
+
         function closeScoreModal(){
             const modal=document.getElementById("scoreModal");
             modal.classList.remove("flex");
