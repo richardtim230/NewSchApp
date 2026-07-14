@@ -333,7 +333,171 @@ forms.login.addEventListener('submit', async function(e) {
     }
     await setLoginLoading(false);
 });
+let faceRegistrationData = {
+    stream: null,
+    detection: null,
+    canvasSnapshot: null,
+    faceDescriptor: null
+};
 
+async function initFaceAPI() {
+    try {
+        await Promise.all([
+            faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/'),
+            faceapi.nets.faceLandmark68Net.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/'),
+            faceapi.nets.faceRecognitionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/')
+        ]);
+        console.log('✅ Face API models loaded');
+        return true;
+    } catch (err) {
+        console.error('Face API load error:', err);
+        return false;
+    }
+}
+
+async function startFaceCamera() {
+    try {
+        const video = document.getElementById('faceRegVideo');
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                facingMode: 'user',
+                width: 640,
+                height: 480
+            },
+            audio: false
+        });
+        
+        video.srcObject = stream;
+        faceRegistrationData.stream = stream;
+        
+        await video.play();
+        startFaceDetection(video);
+    } catch (err) {
+        console.error('Camera access error:', err);
+        showStatusModal('error', 'Camera Error', 'Could not access your camera. Please check permissions.');
+    }
+}
+
+function stopFaceCamera() {
+    if (faceRegistrationData.stream) {
+        faceRegistrationData.stream.getTracks().forEach(track => track.stop());
+        faceRegistrationData.stream = null;
+    }
+}
+
+async function startFaceDetection(video) {
+    const statusEl = document.getElementById('faceDetectionStatus');
+    const captureBtn = document.getElementById('captureFaceBtn');
+    
+    const detectLoop = setInterval(async () => {
+        try {
+            const detections = await faceapi
+                .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+                .withFaceLandmarks()
+                .withFaceDescriptor();
+            
+            if (detections) {
+                faceRegistrationData.detection = detections;
+                statusEl.innerHTML = '<i class="bi bi-check-circle" style="color: var(--success);"></i> Face detected!';
+                statusEl.style.color = '#27ae60';
+                captureBtn.disabled = false;
+            } else {
+                statusEl.innerHTML = '<i class="bi bi-hourglass-split"></i> Detecting face...';
+                statusEl.style.color = '#666';
+                captureBtn.disabled = true;
+            }
+        } catch (err) {
+            console.error('Detection error:', err);
+        }
+    }, 500);
+    
+    // Store interval ID for cleanup
+    window.faceDetectionInterval = detectLoop;
+}
+
+function captureFaceSnapshot() {
+    const video = document.getElementById('faceRegVideo');
+    const canvas = document.getElementById('capturedFaceCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
+    
+    faceRegistrationData.canvasSnapshot = canvas.toDataURL('image/jpeg');
+    
+    if (faceRegistrationData.detection) {
+        faceRegistrationData.faceDescriptor = faceRegistrationData.detection.descriptor;
+    }
+}
+
+function openFaceRegistration() {
+    const backdrop = document.getElementById('faceRegistrationBackdrop');
+    backdrop.style.display = 'flex';
+    
+    document.getElementById('startFaceCapture').onclick = async () => {
+        document.getElementById('faceRegStep1').style.display = 'none';
+        document.getElementById('faceRegStep2').style.display = 'block';
+        await startFaceCamera();
+    };
+    
+    document.getElementById('skipFaceBtn').onclick = () => {
+        closeFaceRegistration();
+    };
+    
+    document.getElementById('captureFaceBtn').onclick = () => {
+        if (window.faceDetectionInterval) {
+            clearInterval(window.faceDetectionInterval);
+        }
+        stopFaceCamera();
+        captureFaceSnapshot();
+        
+        document.getElementById('faceRegStep2').style.display = 'none';
+        document.getElementById('faceRegStep3').style.display = 'block';
+    };
+    
+    document.getElementById('cancelFaceCapture').onclick = () => {
+        if (window.faceDetectionInterval) {
+            clearInterval(window.faceDetectionInterval);
+        }
+        stopFaceCamera();
+        document.getElementById('faceRegStep2').style.display = 'none';
+        document.getElementById('faceRegStep1').style.display = 'block';
+    };
+    
+    document.getElementById('retakeFaceBtn').onclick = () => {
+        document.getElementById('faceRegStep3').style.display = 'none';
+        document.getElementById('faceRegStep2').style.display = 'block';
+        startFaceCamera();
+    };
+    
+    document.getElementById('confirmFaceBtn').onclick = () => {
+        closeFaceRegistration();
+        proceedWithRegistration();
+    };
+    
+    document.getElementById('closeFaceModal').onclick = () => {
+        closeFaceRegistration();
+    };
+}
+
+function closeFaceRegistration() {
+    if (window.faceDetectionInterval) {
+        clearInterval(window.faceDetectionInterval);
+    }
+    stopFaceCamera();
+    
+    document.getElementById('faceRegistrationBackdrop').style.display = 'none';
+    document.getElementById('faceRegStep1').style.display = 'block';
+    document.getElementById('faceRegStep2').style.display = 'none';
+    document.getElementById('faceRegStep3').style.display = 'none';
+    document.getElementById('faceRegStep4').style.display = 'none';
+}
+
+// Load face API on page load
+document.addEventListener('DOMContentLoaded', function() {
+    initFaceAPI();
+});
 // ====== REGISTRATION HANDLING (with confirmation modal) ======
 forms.register.addEventListener('submit', async function(e) {
     e.preventDefault();
@@ -347,15 +511,12 @@ forms.register.addEventListener('submit', async function(e) {
     const level = document.getElementById('reg-level').value;
     const phone = document.getElementById('reg-phone').value.trim();
 
-    // DEFAULT institution value (hidden input) — will be "OAU"
     const institutionId = document.getElementById('reg-institution') ? document.getElementById('reg-institution').value : "OAU";
     const userType = document.getElementById('reg-user-type') ? document.getElementById('reg-user-type').value : "student";
 
-    const manualReferral =
-        document.getElementById('reg-referral')?.value.trim() || "";
+    const manualReferral = document.getElementById('reg-referral')?.value.trim() || "";
 
-    const profilePic =
-        document.getElementById('reg-profile-pic')?.files[0] || null;
+    const profilePic = document.getElementById('reg-profile-pic')?.files[0] || null;
 
     const facultyText = facultyId
         ? document.querySelector(`#reg-faculty option[value="${facultyId}"]`).textContent
@@ -371,31 +532,12 @@ forms.register.addEventListener('submit', async function(e) {
         ? (document.querySelector(`#reg-user-type option[value="${userType}"]`)?.textContent || userType)
         : "";
 
-    if (
-        !fullName ||
-        !username ||
-        !password ||
-        !email ||
-        !institutionId || // required
-        !facultyId ||
-        !departmentId ||
-        !level ||
-        !phone ||
-        !userType
-    ) {
-        showStatusModal(
-            "error",
-            "Registration Error",
-            "All required fields must be completed."
-        );
+    if (!fullName || !username || !password || !email || !institutionId || !facultyId || !departmentId || !level || !phone || !userType) {
+        showStatusModal("error", "Registration Error", "All required fields must be completed.");
         return;
     }
 
-    // URL referral takes priority
-    const referralCode =
-        localStorage.getItem('pendingReferral') ||
-        manualReferral ||
-        "";
+    const referralCode = localStorage.getItem('pendingReferral') || manualReferral || "";
 
     showConfirmationModal({
         "Full Name": fullName,
@@ -407,115 +549,123 @@ forms.register.addEventListener('submit', async function(e) {
         "Account Type": userTypeText,
         "Level": level,
         "Phone": phone,
-        ...(referralCode
-            ? { "Referral ID": referralCode }
-            : {}),
-        ...(profilePic
-            ? { "Profile Picture": profilePic.name }
-            : {})
+        ...(referralCode ? { "Referral ID": referralCode } : {}),
+        ...(profilePic ? { "Profile Picture": profilePic.name } : {})
     }, async function proceedReg() {
+        closeModal();
+        
+        openFaceRegistration();
+        
+        window.pendingRegistrationData = {
+            fullName,
+            username,
+            password,
+            email,
+            facultyId,
+            departmentId,
+            level,
+            phone,
+            institutionId,
+            userType,
+            referralCode,
+            profilePic,
+            faceDescriptor: null,
+            faceImage: null
+        };
+    });
+});
 
-        showLoadingModal(
-            "Registering...",
-            "Please wait while we create your account."
-        );
+async function proceedWithRegistration() {
+    const data = window.pendingRegistrationData;
+    
+    if (!data) return;
 
-        await setRegLoading(true);
+    document.getElementById('faceRegStep1').style.display = 'none';
+    document.getElementById('faceRegStep2').style.display = 'none';
+    document.getElementById('faceRegStep3').style.display = 'none';
+    document.getElementById('faceRegStep4').style.display = 'block';
 
-        try {
+    await setRegLoading(true);
 
-            const formData = new FormData();
+    try {
+        const formData = new FormData();
 
-            formData.append("fullname", fullName);
-            formData.append("username", username);
-            formData.append("password", password);
-            formData.append("email", email);
-            formData.append("faculty", facultyId);
-            formData.append("department", departmentId);
-            formData.append("level", level);
-            formData.append("phone", phone);
+        formData.append("fullname", data.fullName);
+        formData.append("username", data.username);
+        formData.append("password", data.password);
+        formData.append("email", data.email);
+        formData.append("faculty", data.facultyId);
+        formData.append("department", data.departmentId);
+        formData.append("level", data.level);
+        formData.append("phone", data.phone);
 
-            // send institution (string "OAU")
-            if (institutionId) {
-                formData.append("institution", institutionId);
-            }
-            if (userType) {
-                formData.append("userType", userType);
-            }
-
-            if (referralCode) {
-                formData.append("ref", referralCode);
-            }
-
-            if (profilePic) {
-                formData.append("profilePic", profilePic);
-            }
-
-            const registerResponse = await fetch(
-                "https://examguide.onrender.com/api/auth/register",
-                {
-                    method: "POST",
-                    body: formData
-                }
-            );
-
-            const result = await registerResponse.json();
-
-            await setRegLoading(false);
-
-            if (registerResponse.ok) {
-
-                localStorage.removeItem("pendingReferral");
-
-                showStatusModal(
-                    "success",
-                    "Registration Successful",
-                    result.message ||
-                    "Account created successfully.",
-                    false
-                );
-
-                setTimeout(() => {
-
-                    closeModal();
-
-                    forms.login.classList.add('active');
-                    forms.register.classList.remove('active');
-
-                    document
-                        .querySelector('[data-tab="login"]')
-                        .click();
-
-                }, 1800);
-
-            } else {
-
-                showStatusModal(
-                    "error",
-                    "Registration Failed",
-                    result.message ||
-                    "Could not register."
-                );
-
-            }
-
-        } catch (err) {
-
-            console.error(err);
-
-            await setRegLoading(false);
-
-            showStatusModal(
-                "error",
-                "Network Error",
-                "Could not connect to server."
-            );
-
+        if (data.institutionId) {
+            formData.append("institution", data.institutionId);
         }
 
-    });
+        if (data.userType) {
+            formData.append("userType", data.userType);
+        }
 
-});
+        if (data.referralCode) {
+            formData.append("ref", data.referralCode);
+        }
+
+        if (data.profilePic) {
+            formData.append("profilePic", data.profilePic);
+        }
+
+        if (faceRegistrationData.faceDescriptor) {
+            formData.append("faceDescriptor", JSON.stringify(Array.from(faceRegistrationData.faceDescriptor)));
+        }
+
+        if (faceRegistrationData.canvasSnapshot) {
+            const blob = await (await fetch(faceRegistrationData.canvasSnapshot)).blob();
+            formData.append("faceImage", blob, "face.jpg");
+        }
+
+        const registerResponse = await fetch("https://examguide.onrender.com/api/auth/register", {
+            method: "POST",
+            body: formData
+        });
+
+        const result = await registerResponse.json();
+
+        await setRegLoading(false);
+
+        if (registerResponse.ok) {
+            localStorage.removeItem("pendingReferral");
+            window.pendingRegistrationData = null;
+            faceRegistrationData = {
+                stream: null,
+                detection: null,
+                canvasSnapshot: null,
+                faceDescriptor: null
+            };
+
+            showStatusModal("success", "Registration Successful", result.message || "Account created successfully. Please log in.", false);
+
+            setTimeout(() => {
+                closeModal();
+                closeFaceRegistration();
+                
+                forms.login.classList.add('active');
+                forms.register.classList.remove('active');
+                document.querySelector('[data-tab="login"]').click();
+                
+                document.getElementById('registerForm').reset();
+            }, 1800);
+        } else {
+            showStatusModal("error", "Registration Failed", result.message || "Could not register.");
+        }
+    } catch (err) {
+        console.error("Registration error:", err);
+        await setRegLoading(false);
+        showStatusModal("error", "Network Error", "Could not connect to server. Please try again.");
+    }
+}        
+
+
 /* guest login, social buttons and other code remain unchanged */
 // ====== Guest login (no backend) ======
 // Appends a "Continue as Guest" button to the login form and simulates a login.
