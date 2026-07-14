@@ -215,7 +215,13 @@
                     video: { facingMode: 'user', width: 640, height: 480 },
                     audio: false
                 });
+                
+                // Problem 3 Fix: Wait strictly for video metadata calculations to resolve
                 video.srcObject = localStream;
+                await new Promise(resolve => {
+                    video.onloadedmetadata = resolve;
+                });
+                
                 await video.play();
 
                 startBiometricTrackingLoop();
@@ -226,7 +232,7 @@
             }
         }
 
-        // 500ms Active Tracker Looping Architecture (Mirrors original code strategy exactly)
+        // 500ms Active Tracker Looping Architecture
         function startBiometricTrackingLoop() {
             const executeCaptureBtn = document.getElementById('execute-capture-btn');
             
@@ -256,12 +262,17 @@
 
         // Camera Action Handlers
         document.getElementById('execute-capture-btn').onclick = () => {
-            // Process active frame allocation to internal canvas pipeline
+            // Problem 1 Fix: Verify actual physical stream initialization size before canvas mapping
+            if (video.videoWidth === 0 || video.videoHeight === 0) {
+                alert("Camera is not ready yet. Please wait a moment.");
+                return;
+            }
+
             const ctx = canvas.getContext('2d');
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             ctx.drawImage(video, 0, 0);
-            capturedSnapshotDataUrl = canvas.toDataURL('image/jpeg');
+            capturedSnapshotDataUrl = canvas.toDataURL('image/jpeg', 0.95);
 
             cleanUpHardwareStreams();
             transitionStep(2, 3);
@@ -349,8 +360,26 @@
                 }
 
                 if (capturedSnapshotDataUrl) {
+                    // Problem 2 Fix: Binary content evaluation and verification pre-flight structure
                     const faceBlob = convertDataURLToBinaryBlob(capturedSnapshotDataUrl);
+                    
+                    console.log("Face blob:", faceBlob.size, faceBlob.type);
+                    
+                    if (faceBlob.size === 0) {
+                        alert("Captured image is empty.");
+                        return;
+                    }
+                    
                     formData.append("faceImage", faceBlob, "face.jpg");
+                }
+
+                // Problem 4 Fix: Integrity mapping trace for FormData multi-part objects right before dispatch
+                for (const [key, value] of formData.entries()) {
+                    if (value instanceof Blob) {
+                        console.log(key, value.size, value.type);
+                    } else {
+                        console.log(key, value);
+                    }
                 }
 
                 // Execute multi-part POST transaction payload
