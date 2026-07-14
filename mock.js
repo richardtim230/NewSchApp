@@ -74,7 +74,6 @@ const messageBox = document.getElementById('messageBox');
 
 document.addEventListener('DOMContentLoaded', function() {
     fetchFaculties();
-    initFaceAPI();
     showSelectSpinner(deptSelect, "Select faculty first");
     deptSelect.disabled = true;
 
@@ -218,164 +217,6 @@ async function setRegLoading(isLoading) {
     }
 }
 
-// ====== FACE REGISTRATION ======
-let faceRegistrationData = {
-    stream: null,
-    detection: null,
-    canvasSnapshot: null,
-    faceDescriptor: null
-};
-
-async function initFaceAPI() {
-    try {
-        await Promise.all([
-            faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/'),
-            faceapi.nets.faceLandmark68Net.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/'),
-            faceapi.nets.faceRecognitionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/')
-        ]);
-        console.log('✅ Face API models loaded');
-    } catch (err) {
-        console.error('Face API load error:', err);
-    }
-}
-
-async function startFaceCamera() {
-    try {
-        const video = document.getElementById('faceRegVideo');
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'user', width: 640, height: 480 },
-            audio: false
-        });
-        
-        video.srcObject = stream;
-        faceRegistrationData.stream = stream;
-        await video.play();
-        startFaceDetection(video);
-    } catch (err) {
-        console.error('Camera access error:', err);
-        showStatusModal('error', 'Camera Error', 'Could not access your camera. Please check permissions.');
-    }
-}
-
-function stopFaceCamera() {
-    if (faceRegistrationData.stream) {
-        faceRegistrationData.stream.getTracks().forEach(track => track.stop());
-        faceRegistrationData.stream = null;
-    }
-}
-
-async function startFaceDetection(video) {
-    const statusEl = document.getElementById('faceDetectionStatus');
-    const captureBtn = document.getElementById('captureFaceBtn');
-    
-    const detectLoop = setInterval(async () => {
-        try {
-            const detections = await faceapi
-                .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
-                .withFaceLandmarks()
-                .withFaceDescriptor();
-            
-            if (detections) {
-                faceRegistrationData.detection = detections;
-                statusEl.innerHTML = '<i class="bi bi-check-circle" style="color: var(--success);"></i> Face detected!';
-                statusEl.style.color = '#27ae60';
-                captureBtn.disabled = false;
-            } else {
-                statusEl.innerHTML = '<i class="bi bi-hourglass-split"></i> Detecting face...';
-                statusEl.style.color = '#666';
-                captureBtn.disabled = true;
-            }
-        } catch (err) {
-            console.error('Detection error:', err);
-        }
-    }, 500);
-    
-    window.faceDetectionInterval = detectLoop;
-}
-
-function captureFaceSnapshot() {
-    const video = document.getElementById('faceRegVideo');
-    const canvas = document.getElementById('capturedFaceCanvas');
-    const ctx = canvas.getContext('2d');
-    
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.drawImage(video, 0, 0);
-    
-    faceRegistrationData.canvasSnapshot = canvas.toDataURL('image/jpeg');
-    
-    if (faceRegistrationData.detection) {
-        faceRegistrationData.faceDescriptor = faceRegistrationData.detection.descriptor;
-    }
-}
-
-function showFaceRegistrationModal() {
-    const backdrop = document.getElementById('faceRegistrationBackdrop');
-    backdrop.style.display = 'flex';
-    
-    document.getElementById('startFaceCapture').onclick = async () => {
-        showLoadingModal('Starting Camera', 'Please allow camera access...');
-        await new Promise(resolve => setTimeout(resolve, 500));
-        document.getElementById('faceRegStep1').style.display = 'none';
-        document.getElementById('faceRegStep2').style.display = 'block';
-        closeModal();
-        await startFaceCamera();
-    };
-    
-    document.getElementById('skipFaceBtn').onclick = () => {
-        closeFaceRegistration();
-        proceedWithRegistration();
-    };
-    
-    document.getElementById('captureFaceBtn').onclick = () => {
-        if (window.faceDetectionInterval) {
-            clearInterval(window.faceDetectionInterval);
-        }
-        stopFaceCamera();
-        captureFaceSnapshot();
-        
-        document.getElementById('faceRegStep2').style.display = 'none';
-        document.getElementById('faceRegStep3').style.display = 'block';
-    };
-    
-    document.getElementById('cancelFaceCapture').onclick = () => {
-        if (window.faceDetectionInterval) {
-            clearInterval(window.faceDetectionInterval);
-        }
-        stopFaceCamera();
-        document.getElementById('faceRegStep2').style.display = 'none';
-        document.getElementById('faceRegStep1').style.display = 'block';
-    };
-    
-    document.getElementById('retakeFaceBtn').onclick = async () => {
-        document.getElementById('faceRegStep3').style.display = 'none';
-        document.getElementById('faceRegStep2').style.display = 'block';
-        await startFaceCamera();
-    };
-    
-    document.getElementById('confirmFaceBtn').onclick = () => {
-        closeFaceRegistration();
-        proceedWithRegistration();
-    };
-    
-    document.getElementById('closeFaceModal').onclick = () => {
-        closeFaceRegistration();
-    };
-}
-
-function closeFaceRegistration() {
-    if (window.faceDetectionInterval) {
-        clearInterval(window.faceDetectionInterval);
-    }
-    stopFaceCamera();
-    
-    document.getElementById('faceRegistrationBackdrop').style.display = 'none';
-    document.getElementById('faceRegStep1').style.display = 'block';
-    document.getElementById('faceRegStep2').style.display = 'none';
-    document.getElementById('faceRegStep3').style.display = 'none';
-    document.getElementById('faceRegStep4').style.display = 'none';
-}
-
 // ====== LOGIN HANDLING ======
 forms.login.addEventListener('submit', async function(e) {
     e.preventDefault();
@@ -406,61 +247,25 @@ forms.login.addEventListener('submit', async function(e) {
 
             try {
                 let profileResp = await fetch("https://examguide.onrender.com/api/auth/me", {
-                    headers: {
-                        'Authorization': 'Bearer ' + loginData.token
-                    }
+                    headers: { 'Authorization': 'Bearer ' + loginData.token }
                 });
-
                 let profileData = await profileResp.json();
 
                 if (profileResp.ok && profileData.user) {
-                    const user = profileData.user;
-                    localStorage.setItem('studentData', JSON.stringify(user));
-
-                    const role = user.role;
-                    let roleMsg = "Welcome!";
-
-                    switch (role) {
-                        case 'superadmin':
-                            roleMsg = "Welcome, Superadmin!";
-                            break;
-                        case 'admin':
-                            roleMsg = "Welcome, Admin!";
-                            break;
-                        case 'tutor':
-                            roleMsg = "Welcome, User!";
-                            break;
-                        case 'uploader':
-                            roleMsg = "Welcome, Uploader!";
-                            break;
-                        case 'pq-uploader':
-                            roleMsg = "Welcome, PQ-Uploader!";
-                            break;
-                        case 'blogger':
-                            roleMsg = "Welcome, Blogger!";
-                            break;
-                        default:
-                            roleMsg = "Welcome, Student!";
-                    }
-
-                    showStatusModal("success", "Login Successful", roleMsg, false);
-
-                    setTimeout(() => {
-                        window.location.href = role === 'superadmin' ? "supaadmin.html" : "loader";
-                    }, 1300);
-
-                    await setLoginLoading(false);
-                    return;
+                    localStorage.setItem('studentData', JSON.stringify(profileData.user));
                 }
             } catch (err) {
-                console.error(err);
-                showStatusModal("success", "Login Successful", "You have been logged in!", false);
-                setTimeout(() => {
-                    window.location.href = "loader";
-                }, 1200);
+                console.error("Profile cache error:", err);
             }
 
+            // Redirect to standalone Face Verification Workspace instead of straight to dashboard
+            showStatusModal("success", "Credentials Verified", "Redirecting to Face Verification...", false);
             await setLoginLoading(false);
+            
+            setTimeout(() => {
+                closeModal();
+                window.location.href = "face-verification.html";
+            }, 1300);
             return;
         }
         showStatusModal("error","Login Failed",loginData.message || "Login failed");
@@ -515,110 +320,30 @@ forms.register.addEventListener('submit', async function(e) {
         ...(profilePic ? { "Profile Picture": profilePic.name } : {})
     }, async function proceedReg() {
         closeModal();
-        showLoadingModal("Setting up Face Registration", "Preparing camera access...");
-        await new Promise(resolve => setTimeout(resolve, 800));
-        closeModal();
-        
-        window.pendingRegistrationData = {
+        showLoadingModal("Saving Parameters", "Preparing standalone Face Registration environment...");
+        await setRegLoading(true);
+
+        const pendingData = {
             fullName, username, password, email, facultyId, departmentId,
-            level, phone, institutionId, userType, referralCode, profilePic,
-            faceDescriptor: null, faceImage: null
+            level, phone, institutionId, userType, referralCode
         };
 
-        showFaceRegistrationModal();
+        // If a custom local profile picture exists, convert to Base64 to safely pass across page redirect boundaries
+        if (profilePic) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                pendingData.profilePicBase64 = event.target.result;
+                pendingData.profilePicName = profilePic.name;
+                localStorage.setItem('pendingRegistrationData', JSON.stringify(pendingData));
+                window.location.href = "face-registration.html";
+            };
+            reader.readAsDataURL(profilePic);
+        } else {
+            localStorage.setItem('pendingRegistrationData', JSON.stringify(pendingData));
+            window.location.href = "face-registration.html";
+        }
     });
 });
-
-async function proceedWithRegistration() {
-    const data = window.pendingRegistrationData;
-    
-    if (!data) return;
-
-    document.getElementById('faceRegStep1').style.display = 'none';
-    document.getElementById('faceRegStep2').style.display = 'none';
-    document.getElementById('faceRegStep3').style.display = 'none';
-    document.getElementById('faceRegStep4').style.display = 'block';
-
-    showLoadingModal("Creating your account", "This may take a moment...");
-
-    await setRegLoading(true);
-
-    try {
-        const formData = new FormData();
-
-        formData.append("fullname", data.fullName);
-        formData.append("username", data.username);
-        formData.append("password", data.password);
-        formData.append("email", data.email);
-        formData.append("faculty", data.facultyId);
-        formData.append("department", data.departmentId);
-        formData.append("level", data.level);
-        formData.append("phone", data.phone);
-
-        if (data.institutionId) {
-            formData.append("institution", data.institutionId);
-        }
-
-        if (data.userType) {
-            formData.append("userType", data.userType);
-        }
-
-        if (data.referralCode) {
-            formData.append("ref", data.referralCode);
-        }
-
-        if (data.profilePic) {
-            formData.append("profilePic", data.profilePic);
-        }
-
-        if (faceRegistrationData.faceDescriptor) {
-            formData.append("faceDescriptor", JSON.stringify(Array.from(faceRegistrationData.faceDescriptor)));
-        }
-
-        if (faceRegistrationData.canvasSnapshot) {
-            const blob = await (await fetch(faceRegistrationData.canvasSnapshot)).blob();
-            formData.append("faceImage", blob, "face.jpg");
-        }
-
-        const registerResponse = await fetch("https://examguide.onrender.com/api/auth/register", {
-            method: "POST",
-            body: formData
-        });
-
-        const result = await registerResponse.json();
-        await setRegLoading(false);
-
-        if (registerResponse.ok) {
-            localStorage.removeItem("pendingReferral");
-            window.pendingRegistrationData = null;
-            faceRegistrationData = {
-                stream: null,
-                detection: null,
-                canvasSnapshot: null,
-                faceDescriptor: null
-            };
-
-            showStatusModal("success", "Registration Successful", result.message || "Account created successfully. Please log in.", false);
-
-            setTimeout(() => {
-                closeModal();
-                closeFaceRegistration();
-                
-                forms.login.classList.add('active');
-                forms.register.classList.remove('active');
-                document.querySelector('[data-tab="login"]').click();
-                
-                document.getElementById('registerForm').reset();
-            }, 1800);
-        } else {
-            showStatusModal("error", "Registration Failed", result.message || "Could not register.");
-        }
-    } catch (err) {
-        console.error("Registration error:", err);
-        await setRegLoading(false);
-        showStatusModal("error", "Network Error", "Could not connect to server. Please try again.");
-    }
-}
 
 // ====== Guest Login ======
 (function setupGuestLogin() {
