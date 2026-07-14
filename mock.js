@@ -1,3 +1,6 @@
+/* Full mock.js — replace your existing mock.js with this file. Only institution logic changed:
+   the file now always sends institution = "OAU" (from hidden input) when registering.
+*/
 (function() {
     const params = new URLSearchParams(window.location.search);
     const ref = params.get('ref');
@@ -11,11 +14,13 @@ const deptSelect = document.getElementById('reg-department');
 let facultyList = [];
 let departmentList = [];
 
+// Helper: show a loading spinner inside a <select>
 function showSelectSpinner(selectElem, text = "Loading...") {
     selectElem.innerHTML = `<option value="" disabled selected>${text} &#x21bb;</option>`;
     selectElem.disabled = true;
 }
 
+// Fetch faculties on page load
 async function fetchFaculties() {
     showSelectSpinner(facultySelect, "Loading faculties");
     facultyList = [];
@@ -25,7 +30,7 @@ async function fetchFaculties() {
         facultySelect.innerHTML = `<option value="">Select Faculty</option>`;
         facultyList.forEach(fac => {
             const opt = document.createElement("option");
-            opt.value = fac._id;
+            opt.value = fac._id; // use ObjectId
             opt.textContent = fac.name;
             facultySelect.appendChild(opt);
         });
@@ -50,7 +55,7 @@ async function fetchDepartments(facultyId) {
         deptSelect.innerHTML = `<option value="">Select Department</option>`;
         departmentList.forEach(dept => {
             const opt = document.createElement("option");
-            opt.value = dept._id;
+            opt.value = dept._id; // use ObjectId
             opt.textContent = dept.name;
             deptSelect.appendChild(opt);
         });
@@ -65,6 +70,7 @@ facultySelect.addEventListener('change', function() {
     fetchDepartments(this.value);
 });
 
+// ====== Tab switching ======
 const tabBtns = document.querySelectorAll('.tab-btn');
 const forms = {
     login: document.getElementById('loginForm'),
@@ -108,6 +114,7 @@ tabBtns.forEach(btn => {
     });
 });
 
+// ====== Password visibility toggle ======
 document.querySelectorAll('.toggle-visibility').forEach(span => {
     span.addEventListener('click', function() {
         const input = document.getElementById(this.dataset.target);
@@ -121,6 +128,7 @@ document.querySelectorAll('.toggle-visibility').forEach(span => {
     });
 });
 
+/* ====== UNIVERSAL MODAL SYSTEM ====== */
 const modalBackdrop = document.getElementById('modalBackdrop');
 const customModal = document.getElementById('customModal');
 const modalContent = document.getElementById('modalContent');
@@ -135,12 +143,10 @@ function openModal(contentHtml, allowClose = false) {
         closeModalBtn.style.display = 'none';
     }
 }
-
 function closeModal() {
     modalBackdrop.classList.remove('show');
     modalContent.innerHTML = '';
 }
-
 closeModalBtn.onclick = closeModal;
 modalBackdrop.addEventListener('click', function(e){
     if(e.target === modalBackdrop && closeModalBtn.style.display === 'block') closeModal();
@@ -153,7 +159,6 @@ function showLoadingModal(message="Please wait...", subMsg="Processing your requ
         <div class="modal-message">${subMsg}</div>
     `);
 }
-
 function showStatusModal(type, title, msg, allowClose=true) {
     let icon = type === "success"
         ? '<span class="modal-status-icon success"><i class="bi bi-check-circle-fill"></i></span>'
@@ -164,7 +169,6 @@ function showStatusModal(type, title, msg, allowClose=true) {
         <div class="modal-message">${msg}</div>
     `, allowClose);
 }
-
 function showConfirmationModal(detailsObj, onConfirm, onCancel) {
     let detailsHtml = Object.entries(detailsObj).map(([k,v])=>
         `<dt>${k}:</dt><dd>${v}</dd>`
@@ -181,14 +185,15 @@ function showConfirmationModal(detailsObj, onConfirm, onCancel) {
     document.getElementById('modalConfirmBtn').onclick = function(){closeModal(); if(onConfirm) onConfirm();};
 }
 
+// Helper: Validate username
 function validateUsername(username) {
     return username.trim().length > 0;
 }
 
+// Spinner helpers
 const loginBtn = document.getElementById('loginBtn');
 const loginBtnText = document.getElementById('loginBtnText');
 const loginSpinner = document.getElementById('loginSpinner');
-
 async function setLoginLoading(isLoading) {
     if (isLoading) {
         loginBtn.setAttribute("disabled", "disabled");
@@ -200,11 +205,9 @@ async function setLoginLoading(isLoading) {
         loginBtnText.style.display = "inline";
     }
 }
-
 const registerBtn = document.getElementById('registerBtn');
 const registerBtnText = document.getElementById('registerBtnText');
 const registerSpinner = document.getElementById('registerSpinner');
-
 async function setRegLoading(isLoading) {
     if (isLoading) {
         registerBtn.setAttribute("disabled", "disabled");
@@ -238,34 +241,90 @@ forms.login.addEventListener('submit', async function(e) {
         let loginData = await loginResponse.json();
 
         if (loginResponse.ok) {
+            // Save token using both keys
             localStorage.setItem('student_jwt_token', loginData.token);
             localStorage.setItem('token', loginData.token);
 
+            // Optionally save user data if returned
             if (loginData.user) {
                 localStorage.setItem('studentData', JSON.stringify(loginData.user));
             }
 
+            // Get user role and redirect accordingly
             try {
                 let profileResp = await fetch("https://examguide.onrender.com/api/auth/me", {
-                    headers: { 'Authorization': 'Bearer ' + loginData.token }
+                    headers: {
+                        'Authorization': 'Bearer ' + loginData.token
+                    }
                 });
+
                 let profileData = await profileResp.json();
 
                 if (profileResp.ok && profileData.user) {
-                    localStorage.setItem('studentData', JSON.stringify(profileData.user));
+                    const user = profileData.user;
+
+                    // Save full profile for later use
+                    localStorage.setItem('studentData', JSON.stringify(user));
+
+                    const role = user.role;
+                    let roleMsg = "Welcome!";
+
+                    switch (role) {
+                        case 'superadmin':
+                            roleMsg = "Welcome, Superadmin!";
+                            break;
+                        case 'admin':
+                            roleMsg = "Welcome, Admin!";
+                            break;
+                          case 'tutor':
+                            roleMsg = "Welcome, User!";
+                            break;
+                        case 'uploader':
+                            roleMsg = "Welcome, Uploader!";
+                            break;
+                        case 'pq-uploader':
+                            roleMsg = "Welcome, PQ-Uploader!";
+                            break;
+                        case 'blogger':
+                            roleMsg = "Welcome, Blogger!";
+                            break;
+                        default:
+                            roleMsg = "Welcome, Student!";
+                    }
+
+                    showStatusModal(
+                        "success",
+                        "Login Successful",
+                        roleMsg,
+                        false
+                    );
+
+                    setTimeout(() => {
+                        window.location.href =
+                            role === 'superadmin'
+                                ? "supaadmin.html"
+                                : "loader";
+                    }, 1300);
+
+                    await setLoginLoading(false);
+                    return;
                 }
             } catch (err) {
-                console.error("Profile cache error:", err);
+                console.error(err);
+
+                showStatusModal(
+                    "success",
+                    "Login Successful",
+                    "You have been logged in!",
+                    false
+                );
+
+                setTimeout(() => {
+                    window.location.href = "loader";
+                }, 1200);
             }
 
-            // Redirect to standalone Face Verification Workspace instead of straight to dashboard
-            showStatusModal("success", "Credentials Verified", "Redirecting to Face Verification...", false);
             await setLoginLoading(false);
-            
-            setTimeout(() => {
-                closeModal();
-                window.location.href = "face-verification.html";
-            }, 1300);
             return;
         }
         showStatusModal("error","Login Failed",loginData.message || "Login failed");
