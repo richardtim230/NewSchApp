@@ -1745,11 +1745,35 @@ function initializeQuillForExistingRow(rowEl, existingQuestionData, idx) {
             return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[s]);
         }
 
-        // Simple action handlers
-        function unenrollStudent(matricId) {
-            if (!confirm(`Unenroll ${matricId} from this course?`)) return;
-            showStatus(`Unenroll action requested for ${matricId}. Implement server-side route to complete this action.`, 'info');
-        }
+async function unenrollStudent(studentId) {
+    const courseId = pageState.selectedCourse?._id;
+    if (!courseId) {
+        showStatus('No course selected', 'error');
+        return;
+    }
+
+    const student = pageState.students?.find(s => s._id === studentId || s.studentId === studentId);
+    const studentName = student?.name || studentId;
+
+    if (!confirm(`Unenroll ${studentName} from this course?`)) return;
+
+    try {
+        await fetchJSON(
+            `/api/lecturer/courses/${courseId}/unenroll`,
+            {
+                method: 'POST',
+                body: JSON.stringify({ studentId })
+            }
+        );
+
+        showStatus(`${studentName} unenrolled successfully`, 'success');
+        await loadStudentsForCourse(courseId);
+        renderStudentsTable();
+    } catch (err) {
+        console.error("Unenroll error:", err);
+        showStatus('Unenroll failed: ' + (err.message || err), 'error');
+    }
+}
         function openQuestionEditor(id) {
             alert('Open question editor: ' + id + '\nThis demo requires integrating a question editor route.');
         }
