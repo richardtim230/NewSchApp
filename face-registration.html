@@ -43,6 +43,13 @@
             background: radial-gradient(ellipse 150px 200px at center, transparent 95%, rgba(15, 23, 42, 0.85) 100%);
             z-index: 10;
         }
+        .flash-effect {
+            animation: flash 0.4s ease-out;
+        }
+        @keyframes flash {
+            0% { background-color: rgba(255, 255, 255, 0.9); }
+            100% { background-color: transparent; }
+        }
     </style>
 </head>
 <body class="bg-brand-light text-slate-800 font-sans antialiased min-h-screen flex items-center justify-center p-4">
@@ -64,22 +71,22 @@
             <div id="step-1" class="space-y-5">
                 <div class="bg-blue-50/60 border border-blue-100 rounded-2xl p-4 text-sm text-blue-800 space-y-3">
                     <span class="font-bold flex items-center gap-1.5 text-blue-900">
-                        <i class="bi bi-info-circle-fill"></i> Biometric Setup Requirements
+                        <i class="bi bi-info-circle-fill"></i> Multi-Pose Setup Protocol
                     </span>
                     <p class="text-xs leading-relaxed text-blue-800/90">
-                        ExamGuard uses specialized facial metric vectors to verify your identity during active academic evaluations. Please ensure you are in a brightly lit environment.
+                        ExamGuard uses 5 distinct spatial facial metric points to verify structural identity. The scanner will capture automatically when alignment criteria are met.
                     </p>
                 </div>
 
                 <ul class="text-xs space-y-2.5 text-slate-600 px-1">
-                    <li class="flex items-center gap-2"><i class="bi bi-brightness-high text-amber-500 text-sm"></i> Avoid backlighting or dark shadows on your face.</li>
-                    <li class="flex items-center gap-2"><i class="bi bi-person-bounding-box text-blue-500 text-sm"></i> Keep your head centered within the frame tracking loop.</li>
-                    <li class="flex items-center gap-2"><i class="bi bi-eyeglasses text-red-500 text-sm"></i> Remove dark sunglasses, large hats, or facial masks.</li>
+                    <li class="flex items-center gap-2"><i class="bi bi-camera-video text-brand-accent text-sm"></i> System will snap 5 sequential photos automatically.</li>
+                    <li class="flex items-center gap-2"><i class="bi bi-person-bounding-box text-blue-500 text-sm"></i> Hold still when the countdown tracker starts.</li>
+                    <li class="flex items-center gap-2"><i class="bi bi-brightness-high text-amber-500 text-sm"></i> Make sure your face is clearly lit.</li>
                 </ul>
 
                 <div class="pt-4 flex flex-col gap-2">
                     <button id="start-capture-btn" class="w-full py-3 rounded-xl text-sm font-bold text-white bg-brand-active hover:bg-blue-700 transition-all shadow-md shadow-blue-600/10 flex items-center justify-center gap-2">
-                        <span>Initialize Setup Engine</span>
+                        <span>Initialize Auto-Capture Engine</span>
                         <i class="bi bi-arrow-right"></i>
                     </button>
                     <button id="skip-biometrics-btn" class="w-full py-2.5 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-800 transition-all bg-slate-100/70 hover:bg-slate-100">
@@ -89,10 +96,22 @@
             </div>
 
             <div id="step-2" class="hidden space-y-4">
+                <div class="bg-slate-900 text-white rounded-2xl p-3.5 text-center shadow-md">
+                    <div id="pose-step-indicator" class="text-[10px] font-bold uppercase tracking-widest text-blue-400">Pose 1 of 5</div>
+                    <div id="pose-instruction-title" class="text-sm font-bold mt-0.5">Initializing Scan Target...</div>
+                    <div id="pose-instruction-desc" class="text-xs text-slate-400 font-light mt-0.5">Please wait for hardware diagnostics.</div>
+                </div>
+
                 <div class="relative bg-slate-950 aspect-[4/5] w-full rounded-2xl overflow-hidden flex items-center justify-center shadow-inner">
                     <video id="regVideo" class="absolute w-full h-full object-cover transform scale-x-[-1]" autoplay playsinline muted></video>
                     <div class="camera-overlay pointer-events-none"></div>
+                    <div id="cameraFlash" class="absolute inset-0 pointer-events-none z-30 transparent"></div>
                     
+                    <div id="hud-countdown-container" class="hidden absolute bg-black/60 backdrop-blur-sm px-4 py-2 rounded-full border border-white/10 text-white font-bold text-xs items-center gap-2 z-20 top-4">
+                        <span class="w-2 h-2 bg-red-500 rounded-full animate-ping"></span>
+                        <span id="hud-countdown-text">Capturing in 3s</span>
+                    </div>
+
                     <div class="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
                         <div id="ui-tracking-box" class="w-[230px] h-[290px] rounded-[80px] border-2 border-dashed border-white/40 transition-all duration-300"></div>
                     </div>
@@ -103,33 +122,32 @@
                 </div>
 
                 <div class="flex gap-2">
-                    <button id="cancel-capture-btn" class="w-1/3 py-3 rounded-xl text-sm font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all">
-                        Cancel
-                    </button>
-                    <button id="execute-capture-btn" disabled class="w-2/3 py-3 rounded-xl text-sm font-bold text-white bg-brand-active hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md shadow-blue-600/10 flex items-center justify-center gap-1.5">
-                        <i class="bi bi-camera-fill"></i>
-                        <span>Capture Profile Frame</span>
+                    <button id="cancel-capture-btn" class="w-full py-3 rounded-xl text-sm font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all">
+                        Cancel Registration Process
                     </button>
                 </div>
             </div>
 
             <div id="step-3" class="hidden space-y-4">
-                <div class="relative bg-slate-100 aspect-[4/5] w-full rounded-2xl overflow-hidden shadow-inner border border-slate-200">
-                    <canvas id="capturedFaceCanvas" class="w-full h-full object-cover transform scale-x-[-1]"></canvas>
+                <div class="text-center">
+                    <span class="text-xs bg-emerald-100 text-emerald-800 font-bold px-2.5 py-1 rounded-full">Telemetry Profile Assembled</span>
                 </div>
+                
+                <div id="posesGridContainer" class="grid grid-cols-5 gap-1.5 py-2">
+                    </div>
 
                 <div class="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-xs text-emerald-800 flex items-center gap-2">
                     <i class="bi bi-check-circle-fill text-emerald-600 text-base"></i>
-                    <span>Facial telemetry indices gathered successfully. Ready for submission.</span>
+                    <span>All 5 biometric indices compiled successfully. Ready for handshake upload.</span>
                 </div>
 
                 <div class="flex gap-2">
                     <button id="retake-capture-btn" class="w-1/3 py-3 rounded-xl text-sm font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all">
-                        Retake
+                        Retake All
                     </button>
                     <button id="confirm-registration-btn" class="w-2/3 py-3 rounded-xl text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-all shadow-md shadow-emerald-600/10 flex items-center justify-center gap-1.5">
                         <i class="bi bi-person-check-fill"></i>
-                        <span>Confirm & Register</span>
+                        <span>Confirm & Register Profile</span>
                     </button>
                 </div>
             </div>
@@ -145,38 +163,59 @@
         </div>
     </div>
 
+    <canvas id="capturedFaceCanvas" class="hidden"></canvas>
+
     <script>
         const API_BASE = "https://examguide.onrender.com/api";
         const MODEL_URL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/";
 
-        // UI Steps Elements
+        // Biometric State Machine Definitions
+        const REQUIRED_POSES = [
+            { id: "straight", label: "Look Straight", desc: "Keep your eyes locked straight forward." },
+            { id: "left", label: "Turn Slightly Left", desc: "Turn your face slightly to your left side." },
+            { id: "right", label: "Turn Slightly Right", desc: "Turn your face slightly to your right side." },
+            { id: "up", label: "Tilt Head Up", desc: "Tilt your chin upwards slightly." },
+            { id: "down", label: "Tilt Head Down", desc: "Tilt your chin downwards slightly." }
+        ];
+
+        let currentPoseIndex = 0;
+        let capturedPosesData = []; // Storage container for { id, label, descriptor, dataUrl }
+        
+        let localStream = null;
+        let detectionInterval = null;
+        let pendingUserPayload = null;
+
+        // Auto Capture Timing Controls
+        let countdownTimer = null;
+        let countdownTicksRemaining = 3; 
+        let isStableCountdownActive = false;
+        let isPoseCooldownActive = false;
+
+        // UI Target References
         const step1 = document.getElementById('step-1');
         const step2 = document.getElementById('step-2');
         const step3 = document.getElementById('step-3');
         const step4 = document.getElementById('step-4');
 
-        // Functional DOM Elements
         const video = document.getElementById('regVideo');
         const canvas = document.getElementById('capturedFaceCanvas');
         const faceDetectionStatus = document.getElementById('faceDetectionStatus');
         const uiTrackingBox = document.getElementById('ui-tracking-box');
         const topStatusText = document.getElementById('top-status-text');
+        
+        const poseStepIndicator = document.getElementById('pose-step-indicator');
+        const poseInstructionTitle = document.getElementById('pose-instruction-title');
+        const poseInstructionDesc = document.getElementById('pose-instruction-desc');
+        const hudCountdownContainer = document.getElementById('hud-countdown-container');
+        const hudCountdownText = document.getElementById('hud-countdown-text');
+        const cameraFlash = document.getElementById('cameraFlash');
+        const posesGridContainer = document.getElementById('posesGridContainer');
 
-        // Processing State Elements
         const processingSpinner = document.getElementById('processing-spinner');
         const processingIcon = document.getElementById('processing-icon');
         const processingTitle = document.getElementById('processing-title');
         const processingDesc = document.getElementById('processing-desc');
 
-        // State Tracking References
-        let localStream = null;
-        let detectionInterval = null;
-        let pendingUserPayload = null;
-        
-        let capturedSnapshotDataUrl = null;
-        let extractedFaceDescriptor = null;
-
-        // On Load Lifecycle Check
         window.addEventListener('DOMContentLoaded', () => {
             const cacheString = localStorage.getItem('pendingRegistrationData');
             if (!cacheString) {
@@ -187,20 +226,19 @@
             pendingUserPayload = JSON.parse(cacheString);
         });
 
-        // Step 1 Interactivity Action Hooks
         document.getElementById('start-capture-btn').onclick = async () => {
+            currentPoseIndex = 0;
+            capturedPosesData = [];
             transitionStep(1, 2);
-            topStatusText.innerText = "Align your facial plane inside the frame tracker.";
+            updatePoseInstructionsHUD();
             await loadModelsAndStartCamera();
         };
 
         document.getElementById('skip-biometrics-btn').onclick = () => {
-            capturedSnapshotDataUrl = null;
-            extractedFaceDescriptor = null;
+            capturedPosesData = [];
             executeServerRegistration();
         };
 
-        // Active Hardware Activation Layer
         async function loadModelsAndStartCamera() {
             try {
                 faceDetectionStatus.innerHTML = '<i class="bi bi-cpu animate-spin mr-1"></i> Invoking neural structural layers...';
@@ -216,12 +254,8 @@
                     audio: false
                 });
                 
-                // Problem 3 Fix: Wait strictly for video metadata calculations to resolve
                 video.srcObject = localStream;
-                await new Promise(resolve => {
-                    video.onloadedmetadata = resolve;
-                });
-                
+                await new Promise(resolve => video.onloadedmetadata = resolve);
                 await video.play();
 
                 startBiometricTrackingLoop();
@@ -232,11 +266,19 @@
             }
         }
 
-        // 500ms Active Tracker Looping Architecture
+        function updatePoseInstructionsHUD() {
+            const currentPose = REQUIRED_POSES[currentPoseIndex];
+            poseStepIndicator.innerText = `Pose ${currentPoseIndex + 1} of 5`;
+            poseInstructionTitle.innerText = currentPose.label;
+            poseInstructionDesc.innerText = currentPose.desc;
+            topStatusText.innerText = `Auto-capturing pose: ${currentPose.label}`;
+        }
+
         function startBiometricTrackingLoop() {
-            const executeCaptureBtn = document.getElementById('execute-capture-btn');
-            
             detectionInterval = setInterval(async () => {
+                // If the system is currently processing a transition cooldown, skip computation
+                if (isPoseCooldownActive) return;
+
                 try {
                     const trackingData = await faceapi
                         .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
@@ -244,50 +286,141 @@
                         .withFaceDescriptor();
 
                     if (trackingData) {
-                        extractedFaceDescriptor = trackingData.descriptor;
-                        faceDetectionStatus.innerHTML = '<i class="bi bi-patch-check-fill text-emerald-600"></i> Alignment Match Standard Secured';
+                        faceDetectionStatus.innerHTML = '<i class="bi bi-patch-check-fill text-emerald-600"></i> Alignment Locked - Hold Vector Position';
                         uiTrackingBox.className = "w-[230px] h-[290px] rounded-[80px] border-2 border-solid border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.35)] transition-all duration-300";
-                        executeCaptureBtn.disabled = false;
+                        
+                        // Begin automated snap countdown sequence if not active
+                        if (!isStableCountdownActive) {
+                            initiateAutoCaptureSequence(trackingData.descriptor);
+                        }
                     } else {
-                        extractedFaceDescriptor = null;
                         faceDetectionStatus.innerHTML = '<i class="bi bi-hourglass-split animate-spin text-slate-400"></i> Locating head alignment parameters...';
                         uiTrackingBox.className = "w-[230px] h-[290px] rounded-[80px] border-2 border-dashed border-white/40 transition-all duration-300";
-                        executeCaptureBtn.disabled = true;
+                        
+                        // Break sequence immediately if user face tracking breaks posture position
+                        abortAutoCaptureSequence();
                     }
                 } catch (e) {
                     console.error("Frame tracking interval exception:", e);
                 }
-            }, 500);
+            }, 400);
         }
 
-        // Camera Action Handlers
-        document.getElementById('execute-capture-btn').onclick = () => {
-            // Problem 1 Fix: Verify actual physical stream initialization size before canvas mapping
+        function initiateAutoCaptureSequence(activeDescriptor) {
+            isStableCountdownActive = true;
+            countdownTicksRemaining = 3;
+            
+            hudCountdownContainer.classList.remove('hidden');
+            hudCountdownContainer.classList.add('flex');
+            hudCountdownText.innerText = `Capturing in ${countdownTicksRemaining}s`;
+
+            countdownTimer = setInterval(() => {
+                countdownTicksRemaining--;
+                if (countdownTicksRemaining > 0) {
+                    hudCountdownText.innerText = `Capturing in ${countdownTicksRemaining}s`;
+                } else {
+                    clearInterval(countdownTimer);
+                    executeAutonomousSnapshot(activeDescriptor);
+                }
+            }, 1000);
+        }
+
+        function abortAutoCaptureSequence() {
+            if (isStableCountdownActive) {
+                clearInterval(countdownTimer);
+                isStableCountdownActive = false;
+                hudCountdownContainer.classList.add('hidden');
+                hudCountdownContainer.classList.remove('flex');
+            }
+        }
+
+        function executeAutonomousSnapshot(faceDescriptor) {
             if (video.videoWidth === 0 || video.videoHeight === 0) {
-                alert("Camera is not ready yet. Please wait a moment.");
+                isStableCountdownActive = false;
                 return;
             }
 
+            // Visual shutter flash feedback execution
+            cameraFlash.classList.add('flash-effect');
+            setTimeout(() => cameraFlash.classList.remove('flash-effect'), 400);
+
+            // Snapshot framing isolation
             const ctx = canvas.getContext('2d');
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             ctx.drawImage(video, 0, 0);
-            capturedSnapshotDataUrl = canvas.toDataURL('image/jpeg', 0.95);
+            const snapshotDataUrl = canvas.toDataURL('image/jpeg', 0.95);
 
-            cleanUpHardwareStreams();
-            transitionStep(2, 3);
-            topStatusText.innerText = "Review your enrollment structure before submission.";
-        };
+            // Store pose data object structure safely
+            const activePoseConfig = REQUIRED_POSES[currentPoseIndex];
+            capturedPosesData.push({
+                id: activePoseConfig.id,
+                label: activePoseConfig.label,
+                descriptor: faceDescriptor,
+                dataUrl: snapshotDataUrl
+            });
+
+            // Cleanup HUD flags
+            isStableCountdownActive = false;
+            hudCountdownContainer.classList.add('hidden');
+
+            // Shift index loop or transition to compilation review screen
+            if (currentPoseIndex < REQUIRED_POSES.length - 1) {
+                currentPoseIndex++;
+                triggerNextPoseTransitionBuffer();
+            } else {
+                cleanUpHardwareStreams();
+                renderReviewWorkspaceMatrix();
+                transitionStep(2, 3);
+                topStatusText.innerText = "Review your structural multi-pose matrix before registration.";
+            }
+        }
+
+        function triggerNextPoseTransitionBuffer() {
+            isPoseCooldownActive = true;
+            
+            // Visual transition status HUD modification
+            uiTrackingBox.className = "w-[230px] h-[290px] rounded-[80px] border-2 border-solid border-blue-500 transition-all duration-300";
+            faceDetectionStatus.innerHTML = '<i class="bi bi-arrow-left-right text-blue-500 animate-pulse"></i> Preparing next snapshot field... Change posture';
+            
+            poseStepIndicator.innerText = "Processing...";
+            poseInstructionTitle.innerText = "Prepare Next Posture";
+            poseInstructionDesc.innerText = `Get ready to adopt posture: "${REQUIRED_POSES[currentPoseIndex].label}"`;
+
+            setTimeout(() => {
+                isPoseCooldownActive = false;
+                updatePoseInstructionsHUD();
+            }, 2500); // 2.5 second cooldown pacing delay to let human physically shift alignment
+        }
+
+        function renderReviewWorkspaceMatrix() {
+            posesGridContainer.innerHTML = "";
+            capturedPosesData.forEach(pose => {
+                const cell = document.createElement('div');
+                cell.className = "flex flex-col items-center space-y-1 bg-slate-50 p-1.5 rounded-xl border border-slate-200";
+                cell.innerHTML = `
+                    <div class="relative w-full aspect-[4/5] rounded-lg overflow-hidden border border-slate-300 shadow-inner">
+                        <img src="${pose.dataUrl}" class="w-full h-full object-cover transform scale-x-[-1]" />
+                    </div>
+                    <span class="text-[9px] font-medium tracking-tight text-slate-600 text-center truncate w-full">${pose.label}</span>
+                `;
+                posesGridContainer.appendChild(cell);
+            });
+        }
 
         document.getElementById('cancel-capture-btn').onclick = () => {
             cleanUpHardwareStreams();
+            abortAutoCaptureSequence();
+            isPoseCooldownActive = false;
             transitionStep(2, 1);
             topStatusText.innerText = "Configure your secure biometric profile identity.";
         };
 
         document.getElementById('retake-capture-btn').onclick = async () => {
+            currentPoseIndex = 0;
+            capturedPosesData = [];
             transitionStep(3, 2);
-            topStatusText.innerText = "Align your facial plane inside the frame tracker.";
+            updatePoseInstructionsHUD();
             await loadModelsAndStartCamera();
         };
 
@@ -295,22 +428,22 @@
             executeServerRegistration();
         };
 
-        // Hardware Cleanup Reference
         function cleanUpHardwareStreams() {
             if (detectionInterval) clearInterval(detectionInterval);
+            if (countdownTimer) clearInterval(countdownTimer);
             if (localStream) {
                 localStream.getTracks().forEach(track => track.stop());
                 localStream = null;
             }
+            isStableCountdownActive = false;
+            isPoseCooldownActive = false;
         }
 
-        // Safe Step Switching Management Layout
         function transitionStep(from, to) {
             document.getElementById(`step-${from}`).classList.add('hidden');
             document.getElementById(`step-${to}`).classList.remove('hidden');
         }
 
-        // Base64 helper converter tool for multi-part file conversion structures
         function convertDataURLToBinaryBlob(dataURL) {
             const splitArray = dataURL.split(',');
             const mimeType = splitArray[0].match(/:(.*?);/)[1];
@@ -323,10 +456,9 @@
             return new Blob([u8arr], { type: mimeType });
         }
 
-        // Server API Execution Multi-Part Handling Pipeline
         async function executeServerRegistration() {
             transitionStep(3, 4);
-            step1.classList.add('hidden'); // Ensure step 1 is hidden if skipped directly
+            step1.classList.add('hidden'); 
             topStatusText.innerText = "Asynchronous processing loop active...";
             
             try {
@@ -348,41 +480,43 @@
                     formData.append("ref", pendingUserPayload.referralCode);
                 }
 
-                // If a standard profile image exists, unpack the binary file context
                 if (pendingUserPayload.profilePicBase64) {
                     const profBlob = convertDataURLToBinaryBlob(pendingUserPayload.profilePicBase64);
                     formData.append("profilePic", profBlob, pendingUserPayload.profilePicName || "profile.jpg");
                 }
 
-                // Mount parsed biometric vectors if tracking profile passed execution safely
-                if (extractedFaceDescriptor) {
-                    formData.append("faceDescriptor", JSON.stringify(Array.from(extractedFaceDescriptor)));
+                // Pack Multi-Pose Vectors and Files securely
+                if (capturedPosesData.length > 0) {
+                    // 1. Pack full array of raw descriptive vectors for the specialized multi-matrix backend
+                    const vectorsCollection = capturedPosesData.map(pose => Array.from(pose.descriptor));
+                    formData.append("faceDescriptors", JSON.stringify(vectorsCollection));
+                    
+                    // Fallback reference to ensure index 0 profile does not break legacy single-pose backend code structures
+                    formData.append("faceDescriptor", JSON.stringify(vectorsCollection[0]));
+
+                    // 2. Transmit each binary image explicitly separated by index keys
+                    capturedPosesData.forEach((poseData, idx) => {
+                        const blob = convertDataURLToBinaryBlob(poseData.dataUrl);
+                        
+                        console.log(`Pose image ${idx + 1} inspection [${poseData.id}]:`, blob.size, blob.type);
+                        if (blob.size === 0) throw new Error(`Isolated serialization failure on posture context: ${poseData.label}`);
+                        
+                        formData.append(`faceImage_${idx + 1}`, blob, `face_${poseData.id}.jpg`);
+                        
+                        // Legacy backend variable fallback mapping compatibility rule
+                        if (idx === 0) {
+                            formData.append("faceImage", blob, "face.jpg");
+                        }
+                    });
                 }
 
-                if (capturedSnapshotDataUrl) {
-                    // Problem 2 Fix: Binary content evaluation and verification pre-flight structure
-                    const faceBlob = convertDataURLToBinaryBlob(capturedSnapshotDataUrl);
-                    
-                    console.log("Face blob:", faceBlob.size, faceBlob.type);
-                    
-                    if (faceBlob.size === 0) {
-                        alert("Captured image is empty.");
-                        return;
-                    }
-                    
-                    formData.append("faceImage", faceBlob, "face.jpg");
-                }
-
-                // Problem 4 Fix: Integrity mapping trace for FormData multi-part objects right before dispatch
+                // Pre-flight outbox mapping logging trace validation checks
                 for (const [key, value] of formData.entries()) {
                     if (value instanceof Blob) {
-                        console.log(key, value.size, value.type);
-                    } else {
-                        console.log(key, value);
+                        console.log(`[FormBlob Outbox Check] Key: ${key} | Size: ${value.size} bytes | Type: ${value.type}`);
                     }
                 }
 
-                // Execute multi-part POST transaction payload
                 const serverResponse = await fetch(`${API_BASE}/auth/register`, {
                     method: "POST",
                     body: formData
@@ -391,21 +525,18 @@
                 const responseData = await serverResponse.json();
 
                 if (serverResponse.ok) {
-                    // Success interface transformation routine
                     processingSpinner.classList.add('hidden');
                     processingIcon.className = "bi bi-check-circle-fill text-5xl mx-auto text-emerald-500 animate-bounce";
                     processingIcon.classList.remove('hidden');
                     processingTitle.innerText = "Account Provisioned!";
                     processingDesc.innerText = responseData.message || "Registration completed successfully. Returning to portal entry point for validation check.";
 
-                    // Discard cached security states structures safely
                     localStorage.removeItem('pendingRegistrationData');
                     localStorage.removeItem('pendingReferral');
 
                     setTimeout(() => {
                         window.location.href = "mock.html?tab=login&registration=success";
                     }, 2500);
-
                 } else {
                     throw new Error(responseData.message || "Endpoint matrix rejected creation request.");
                 }
