@@ -3233,6 +3233,60 @@ function escapeHtml(text) {
             reload: () => loadInitialCourseData(),
             state: pageState
         };
+
+
+        (function(){
+  const POLL_INTERVAL = 10000;
+  let abortCtrl = null;
+
+  function getAuthHeaders(){
+    const t = localStorage.getItem(TOKEN_KEY) || document.getElementById('apiTokenInput')?.value;
+    return t ? { Authorization: `Bearer ${t}` } : {};
+  }
+
+  function escapeHtml(s){
+    if(!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
+  function isStudentsSectionVisible(){
+    const sec = document.getElementById('studentsSection');
+    if(!sec || sec.classList.contains('hidden')) return false;
+    const r = sec.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  }
+
+  
+  async function fetchAndUpdateStudents(){
+    try{
+      if(!isStudentsSectionVisible()) return;
+      const courseId = pageState.selectedCourse?._id || pageState.selectedCourse?.id || document.getElementById('sidebarCourseCode')?.dataset.courseId || null;
+      if(!courseId) return;
+      if(abortCtrl){ try{ abortCtrl.abort(); } catch(e){} }
+      abortCtrl = new AbortController();
+      const headers = Object.assign({'Content-Type':'application/json'}, getAuthHeaders());
+      const resp = await fetch(`${API_BASE}/api/lecturer/courses`, { method: 'GET', headers, signal: abortCtrl.signal });
+      if(!resp.ok) return;
+      const json = await resp.json();
+      const course = Array.isArray(json.courses) ? json.courses.find(c => String(c._id) === String(courseId)) : null;
+      if(!course) return;
+      const students = Array.isArray(course.students) ? course.students.map(s=>({
+        _id: s._id || s.id,
+        name: s.fullname || s.name || s.username || '',
+        matricNumber: s.studentId || s.matricNumber || 'N/A',
+        level: s.level || 'N/A',
+        email: s.email || '',
+        attendance: s.attendance || s.engagement || '—'
+      })) : [];
+      renderStudentsTable(students);
+    }catch(err){
+      if(err && err.name === 'AbortError') return;
+      console.debug('Auto-refresh students error', err);
+    }
+  }
+
+  setTimeout(()=>{ fetchAndUpdateStudents(); setInterval(fetchAndUpdateStudents, POLL_INTERVAL); }, 800);
+})();
     </script>
 </body>
 </html>
