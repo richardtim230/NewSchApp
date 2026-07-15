@@ -102,8 +102,8 @@ window.onload = function() {
         "uploader": "uploader.html",
         "pq-uploader": "pq-uploader.html",
         "student": "MainStudentDashboard",
-      "blogger": "blogger-dash.html",
-      "tutor": "dashboard/lecturer",
+        "blogger": "blogger-dash.html",
+        "tutor": "dashboard/lecturer",
         "default": "MainStudentDashboard"
     };
 
@@ -114,26 +114,41 @@ window.onload = function() {
 
     async function doRedirect() {
         const token = localStorage.getItem('token');
-        let role = "default";
-        if (token) {
-            try {
-                const resp = await fetch("https://examguide.onrender.com/api/auth/me", {
-                    headers: { 'Authorization': 'Bearer ' + token }
-                });
-                if (resp.ok) {
-                    const data = await resp.json();
-                    if (data && data.user && data.user.role) {
-                        role = data.user.role;
-                    }
-                }
-            } catch (e) {
-                // API/network error: fallback to default
-            }
+        
+        // If no token, redirect to login
+        if (!token) {
+            await sleep(MIN_WAIT);
+            window.location.href = "/login";
+            return;
         }
+
+        let role = "default";
+        try {
+            const resp = await fetch("https://examguide.onrender.com/api/auth/me", {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data && data.user && data.user.role) {
+                    role = data.user.role;
+                }
+            } else {
+                // Invalid token, redirect to login
+                await sleep(MIN_WAIT);
+                window.location.href = "/login";
+                return;
+            }
+        } catch (e) {
+            // API/network error: redirect to login
+            await sleep(MIN_WAIT);
+            window.location.href = "/login";
+            return;
+        }
+
         // Wait a minimum amount of time for the loader effect
         await sleep(MIN_WAIT);
 
-        // Redirect
+        // Redirect based on role
         const target = roleRedirects[role] || roleRedirects["default"];
         window.location.href = target;
     }
