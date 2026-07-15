@@ -1576,6 +1576,46 @@
             </div>
         </div>
     </div>
+    
+<!-- Edit Course Modal -->
+<div id="editCourseModal" class="modal-backdrop hidden" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="editCourseTitle">
+    <div class="modal-header">
+      <div class="modal-title">
+        <div class="modal-icon bg-indigo-50 text-indigo-600"><i class="ph ph-pencil"></i></div>
+        <div>
+          <h2 id="editCourseTitle">Edit Course</h2>
+          <p id="editCourseSubtitle" class="text-sm muted">Modify selected course details</p>
+        </div>
+      </div>
+      <button onclick="closeEditCourseModal()" class="close-modal"><i class="ph ph-x"></i></button>
+    </div>
+    <form id="editCourseForm">
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Course Title</label>
+          <input id="editCourseTitleInput" type="text" required placeholder="Course title">
+        </div>
+        <div class="form-group">
+          <label>Course Code</label>
+          <input id="editCourseCodeInput" type="text" required placeholder="e.g. BIO102">
+        </div>
+        <div class="form-group">
+          <label>Level</label>
+          <input id="editCourseLevelInput" type="text" placeholder="e.g. 200">
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="editCourseDescriptionInput" placeholder="Course description"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" onclick="closeEditCourseModal()" class="btn btn-secondary">Cancel</button>
+        <button type="submit" id="saveEditCourseBtn" class="btn btn-primary">Save changes</button>
+      </div>
+    </form>
+  </div>
+</div>
     <!-- Bulk Upload Modal -->
     <div id="bulkUploadModal" class="modal-backdrop hidden" onclick="if(event.target.id === 'bulkUploadModal') closeModal('bulkUploadModal')">
         <div class="modal" onclick="event.stopPropagation()">
@@ -2056,6 +2096,7 @@
 
                 const data = await response.json();
                 const courses = data.courses || [];
+                pageState.courses = courses;
 
                 const coursesGrid = document.getElementById("coursesGrid");
                 coursesGrid.innerHTML = "";
@@ -2075,6 +2116,7 @@ courses.forEach(course => {
     : (typeof course.students === 'number' ? course.students : 0);
 
   const courseId = course._id || course.id || '';
+  
 
   // root card
   const card = document.createElement('div');
@@ -2119,6 +2161,18 @@ courses.forEach(course => {
   editBtn.dataset.id = courseId;
   editBtn.textContent = 'Edit';
 
+    
+card.dataset.courseId = courseId;
+
+const deleteBtn = document.createElement('button');
+deleteBtn.className = 'flex-1 bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition';
+deleteBtn.type = 'button';
+deleteBtn.setAttribute('aria-label', `Delete ${course.title || course.code || ''}`);
+deleteBtn.dataset.action = 'delete';
+deleteBtn.dataset.id = courseId;
+deleteBtn.textContent = 'Delete';
+
+actions.appendChild(deleteBtn);
   const viewBtn = document.createElement('button');
   viewBtn.className = 'flex-1 bg-slate-200 hover:bg-slate-300 text-slate-900 px-3 py-2 rounded-lg text-sm font-medium transition';
   viewBtn.type = 'button';
@@ -2138,39 +2192,34 @@ courses.forEach(course => {
   coursesGrid.appendChild(card);
 });
 
-// attach handlers (delegation alternative could be used)
-coursesGrid.querySelectorAll('button[data-action="view"]').forEach(btn => {
-  btn.addEventListener('click', () => {
+const coursesGridEl = document.getElementById('coursesGrid');
+if(coursesGridEl){
+  coursesGridEl.removeEventListener('click', window._coursesGridHandler);
+  window._coursesGridHandler = async function(e){
+    const btn = e.target.closest('button[data-action]');
+    if(!btn) return;
+    const action = btn.dataset.action;
     const id = btn.dataset.id;
-    if (!id) {
-      alert('Course id not available for viewing.');
-      return;
+    if(!id) return;
+    if(action === 'view'){ window.location.href = `../dashboard/course?courseId=${encodeURIComponent(id)}`; return; }
+    if(action === 'edit'){ window.editCourse?.(id); return; }
+    if(action === 'delete'){
+      if(!confirm('Delete this course? This cannot be undone.')) return;
+      btn.disabled = true;
+      try{
+        const token = localStorage.getItem('token') || document.getElementById('apiTokenInput')?.value;
+        const resp = await fetch(`${API_BASE}/api/lecturer/courses/${encodeURIComponent(id)}`, { method:'DELETE', headers: Object.assign({'Content-Type':'application/json'}, token?{ Authorization:`Bearer ${token}` }:{}) });
+        if(!resp.ok){ const err = await resp.json().catch(()=>({message:'Delete failed'})); showStatus(err.message||'Delete failed','error'); btn.disabled=false; return; }
+        pageState.courses = (pageState.courses||[]).filter(c => String(c._id||c.id)!==String(id));
+        const card = coursesGridEl.querySelector(`[data-course-id="${id}"]`);
+        if(card) card.remove();
+        populateCourseSelects?.(pageState.courses||[]);
+        showStatus('Course deleted','success');
+      }catch(err){ console.error(err); showStatus('Delete failed','error'); }finally{ btn.disabled=false; }
     }
-    // navigate to course page; adjust path if needed
-    window.location.href = `../dashboard/course?courseId=${encodeURIComponent(id)}`;
-  });
-});
-
-coursesGrid.querySelectorAll('button[data-action="edit"]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const id = btn.dataset.id;
-    if (!id) {
-      alert('Course id not available for editing.');
-      return;
-    }
-    // Hook into your edit UI here. Example stub:
-    if (typeof editCourse === 'function') {
-      editCourse(id);
-    } else {
-      const newTitle = prompt('Edit course title (demo):', '');
-      if (newTitle !== null) {
-        // update UI only (persist with API in your project)
-        const titleEl = btn.closest('.bg-white').querySelector('p.text-sm.text-slate-600');
-        if (titleEl) titleEl.textContent = newTitle;
-      }
-    }
-  });
-});
+  };
+  coursesGridEl.addEventListener('click', window._coursesGridHandler);
+}
                 populateCourseSelects(courses);
 
             } catch (error) {
@@ -2182,6 +2231,124 @@ coursesGrid.querySelectorAll('button[data-action="edit"]').forEach(btn => {
                 hideLoader("courses");
             }
         }
+
+        window.editCourse = async function(id){
+  if(!id) return;
+  let course = (pageState.courses||[]).find(c=>String(c._id||c.id)===String(id));
+  if(!course){
+    const token = localStorage.getItem('token') || document.getElementById('apiTokenInput')?.value;
+    const resp = await fetch(`${API_BASE}/api/lecturer/courses/${encodeURIComponent(id)}`, { headers: Object.assign({'Content-Type':'application/json'}, token?{ Authorization:`Bearer ${token}` }:{}) });
+    if(resp.ok){ const j = await resp.json(); course = j.course || j; }
+  }
+  if(!course) { alert('Course not found'); return; }
+  pageState.selectedCourse = course;
+  document.getElementById('editCourseTitleInput').value = course.title || '';
+  document.getElementById('editCourseCodeInput').value = course.code || '';
+  document.getElementById('editCourseLevelInput').value = course.level || '';
+  document.getElementById('editCourseDescriptionInput').value = course.description || '';
+  const m = document.getElementById('editCourseModal');
+  if(m){ m.classList.remove('hidden'); m.setAttribute('aria-hidden','false'); }
+};
+
+        (function(){
+  function getAuthHeaders(){
+    const t = localStorage.getItem('token') || document.getElementById('apiTokenInput')?.value;
+    return t ? { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+  }
+
+  function showStatus(msg, type){
+    const banner = document.getElementById('statusBanner');
+    if(!banner) return;
+    banner.className = '';
+    banner.classList.add('mb-4');
+    banner.innerHTML = `<div class="rounded-md p-3 ${type==='error'?'bg-red-50 text-red-700':'bg-emerald-50 text-emerald-700'}">${msg}</div>`;
+    banner.classList.remove('hidden');
+    setTimeout(()=>{ banner.classList.add('hidden'); },6000);
+  }
+
+  window.openEditCourseModal = function(){
+    const course = pageState.selectedCourse;
+    if(!course){ showStatus('No course selected','error'); return; }
+    document.getElementById('editCourseTitleInput').value = course.title || '';
+    document.getElementById('editCourseCodeInput').value = course.code || '';
+    document.getElementById('editCourseLevelInput').value = course.level || '';
+    document.getElementById('editCourseDescriptionInput').value = course.description || '';
+    const modal = document.getElementById('editCourseModal');
+    if(!modal) return;
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden','false');
+  };
+
+  window.closeEditCourseModal = function(){
+    const modal = document.getElementById('editCourseModal');
+    if(!modal) return;
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden','true');
+  };
+
+  async function updateCourseOnPage(updated){
+    pageState.selectedCourse = Object.assign({}, pageState.selectedCourse || {}, updated);
+    const h = document.getElementById('mainCourseHeader');
+    if(h) h.textContent = pageState.selectedCourse.title || '—';
+    const desc = document.getElementById('mainCourseDescription');
+    if(desc) desc.textContent = pageState.selectedCourse.description || '';
+    const sidebarCode = document.getElementById('sidebarCourseCode');
+    if(sidebarCode){
+      sidebarCode.textContent = pageState.selectedCourse.code || '—';
+      sidebarCode.dataset.courseId = pageState.selectedCourse._id || pageState.selectedCourse.id || '';
+    }
+    const sidebarName = document.getElementById('sidebarCourseName');
+    if(sidebarName) sidebarName.textContent = pageState.selectedCourse.title || '';
+    await loadCourseAnalytics?.(pageState.selectedCourse._id).catch(()=>{});
+  }
+
+  document.getElementById('editCourseForm')?.addEventListener('submit', async function(e){
+    e.preventDefault();
+    const course = pageState.selectedCourse;
+    if(!course){ showStatus('No course selected','error'); return; }
+    const payload = {
+      title: document.getElementById('editCourseTitleInput').value.trim(),
+      code: document.getElementById('editCourseCodeInput').value.trim(),
+      level: document.getElementById('editCourseLevelInput').value.trim(),
+      description: document.getElementById('editCourseDescriptionInput').value.trim()
+    };
+    const btn = document.getElementById('saveEditCourseBtn');
+    btn.disabled = true;
+    try{
+      const resp = await fetch(`${API_BASE}/api/lecturer/courses/${course._id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
+      });
+      if(!resp.ok){
+        const err = await resp.json().catch(()=>({message:'Update failed'}));
+        showStatus(err.message || 'Update failed','error');
+        btn.disabled = false;
+        return;
+      }
+      const data = await resp.json();
+      await updateCourseOnPage(data.course || Object.assign({}, course, payload));
+      closeEditCourseModal();
+      showStatus('Course updated','success');
+    }catch(err){
+      console.error(err);
+      showStatus('Update failed','error');
+    }finally{ btn.disabled = false; }
+  });
+
+  const editBtnPlaceholder = document.getElementById('courseEditBtnPlaceholder');
+  if(editBtnPlaceholder){
+    const btn = document.createElement('button');
+    btn.className = 'bg-white/5 hover:bg-white/10 text-white text-xs font-semibold px-3 py-2 rounded-xl';
+    btn.innerHTML = '<i class="ph ph-pencil"></i> Edit Course';
+    btn.addEventListener('click', openEditCourseModal);
+    editBtnPlaceholder.replaceWith(btn);
+  }
+
+  window.openEditCourseModalIfAvailable = function(){
+    if(pageState.selectedCourse) openEditCourseModal();
+  };
+})();
 
         function populateCourseSelects(courses) {
             const selects = ['courseSelect'];
