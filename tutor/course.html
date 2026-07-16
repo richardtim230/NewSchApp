@@ -1301,18 +1301,59 @@ setInterval(() => {
             document.getElementById('statAvgPerformance').innerText = '—';
         }
 
-        // Load questions (used as assignments/courses' question bank)
         async function loadQuestionsForCourse(courseId) {
-            try {
-                if (!courseId) { pageState.questions = []; return; }
-                const data = await fetchJSON(`/api/lecturer/questions?course=${encodeURIComponent(courseId)}`);
-                pageState.questions = data.questions || (Array.isArray(data) ? data : (data.questions || []));
-                if (!Array.isArray(pageState.questions)) pageState.questions = [];
-            } catch (e) {
-                console.warn('Failed to load questions for course', e);
-                pageState.questions = [];
-            }
+    try {
+        if (!courseId) { pageState.questions = []; return; }
+        const data = await fetchJSON(`/api/lecturer/questions?course=${encodeURIComponent(courseId)}`);
+        
+        // Handle different API response structures
+        let questions = [];
+        
+        if (Array.isArray(data)) {
+            questions = data;
+        } else if (data.questions && Array.isArray(data.questions)) {
+            questions = data.questions;
+        } else if (data.data && Array.isArray(data.data)) {
+            questions = data.data;
+        } else if (typeof data === 'object' && data) {
+            questions = [data];
         }
+        
+        // Normalize each question object to ensure all fields exist
+        pageState.questions = questions.map(q => normalizeQuestion(q));
+        
+        if (!Array.isArray(pageState.questions)) {
+            pageState.questions = [];
+        }
+        
+        console.log('Loaded questions:', pageState.questions);
+    } catch (e) {
+        console.warn('Failed to load questions for course', e);
+        pageState.questions = [];
+    }
+}
+
+// Add this normalization function
+function normalizeQuestion(q) {
+    return {
+        _id: q._id || q.id || '',
+        id: q.id || q._id || '',
+        title: q.title || q.question || q.text || 'Untitled Assignment',
+        question: q.question || q.title || q.text || '',
+        text: q.text || q.question || q.title || '',
+        description: q.description || q.instructions || '',
+        instructions: q.instructions || q.description || '',
+        type: q.type || 'assignment',
+        options: Array.isArray(q.options) ? q.options : [],
+        answer: q.answer || q.correctAnswer || '',
+        maxScore: q.maxScore || q.max_score || 100,
+        dueDate: q.dueDate || q.due_date || null,
+        createdAt: q.createdAt || q.created_at || new Date().toISOString(),
+        courseId: q.courseId || q.course_id || courseId,
+        // Preserve any other fields
+        ...q
+    };
+}
 
         // Load exams and filter for course
         async function loadExamsForCourse(courseId) {
