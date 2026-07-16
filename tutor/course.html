@@ -1301,8 +1301,7 @@ setInterval(() => {
             document.getElementById('statAvgPerformance').innerText = '—';
         }
 
-    
-    try async function loadQuestionsForCourse(courseId) {
+        async function loadQuestionsForCourse(courseId) {
     try {
         if (!courseId) { 
             pageState.questions = []; 
@@ -1311,50 +1310,43 @@ setInterval(() => {
         
         const data = await fetchJSON(`/api/lecturer/questions?course=${encodeURIComponent(courseId)}`);
         
-        // Log the raw response to see structure
-        console.log('Raw API response:', data);
-        
-        // Handle different response formats
         let questions = [];
+        
         if (Array.isArray(data)) {
             questions = data;
         } else if (data.questions && Array.isArray(data.questions)) {
             questions = data.questions;
         } else if (data.data && Array.isArray(data.data)) {
             questions = data.data;
+        } else if (typeof data === 'object' && data !== null) {
+            questions = [data];
         }
         
-        // Normalize question data to ensure all fields exist
         pageState.questions = questions.map(q => ({
             _id: q._id || q.id,
-            id: q.id || q._id,
-            title: q.title || q.question || q.text || 'Untitled',
+            id: q._id || q.id,
+            title: q.title || q.question || q.text || '',
             question: q.question || q.title || q.text || '',
             text: q.text || q.question || q.title || '',
             description: q.description || q.instructions || '',
             instructions: q.instructions || q.description || '',
-            type: q.type || 'assignment',
-            options: Array.isArray(q.options) ? q.options : [],
-            answer: q.answer || '',
-            maxScore: q.maxScore || q.max_score || 100,
             dueDate: q.dueDate || q.due_date || null,
+            type: q.type || 'multiple_choice',
+            options: Array.isArray(q.options) ? q.options : [],
+            answer: q.answer || q.correctAnswer || '',
+            maxScore: q.maxScore || q.max_score || 100,
             createdAt: q.createdAt || q.created_at || new Date().toISOString(),
-            answer: q.answer || null,
-            ...q // spread remaining fields
+            ...q
         }));
         
-        console.log('Normalized questions:', pageState.questions);
-        
-        if (!Array.isArray(pageState.questions)) {
-            pageState.questions = [];
-        }
+        renderAssignmentsGrid();
         
     } catch (e) {
-        console.error('Failed to load questions for course', e);
+        console.warn('Failed to load questions for course', e);
         pageState.questions = [];
+        renderAssignmentsGrid();
     }
 }
-
         // Load exams and filter for course
         async function loadExamsForCourse(courseId) {
             try {
@@ -1579,6 +1571,7 @@ async function loadStudentsForCourse(courseId) {
 function renderAssignmentsGrid() {
     const container = document.getElementById('assignmentGrid');
     container.innerHTML = '';
+    
     if (!pageState.questions || pageState.questions.length === 0) {
         const div = document.createElement('div');
         div.className = 'bg-white p-5 rounded-2xl border border-slate-200/60 shadow-premium';
@@ -1586,13 +1579,20 @@ function renderAssignmentsGrid() {
         container.appendChild(div);
         return;
     }
+    
     pageState.questions.slice(0, 12).forEach(q => {
-        const title = q.question || q.text || q.title || 'Assignment';
-        const created = q.createdAt ? new Date(q.createdAt).toLocaleDateString() : (q.createdAt || '—');
+        const title = q.title || q.question || q.text || 'Assignment';
+        const created = q.createdAt ? new Date(q.createdAt).toLocaleDateString() : '—';
         const dueDate = q.dueDate ? new Date(q.dueDate).toLocaleDateString() : '—';
         
         const instructions = q.instructions || q.description || 'No instructions provided';
         const instructionsPreview = stripHtml(instructions).substring(0, 120) + (stripHtml(instructions).length > 120 ? '...' : '');
+        
+        const questionId = q._id || q.id || '';
+        const questionType = q.type || 'multiple_choice';
+        const optionsCount = Array.isArray(q.options) ? q.options.length : 0;
+        const maxScore = q.maxScore || 100;
+        const hasAnswer = q.answer && q.answer.trim() !== '';
         
         const card = document.createElement('div');
         card.className = 'bg-white p-5 rounded-2xl border border-slate-200/60 shadow-premium hover:shadow-lg hover:border-brand-active transition-all flex flex-col';
@@ -1608,33 +1608,35 @@ function renderAssignmentsGrid() {
                 <h4 class="text-base font-bold text-slate-900 line-clamp-2 mb-2">${escapeHtml(title)}</h4>
                 
                 <div class="text-xs text-slate-500 space-y-1 mb-3 pb-3 border-b border-slate-200">
-                    <p><i class="ph ph-calendar text-xs mr-1"></i>Due: ${dueDate}</p>
-                    <p><i class="ph ph-list text-xs mr-1"></i>Type: ${escapeHtml(q.type || 'multiple_choice')} • Options: ${Array.isArray(q.options) ? q.options.length : 0}</p>
-                    <p><i class="ph ph-star text-xs mr-1"></i>Max Score: ${q.maxScore || 100}</p>
+                    ${dueDate !== '—' ? `<p><i class="ph ph-calendar text-xs mr-1"></i>Due: ${dueDate}</p>` : '<p><i class="ph ph-calendar text-xs mr-1"></i>Due: —</p>'}
+                    <p><i class="ph ph-list text-xs mr-1"></i>Type: ${escapeHtml(questionType)} • Options: ${optionsCount}</p>
+                    <p><i class="ph ph-star text-xs mr-1"></i>Max Score: ${maxScore}</p>
                 </div>
 
                 <div class="mb-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
                     <h4 class="text-xs font-bold text-slate-900 mb-1.5 flex items-center gap-1.5">
                         <i class="ph ph-notebook text-xs text-blue-600"></i>Instructions
                     </h4>
-                    <p class="text-xs text-slate-600 line-clamp-3 leading-relaxed">${instructionsPreview}</p>
+                    <p class="text-xs text-slate-600 line-clamp-3 leading-relaxed">${escapeHtml(instructionsPreview)}</p>
                 </div>
 
-                <div class="text-xs text-slate-500 mb-3">
-                    ${q.answer ? '<span class="inline-block px-2 py-1 rounded bg-emerald-50 text-emerald-700 font-semibold"><i class="ph ph-check text-xs mr-1"></i>Has answer</span>' : '<span class="inline-block px-2 py-1 rounded bg-amber-50 text-amber-700 font-semibold"><i class="ph ph-warning text-xs mr-1"></i>No answer set</span>'}
+                <div class="text-xs mb-3">
+                    ${hasAnswer 
+                        ? '<span class="inline-block px-2 py-1 rounded bg-emerald-50 text-emerald-700 font-semibold"><i class="ph ph-check text-xs mr-1"></i>Has answer</span>' 
+                        : '<span class="inline-block px-2 py-1 rounded bg-amber-50 text-amber-700 font-semibold"><i class="ph ph-warning text-xs mr-1"></i>No answer set</span>'}
                 </div>
             </div>
             
             <div class="mt-auto pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
-                <button class="flex-1 text-xs px-2 py-2 rounded bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-100 transition-colors font-semibold flex items-center justify-center gap-1" onclick="window.location.href='submissions.html?assignmentId=${escapeHtml(q._id || q.id || '')}'">
+                <button class="flex-1 text-xs px-2 py-2 rounded bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-100 transition-colors font-semibold flex items-center justify-center gap-1" onclick="window.location.href='submissions.html?assignmentId=${escapeHtml(questionId)}'">
                     <i class="ph ph-clipboard-text text-sm"></i>Submissions
                 </button>
                 
-                <button class="flex-1 text-xs px-2 py-2 rounded bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-100 transition-colors font-semibold flex items-center justify-center gap-1" onclick="openQuestionEditor('${escapeHtml(q._id || q.id || '')}')">
+                <button class="flex-1 text-xs px-2 py-2 rounded bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-100 transition-colors font-semibold flex items-center justify-center gap-1" onclick="openQuestionEditor('${escapeHtml(questionId)}')">
                     <i class="ph ph-pencil text-sm"></i>Edit
                 </button>
                 
-                <button class="flex-1 text-xs px-2 py-2 rounded bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 transition-colors font-semibold flex items-center justify-center gap-1" onclick="deleteAssignmentQuestion('${escapeHtml(q._id || q.id || '')}')">
+                <button class="flex-1 text-xs px-2 py-2 rounded bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 transition-colors font-semibold flex items-center justify-center gap-1" onclick="deleteAssignmentQuestion('${escapeHtml(questionId)}')">
                     <i class="ph ph-trash text-sm"></i>Delete
                 </button>
             </div>
@@ -1643,21 +1645,25 @@ function renderAssignmentsGrid() {
     });
 }
 
-// Helper function to strip HTML tags
 function stripHtml(html) {
     if (!html) return '';
-    const tmp = document.createElement('DIV');
-    tmp.innerHTML = html;
-    return tmp.textContent || tmp.innerText || '';
+    try {
+        const tmp = document.createElement('DIV');
+        tmp.innerHTML = html;
+        return tmp.textContent || tmp.innerText || '';
+    } catch (e) {
+        return html;
+    }
 }
 
-// Ensure escapeHtml function exists
 function escapeHtml(text) {
     if (!text) return '';
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
+
+
 
         
 async function deleteAssignmentQuestion(questionId) {
