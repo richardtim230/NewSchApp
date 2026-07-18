@@ -990,6 +990,10 @@
 
         .muted { color:#64748b; }
         .hidden { display:none; }
+        @keyframes fadeOut {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.95); }
+        }
     </style>
 </head>
 <body class="bg-brand-light text-slate-800 font-sans antialiased selection:bg-brand-accent selection:text-white">
@@ -2217,19 +2221,74 @@ if(coursesGridEl){
     if(action === 'view'){ window.location.href = `../dashboard/course?courseId=${encodeURIComponent(id)}`; return; }
     if(action === 'edit'){ window.editCourse?.(id); return; }
     if(action === 'delete'){
-      if(!confirm('Delete this course? This cannot be undone.')) return;
-      btn.disabled = true;
-      try{
-        const token = localStorage.getItem('token') || document.getElementById('apiTokenInput')?.value;
-        const resp = await fetch(`${API_BASE_URL}/api/lecturer/courses/${encodeURIComponent(id)}`, { method:'DELETE', headers: Object.assign({'Content-Type':'application/json'}, token?{ Authorization:`Bearer ${token}` }:{}) });
-        if(!resp.ok){ const err = await resp.json().catch(()=>({message:'Delete failed'})); showStatus(err.message||'Delete failed','error'); btn.disabled=false; return; }
-        pageState.courses = (pageState.courses||[]).filter(c => String(c._id||c.id)!==String(id));
-        const card = coursesGridEl.querySelector(`[data-course-id="${id}"]`);
-        if(card) card.remove();
-        populateCourseSelects?.(pageState.courses||[]);
-        showStatus('Course deleted','success');
-      }catch(err){ console.error(err); showStatus('Delete failed','error'); }finally{ btn.disabled=false; }
+  if(!confirm('Delete this course? This cannot be undone.')) return;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="ph ph-spinner animate-spin"></i> Deleting...';
+  
+  try{
+    const token = localStorage.getItem('token') || document.getElementById('apiTokenInput')?.value;
+    
+    // Validate we have an ID
+    if(!id) {
+      showStatus('Course ID missing', 'error');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ph ph-trash"></i> Delete';
+      return;
     }
+
+    const apiUrl = `${API_BASE_URL}/api/lecturer/courses/${encodeURIComponent(id)}`;
+    console.log('[DELETE] Attempting to delete course:', id, 'URL:', apiUrl);
+
+    const resp = await fetch(apiUrl, { 
+      method: 'DELETE', 
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      }
+    });
+
+    console.log('[DELETE] Response status:', resp.status);
+
+    // Handle non-OK responses
+    if(!resp.ok){ 
+      let errMsg = 'Delete failed';
+      try {
+        const errData = await resp.json();
+        errMsg = errData.message || errData.error || 'Delete failed';
+      } catch (parseErr) {
+        console.error('[DELETE] Could not parse error response:', parseErr);
+        errMsg = `Server error: ${resp.status} ${resp.statusText}`;
+      }
+      
+      console.error('[DELETE] Error:', errMsg);
+      showStatus(errMsg, 'error');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ph ph-trash"></i> Delete';
+      return; 
+    }
+
+    // Success - remove from UI
+    console.log('[DELETE] Course deleted successfully');
+    pageState.courses = (pageState.courses || []).filter(c => String(c._id || c.id) !== String(id));
+    const card = coursesGridEl.querySelector(`[data-course-id="${id}"]`);
+    if(card) {
+      card.style.animation = 'fadeOut 0.3s ease';
+      setTimeout(() => card.remove(), 300);
+    }
+    
+    if(typeof populateCourseSelects === 'function') {
+      populateCourseSelects(pageState.courses || []);
+    }
+    
+    showStatus('Course deleted successfully', 'success');
+    
+  } catch(err){ 
+    console.error('[DELETE] Network/Parse error:', err); 
+    showStatus(`Error: ${err.message || 'Delete failed'}`, 'error'); 
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ph ph-trash"></i> Delete';
+  }
+}
   };
   coursesGridEl.addEventListener('click', window._coursesGridHandler);
 }
