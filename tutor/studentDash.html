@@ -124,6 +124,12 @@
             <i class="ph ph-folder-open text-xl shrink-0"></i>
             <span class="font-medium text-sm">Study Materials</span>
         </a>
+
+        <a href="#sessions" onclick="switchTab('liveSessions', this)" class="sidebar-link flex items-center gap-3 px-4 py-3 text-slate-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors relative">
+            <div class="indicator absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-blue-400 rounded-r-md opacity-0"></div>
+            <i class="ph ph-video text-xl shrink-0"></i>
+            <span class="font-medium text-sm">Live Sessions</span>
+        </a>
     </div>
 
     <div class="mt-auto p-4 border-t border-white/10 shrink-0">
@@ -243,9 +249,6 @@
                 </div>
             </a>
 
-            <!-- Ad Block Underneath -->
-            
-
         </div>
 
         <!-- Carousel Animation Logic -->
@@ -323,6 +326,7 @@
     </div>
 </div>
                 </div>
+
                 <div id="assignmentsSection" class="section-container hidden space-y-6">
                     <div>
                         <h3 class="text-lg font-bold text-slate-900">Active Assignments</h3>
@@ -348,6 +352,25 @@
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="resourcesGrid">
                         </div>
+                </div>
+
+                <div id="liveSessionsSection" class="section-container hidden space-y-6">
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-900">Live Class Sessions</h3>
+                        <p class="text-xs text-slate-500">Join live classes and recorded sessions</p>
+                    </div>
+
+                    <!-- Live Sessions Grid -->
+                    <div id="liveSessionsGrid" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Loading state -->
+                        <div class="col-span-full flex flex-col items-center justify-center py-12 text-slate-500">
+                            <div class="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mb-4">
+                                <i class="ph ph-spinner-gap animate-spin text-2xl text-slate-400"></i>
+                            </div>
+                            <p class="text-sm font-medium">Loading live sessions...</p>
+                            <p class="text-xs text-slate-400 mt-1">Please wait while we fetch the latest sessions.</p>
+                        </div>
+                    </div>
                 </div>
 
             </main>
@@ -381,6 +404,9 @@
                 <div onclick="switchMobileTab('resources')" id="mobNav-resources" class="mobile-nav-item">
                     <i class="ph ph-folder-open"></i><span class="text-[11px]">Materials</span>
                 </div>
+                <div onclick="switchMobileTab('liveSessions')" id="mobNav-liveSessions" class="mobile-nav-item">
+                    <i class="ph ph-video"></i><span class="text-[11px]">Live</span>
+                </div>
             </nav>
         </div>
     </div>
@@ -395,7 +421,8 @@
             course: null,
             activeExams: [],
             activeQuestions: [],
-            courseAnnouncements: []
+            courseAnnouncements: [],
+            liveSessions: []
         };
 
         // Get Course ID from URL parameters (?courseId=XYZ)
@@ -471,7 +498,6 @@
                 ];
                 state.activeQuestions = data.activeQuestions || [];
 
-                // ✅ Fetch course-specific announcements
                 await fetchCourseAnnouncements();
 
                 renderOverview();
@@ -491,7 +517,6 @@
             try {
                 const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-                // Fetch new assignments for this specific course
                 let newAssignments = [];
                 try {
                     const assignmentsRes = await fetch(
@@ -514,7 +539,6 @@
                     console.log("Could not fetch assignments for announcements");
                 }
 
-                // Fetch new exam sets for this course
                 let newExams = [];
                 try {
                     newExams = state.activeExams
@@ -525,10 +549,8 @@
                     console.log("No recent exams");
                 }
 
-                // Combine announcements
                 state.courseAnnouncements = [];
 
-                // Add assignment announcements
                 newAssignments.forEach(assignment => {
                     const dueDateObj = new Date(assignment.dueDate);
                     const dueDateStr = dueDateObj.toLocaleDateString('en-US', { 
@@ -549,7 +571,6 @@
                     });
                 });
 
-                // Add exam announcements
                 newExams.forEach(exam => {
                     state.courseAnnouncements.push({
                         _id: `exam-${exam._id}`,
@@ -563,7 +584,6 @@
                     });
                 });
 
-                // Sort by newest first
                 state.courseAnnouncements.sort((a, b) => {
                     const timeA = parseRelativeTime(a.date);
                     const timeB = parseRelativeTime(b.date);
@@ -846,81 +866,219 @@
             });
         }
 
-function renderResources() {
-    const grid = document.getElementById('resourcesGrid');
-    grid.innerHTML = '';
+        function renderResources() {
+            const grid = document.getElementById('resourcesGrid');
+            grid.innerHTML = '';
 
-    // Prefer resources from course.resources, fallback to course.materials (older key)
-    const materials = state.course?.resources || state.course?.materials || [];
+            const materials = state.course?.resources || state.course?.materials || [];
 
-    if (!materials || materials.length === 0) {
-        grid.innerHTML = `<div class="col-span-full p-8 text-center bg-white rounded-2xl border border-slate-200 border-dashed">
-            <p class="text-sm text-slate-500 font-medium">No study materials uploaded yet.</p>
-        </div>`;
-        return;
-    }
+            if (!materials || materials.length === 0) {
+                grid.innerHTML = `<div class="col-span-full p-8 text-center bg-white rounded-2xl border border-slate-200 border-dashed">
+                    <p class="text-sm text-slate-500 font-medium">No study materials uploaded yet.</p>
+                </div>`;
+                return;
+            }
 
-    materials.forEach(mat => {
-        const title = mat.label || mat.name || mat.title || 'Course Material';
-        const mime = mat.mimeType || mat.type || '';
-        const size = mat.size || mat.fileSize || 0;
-        let url = mat.url || mat.downloadUrl || '';
-        if (url && url.startsWith('/')) url = API_BASE.replace(/\/$/, '') + url;
-        if (!url && mat.fileId) {
-            url = `${API_BASE}/api/lecturer/courses/resources/${mat.fileId}/download`;
+            materials.forEach(mat => {
+                const title = mat.label || mat.name || mat.title || 'Course Material';
+                const mime = mat.mimeType || mat.type || '';
+                const size = mat.size || mat.fileSize || 0;
+                let url = mat.url || mat.downloadUrl || '';
+                if (url && url.startsWith('/')) url = API_BASE.replace(/\/$/, '') + url;
+                if (!url && mat.fileId) {
+                    url = `${API_BASE}/api/lecturer/courses/resources/${mat.fileId}/download`;
+                }
+
+                const item = document.createElement('div');
+                item.className = 'p-4 border border-slate-200/60 rounded-xl bg-white flex items-start gap-3 hover:shadow-md transition-all';
+
+                const iconName = getFileIconClass(mime);
+                const iconEl = document.createElement('div');
+                iconEl.className = 'shrink-0';
+                iconEl.innerHTML = `<i class="${iconName} text-3xl"></i>`;
+
+                const body = document.createElement('div');
+                body.className = 'flex-1 min-w-0';
+
+                const titleEl = document.createElement('div');
+                titleEl.className = 'flex items-start justify-between gap-3';
+                titleEl.innerHTML = `
+                    <div class="min-w-0">
+                        <h4 class="text-sm font-bold text-slate-900 truncate">${escapeHtml(title)}</h4>
+                        <p class="text-[11px] text-slate-400 mt-0.5">${mime || 'File'}</p>
+                    </div>
+                `;
+
+                const actions = document.createElement('div');
+                actions.className = 'flex items-center gap-2';
+
+                const downloadAnchor = document.createElement('a');
+                downloadAnchor.className = 'px-3 py-2 rounded-lg bg-slate-50 text-slate-700 text-xs hover:bg-slate-100 flex items-center gap-2';
+                downloadAnchor.innerHTML = `<i class="ph ph-download-simple text-base"></i> Download`;
+                if (url) {
+                    downloadAnchor.href = url;
+                    downloadAnchor.target = '_blank';
+                    downloadAnchor.rel = 'noopener noreferrer';
+                } else {
+                    downloadAnchor.href = '#';
+                    downloadAnchor.onclick = (e) => { e.preventDefault(); showStatus('Download unavailable for this resource.', 'error'); };
+                }
+
+                const sizeEl = document.createElement('div');
+                sizeEl.className = 'text-xs text-slate-400';
+                sizeEl.innerText = formatBytes(size);
+
+                actions.appendChild(downloadAnchor);
+                actions.appendChild(sizeEl);
+
+                body.appendChild(titleEl);
+                body.appendChild(actions);
+
+                item.appendChild(iconEl);
+                item.appendChild(body);
+
+                grid.appendChild(item);
+            });
         }
 
-        const item = document.createElement('div');
-        item.className = 'p-4 border border-slate-200/60 rounded-xl bg-white flex items-start gap-3 hover:shadow-md transition-all';
+        // ✅ Load live sessions for current course
+        async function loadLiveSessionsForCourse() {
+            try {
+                const token = localStorage.getItem(TOKEN_KEY);
+                const res = await fetch(`${API_BASE}/api/student/courses/${COURSE_ID}/live-sessions`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
 
-        const iconName = getFileIconClass(mime);
-        const iconEl = document.createElement('div');
-        iconEl.className = 'shrink-0';
-        iconEl.innerHTML = `<i class="${iconName} text-3xl"></i>`;
+                if (!res.ok) {
+                    state.liveSessions = [];
+                    renderLiveSessionsGrid();
+                    return;
+                }
 
-        const body = document.createElement('div');
-        body.className = 'flex-1 min-w-0';
+                const data = await res.json();
+                state.liveSessions = Array.isArray(data) ? data : (data.sessions || []);
+                renderLiveSessionsGrid();
 
-        const titleEl = document.createElement('div');
-        titleEl.className = 'flex items-start justify-between gap-3';
-        titleEl.innerHTML = `
-            <div class="min-w-0">
-                <h4 class="text-sm font-bold text-slate-900 truncate">${escapeHtml(title)}</h4>
-                <p class="text-[11px] text-slate-400 mt-0.5">${mime || 'File'}</p>
-            </div>
-        `;
-
-        const actions = document.createElement('div');
-        actions.className = 'flex items-center gap-2';
-
-        const downloadAnchor = document.createElement('a');
-        downloadAnchor.className = 'px-3 py-2 rounded-lg bg-slate-50 text-slate-700 text-xs hover:bg-slate-100 flex items-center gap-2';
-        downloadAnchor.innerHTML = `<i class="ph ph-download-simple text-base"></i> Download`;
-        if (url) {
-            downloadAnchor.href = url;
-            downloadAnchor.target = '_blank';
-            downloadAnchor.rel = 'noopener noreferrer';
-        } else {
-            downloadAnchor.href = '#';
-            downloadAnchor.onclick = (e) => { e.preventDefault(); showStatus('Download unavailable for this resource.', 'error'); };
+            } catch (err) {
+                console.error('Failed to load live sessions:', err);
+                state.liveSessions = [];
+                renderLiveSessionsGrid();
+            }
         }
 
-        const sizeEl = document.createElement('div');
-        sizeEl.className = 'text-xs text-slate-400';
-        sizeEl.innerText = formatBytes(size);
+        // ✅ Render live sessions grid
+        function renderLiveSessionsGrid() {
+            const grid = document.getElementById('liveSessionsGrid');
+            grid.innerHTML = '';
 
-        actions.appendChild(downloadAnchor);
-        actions.appendChild(sizeEl);
+            if (!state.liveSessions || state.liveSessions.length === 0) {
+                grid.innerHTML = `
+                    <div class="col-span-full bg-white p-8 rounded-2xl border border-slate-200 border-dashed text-center">
+                        <i class="ph ph-video text-6xl text-slate-300 mb-3 block"></i>
+                        <p class="text-sm text-slate-500 font-medium">No live sessions scheduled yet.</p>
+                        <p class="text-xs text-slate-400 mt-1">Check back soon for upcoming live classes.</p>
+                    </div>
+                `;
+                return;
+            }
 
-        body.appendChild(titleEl);
-        body.appendChild(actions);
+            state.liveSessions.forEach(session => {
+                const now = new Date();
+                const sessionStart = new Date(session.scheduledAt);
+                const sessionEnd = new Date(sessionStart.getTime() + session.duration * 60000);
+                
+                const isUpcoming = sessionStart > now;
+                const isActive = sessionStart <= now && now <= sessionEnd;
+                const isCompleted = sessionEnd < now;
 
-        item.appendChild(iconEl);
-        item.appendChild(body);
+                let statusBadge = '';
+                let actionButton = '';
 
-        grid.appendChild(item);
-    });
-}
+                if (isActive) {
+                    statusBadge = '<span class="inline-flex items-center gap-1 text-xs font-bold text-green-700 bg-green-100 px-3 py-1 rounded-full"><i class="ph ph-play-circle"></i> LIVE NOW</span>';
+                    actionButton = `
+                        <a href="${escapeHtml(session.link)}" target="_blank" rel="noopener noreferrer" class="w-full px-4 py-2.5 rounded-xl bg-green-600 text-white font-bold text-sm hover:bg-green-700 transition-all flex items-center justify-center gap-2 shadow-md">
+                            <i class="ph ph-arrow-up-right"></i> Join Now
+                        </a>
+                    `;
+                } else if (isUpcoming) {
+                    statusBadge = '<span class="inline-flex items-center gap-1 text-xs font-bold text-blue-700 bg-blue-100 px-3 py-1 rounded-full"><i class="ph ph-clock"></i> Upcoming</span>';
+                    const timeUntil = getTimeUntilSession(sessionStart);
+                    actionButton = `
+                        <button disabled class="w-full px-4 py-2.5 rounded-xl bg-slate-200 text-slate-600 font-bold text-sm cursor-not-allowed flex items-center justify-center gap-2">
+                            <i class="ph ph-calendar"></i> Starts in ${timeUntil}
+                        </button>
+                    `;
+                } else {
+                    statusBadge = '<span class="inline-flex items-center gap-1 text-xs font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded-full"><i class="ph ph-check-circle"></i> Completed</span>';
+                    if (session.recordingUrl) {
+                        actionButton = `
+                            <a href="${escapeHtml(session.recordingUrl)}" target="_blank" rel="noopener noreferrer" class="w-full px-4 py-2.5 rounded-xl bg-slate-600 text-white font-bold text-sm hover:bg-slate-700 transition-all flex items-center justify-center gap-2">
+                                <i class="ph ph-download"></i> Download Recording
+                            </a>
+                        `;
+                    } else {
+                        actionButton = '<button disabled class="w-full px-4 py-2.5 rounded-xl bg-slate-100 text-slate-600 font-bold text-sm cursor-not-allowed">Recording Unavailable</button>';
+                    }
+                }
+
+                const sessionHTML = `
+                    <div class="bg-white rounded-2xl border border-slate-200/60 shadow-premium overflow-hidden hover:shadow-lg transition-shadow">
+                        <!-- Session Header -->
+                        <div class="bg-gradient-to-r from-blue-600 to-blue-500 p-5 text-white">
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="flex-1">
+                                    <h4 class="font-bold text-base">${escapeHtml(session.title)}</h4>
+                                    <p class="text-sm text-blue-100 mt-1 line-clamp-2">${escapeHtml(session.description || 'Live class session')}</p>
+                                </div>
+                                <div class="shrink-0">
+                                    ${statusBadge}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Session Details -->
+                        <div class="p-5 space-y-3 border-b border-slate-100">
+                            <div class="flex items-center gap-3 text-sm">
+                                <i class="ph ph-calendar text-blue-600 text-lg"></i>
+                                <span class="text-slate-600">${new Date(session.scheduledAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                            </div>
+                            <div class="flex items-center gap-3 text-sm">
+                                <i class="ph ph-clock text-blue-600 text-lg"></i>
+                                <span class="text-slate-600">${new Date(session.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${new Date(sessionEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                            <div class="flex items-center gap-3 text-sm">
+                                <i class="ph ph-monitor-play text-blue-600 text-lg"></i>
+                                <span class="text-slate-600 capitalize">${session.platform.replace('_', ' ')}</span>
+                            </div>
+                        </div>
+
+                        <!-- Action Button -->
+                        <div class="p-5">
+                            ${actionButton}
+                        </div>
+                    </div>
+                `;
+
+                grid.innerHTML += sessionHTML;
+            });
+        }
+
+        // ✅ Helper: Format time until session
+        function getTimeUntilSession(sessionStart) {
+            const now = new Date();
+            const diff = sessionStart - now;
+            
+            const hours = Math.floor(diff / 3600000);
+            const minutes = Math.floor((diff % 3600000) / 60000);
+            
+            if (hours > 0) {
+                return `${hours}h ${minutes}m`;
+            } else {
+                return `${minutes}m`;
+            }
+        }
+
         // --- Interaction Handlers ---
         function showStatus(msg, type = 'info') {
             const banner = document.getElementById('statusBanner');
@@ -1020,80 +1178,73 @@ function renderResources() {
             }
         }
 
-        // -------------------------
-// -------------------------
-// Fetch course resources (student-side) + helpers
-// -------------------------
-async function fetchCourseResources() {
-    try {
-        const courseId = COURSE_ID || state.course?._id;
-        if (!courseId) return;
+        async function fetchCourseResources() {
+            try {
+                const courseId = COURSE_ID || state.course?._id;
+                if (!courseId) return;
 
-        const token = localStorage.getItem(TOKEN_KEY);
+                const token = localStorage.getItem(TOKEN_KEY);
 
-        // If server already included resources in workspace payload, use them.
-        if (state.course && Array.isArray(state.course.resources) && state.course.resources.length > 0) {
-            renderResources();
-            return;
+                if (state.course && Array.isArray(state.course.resources) && state.course.resources.length > 0) {
+                    renderResources();
+                    return;
+                }
+
+                const res = await fetch(`${API_BASE}/api/student/courses/${courseId}/resources`, {
+                    method: 'GET',
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                });
+
+                if (!res.ok) {
+                    console.debug('Student resources endpoint returned', res.status);
+                    state.course = state.course || {};
+                    state.course.resources = state.course.resources || [];
+                    renderResources();
+                    return;
+                }
+
+                const data = await res.json();
+                state.course = state.course || {};
+                state.course.resources = data.resources || [];
+                renderResources();
+            } catch (err) {
+                console.error("fetchCourseResources error:", err);
+                state.course = state.course || {};
+                state.course.resources = state.course.resources || [];
+                renderResources();
+            }
         }
 
-        // Otherwise call the student resources endpoint
-        const res = await fetch(`${API_BASE}/api/student/courses/${courseId}/resources`, {
-            method: 'GET',
-            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-        });
-
-        if (!res.ok) {
-            // If endpoint unavailable, fall back to any existing course.resources or show empty UI
-            console.debug('Student resources endpoint returned', res.status);
-            state.course = state.course || {};
-            state.course.resources = state.course.resources || [];
-            renderResources();
-            return;
+        function formatBytes(bytes, decimals = 1) {
+            if (!bytes || +bytes === 0) return '0 B';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
         }
 
-        const data = await res.json();
-        state.course = state.course || {};
-        state.course.resources = data.resources || [];
-        renderResources();
-    } catch (err) {
-        console.error("fetchCourseResources error:", err);
-        state.course = state.course || {};
-        state.course.resources = state.course.resources || [];
-        renderResources();
-    }
-}
+        function getFileIconClass(mimeType = '') {
+            if (!mimeType) return 'ph-file text-slate-500';
+            if (mimeType.startsWith('image/')) return 'ph-image text-emerald-500';
+            if (mimeType === 'application/pdf') return 'ph-file-pdf text-red-600';
+            if (mimeType.startsWith('video/')) return 'ph-video-camera text-purple-600';
+            if (mimeType.startsWith('audio/')) return 'ph-music-note text-indigo-600';
+            if ((mimeType.includes('word') || mimeType.includes('document'))) return 'ph-file-text text-blue-600';
+            if (mimeType.includes('presentation')) return 'ph-presentation text-amber-600';
+            if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) return 'ph-table text-emerald-600';
+            return 'ph-file text-slate-500';
+        }
 
-function formatBytes(bytes, decimals = 1) {
-    if (!bytes || +bytes === 0) return '0 B';
-    const k = 1024;
-    const dm = decimals < 0 ? 0 : decimals;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
-}
-
-function getFileIconClass(mimeType = '') {
-    if (!mimeType) return 'ph-file text-slate-500';
-    if (mimeType.startsWith('image/')) return 'ph-image text-emerald-500';
-    if (mimeType === 'application/pdf') return 'ph-file-pdf text-red-600';
-    if (mimeType.startsWith('video/')) return 'ph-video-camera text-purple-600';
-    if (mimeType.startsWith('audio/')) return 'ph-music-note text-indigo-600';
-    if ((mimeType.includes('word') || mimeType.includes('document'))) return 'ph-file-text text-blue-600';
-    if (mimeType.includes('presentation')) return 'ph-presentation text-amber-600';
-    if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) return 'ph-table text-emerald-600';
-    return 'ph-file text-slate-500';
-}
-// Safe HTML-escaping helper (prevent XSS when inserting server strings)
-function escapeHtml(unsafe) {
-    if (unsafe === null || typeof unsafe === 'undefined') return '';
-    return String(unsafe)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-}
+        function escapeHtml(unsafe) {
+            if (unsafe === null || typeof unsafe === 'undefined') return '';
+            return String(unsafe)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
 
         function closeScoreModal(){
             const modal=document.getElementById("scoreModal");
@@ -1127,10 +1278,21 @@ function escapeHtml(unsafe) {
             const mobileNavItem = document.getElementById('mobNav-' + sectionId);
             if (mobileNavItem) mobileNavItem.classList.add('active');
 
-            const titles = { overview: "Course Overview", assignments: "My Assignments", assessments: "CBT Exams", resources: "Study Materials" };
+            const titles = { 
+                overview: "Course Overview", 
+                assignments: "My Assignments", 
+                assessments: "CBT Exams", 
+                resources: "Study Materials",
+                liveSessions: "Live Class Sessions"
+            };
             document.getElementById('pageTitle').innerText = titles[sectionId] || "Course Overview";
             document.getElementById('breadcrumbText').innerText = titles[sectionId] || "Overview";
             document.getElementById('mobileHeaderTitle').innerText = titles[sectionId] || "Overview";
+
+            // Load live sessions when switching to that tab
+            if (sectionId === 'liveSessions') {
+                loadLiveSessionsForCourse();
+            }
             
             closeMobileSidebar();
         }
@@ -1161,19 +1323,20 @@ function escapeHtml(unsafe) {
             sidebar.classList.remove('sidebar-visible');
             overlay.classList.add('hidden');
         }
+        
         document.getElementById('sidebarSearch')?.addEventListener('input', function(e) {
-    const searchTerm = e.target.value.toLowerCase();
-    const sidebarLinks = document.querySelectorAll('.sidebar-link');
-    
-    sidebarLinks.forEach(link => {
-        const text = link.textContent.toLowerCase();
-        if(text.includes(searchTerm)) {
-            link.style.display = 'flex';
-        } else {
-            link.style.display = 'none';
-        }
-    });
-});
+            const searchTerm = e.target.value.toLowerCase();
+            const sidebarLinks = document.querySelectorAll('.sidebar-link');
+            
+            sidebarLinks.forEach(link => {
+                const text = link.textContent.toLowerCase();
+                if(text.includes(searchTerm)) {
+                    link.style.display = 'flex';
+                } else {
+                    link.style.display = 'none';
+                }
+            });
+        });
     </script>
 </body>
 </html>
