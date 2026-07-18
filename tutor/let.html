@@ -2378,49 +2378,85 @@ if(action === 'delete'){
     e.preventDefault();
     const course = pageState.selectedCourse;
     if(!course){ showStatus('No course selected','error'); return; }
+    
     const payload = {
       title: document.getElementById('editCourseTitleInput').value.trim(),
       code: document.getElementById('editCourseCodeInput').value.trim(),
       level: document.getElementById('editCourseLevelInput').value.trim(),
       description: document.getElementById('editCourseDescriptionInput').value.trim()
     };
+
+    // Validate inputs
+    if(!payload.title || !payload.code) {
+      showStatus('Title and code are required','error');
+      return;
+    }
+
     const btn = document.getElementById('saveEditCourseBtn');
+    const originalText = btn.innerHTML;
     btn.disabled = true;
+    btn.innerHTML = '<i class="ph ph-spinner animate-spin"></i> Saving...';
+
     try{
-      const resp = await fetch(`${API_BASE}/api/lecturer/courses/${course._id}`, {
+      const apiUrl = `${API_BASE}/lecturer/courses/${encodeURIComponent(course._id)}`;
+      console.log('[EDIT] Updating course at:', apiUrl);
+
+      const resp = await fetch(apiUrl, {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify(payload)
       });
+
+      console.log('[EDIT] Response status:', resp.status);
+
       if(!resp.ok){
-        const err = await resp.json().catch(()=>({message:'Update failed'}));
-        showStatus(err.message || 'Update failed','error');
+        let errMsg = 'Update failed';
+        try {
+          const errData = await resp.json();
+          errMsg = errData.message || errData.error || `Server error: ${resp.status}`;
+        } catch (parseErr) {
+          console.error('[EDIT] Could not parse error response:', parseErr);
+          errMsg = `Server error: ${resp.status} ${resp.statusText}`;
+        }
+        
+        console.error('[EDIT] Error:', errMsg);
+        showStatus(errMsg, 'error');
         btn.disabled = false;
+        btn.innerHTML = originalText;
         return;
       }
+
       const data = await resp.json();
+      console.log('[EDIT] Course updated successfully:', data);
+      
       await updateCourseOnPage(data.course || Object.assign({}, course, payload));
       closeEditCourseModal();
-      showStatus('Course updated','success');
-    }catch(err){
-      console.error(err);
-      showStatus('Update failed','error');
-    }finally{ btn.disabled = false; }
-  });
+      showStatus('Course updated successfully', 'success');
+      
+    } catch(err){
+      console.error('[EDIT] Network/Parse error:', err);
+      showStatus(`Error: ${err.message || 'Update failed'}`, 'error');
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+      
+    } finally { 
+      btn.disabled = false; 
+      btn.innerHTML = originalText;
+    }
+});
 
-  const editBtnPlaceholder = document.getElementById('courseEditBtnPlaceholder');
-  if(editBtnPlaceholder){
-    const btn = document.createElement('button');
-    btn.className = 'bg-white/5 hover:bg-white/10 text-white text-xs font-semibold px-3 py-2 rounded-xl';
-    btn.innerHTML = '<i class="ph ph-pencil"></i> Edit Course';
-    btn.addEventListener('click', openEditCourseModal);
-    editBtnPlaceholder.replaceWith(btn);
-  }
+const editBtnPlaceholder = document.getElementById('courseEditBtnPlaceholder');
+if(editBtnPlaceholder){
+  const btn = document.createElement('button');
+  btn.className = 'bg-white/5 hover:bg-white/10 text-white text-xs font-semibold px-3 py-2 rounded-xl';
+  btn.innerHTML = '<i class="ph ph-pencil"></i> Edit Course';
+  btn.addEventListener('click', openEditCourseModal);
+  editBtnPlaceholder.replaceWith(btn);
+}
 
-  window.openEditCourseModalIfAvailable = function(){
-    if(pageState.selectedCourse) openEditCourseModal();
-  };
-})();
+window.openEditCourseModalIfAvailable = function(){
+  if(pageState.selectedCourse) openEditCourseModal();
+};
 
         function populateCourseSelects(courses) {
             const selects = ['courseSelect'];
