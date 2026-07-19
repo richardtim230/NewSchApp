@@ -45,12 +45,9 @@ self.addEventListener('fetch', event => {
   }
 
   event.respondWith(
-    caches.match(event.request).then(async cachedResponse => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-
+    (async () => {
       try {
+        // Network first strategy
         const networkResponse = await fetch(event.request);
 
         if (
@@ -77,10 +74,15 @@ self.addEventListener('fetch', event => {
         }
 
         return networkResponse;
-      } catch {
+      } catch (error) {
+        // Fallback to cache if network fails
+        const cachedResponse = await caches.match(event.request);
+        if (cachedResponse) {
+          return cachedResponse;
+        }
         return caches.match('/tutor/splash.html');
       }
-    })
+    })()
   );
 });
 
