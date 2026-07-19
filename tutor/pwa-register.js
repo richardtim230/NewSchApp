@@ -1,3 +1,4 @@
+
 // PWA Registration with Auto-Install Banner & Fixed Updates
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
