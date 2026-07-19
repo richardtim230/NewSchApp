@@ -1,5 +1,3 @@
-// tutor/service-worker.js
-
 const CACHE_NAME = 'oau-community-hub-v1';
 
 const urlsToCache = [
@@ -47,9 +45,12 @@ self.addEventListener('fetch', event => {
   }
 
   event.respondWith(
-    (async () => {
+    caches.match(event.request).then(async cachedResponse => {
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+
       try {
-        // Network first strategy
         const networkResponse = await fetch(event.request);
 
         if (
@@ -76,15 +77,10 @@ self.addEventListener('fetch', event => {
         }
 
         return networkResponse;
-      } catch (error) {
-        // Fallback to cache if network fails
-        const cachedResponse = await caches.match(event.request);
-        if (cachedResponse) {
-          return cachedResponse;
-        }
+      } catch {
         return caches.match('/tutor/splash.html');
       }
-    })()
+    })
   );
 });
 
