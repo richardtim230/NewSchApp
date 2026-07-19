@@ -1,7 +1,7 @@
 // PWA Registration Script with Auto-Install
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/tutor/service-worker.js')
+    navigator.serviceWorker.register('../tutor/service-worker.js')
       .then(registration => {
         console.log('Service Worker registered successfully:', registration);
         
