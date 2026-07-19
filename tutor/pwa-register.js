@@ -1,6 +1,4 @@
-// PWA Registration Script
-// This file handles service worker registration and update notifications
-
+// PWA Registration Script with Auto-Install
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/tutor/service-worker.js')
@@ -101,32 +99,38 @@ function showUpdatePrompt(registration) {
   });
 }
 
-// Install prompt handling for "Add to Home Screen"
+// AUTO-INSTALL: Trigger install prompt automatically after 3 seconds
 let deferredPrompt;
+let installPromptShown = false;
 
 window.addEventListener('beforeinstallprompt', e => {
-  // Prevent the mini-infobar from appearing on mobile
   e.preventDefault();
-  // Stash the event for later use
   deferredPrompt = e;
   
-  // Show custom install button if you want to add one
-  showInstallPrompt();
+  // Auto-show install prompt after 3 seconds
+  if (!installPromptShown) {
+    setTimeout(() => {
+      triggerAutoInstall();
+    }, 3000);
+  }
 });
 
-function showInstallPrompt() {
-  // You can add a custom "Install App" button to your UI
-  // For now, the browser will show its native prompt
-  console.log('App can be installed');
+function triggerAutoInstall() {
+  if (deferredPrompt && !installPromptShown) {
+    installPromptShown = true;
+    deferredPrompt.prompt();
+    
+    deferredPrompt.userChoice.then(choiceResult => {
+      if (choiceResult.outcome === 'accepted') {
+        console.log('User accepted the install prompt');
+      }
+      deferredPrompt = null;
+    });
+  }
 }
 
 window.addEventListener('appinstalled', () => {
   console.log('PWA was installed');
-  // Clear the deferredPrompt
+  installPromptShown = true;
   deferredPrompt = null;
 });
-
-// Handle app launch from home screen
-if (window.location.search.includes('utm_source=web_app_manifest')) {
-  console.log('App launched from home screen');
-}
