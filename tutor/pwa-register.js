@@ -1,5 +1,3 @@
-// tutor/pwa-register.js
-
 // PWA Registration with Auto-Install Banner & Fixed Updates
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -7,10 +5,10 @@ if ('serviceWorker' in navigator) {
       .then(registration => {
         console.log('Service Worker registered successfully:', registration);
         
-        // Check for updates every 10 seconds (instead of 60000)
+        // Check for updates periodically
         setInterval(() => {
           registration.update();
-        }, 10000);
+        }, 60000);
 
         // Listen for updates
         registration.addEventListener('updatefound', () => {
@@ -242,89 +240,4 @@ window.addEventListener('appinstalled', () => {
   deferredPrompt = null;
   const banner = document.getElementById('pwa-install-banner');
   if (banner) banner.remove();
-});
-
-// --- Auto Refresh & Silent Content Update Logic ---
-let refreshInterval;
-
-function startAutoRefresh() {
-  refreshInterval = setInterval(() => {
-    // Check for service worker updates
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(registrations => {
-        registrations.forEach(registration => {
-          registration.update();
-        });
-      });
-    }
-    
-    // Silently refresh page content via fetch
-    fetch(window.location.href, { 
-      cache: 'no-store',
-      headers: {
-        'Cache-Control': 'no-cache'
-      }
-    })
-    .then(response => response.text())
-    .then(html => {
-      // Parse new HTML
-      const parser = new DOMParser();
-      const newDoc = parser.parseFromString(html, 'text/html');
-      
-      // Update specific sections silently (avoiding disruption)
-      const mainContent = document.querySelector('main');
-      const newMainContent = newDoc.querySelector('main');
-      
-      if (newMainContent && mainContent) {
-        mainContent.innerHTML = newMainContent.innerHTML;
-      }
-      
-      console.log('Page auto-refreshed at', new Date().toLocaleTimeString());
-    })
-    .catch(error => console.log('Auto-refresh fetch error:', error));
-  }, 10000); // 10 seconds
-}
-
-function stopAutoRefresh() {
-  clearInterval(refreshInterval);
-}
-
-// Start auto-refresh when page loads
-window.addEventListener('load', () => {
-  setTimeout(startAutoRefresh, 2000); // Start after 2 seconds
-});
-
-// Pause auto-refresh when user is interacting
-let userInactivityTimeout;
-
-document.addEventListener('click', () => {
-  stopAutoRefresh();
-  clearTimeout(userInactivityTimeout);
-  
-  // Resume after 5 seconds of inactivity
-  userInactivityTimeout = setTimeout(startAutoRefresh, 5000);
-});
-
-document.addEventListener('scroll', () => {
-  stopAutoRefresh();
-  clearTimeout(userInactivityTimeout);
-  
-  userInactivityTimeout = setTimeout(startAutoRefresh, 5000);
-});
-
-// Force update on visibility change (when user returns to tab)
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) {
-    stopAutoRefresh();
-  } else {
-    // Force immediate update when user returns
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(registrations => {
-        registrations.forEach(registration => {
-          registration.update();
-        });
-      });
-    }
-    startAutoRefresh();
-  }
 });
