@@ -1,9 +1,10 @@
 const CACHE_NAME = 'oau-community-hub-v1';
 const urlsToCache = [
-  '../tutor/Oau.html',
-  '../manifest.json',
-  '../',
-  '../loader',
+  '/tutor/splash.html',
+  '/tutor/Oau.html',
+  '/manifest.json',
+  '/',
+  '/loader',
   'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap',
   'https://unpkg.com/@phosphor-icons/web',
   'https://cdn.tailwindcss.com'
@@ -80,8 +81,8 @@ self.addEventListener('fetch', event => {
             return response;
           })
           .catch(() => {
-            // Return offline page or fallback
-            return caches.match('/tutor/Oau.html');
+            // Return splash page as fallback
+            return caches.match('/tutor/splash.html');
           });
       })
   );
