@@ -77,6 +77,9 @@
 </head>
 <body class="bg-mesh text-slate-800 font-sans min-h-screen selection:bg-brand-100 selection:text-brand-900">
 
+    <!-- Hidden Audio Element -->
+    <audio id="backgroundAudio" loop preload="none"></audio>
+
     <!-- SETUP SCREEN -->
     <main id="setupScreen" class="min-h-screen flex items-center justify-center p-4 transition-opacity duration-500">
         <div class="bg-white/80 backdrop-blur-xl p-8 md:p-12 rounded-[2rem] shadow-soft border border-white w-full max-w-3xl">
@@ -95,14 +98,14 @@
                         <span>Your Passage</span>
                         <span id="wordCountDisplay" class="text-slate-400 font-medium">0 words</span>
                     </label>
-                    <textarea id="passageInput" rows="6" class="w-full p-5 bg-slate-50/50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 outline-none resize-y transition-all text-slate-700 leading-relaxed" placeholder="Paste the text you want to practice reading here..."></textarea>
+                    <textarea id="passageInput" rows="6" class="w-full p-5 bg-slate-50/50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 outline-none resize-none" placeholder="Paste your passage here..."></textarea>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                         <label class="block text-sm font-semibold text-slate-700 mb-2">Target Speed</label>
                         <div class="relative">
-                            <input type="number" id="wpmInput" value="250" min="50" max="1000" class="w-full p-4 pl-5 pr-16 bg-slate-50/50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 outline-none text-lg font-bold text-slate-800 transition-all">
+                            <input type="number" id="wpmInput" value="250" min="50" max="1000" class="w-full p-4 pl-5 pr-16 bg-slate-50/50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 outline-none">
                             <span class="absolute right-5 top-1/2 transform -translate-y-1/2 text-slate-400 font-medium text-sm">WPM</span>
                         </div>
                     </div>
@@ -116,7 +119,18 @@
                     </div>
                 </div>
 
-                <button id="startBtn" class="w-full bg-brand-600 hover:bg-brand-500 text-white font-semibold text-lg py-4 px-6 rounded-2xl transition-all shadow-float flex items-center justify-center gap-3 mt-4 group">
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-2">Background Audio (Optional)</label>
+                    <div class="relative">
+                        <input type="file" id="audioInput" accept="audio/*" class="w-full p-4 bg-slate-50/50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 outline-none cursor-pointer">
+                        <span class="block text-xs text-slate-400 mt-1">MP3, WAV, or OGG format recommended</span>
+                        <div id="audioFileName" class="text-sm text-brand-600 font-medium mt-2 hidden">
+                            <i class="fa-solid fa-check mr-1"></i><span id="audioNameText"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <button id="startBtn" class="w-full bg-brand-600 hover:bg-brand-500 text-white font-semibold text-lg py-4 px-6 rounded-2xl transition-all shadow-float flex items-center justify-center group">
                     Begin Session 
                     <i class="fa-solid fa-arrow-right group-hover:translate-x-1 transition-transform"></i>
                 </button>
@@ -180,14 +194,25 @@
                     <i class="fa-solid fa-rotate-left"></i>
                 </button>
 
-                <button id="playPauseBtn" class="w-14 h-14 bg-brand-600 hover:bg-brand-500 text-white rounded-full flex items-center justify-center text-xl transition-all shadow-float transform hover:scale-105">
+                <button id="playPauseBtn" class="w-14 h-14 bg-brand-600 hover:bg-brand-500 text-white rounded-full flex items-center justify-center text-xl transition-all shadow-float transform hover:scale-110">
                     <i class="fa-solid fa-pause"></i>
+                </button>
+
+                <button id="volumeBtn" class="w-12 h-12 rounded-full text-slate-300 hover:text-white hover:bg-slate-800 flex items-center justify-center transition-colors" title="Audio Volume">
+                    <i class="fa-solid fa-volume-high"></i>
                 </button>
 
                 <button id="settingsBtn" class="w-12 h-12 rounded-full text-slate-300 hover:text-white hover:bg-slate-800 flex items-center justify-center transition-colors" title="Settings">
                     <i class="fa-solid fa-gear"></i>
                 </button>
             </div>
+        </div>
+
+        <!-- Volume Control Slider (Hidden by default) -->
+        <div id="volumeControl" class="absolute bottom-24 left-1/2 transform -translate-x-1/2 z-20 hidden bg-slate-900/90 backdrop-blur-xl p-4 rounded-full shadow-2xl border border-slate-700 flex items-center gap-3">
+            <i class="fa-solid fa-volume-low text-slate-300 text-sm"></i>
+            <input type="range" id="volumeSlider" min="0" max="100" value="50" class="w-24 h-1 bg-slate-700 rounded-lg cursor-pointer accent-brand-500">
+            <i class="fa-solid fa-volume-high text-slate-300 text-sm"></i>
         </div>
     </main>
 
@@ -202,16 +227,23 @@
         const wpmInput = document.getElementById('wpmInput');
         const estTimeDisplay = document.getElementById('estTimeDisplay');
         const wordCountDisplay = document.getElementById('wordCountDisplay');
+        const audioInput = document.getElementById('audioInput');
+        const audioFileName = document.getElementById('audioFileName');
+        const audioNameText = document.getElementById('audioNameText');
         
         const startBtn = document.getElementById('startBtn');
         const backBtn = document.getElementById('backBtn');
         const playPauseBtn = document.getElementById('playPauseBtn');
         const restartBtn = document.getElementById('restartBtn');
+        const volumeBtn = document.getElementById('volumeBtn');
+        const volumeControl = document.getElementById('volumeControl');
+        const volumeSlider = document.getElementById('volumeSlider');
         
         const readerContent = document.getElementById('readerContent');
         const readerContainer = document.getElementById('readerContainer');
         const displayWpm = document.getElementById('displayWpm');
         const countdownTimer = document.getElementById('countdownTimer');
+        const backgroundAudio = document.getElementById('backgroundAudio');
 
         // State Variables
         let scrollAnimation = null;
@@ -220,6 +252,7 @@
         let timerInterval = null;
         let startTime = 0;
         let elapsedTime = 0;
+        let selectedAudioFile = null;
 
         // Calculate words and estimated time
         function updateEstimates() {
@@ -244,6 +277,28 @@
 
         passageInput.addEventListener('input', updateEstimates);
         wpmInput.addEventListener('input', updateEstimates);
+
+        // Audio file selection
+        audioInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                selectedAudioFile = file;
+                audioNameText.textContent = file.name;
+                audioFileName.classList.remove('hidden');
+            } else {
+                selectedAudioFile = null;
+                audioFileName.classList.add('hidden');
+            }
+        });
+
+        // Volume control
+        volumeBtn.addEventListener('click', () => {
+            volumeControl.classList.toggle('hidden');
+        });
+
+        volumeSlider.addEventListener('input', (e) => {
+            backgroundAudio.volume = e.target.value / 100;
+        });
 
         // Start Flow
         startBtn.addEventListener('click', () => {
@@ -270,6 +325,13 @@
                 .map(p => `<p class="mb-10 text-slate-700 opacity-90 transition-opacity hover:opacity-100">${p}</p>`)
                 .join('');
             readerContent.innerHTML = formattedText;
+
+            // Setup audio if selected
+            if (selectedAudioFile) {
+                const audioUrl = URL.createObjectURL(selectedAudioFile);
+                backgroundAudio.src = audioUrl;
+                backgroundAudio.volume = volumeSlider.value / 100;
+            }
 
             // Transition Screens
             setupScreen.style.opacity = '0';
@@ -330,6 +392,12 @@
             isPlaying = true;
             updatePlayPauseIcon();
             
+            // Play background audio if available
+            if (backgroundAudio.src) {
+                backgroundAudio.currentTime = 0;
+                backgroundAudio.play().catch(err => console.log('Audio playback failed:', err));
+            }
+            
             // Initialize Timer
             elapsedTime = 0;
             startTime = Date.now();
@@ -341,6 +409,7 @@
                 isPlaying = false;
                 updatePlayPauseIcon();
                 clearInterval(timerInterval);
+                backgroundAudio.pause();
             };
         }
 
@@ -365,10 +434,14 @@
 
             if (isPlaying) {
                 scrollAnimation.pause();
+                backgroundAudio.pause();
                 isPlaying = false;
                 startTime = Date.now();
             } else {
                 scrollAnimation.play();
+                if (backgroundAudio.src) {
+                    backgroundAudio.play().catch(err => console.log('Audio playback failed:', err));
+                }
                 isPlaying = true;
                 startTime = Date.now();
             }
@@ -390,6 +463,9 @@
         backBtn.addEventListener('click', () => {
             if (scrollAnimation) scrollAnimation.cancel();
             clearInterval(timerInterval);
+            backgroundAudio.pause();
+            backgroundAudio.src = '';
+            volumeControl.classList.add('hidden');
             readScreen.classList.add('hidden');
             setupScreen.classList.remove('hidden');
         });
