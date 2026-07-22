@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=0.85">
-    <title>Premium Reading Trainer</title>
+    <title>Premium Reading Trainer - Offline</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Premium Fonts -->
@@ -86,9 +86,41 @@
             background-color: #eef2ff;
             box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
         }
+
+        /* Offline badge */
+        .offline-badge {
+            position: fixed;
+            top-4 right-4;
+            background: #ef4444;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .offline-badge.hidden {
+            display: none;
+        }
     </style>
 </head>
 <body class="bg-mesh text-slate-800 font-sans min-h-screen selection:bg-brand-100 selection:text-brand-900">
+
+    <!-- Offline Status Badge -->
+    <div id="offlineBadge" class="offline-badge">
+        <i class="fa-solid fa-wifi-slash"></i>
+        <span>Offline Mode</span>
+    </div>
+
+    <!-- Online Status Badge (Hidden by default) -->
+    <div id="onlineBadge" class="offline-badge hidden" style="background: #10b981;">
+        <i class="fa-solid fa-wifi"></i>
+        <span>Back Online</span>
+    </div>
 
     <!-- Hidden Audio Element -->
     <audio id="backgroundAudio" loop preload="none"></audio>
@@ -103,15 +135,16 @@
                 </div>
                 <h1 class="text-3xl md:text-4xl font-bold text-slate-900 mb-3 tracking-tight">FlowRead</h1>
                 <p class="text-slate-500 text-sm md:text-base max-w-md mx-auto">Enhance your comprehension and speed. Paste your passage and set your optimal pace.</p>
+                <p id="offlineNote" class="text-xs text-red-500 mt-2 hidden"><i class="fa-solid fa-circle-info mr-1"></i>You are currently offline - using cached passages</p>
             </div>
 
             <div class="space-y-6">
                 <!-- Tabs for Passage Selection -->
-                <div class="flex gap-3 border-b border-slate-200">
-                    <button id="customTab" class="px-4 py-2 font-semibold text-slate-700 border-b-2 border-brand-600 transition-colors">
+                <div class="flex gap-3 border-b border-slate-200 flex-wrap">
+                    <button id="customTab" class="px-4 py-2 font-semibold text-slate-700 border-b-2 border-brand-600 transition-colors whitespace-nowrap">
                         Custom Text
                     </button>
-                    <button id="libraryTab" class="px-4 py-2 font-semibold text-slate-500 border-b-2 border-transparent hover:text-slate-700 transition-colors">
+                    <button id="libraryTab" class="px-4 py-2 font-semibold text-slate-500 border-b-2 border-transparent hover:text-slate-700 transition-colors whitespace-nowrap">
                         Passage Library
                     </button>
                 </div>
@@ -160,11 +193,11 @@
                     </h3>
 
                     <!-- Tabs for Audio Selection -->
-                    <div class="flex gap-3 border-b border-slate-200">
-                        <button id="uploadAudioTab" class="px-4 py-2 font-semibold text-slate-700 border-b-2 border-brand-600 transition-colors text-sm">
+                    <div class="flex gap-3 border-b border-slate-200 flex-wrap">
+                        <button id="uploadAudioTab" class="px-4 py-2 font-semibold text-slate-700 border-b-2 border-brand-600 transition-colors text-sm whitespace-nowrap">
                             Upload File
                         </button>
-                        <button id="defaultAudioTab" class="px-4 py-2 font-semibold text-slate-500 border-b-2 border-transparent hover:text-slate-700 transition-colors text-sm">
+                        <button id="defaultAudioTab" class="px-4 py-2 font-semibold text-slate-500 border-b-2 border-transparent hover:text-slate-700 transition-colors text-sm whitespace-nowrap">
                             Preset Music
                         </button>
                     </div>
@@ -273,6 +306,82 @@
     </main>
 
     <script>
+        // Offline Storage Manager
+        class OfflineStorage {
+            constructor() {
+                this.storageKey = 'flowread_offline_data';
+                this.versionsKey = 'flowread_data_version';
+            }
+
+            async savePassages(passages) {
+                try {
+                    localStorage.setItem(this.storageKey, JSON.stringify(passages));
+                    localStorage.setItem(this.versionsKey, new Date().getTime());
+                    console.log('Passages saved to offline storage');
+                } catch (error) {
+                    console.log('Could not save to offline storage:', error);
+                }
+            }
+
+            getPassages() {
+                try {
+                    const data = localStorage.getItem(this.storageKey);
+                    return data ? JSON.parse(data) : null;
+                } catch (error) {
+                    console.log('Could not retrieve from offline storage:', error);
+                    return null;
+                }
+            }
+
+            hasOfflineData() {
+                return !!localStorage.getItem(this.storageKey);
+            }
+        }
+
+        // Embedded fallback passages for offline mode
+        const FALLBACK_PASSAGES = [
+            {
+                "id": 1,
+                "title": "The Benefits of Reading",
+                "category": "education",
+                "difficulty": "easy",
+                "text": "Reading is one of the most important skills a person can develop. It opens doors to new worlds, ideas, and perspectives that we might never encounter in our daily lives. When we read, we engage our minds, improve our vocabulary, and enhance our critical thinking abilities. Studies have shown that regular reading can reduce stress, improve sleep quality, and even increase empathy. Whether it's a novel, a scientific article, or a self-help book, reading provides us with knowledge and entertainment simultaneously. In our digital age, where information is abundant but attention spans are short, the ability to focus and read deeply has become more valuable than ever. By cultivating a reading habit, we invest in our personal growth and development."
+            },
+            {
+                "id": 2,
+                "title": "The Wonders of Space",
+                "category": "science",
+                "difficulty": "medium",
+                "text": "Space has always captivated human imagination, inspiring countless questions about our place in the universe. The cosmos is vast beyond comprehension, containing billions of galaxies, each with billions of stars. Modern astronomy has revealed that our Sun is just an ordinary star among countless others, and our Earth is a tiny planet orbiting this average star in a quiet corner of the Milky Way. Yet, despite its apparent ordinariness, Earth hosts a unique phenomenon that makes it truly special: life in all its diverse forms. Scientists continue to search for signs of extraterrestrial life, exploring the possibility that we are not alone in the universe. The discovery of exoplanets in habitable zones has reignited hope that life might exist elsewhere among the stars. Space exploration has led to remarkable technological advancements that benefit our daily lives, from satellites that enable global communication to medical devices developed through NASA research. These innovations have transformed how we live, work, and connect with one another. As we continue to peer into the cosmos with increasingly powerful telescopes and sophisticated instruments, we not only learn about the universe but also gain profound insights about ourselves and our cosmic origins."
+            },
+            {
+                "id": 3,
+                "title": "The Epistemology of Knowledge and Truth",
+                "category": "philosophy",
+                "difficulty": "hard",
+                "text": "The philosophical inquiry into the nature of knowledge, colloquially termed epistemology, constitutes one of humanity's most profound intellectual endeavors, permeating academic discourse since antiquity. What constitutes genuine knowledge? How do we differentiate veridical understanding from mere supposition or erroneous conjecture? These quintessential questions have engrossed philosophers, epistemologists, and scholars across millennia, yielding multifaceted paradigms and theoretical frameworks. The foundationalist perspective posits that knowledge rests upon indubitable axiomatic truths from which all other propositions derive their validity. Conversely, coherentism maintains that beliefs acquire justification through their harmonious interrelationship within an interconnected web of cognitions. The correspondence theory of truth advocates that veracity emerges when our conceptualizations accurately replicate objective reality, while pragmatists contend that truth manifests through practical utility and efficacious application. Epistemological relativism suggests that knowledge remains inextricably bound to contextual parameters, cultural matrices, and individual perspectives, thereby problematizing the notion of immutable universal truths. Conversely, realists maintain the existence of mind-independent facts accessible through rigorous empirical investigation and rational scrutiny. The emergence of contemporary neuroscience and cognitive psychology has revolutionized epistemological discourse, illuminating the mechanisms through which our neurological substrates construct interpretations of reality. Quantum mechanics has fundamentally destabilized classical epistemological certainties, introducing indeterminacy and observer-dependent phenomena that challenge deterministic worldviews. Ultimately, the pursuit of knowledge remains an iterative enterprise wherein intellectual humility, methodological rigor, and openness to paradigmatic shifts facilitate our incremental comprehension of the multifaceted universe and our phenomenological existence within it."
+            }
+        ];
+
+        const FALLBACK_MUSIC = [
+            {
+                "id": 1,
+                "title": "Soft Piano Dreams",
+                "artist": "Ambient Music Lab",
+                "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+                "duration": "1:00:00",
+                "description": "Gentle, flowing piano melodies perfect for peaceful reading"
+            },
+            {
+                "id": 2,
+                "title": "Serene Garden",
+                "artist": "Nature Sounds",
+                "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+                "duration": "1:00:00",
+                "description": "Relaxing garden ambience with soft birds and gentle water"
+            }
+        ];
+
         // DOM Elements
         const setupScreen = document.getElementById('setupScreen');
         const readScreen = document.getElementById('readScreen');
@@ -312,6 +421,10 @@
         const uploadAudioTabContent = document.getElementById('uploadAudioTabContent');
         const defaultAudioTabContent = document.getElementById('defaultAudioTabContent');
 
+        const offlineBadge = document.getElementById('offlineBadge');
+        const onlineBadge = document.getElementById('onlineBadge');
+        const offlineNote = document.getElementById('offlineNote');
+
         // State Variables
         let scrollAnimation = null;
         let isPlaying = false;
@@ -323,19 +436,63 @@
         let selectedDefaultMusic = null;
         let passagesData = [];
         let defaultMusicData = [];
+        let isOffline = !navigator.onLine;
+
+        const storage = new OfflineStorage();
 
         // Load passages and music data
         async function loadData() {
             try {
+                // Try to load from network first
                 const response = await fetch('passages.json');
                 const data = await response.json();
                 passagesData = data.passages;
                 defaultMusicData = data.defaultMusic;
-                renderPassageLibrary();
-                renderDefaultMusic();
+                
+                // Save to offline storage
+                await storage.savePassages(data);
+                
             } catch (error) {
-                console.log('Could not load passages.json:', error);
+                console.log('Could not load from network, using offline data');
+                
+                // Try to load from offline storage
+                const offlineData = storage.getPassages();
+                if (offlineData) {
+                    passagesData = offlineData.passages || FALLBACK_PASSAGES;
+                    defaultMusicData = offlineData.defaultMusic || FALLBACK_MUSIC;
+                } else {
+                    // Use fallback
+                    passagesData = FALLBACK_PASSAGES;
+                    defaultMusicData = FALLBACK_MUSIC;
+                }
             }
+            
+            renderPassageLibrary();
+            renderDefaultMusic();
+        }
+
+        // Monitor online status
+        window.addEventListener('online', () => {
+            isOffline = false;
+            offlineBadge.classList.add('hidden');
+            onlineBadge.classList.remove('hidden');
+            offlineNote.classList.add('hidden');
+            loadData(); // Refresh data when back online
+            setTimeout(() => {
+                onlineBadge.classList.add('hidden');
+            }, 3000);
+        });
+
+        window.addEventListener('offline', () => {
+            isOffline = true;
+            offlineBadge.classList.remove('hidden');
+            onlineBadge.classList.add('hidden');
+            offlineNote.classList.remove('hidden');
+        });
+
+        // Check initial online status
+        if (isOffline) {
+            offlineNote.classList.remove('hidden');
         }
 
         loadData();
