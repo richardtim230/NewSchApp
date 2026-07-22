@@ -20,11 +20,11 @@
                     fontFamily: { sans: ['Inter', 'sans-serif'] },
                     colors: {
                         brand: {
-                            dark: '#1e3a8a',   // Sidebar background
-                            active: '#2563eb', // Active states
-                            accent: '#3b82f6', // Lighter blue
-                            light: '#f8fafc',  // Main background
-                            warm: '#f59e0b'    // Lively amber for community vibe
+                            dark: '#1e3a8a',
+                            active: '#2563eb',
+                            accent: '#3b82f6',
+                            light: '#f8fafc',
+                            warm: '#f59e0b'
                         }
                     },
                     boxShadow: {
@@ -38,29 +38,26 @@
 </head>
 <body class="bg-brand-light font-sans min-h-screen flex flex-col justify-between relative overflow-x-hidden overflow-y-hidden select-none">
 
-    <!-- Top Canvas: Bright Royal & Electric Blue Gradient Arc using Config values -->
+    <!-- Top Canvas -->
     <div class="absolute top-0 left-0 w-full h-[82vh] bg-gradient-to-b from-brand-dark via-brand-active to-brand-accent rounded-b-[40px] md:rounded-b-[80px] shadow-floating z-0">
-        <!-- Ambient Light Flare -->
         <div class="absolute bottom-0 left-1/2 -translate-x-1/2 w-[150%] h-[50%] bg-gradient-to-t from-white/10 to-transparent blur-3xl pointer-events-none"></div>
     </div>
 
     <!-- Main Content Wrapper -->
     <div class="z-10 w-full max-w-md mx-auto px-6 flex-grow flex items-center justify-center pt-8">
         
-        <!-- App Container Card with custom premium shadow configuration -->
+        <!-- App Container Card -->
         <div class="w-full bg-slate-900/30 backdrop-blur-xl border border-white/10 rounded-3xl p-8 md:p-10 shadow-premium transition-all duration-500">
             
             <!-- Logo Section with Spin Ring -->
             <div class="relative w-28 h-28 mx-auto mb-8 flex items-center justify-center">
-                <!-- Rotation border using accent blue and warm amber -->
                 <div class="absolute inset-0 rounded-3xl bg-gradient-to-tr from-brand-warm via-white to-brand-accent animate-spin opacity-90 shadow-md" style="animation-duration: 20s;"></div>
-                <!-- Inner Shield Box -->
                 <div class="absolute inset-[3px] bg-brand-dark rounded-[21px] flex items-center justify-center overflow-hidden border border-white/10">
                     <img src="../logo.png" alt="OAU Crest" class="w-20 h-20 object-contain" onerror="this.src='https://images.unsplash.com/photo-1546410531-bb4caa6b424d?auto=format&fit=crop&w=150&q=80'">
                 </div>
             </div>
 
-            <!-- Header Typography using updated config styles -->
+            <!-- Header Typography -->
             <div class="space-y-2 text-center mb-8">
                 <span class="text-[10px] font-bold tracking-[0.25em] text-blue-200/80 uppercase">Obafemi Awolowo University</span>
                 <h1 class="text-4xl font-extrabold text-white tracking-tight">
@@ -101,10 +98,10 @@
         </div>
     </div>
 
-    <!-- Brand Divider Line (Warm Amber) -->
+    <!-- Brand Divider Line -->
     <div class="w-full h-[3px] bg-brand-warm z-10 relative"></div>
 
-    <!-- Base Branding Footer (Points to OAU ICT Center) -->
+    <!-- Base Branding Footer -->
     <div class="z-10 bg-brand-light w-full py-5 px-6 text-center">
         <div class="max-w-md mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs font-medium text-slate-500">
             <span class="tracking-wider uppercase text-brand-dark font-bold">OAU ICT Center Hub</span>
@@ -133,7 +130,6 @@
             const offlineMessage = document.getElementById('offline-message');
             const statusFooter = document.getElementById('status-footer');
 
-            // Operational narration checkpoints
             const operationalMilestones = [
                 { marker: 0, desc: "Initializing secure application kernels..." },
                 { marker: 12, desc: "Connecting with OAU ICT Center dataset hubs..." },
@@ -141,11 +137,71 @@
                 { marker: 45, desc: "Syncing exam timetable index metrics..." },
                 { marker: 65, desc: "Caching real-time navigational maps..." },
                 { marker: 82, desc: "Optimizing dashboard configuration profiles..." },
-                { marker: 94, desc: "Environment safe. Forwarding credentials..." }
+                { marker: 94, desc: "Pre-caching offline reader and passages..." }
             ];
 
             let runningTime = 0;
             let isOnline = navigator.onLine;
+
+            // Register Service Worker if available
+            async function registerServiceWorker() {
+                if ('serviceWorker' in navigator) {
+                    try {
+                        const registration = await navigator.serviceWorker.register('../tutor/service-worker.js', {
+                            scope: '/'
+                        });
+                        console.log('Service Worker registered:', registration);
+
+                        // Listen for messages from service worker
+                        navigator.serviceWorker.addEventListener('message', event => {
+                            console.log('Message from SW:', event.data);
+                        });
+
+                        // Check for updates every 30 seconds
+                        setInterval(() => {
+                            registration.update();
+                        }, 30000);
+
+                        return registration;
+                    } catch (error) {
+                        console.log('Service Worker registration failed:', error);
+                    }
+                }
+                return null;
+            }
+
+            // Precache offline resources via Service Worker
+            async function precacheOfflineResources() {
+                if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                    navigator.serviceWorker.controller.postMessage({
+                        type: 'PRECACHE_OFFLINE'
+                    });
+                    console.log('Sent precache request to Service Worker');
+                } else {
+                    // Fallback: direct fetch and cache
+                    try {
+                        const cache = await caches.open('oau-offline-reader-v1');
+                        const resources = [
+                            '../NextWeb/reader.html',
+                            '../NextWeb/passages.json'
+                        ];
+
+                        for (const resource of resources) {
+                            try {
+                                const response = await fetch(resource);
+                                if (response.ok) {
+                                    await cache.put(resource, response);
+                                    console.log('Cached:', resource);
+                                }
+                            } catch (error) {
+                                console.log('Could not cache:', resource);
+                            }
+                        }
+                    } catch (error) {
+                        console.log('Fallback caching failed:', error);
+                    }
+                }
+            }
 
             // Check online status immediately
             function checkConnectivity() {
@@ -175,6 +231,8 @@
             window.addEventListener('online', () => {
                 console.log('Connection restored');
                 isOnline = true;
+                // Precache when coming back online
+                precacheOfflineResources();
             });
 
             window.addEventListener('offline', () => {
@@ -185,12 +243,15 @@
                 }
             });
 
+            // Initialize Service Worker
+            registerServiceWorker();
+
             // Check if offline at start
             if (!checkConnectivity()) {
                 return;
             }
 
-            // Silent backend preload - starts immediately without disrupting UI
+            // Silent backend preload
             function preloadBackend() {
                 fetch(backendUrl, {
                     method: 'GET',
@@ -203,6 +264,9 @@
                     console.log('Backend preload in progress');
                 });
             }
+
+            // Start precaching immediately during boot
+            precacheOfflineResources();
 
             // Initiate backend preload immediately
             preloadBackend();
