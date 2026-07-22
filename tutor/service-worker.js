@@ -1,12 +1,15 @@
-const CACHE_NAME = 'oau-community-hub-v1';
+const CACHE_NAME = 'oau-community-hub-v2';
 
 const urlsToCache = [
   '/tutor/splash.html',
   '/tutor/Oau.html',
+  '/NextWeb/reader.html',
+  '/NextWeb/passages.json',
   '/manifest.json',
   '/',
   '/loader',
-  'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap',
+  'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Lora:wght@400;500;600;700&display=swap',
+  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
   'https://unpkg.com/@phosphor-icons/web',
   'https://cdn.tailwindcss.com'
 ];
@@ -47,7 +50,6 @@ self.addEventListener('fetch', event => {
   event.respondWith(
     (async () => {
       try {
-        // Network first strategy
         const networkResponse = await fetch(event.request);
 
         if (
@@ -75,12 +77,15 @@ self.addEventListener('fetch', event => {
 
         return networkResponse;
       } catch (error) {
-        // Fallback to cache if network fails
         const cachedResponse = await caches.match(event.request);
         if (cachedResponse) {
           return cachedResponse;
         }
-        return caches.match('/tutor/splash.html');
+        
+        // Return reader.html as offline fallback for any route
+        if (event.request.destination === 'document') {
+          return caches.match('/NextWeb/reader.html');
+        }
       }
     })()
   );
