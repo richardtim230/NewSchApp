@@ -1,4 +1,3 @@
-
 // PWA Registration with Auto-Install Banner & Fixed Updates
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -89,17 +88,14 @@ function showUpdatePrompt(registration) {
   document.getElementById('pwa-update-btn').addEventListener('click', () => {
     console.log('Update button clicked');
     
-    // Find the waiting service worker
     if (registration.waiting) {
       console.log('Sending SKIP_WAITING message to service worker');
       registration.waiting.postMessage({ type: 'SKIP_WAITING' });
       
-      // Show loading state
       const btn = document.getElementById('pwa-update-btn');
       btn.disabled = true;
       btn.innerText = 'Updating...';
       
-      // Wait for controller change and reload
       let controllerChanged = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         if (!controllerChanged) {
@@ -110,7 +106,6 @@ function showUpdatePrompt(registration) {
         }
       });
       
-      // Fallback reload after 3 seconds if no controller change
       setTimeout(() => {
         if (!controllerChanged) {
           console.log('Fallback reload');
@@ -119,7 +114,6 @@ function showUpdatePrompt(registration) {
       }, 3000);
     } else {
       console.warn('No waiting service worker found');
-      // Just reload if no waiting worker
       window.location.reload();
     }
   });
@@ -128,7 +122,6 @@ function showUpdatePrompt(registration) {
 let deferredPrompt;
 let installPromptShown = false;
 
-// Show install banner
 function showInstallBanner() {
   const banner = document.createElement('div');
   banner.id = 'pwa-install-banner';
@@ -217,7 +210,6 @@ function showInstallBanner() {
   document.getElementById('pwa-dismiss-btn').addEventListener('click', () => {
     console.log('Install banner dismissed');
     banner.remove();
-    // Don't show banner again this session
     installPromptShown = true;
   });
 }
@@ -242,3 +234,173 @@ window.addEventListener('appinstalled', () => {
   const banner = document.getElementById('pwa-install-banner');
   if (banner) banner.remove();
 });
+
+// ========== PWA WINDOW MANAGEMENT ==========
+
+/**
+ * Handle window navigation in PWA mode
+ * Prevents closing the app when navigating between pages
+ */
+class PWAWindowManager {
+  constructor() {
+    this.isStandalone = window.navigator.standalone === true || 
+                       window.matchMedia('(display-mode: standalone)').matches;
+    this.windowStack = [];
+    this.currentWindowId = this.generateId();
+    
+    console.log('PWA Standalone Mode:', this.isStandalone);
+    
+    if (this.isStandalone) {
+      this.init();
+    }
+  }
+
+  generateId() {
+    return `window_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  init() {
+    // Store current window in session
+    sessionStorage.setItem('pwa_window_id', this.currentWindowId);
+    this.windowStack.push(this.currentWindowId);
+    
+    // Update window stack
+    sessionStorage.setItem('pwa_window_stack', JSON.stringify(this.windowStack));
+    
+    console.log('PWA Window initialized:', this.currentWindowId);
+
+    // Handle back button behavior
+    this.handleBackButton();
+    
+    // Handle external links
+    this.handleExternalLinks();
+    
+    // Monitor page visibility
+    this.monitorVisibility();
+  }
+
+  handleBackButton() {
+    // Override default back button behavior in PWA
+    window.addEventListener('popstate', (event) => {
+      console.log('Popstate event triggered');
+      
+      // In standalone mode, use history.back() instead of closing
+      if (history.length > 1) {
+        history.back();
+      } else {
+        // If no history, go to home
+        window.location.href = '/tutor/splash.html';
+      }
+    });
+
+    // Handle Android back button via pause event
+    document.addEventListener('backbutton', (event) => {
+      event.preventDefault();
+      if (history.length > 1) {
+        history.back();
+      } else {
+        navigator.app.exitApp();
+      }
+    });
+  }
+
+  handleExternalLinks() {
+    // Prevent opening links in new windows within PWA
+    document.addEventListener('click', (event) => {
+      const link = event.target.closest('a');
+      
+      if (!link) return;
+
+      const href = link.getAttribute('href');
+      const target = link.getAttribute('target');
+      
+      // Handle internal links
+      if (href && href.startsWith('/')) {
+        event.preventDefault();
+        window.location.href = href;
+        return;
+      }
+
+      // Handle target="_blank" - open in same window instead
+      if (target === '_blank' && href) {
+        event.preventDefault();
+        window.location.href = href;
+        return;
+      }
+
+      // Handle relative links
+      if (href && !href.startsWith('http') && !href.startsWith('mailto')) {
+        event.preventDefault();
+        window.location.href = href;
+        return;
+      }
+    }, true);
+  }
+
+  monitorVisibility() {
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        console.log('PWA app hidden');
+      } else {
+        console.log('PWA app visible');
+        // Refresh data when app comes to foreground
+        this.notifyServiceWorker('APP_VISIBLE');
+      }
+    });
+  }
+
+  notifyServiceWorker(action) {
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: action,
+        timestamp: Date.now()
+      });
+    }
+  }
+
+  /**
+   * Navigate to URL while keeping PWA window alive
+   */
+  navigateTo(url) {
+    // Push to history to enable back button
+    history.pushState({ url }, '', url);
+    window.location.href = url;
+  }
+
+  /**
+   * Go back safely in PWA
+   */
+  goBack() {
+    if (history.length > 1) {
+      history.back();
+    } else {
+      // If no history, redirect to home
+      window.location.href = '/tutor/splash.html';
+    }
+  }
+
+  /**
+   * Close PWA gracefully
+   */
+  closeApp() {
+    if (confirm('Close OAU ExamCompass?')) {
+      // Clear PWA data
+      sessionStorage.removeItem('pwa_window_id');
+      sessionStorage.removeItem('pwa_window_stack');
+      
+      // Attempt to close
+      if (window.cordova) {
+        navigator.app.exitApp();
+      } else {
+        window.close();
+      }
+    }
+  }
+}
+
+// Initialize PWA Window Manager
+const pwaWindowManager = new PWAWindowManager();
+
+// Make available globally
+window.PWAWindowManager = PWAWindowManager;
+window.pwaWindowManager = pwaWindowManager;
