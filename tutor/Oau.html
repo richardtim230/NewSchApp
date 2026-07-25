@@ -790,6 +790,8 @@
     const API_BASE = "https://examguide.onrender.com/api";
     const POSTS_API = API_BASE + "/posts";
     let currentUser = null;
+    let currentActiveTab = 'feed'; // Track active tab
+    let refreshInterval; // Store interval ID for cleanup
 
     // --- Sidebar Logic ---
     const sidebar = document.getElementById('sidebar');
@@ -815,6 +817,10 @@
 
     // --- Tab Navigation Logic ---
     function showTab(tabName) {
+        // Store the active tab
+        currentActiveTab = tabName;
+        localStorage.setItem('activeTab', tabName);
+
         // Hide all tab content
         const tabs = document.querySelectorAll('.tab-content');
         tabs.forEach(tab => tab.classList.remove('active'));
@@ -827,6 +833,9 @@
 
         // Update sidebar menu active state
         updateSidebarMenuActive(tabName);
+
+        // Update bottom nav
+        updateBottomNav(tabName);
 
         // Fetch campus news when news tab is opened
         if (tabName === 'news') {
@@ -889,12 +898,14 @@
     // --- Carousel Logic ---
     let currentSlide = 0;
     const totalSlides = 4;
-    const carouselTrack = document.getElementById('carouselTrack');
-    const carouselPrev = document.getElementById('carouselPrev');
-    const carouselNext = document.getElementById('carouselNext');
-    const carouselDots = document.querySelectorAll('.carousel-dot');
+    let carouselTrack = document.getElementById('carouselTrack');
+    let carouselPrev = document.getElementById('carouselPrev');
+    let carouselNext = document.getElementById('carouselNext');
+    let carouselDots = document.querySelectorAll('.carousel-dot');
+    let carouselInterval;
 
     function updateCarousel() {
+        if (!carouselTrack) return;
         const offset = -currentSlide * 100;
         carouselTrack.style.transform = `translateX(${offset}%)`;
         
@@ -920,19 +931,29 @@
         updateCarousel();
     }
 
-    carouselNext.addEventListener('click', nextSlide);
-    carouselPrev.addEventListener('click', prevSlide);
+    function initCarousel() {
+        carouselTrack = document.getElementById('carouselTrack');
+        carouselPrev = document.getElementById('carouselPrev');
+        carouselNext = document.getElementById('carouselNext');
+        carouselDots = document.querySelectorAll('.carousel-dot');
 
-    // Dot click navigation
-    carouselDots.forEach(dot => {
-        dot.addEventListener('click', (e) => {
-            currentSlide = parseInt(e.target.getAttribute('data-index'));
-            updateCarousel();
+        if (carouselNext) carouselNext.addEventListener('click', nextSlide);
+        if (carouselPrev) carouselPrev.addEventListener('click', prevSlide);
+
+        // Dot click navigation
+        carouselDots.forEach(dot => {
+            dot.addEventListener('click', (e) => {
+                currentSlide = parseInt(e.target.getAttribute('data-index'));
+                updateCarousel();
+            });
         });
-    });
 
-    // Auto-advance carousel every 5 seconds
-    setInterval(nextSlide, 5000);
+        // Clear old interval if exists
+        if (carouselInterval) clearInterval(carouselInterval);
+
+        // Auto-advance carousel every 5 seconds
+        carouselInterval = setInterval(nextSlide, 5000);
+    }
 
     function closeModal() {
         modalContent.classList.remove('scale-100', 'opacity-100');
@@ -948,19 +969,24 @@
     });
 
     // --- Sidebar Search Logic ---
-    document.getElementById('sidebarSearch')?.addEventListener('input', function(e) {
-        const searchTerm = e.target.value.toLowerCase();
-        const sidebarMenuItems = document.querySelectorAll('.sidebar-menu-item');
-        
-        sidebarMenuItems.forEach(item => {
-            const text = item.textContent.toLowerCase();
-            if(text.includes(searchTerm)) {
-                item.style.display = 'flex';
-            } else {
-                item.style.display = 'none';
-            }
-        });
-    });
+    function initSidebarSearch() {
+        const searchInput = document.getElementById('sidebarSearch');
+        if (searchInput) {
+            searchInput.addEventListener('input', function(e) {
+                const searchTerm = e.target.value.toLowerCase();
+                const sidebarMenuItems = document.querySelectorAll('.sidebar-menu-item');
+                
+                sidebarMenuItems.forEach(item => {
+                    const text = item.textContent.toLowerCase();
+                    if(text.includes(searchTerm)) {
+                        item.style.display = 'flex';
+                    } else {
+                        item.style.display = 'none';
+                    }
+                });
+            });
+        }
+    }
 
     // --- PWA Detection & Configuration ---
     const isPWA = window.matchMedia("(display-mode: standalone)").matches ||
@@ -984,8 +1010,10 @@
             
             if (!userId) {
                 console.log("No user logged in");
-                document.getElementById('userName').textContent = "Guest User";
-                document.getElementById('userDepartment').textContent = "Please log in";
+                const userNameEl = document.getElementById('userName');
+                const userDeptEl = document.getElementById('userDepartment');
+                if (userNameEl) userNameEl.textContent = "Guest User";
+                if (userDeptEl) userDeptEl.textContent = "Please log in";
                 return;
             }
 
@@ -999,18 +1027,26 @@
             currentUser = data.user || data;
             
             // Update UI with user details
-            document.getElementById('userName').textContent = currentUser.fullname || currentUser.username || "Student";
-            document.getElementById('userDepartment').textContent = currentUser.department || currentUser.faculty || "Computer Science";
+            const userNameEl = document.getElementById('userName');
+            const userDeptEl = document.getElementById('userDepartment');
+            const userAvatarEl = document.getElementById('userAvatar');
+
+            if (userNameEl) userNameEl.textContent = currentUser.fullname || currentUser.username || "Student";
+            if (userDeptEl) userDeptEl.textContent = currentUser.department || currentUser.faculty || "Computer Science";
             
             // Update avatar
-            const avatarUrl = currentUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.fullname || currentUser.username)}&background=2563eb&color=fff`;
-            document.getElementById('userAvatar').src = avatarUrl;
-            document.getElementById('userAvatar').alt = currentUser.fullname || currentUser.username;
+            if (userAvatarEl) {
+                const avatarUrl = currentUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.fullname || currentUser.username)}&background=2563eb&color=fff`;
+                userAvatarEl.src = avatarUrl;
+                userAvatarEl.alt = currentUser.fullname || currentUser.username;
+            }
             
         } catch (error) {
             console.error("User profile fetch error:", error);
-            document.getElementById('userName').textContent = "User";
-            document.getElementById('userDepartment').textContent = "Not logged in";
+            const userNameEl = document.getElementById('userName');
+            const userDeptEl = document.getElementById('userDepartment');
+            if (userNameEl) userNameEl.textContent = "User";
+            if (userDeptEl) userDeptEl.textContent = "Not logged in";
         }
     }
 
@@ -1086,16 +1122,20 @@
             renderRecentNews(articles);
         } catch (error) {
             console.error("Recent news fetch error:", error);
-            document.getElementById('recentNewsContainer').innerHTML = `
-                <div class="bg-white p-4 rounded-xl border border-gray-100 text-center text-gray-500">
-                    Unable to load news. Please try again later.
-                </div>
-            `;
+            const container = document.getElementById('recentNewsContainer');
+            if (container) {
+                container.innerHTML = `
+                    <div class="bg-white p-4 rounded-xl border border-gray-100 text-center text-gray-500">
+                        Unable to load news. Please try again later.
+                    </div>
+                `;
+            }
         }
     }
 
     function renderRecentNews(articles) {
         const container = document.getElementById('recentNewsContainer');
+        if (!container) return;
         
         if (!articles || articles.length === 0) {
             container.innerHTML = `
@@ -1163,16 +1203,20 @@
             renderCampusNews(articles);
         } catch (error) {
             console.error("Campus news fetch error:", error);
-            document.getElementById('campusNewsGrid').innerHTML = `
-                <div class="col-span-full bg-white p-8 rounded-2xl border border-gray-100 text-center text-gray-500">
-                    <p>Unable to load campus news. Please try again later.</p>
-                </div>
-            `;
+            const grid = document.getElementById('campusNewsGrid');
+            if (grid) {
+                grid.innerHTML = `
+                    <div class="col-span-full bg-white p-8 rounded-2xl border border-gray-100 text-center text-gray-500">
+                        <p>Unable to load campus news. Please try again later.</p>
+                    </div>
+                `;
+            }
         }
     }
 
     function renderCampusNews(articles) {
         const grid = document.getElementById('campusNewsGrid');
+        if (!grid) return;
         
         if (!articles || articles.length === 0) {
             grid.innerHTML = `
@@ -1228,26 +1272,52 @@
         });
     }
 
-    // --- Silently Refresh Main Content ---
-    let refreshInterval = setInterval(() => {
-        fetch(window.location.href, { cache: 'no-store' })
-            .then(response => response.text())
-            .then(html => {
-                const mainContent = document.querySelector('main');
-                const parser = new DOMParser();
-                const newMainContent = parser.parseFromString(html, 'text/html').querySelector('main');
-                if (newMainContent && mainContent) {
-                    mainContent.innerHTML = newMainContent.innerHTML;
-                }
-            })
-            .catch(error => console.error('Content refresh error:', error));
-    }, 10000); // 10 seconds
+    // --- Smart Content Refresh (Only refreshes static content, preserves tab state) ---
+    function startContentRefresh() {
+        if (refreshInterval) clearInterval(refreshInterval);
+
+        refreshInterval = setInterval(() => {
+            fetch(window.location.href, { cache: 'no-store' })
+                .then(response => response.text())
+                .then(html => {
+                    const parser = new DOMParser();
+                    const newDoc = parser.parseFromString(html, 'text/html');
+                    
+                    // Only update specific sections, not the entire main
+                    const newCarousel = newDoc.querySelector('#carouselTrack');
+                    const oldCarousel = document.querySelector('#carouselTrack');
+                    if (newCarousel && oldCarousel) {
+                        oldCarousel.parentElement.replaceChild(newCarousel, oldCarousel);
+                        initCarousel(); // Reinit carousel
+                    }
+
+                    // Restore active tab state
+                    const storedTab = localStorage.getItem('activeTab') || 'feed';
+                    showTab(storedTab);
+                })
+                .catch(error => console.error('Content refresh error:', error));
+        }, 30000); // Increased to 30 seconds to avoid frequent refreshes
+    }
 
     // --- Initialize on Page Load ---
     document.addEventListener('DOMContentLoaded', function() {
         fetchUserProfile();
         fetchRecentNews();
-        // Campus news will be fetched when the tab is opened
+        initCarousel();
+        initSidebarSearch();
+        
+        // Restore active tab from localStorage
+        const storedTab = localStorage.getItem('activeTab') || 'feed';
+        showTab(storedTab);
+        
+        // Start content refresh
+        startContentRefresh();
+    });
+
+    // --- Cleanup on page unload ---
+    window.addEventListener('beforeunload', function() {
+        if (refreshInterval) clearInterval(refreshInterval);
+        if (carouselInterval) clearInterval(carouselInterval);
     });
 </script>
 </body>
