@@ -1079,18 +1079,28 @@ async function viewAssignmentScore(id, button){
     `;
 
     try{
-        const data = await fetchAPI(`/api/student/assignments/${id}/result`);
-        const result = data.submission;
-        const assignment = data.assignment;
+        // Fetch both result and full assignment details
+        const resultData = await fetchAPI(`/api/student/assignments/${id}/result`);
+        const result = resultData.submission;
+        const assignment = resultData.assignment;
+
+        // Fetch full assignment details to get instructions
+        let fullAssignment = assignment;
+        try {
+            const fullData = await fetchAPI(`/api/student/assignments/${id}`);
+            fullAssignment = fullData.assignment || fullData;
+        } catch (e) {
+            console.log("Could not fetch full assignment, using result data");
+        }
 
         // Get instructions content with priority order
         let instructionsContent = "No specific instructions provided.";
-        if (assignment.instructions && assignment.instructions.trim()) {
-            instructionsContent = assignment.instructions;
-        } else if (assignment.description && assignment.description.trim()) {
-            instructionsContent = assignment.description;
-        } else if (assignment.question && assignment.question.trim()) {
-            instructionsContent = assignment.question;
+        if (fullAssignment.instructions && fullAssignment.instructions.trim()) {
+            instructionsContent = fullAssignment.instructions;
+        } else if (fullAssignment.description && fullAssignment.description.trim()) {
+            instructionsContent = fullAssignment.description;
+        } else if (fullAssignment.question && fullAssignment.question.trim()) {
+            instructionsContent = fullAssignment.question;
         }
 
         let attachments = "";
@@ -1140,7 +1150,7 @@ async function viewAssignmentScore(id, button){
             `;
         }
 
-        document.getElementById("scoreCourse").innerHTML = assignment.title || assignment.courseCode;
+        document.getElementById("scoreCourse").innerHTML = fullAssignment.title || fullAssignment.courseCode;
         document.getElementById("scoreBody").innerHTML = `
             <!-- Assignment Instructions Section -->
             <div class="mb-8 pb-8 border-b border-slate-200">
@@ -1154,11 +1164,11 @@ async function viewAssignmentScore(id, button){
                 <div class="mt-4 flex flex-wrap items-center gap-4 text-sm">
                     <div class="flex items-center gap-2 text-slate-600">
                         <i class="ph ph-calendar"></i>
-                        <span>Due: ${assignment.dueDate ? new Date(assignment.dueDate).toLocaleString() : 'No deadline'}</span>
+                        <span>Due: ${fullAssignment.dueDate ? new Date(fullAssignment.dueDate).toLocaleString() : 'No deadline'}</span>
                     </div>
                     <div class="flex items-center gap-2 text-slate-600">
                         <i class="ph ph-tag"></i>
-                        <span>${assignment.type || 'Assignment'}</span>
+                        <span>${fullAssignment.type || 'Assignment'}</span>
                     </div>
                 </div>
             </div>
