@@ -579,6 +579,58 @@
             }
         }
 
+        let autoRefreshInterval = null;
+const AUTO_REFRESH_INTERVAL = 5000; // 5 seconds
+
+document.addEventListener('DOMContentLoaded', async () => {
+    initializeLayoutEngine();
+    
+    if (!localStorage.getItem(TOKEN_KEY)) {
+        showStatus('Authentication required. Redirecting to login...', 'error');
+        return;
+    }
+
+    if (!COURSE_ID) {
+        showStatus('No course selected. Please return to the Hub.', 'error');
+        return;
+    }
+
+    await fetchStudentProfile();
+    await fetchCourseWorkspace();
+    
+    // Start auto-refresh
+    startAutoRefresh();
+});
+
+function startAutoRefresh() {
+    // Clear any existing interval to prevent duplicates
+    if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+    
+    // Set up auto-refresh every 5 seconds - continuous, no stopping
+    autoRefreshInterval = setInterval(async () => {
+        try {
+            const data = await fetchAPI(`/api/student/courses/${COURSE_ID}/workspace`);
+            
+            state.course = data.course;
+            state.activeExams = [
+                ...(data.activeExamSets || []),
+                ...(data.activeLegacyExams || [])
+            ];
+            state.activeQuestions = data.activeQuestions || [];
+
+            // Re-render assignments and exams silently
+            renderAssignments();
+            renderExams();
+            
+            // Also refresh announcements
+            await fetchCourseAnnouncements();
+            
+        } catch (error) {
+            console.error('Auto-refresh error:', error);
+            // Silently fail, don't show error to user
+        }
+    }, AUTO_REFRESH_INTERVAL);
+}
         function getRelativeTime(date) {
             if (!date) return "recently";
             const now = new Date();
