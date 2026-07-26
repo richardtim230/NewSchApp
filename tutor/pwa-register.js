@@ -1,16 +1,11 @@
-// PWA Registration with Auto-Install Banner & Fixed Updates
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('../tutor/service-worker.js')
       .then(registration => {
-        console.log('Service Worker registered successfully:', registration);
-        
-        // Check for updates periodically
         setInterval(() => {
           registration.update();
         }, 60000);
 
-        // Listen for updates
         registration.addEventListener('updatefound', () => {
           const newWorker = registration.installing;
           newWorker.addEventListener('statechange', () => {
@@ -20,13 +15,9 @@ if ('serviceWorker' in navigator) {
           });
         });
       })
-      .catch(error => {
-        console.log('Service Worker registration failed:', error);
-      });
+      .catch(error => {});
 
-    navigator.serviceWorker.addEventListener('message', event => {
-      console.log('Message from service worker:', event.data);
-    });
+    navigator.serviceWorker.addEventListener('message', event => {});
   });
 }
 
@@ -71,14 +62,8 @@ function showUpdatePrompt(registration) {
     </div>
     <style>
       @keyframes slideUp {
-        from {
-          transform: translateY(120%);
-          opacity: 0;
-        }
-        to {
-          transform: translateY(0);
-          opacity: 1;
-        }
+        from { transform: translateY(120%); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
       }
     </style>
   `;
@@ -86,10 +71,7 @@ function showUpdatePrompt(registration) {
   document.body.appendChild(updatePrompt);
 
   document.getElementById('pwa-update-btn').addEventListener('click', () => {
-    console.log('Update button clicked');
-    
     if (registration.waiting) {
-      console.log('Sending SKIP_WAITING message to service worker');
       registration.waiting.postMessage({ type: 'SKIP_WAITING' });
       
       const btn = document.getElementById('pwa-update-btn');
@@ -100,7 +82,6 @@ function showUpdatePrompt(registration) {
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         if (!controllerChanged) {
           controllerChanged = true;
-          console.log('Controller changed, reloading page...');
           updatePrompt.remove();
           window.location.reload();
         }
@@ -108,12 +89,10 @@ function showUpdatePrompt(registration) {
       
       setTimeout(() => {
         if (!controllerChanged) {
-          console.log('Fallback reload');
           window.location.reload();
         }
       }, 3000);
     } else {
-      console.warn('No waiting service worker found');
       window.location.reload();
     }
   });
@@ -177,14 +156,8 @@ function showInstallBanner() {
     </div>
     <style>
       @keyframes slideDown {
-        from {
-          transform: translateY(-100%);
-          opacity: 0;
-        }
-        to {
-          transform: translateY(0);
-          opacity: 1;
-        }
+        from { transform: translateY(-100%); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
       }
     </style>
   `;
@@ -192,15 +165,9 @@ function showInstallBanner() {
   document.body.insertBefore(banner, document.body.firstChild);
 
   document.getElementById('pwa-install-btn').addEventListener('click', () => {
-    console.log('Install button clicked');
     if (deferredPrompt) {
       deferredPrompt.prompt();
       deferredPrompt.userChoice.then(choiceResult => {
-        if (choiceResult.outcome === 'accepted') {
-          console.log('User accepted installation');
-        } else {
-          console.log('User dismissed installation');
-        }
         deferredPrompt = null;
         banner.remove();
       });
@@ -208,14 +175,12 @@ function showInstallBanner() {
   });
 
   document.getElementById('pwa-dismiss-btn').addEventListener('click', () => {
-    console.log('Install banner dismissed');
     banner.remove();
     installPromptShown = true;
   });
 }
 
 window.addEventListener('beforeinstallprompt', e => {
-  console.log('beforeinstallprompt fired');
   e.preventDefault();
   deferredPrompt = e;
   
@@ -228,27 +193,18 @@ window.addEventListener('beforeinstallprompt', e => {
 });
 
 window.addEventListener('appinstalled', () => {
-  console.log('PWA was installed');
   installPromptShown = true;
   deferredPrompt = null;
   const banner = document.getElementById('pwa-install-banner');
   if (banner) banner.remove();
 });
 
-// ========== PWA WINDOW MANAGEMENT ==========
-
-/**
- * Handle window navigation in PWA mode
- * Prevents closing the app when navigating between pages
- */
 class PWAWindowManager {
   constructor() {
     this.isStandalone = window.navigator.standalone === true || 
                        window.matchMedia('(display-mode: standalone)').matches;
     this.windowStack = [];
     this.currentWindowId = this.generateId();
-    
-    console.log('PWA Standalone Mode:', this.isStandalone);
     
     if (this.isStandalone) {
       this.init();
@@ -260,40 +216,24 @@ class PWAWindowManager {
   }
 
   init() {
-    // Store current window in session
     sessionStorage.setItem('pwa_window_id', this.currentWindowId);
     this.windowStack.push(this.currentWindowId);
-    
-    // Update window stack
     sessionStorage.setItem('pwa_window_stack', JSON.stringify(this.windowStack));
     
-    console.log('PWA Window initialized:', this.currentWindowId);
-
-    // Handle back button behavior
     this.handleBackButton();
-    
-    // Handle external/absolute path links ONLY
     this.handleExternalNavigation();
-    
-    // Monitor page visibility
     this.monitorVisibility();
   }
 
   handleBackButton() {
-    // Override default back button behavior in PWA
     window.addEventListener('popstate', (event) => {
-      console.log('Popstate event triggered');
-      
-      // In standalone mode, use history.back() instead of closing
       if (history.length > 1) {
         history.back();
       } else {
-        // If no history, go to home
         window.location.href = '/tutor/splash.html';
       }
     });
 
-    // Handle Android back button via pause event
     document.addEventListener('backbutton', (event) => {
       event.preventDefault();
       if (history.length > 1) {
@@ -305,80 +245,39 @@ class PWAWindowManager {
   }
 
   handleExternalNavigation() {
-    // Only handle absolute path navigation, NOT hash or onclick handlers
     document.addEventListener('click', (event) => {
       const link = event.target.closest('a');
       
       if (!link) return;
 
-      const href = link.getAttribute('href');
+      const hrefAttr = link.getAttribute('href');
       const hasOnclick = link.getAttribute('onclick');
       
-      // IMPORTANT: Skip ALL hash-only links (they have inline handlers)
-      if (!href || href === '#' || href.startsWith('#')) {
+      if (!hrefAttr || hrefAttr === '#' || hrefAttr.startsWith('#')) {
         return;
       }
 
-      // Skip if link has inline onclick - let it handle naturally
       if (hasOnclick) {
         return;
       }
 
-      // Skip mailto and tel links
-      if (href.startsWith('mailto:') || href.startsWith('tel:')) {
+      if (hrefAttr.startsWith('mailto:') || hrefAttr.startsWith('tel:')) {
         return;
       }
 
-      // Handle external HTTP links
-      if (href.startsWith('http')) {
-        // Let browser handle external links normally
+      if (hrefAttr.startsWith('http') && !link.href.startsWith(window.location.origin)) {
         return;
       }
 
-      // Handle absolute path navigation (starting with /)
-      if (href.startsWith('/')) {
-        event.preventDefault();
-        window.location.href = href;
-        return;
-      }
-
-      // Handle relative path navigation
-      if (!href.startsWith('http')) {
-        event.preventDefault();
-        const resolvedPath = this.resolveRelativePath(href);
-        window.location.href = resolvedPath;
-        return;
-      }
+      event.preventDefault();
+      window.location.href = link.href;
 
     }, true);
   }
 
-  /**
-   * Resolve relative paths to absolute paths
-   */
-  resolveRelativePath(relativePath) {
-    const base = window.location.pathname;
-    const baseParts = base.split('/').slice(0, -1);
-    const pathParts = relativePath.split('/');
-    
-    for (const part of pathParts) {
-      if (part === '..') {
-        baseParts.pop();
-      } else if (part !== '.' && part !== '') {
-        baseParts.push(part);
-      }
-    }
-    
-    return baseParts.join('/');
-  }
-
   monitorVisibility() {
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) {
-        console.log('PWA app hidden');
-      } else {
-        console.log('PWA app visible');
-        // Refresh data when app comes to foreground
+      if (!document.hidden) {
         this.notifyServiceWorker('APP_VISIBLE');
       }
     });
@@ -393,9 +292,6 @@ class PWAWindowManager {
     }
   }
 
-  /**
-   * Go back safely in PWA
-   */
   goBack() {
     if (history.length > 1) {
       history.back();
@@ -404,16 +300,11 @@ class PWAWindowManager {
     }
   }
 
-  /**
-   * Close PWA gracefully
-   */
   closeApp() {
     if (confirm('Close OAU ExamCompass?')) {
-      // Clear PWA data
       sessionStorage.removeItem('pwa_window_id');
       sessionStorage.removeItem('pwa_window_stack');
       
-      // Attempt to close
       if (window.cordova) {
         navigator.app.exitApp();
       } else {
@@ -423,9 +314,7 @@ class PWAWindowManager {
   }
 }
 
-// Initialize PWA Window Manager
 const pwaWindowManager = new PWAWindowManager();
 
-// Make available globally
 window.PWAWindowManager = PWAWindowManager;
 window.pwaWindowManager = pwaWindowManager;
