@@ -474,35 +474,233 @@
             };
         }
 
-        function normalizeForum(raw) {
-            const id = raw._id || raw.id || raw.groupId || raw.group_id || null;
+        // --- Normalizers ---
+function normalizeForum(raw) {
+    const id = raw._id || raw.id || raw.groupId || raw.group_id || null;
 
-            let lastMessageText = raw.lastMessageText || raw.last_message_text || '';
-            let lastMessageTime = raw.lastMessageTime || raw.last_message_time || raw.lastMessage?.createdAt || null;
-            if (!lastMessageText && Array.isArray(raw.messages) && raw.messages.length > 0) {
-                const last = raw.messages[raw.messages.length - 1];
-                lastMessageText = last.text || last.body || last.message || '';
-                lastMessageTime = lastMessageTime || last.createdAt || last.created_at || last.time;
-            }
+    let lastMessageText = raw.lastMessageText || raw.last_message_text || '';
+    let lastMessageTime = raw.lastMessageTime || raw.last_message_time || raw.lastMessage?.createdAt || null;
+    if (!lastMessageText && Array.isArray(raw.messages) && raw.messages.length > 0) {
+        const last = raw.messages[raw.messages.length - 1];
+        lastMessageText = last.text || last.body || last.message || '';
+        lastMessageTime = lastMessageTime || last.createdAt || last.created_at || last.time;
+    }
 
-            if (lastMessageTime) {
-                try { lastMessageTime = new Date(lastMessageTime).toISOString(); } catch(e) {}
-            }
+    if (lastMessageTime) {
+        try { lastMessageTime = new Date(lastMessageTime).toISOString(); } catch(e) {}
+    }
 
-            const unreadCount = raw.unreadCount ?? raw.unread_count ?? 0;
-            const name = raw.name || raw.title || raw.groupName || 'Unnamed Forum';
-            const avatar = raw.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
+    const unreadCount = raw.unreadCount ?? raw.unread_count ?? 0;
+    const name = raw.name || raw.title || raw.groupName || 'Unnamed Forum';
+    const avatar = raw.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
 
-            return {
-                ...raw,
-                _id: id,
-                name,
-                avatar,
-                lastMessageText: (lastMessageText && String(lastMessageText).trim()) ? String(lastMessageText) : '',
-                lastMessageTime,
-                unreadCount: Number(unreadCount || 0)
-            };
+    // New flags: isMember and isPublic (backend now provides these when listing groups)
+    const isMember = raw.isMember ?? raw.is_member ?? false;
+    const isPublic = raw.isPublic ?? raw.is_public ?? !!raw.isPublic;
+    const memberCount = raw.memberCount ?? raw.members?.length ?? raw.member_count ?? 0;
+
+    return {
+        ...raw,
+        _id: id,
+        name,
+        avatar,
+        lastMessageText: (lastMessageText && String(lastMessageText).trim()) ? String(lastMessageText) : '',
+        lastMessageTime,
+        unreadCount: Number(unreadCount || 0),
+        isMember: !!isMember,
+        isPublic: !!isPublic,
+        memberCount: Number(memberCount || 0)
+    };
+}
+
+// --- Load forums ---
+async function loadForums() {
+    if (isLoadingForums) return;
+    isLoadingForums = true;
+    try {
+        // Try groups endpoint first, fallback to chats endpoint if not available
+        let res = await fetch(`${GROUPS_API}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!res.ok) {
+            // fallback
+            console.debug('Groups endpoint not available, falling back to messages/chats for forums', res.status);
+            res = await fetch(`${MESSAGES_API}/chats`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
         }
+
+        if (!res.ok) {
+            console.warn('loadForums fetch returned', res.status);
+            allForums = [];
+            renderForums();
+            updateForumCounts();
+            return;
+        }
+
+        const data = await res.json();
+        let forumsRaw = [];
+        if (Array.isArray(data)) forumsRaw = data;
+        else if (Array.isArray(data.groups)) forumsRaw = data.groups;
+        else if (Array.isArray(data.forums)) forumsRaw = data.forums;
+        else if (Array.isArray(data.groupsList)) forumsRaw = data.groupsList;
+        else if (Array.isArray(data.data)) forumsRaw = data.data;
+        else forumsRaw = [];
+
+        // Normalize each forum and keep membership/public flags
+        allForums = forumsRaw.map(normalizeForum);
+
+        // Sort by last message time (fallback to updatedAt)
+        allForums.sort((a, b) => {
+            const ta = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : (a.updatedAt ? new Date(a.updatedAt).getTime() : 0);
+            const tb = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : (b.updatedAt ? new Date(b.updatedAt).getTime() : 0);
+            return tb - ta;
+        });
+
+        renderForums();
+        updateForumCounts();
+    } catch (error) {
+        console.error("Error loading forums:", error);
+        allForums = [];
+        renderForums();
+        updateForumCounts();
+    } finally {
+        isLoadingForums = false;
+    }
+}
+
+// Helper: request to join a group (public groups auto-join on server)
+async function requestToJoin(groupId, btnEl) {
+    if (!groupId) return;
+    try {
+        if (btnEl) {
+            btnEl.disabled = true;
+            const originalText = btnEl.innerHTML;
+            btnEl.innerHTML = '<i class="fa-solid fa-spinner animate-spin mr-2"></i>Sending...';
+        }
+
+        const res = await fetch(`${MESSAGES_API}/group/${encodeURIComponent(groupId)}/request`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({})
+        });
+
+        const body = await res.json().catch(()=>null);
+
+        if (!res.ok) {
+            const msg = (body && (body.error || body.message)) ? (body.error || body.message) : `Request failed (${res.status})`;
+            throw new Error(msg);
+        }
+
+        // Update local state: mark the forum as member if server indicates it
+        const idx = allForums.findIndex(f => String(f._id) === String(groupId));
+        if (idx > -1) {
+            allForums[idx].isMember = !!(body && body.isMember) || true; // server auto-approves public groups
+            // increment memberCount if joined
+            allForums[idx].memberCount = (allForums[idx].memberCount || 0) + (allForums[idx].isMember ? 1 : 0);
+        }
+
+        renderForums();
+        updateForumCounts();
+
+        // Navigate directly into group chat if user became a member
+        if (body && body.isMember) {
+            // small delay so UI updates visibly
+            setTimeout(() => {
+                window.location.href = `/tutor/groupchat.html?groupId=${encodeURIComponent(groupId)}`;
+            }, 200);
+        } else {
+            alert(body?.message || 'Join request submitted and is pending approval.');
+        }
+    } catch (error) {
+        console.error('Join request failed:', error);
+        alert('Failed to send join request: ' + (error.message || 'unknown'));
+        if (btnEl) {
+            btnEl.disabled = false;
+            btnEl.innerHTML = 'Request';
+        }
+    }
+}
+
+// --- Render forums ---
+function renderForums() {
+    const forumsMain = document.getElementById('forumsMain');
+    const emptyState = document.getElementById('emptyStateForums');
+    
+    if (!forumsMain) return;
+    
+    if (allForums.length === 0) {
+        forumsMain.innerHTML = '';
+        emptyState.classList.remove('hidden');
+        return;
+    }
+    
+    emptyState.classList.add('hidden');
+    
+    forumsMain.innerHTML = allForums.map(forum => {
+        const timeStr = formatTime(forum.lastMessageTime);
+        const lastMsg = forum.lastMessageText || '(No messages)';
+        const unreadBadge = (forum.unreadCount || 0) > 0 ? `<span class="bg-brand-blue text-white text-[12px] font-bold min-w-[22px] h-[22px] px-1.5 rounded-full flex items-center justify-center shrink-0">${forum.unreadCount}</span>` : '';
+        
+        const avatar = forum.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(forum.name)}&background=random`;
+        const forumId = forum._id || forum.id;
+        const isMember = !!forum.isMember;
+        const isPublic = !!forum.isPublic;
+        const memberCount = forum.memberCount || 0;
+
+        // If user is a member show the usual link; otherwise show a "Join" button.
+        if (isMember) {
+            const forumUrl = `/tutor/groupchat.html?groupId=${forumId}`;
+            return `
+                <a href="${forumUrl}" class="flex items-center gap-3.5 px-4 py-2.5 hover:bg-gray-50 cursor-pointer transition-colors w-full border-b border-gray-50 last:border-b-0">
+                    <img src="${avatar}" alt="${escapeHtml(forum.name)}" class="w-[56px] h-[56px] rounded-full object-cover border border-gray-100">
+                    
+                    <div class="flex-1 min-w-0 pr-1 overflow-hidden">
+                        <div class="flex items-center justify-between mb-1">
+                            <h3 class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtml(forum.name)}</h3>
+                            <span class="text-gray-500 text-[12px] shrink-0 ml-2">${timeStr}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <p class="text-gray-500 text-[13px] truncate mr-2">${escapeHtml(lastMsg)}</p>
+                            <div class="flex items-center gap-2">${unreadBadge}${isPublic ? `<span class="text-xs text-gray-400 px-2 py-0.5 border rounded-full">Public</span>` : ''}</div>
+                        </div>
+                        <div class="text-xs text-gray-400 mt-2">${memberCount} member${memberCount !== 1 ? 's' : ''}</div>
+                    </div>
+                </a>
+            `;
+        } else {
+            // Not a member: show a non-navigable card with Join button
+            return `
+                <div class="flex items-center gap-3.5 px-4 py-3.5 hover:bg-gray-50 transition-colors w-full border-b border-gray-50 last:border-b-0">
+                    <img src="${avatar}" alt="${escapeHtml(forum.name)}" class="w-[56px] h-[56px] rounded-full object-cover border border-gray-100">
+                    
+                    <div class="flex-1 min-w-0 pr-1 overflow-hidden">
+                        <div class="flex items-center justify-between mb-1">
+                            <h3 class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtml(forum.name)}</h3>
+                            <span class="text-gray-500 text-[12px] shrink-0 ml-2">${timeStr}</span>
+                        </div>
+                        <p class="text-gray-500 text-[13px] truncate mb-2">${escapeHtml(lastMsg)}</p>
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                ${isPublic ? `<span class="text-xs text-gray-400 px-2 py-0.5 border rounded-full">Public</span>` : `<span class="text-xs text-gray-400 px-2 py-0.5 border rounded-full">Private</span>`}
+                                <span class="text-xs text-gray-400">${memberCount} member${memberCount !== 1 ? 's' : ''}</span>
+                            </div>
+                            <div>
+                                <button onclick="requestToJoin('${forumId}', this)" class="bg-brand-blue text-white px-3 py-1.5 rounded-full text-sm font-semibold hover:opacity-90 transition">
+                                    ${isPublic ? 'Request / Join' : 'Request'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    }).join('');
+}
 
         // --- Load all chats from backend ---
         async function loadChats() {
@@ -548,58 +746,7 @@
         }
 
         // --- Load forums ---
-        async function loadForums() {
-            if (isLoadingForums) return;
-            isLoadingForums = true;
-            try {
-                // Try groups endpoint first, fallback to chats endpoint if not available
-                let res = await fetch(`${GROUPS_API}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-
-                if (!res.ok) {
-                    // fallback
-                    console.debug('Groups endpoint not available, falling back to messages/chats for forums', res.status);
-                    res = await fetch(`${MESSAGES_API}/chats`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                }
-
-                if (!res.ok) {
-                    console.warn('loadForums fetch returned', res.status);
-                    allForums = [];
-                    renderForums();
-                    updateForumCounts();
-                    return;
-                }
-
-                const data = await res.json();
-                let forumsRaw = [];
-                if (Array.isArray(data)) forumsRaw = data;
-                else if (Array.isArray(data.groups)) forumsRaw = data.groups;
-                else if (Array.isArray(data.forums)) forumsRaw = data.forums;
-                else if (Array.isArray(data.groupsList)) forumsRaw = data.groupsList;
-                else forumsRaw = [];
-
-                allForums = forumsRaw.map(normalizeForum);
-
-                allForums.sort((a, b) => {
-                    const ta = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : (a.updatedAt ? new Date(a.updatedAt).getTime() : 0);
-                    const tb = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : (b.updatedAt ? new Date(b.updatedAt).getTime() : 0);
-                    return tb - ta;
-                });
-
-                renderForums();
-                updateForumCounts();
-            } catch (error) {
-                console.error("Error loading forums:", error);
-                allForums = [];
-                renderForums();
-                updateForumCounts();
-            } finally {
-                isLoadingForums = false;
-            }
-        }
+        
 
         // --- Load discussions from backend ---
         async function loadDiscussions() {
@@ -686,48 +833,7 @@
             }).join('');
         }
 
-        // --- Render forums ---
-        function renderForums() {
-            const forumsMain = document.getElementById('forumsMain');
-            const emptyState = document.getElementById('emptyStateForums');
-            
-            if (!forumsMain) return;
-            
-            if (allForums.length === 0) {
-                forumsMain.innerHTML = '';
-                emptyState.classList.remove('hidden');
-                return;
-            }
-            
-            emptyState.classList.add('hidden');
-            
-            forumsMain.innerHTML = allForums.map(forum => {
-                const timeStr = formatTime(forum.lastMessageTime);
-                const lastMsg = forum.lastMessageText || '(No messages)';
-                const unreadBadge = (forum.unreadCount || 0) > 0 ? `<span class="bg-brand-blue text-white text-[12px] font-bold min-w-[22px] h-[22px] px-1.5 rounded-full flex items-center justify-center shrink-0">${forum.unreadCount}</span>` : '';
-                
-                const avatar = forum.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(forum.name)}&background=random`;
-                
-                const forumUrl = `/tutor/groupchat.html?groupId=${forum._id || forum.id}`;
-                
-                return `
-                    <a href="${forumUrl}" class="flex items-center gap-3.5 px-4 py-2.5 hover:bg-gray-50 cursor-pointer transition-colors w-full border-b border-gray-50 last:border-b-0">
-                        <img src="${avatar}" alt="${escapeHtml(forum.name)}" class="w-[56px] h-[56px] rounded-full object-cover border border-gray-100">
-                        
-                        <div class="flex-1 min-w-0 pr-1 overflow-hidden">
-                            <div class="flex items-center justify-between mb-1">
-                                <h3 class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtml(forum.name)}</h3>
-                                <span class="text-gray-500 text-[12px] shrink-0 ml-2">${timeStr}</span>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <p class="text-gray-500 text-[13px] truncate mr-2">${escapeHtml(lastMsg)}</p>
-                                ${unreadBadge}
-                            </div>
-                        </div>
-                    </a>
-                `;
-            }).join('');
-        }
+
 
         // --- Render discussions ---
         function renderDiscussions() {
