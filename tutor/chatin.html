@@ -10,6 +10,10 @@
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
+  <!-- Markdown + sanitization -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@2.4.0/dist/purify.min.js"></script>
+
   <script>
     tailwind.config = {
       theme: {
@@ -27,24 +31,33 @@
         }
       }
     };
+
+    // Configure marked (GFM + breaks)
+    if (window.marked) {
+      marked.setOptions({
+        gfm: true,
+        breaks: true,
+        headerIds: false
+      });
+    }
   </script>
 
   <style>
     :root { -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
     body {
-  margin: 0;
-  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-  height: 100vh;
-  background: #F6F7FA;
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      height: 100vh;
+      background: #F6F7FA;
     }
     #messagesWrapper{
-    background-image:
+      background-image:
         linear-gradient(rgba(248,250,252,.90), rgba(248,250,252,.90)),
-        url("https://res.cloudinary.com/da7o22rnq/image/upload/v1785051735/editor-uploads/kuzqfqzl4dahundgnanu.png?auto=format&fit=crop&w=1200&q=80");
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-attachment: fixed;
+        url("https://res.cloudinary.com/da7o22rnq/image/upload/v1785050562/editor-uploads/ddlpswkabpz24kbwgeyv.png?auto=format&fit=crop&w=1200&q=80");
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      background-attachment: fixed;
     }
     .mobile-container{ display:flex; flex-direction:column; height:100dvh; max-height:100vh; }
     .no-scrollbar::-webkit-scrollbar{ display:none; } .no-scrollbar{ -ms-overflow-style:none; scrollbar-width:none; }
@@ -63,6 +76,12 @@
     .emoji-picker { position:absolute; z-index:40; background:#fff; border:1px solid #E6E6E9; padding:6px; border-radius:8px; display:flex; gap:6px; box-shadow:0 6px 20px rgba(0,0,0,0.08); }
     .emoji-btn { cursor:pointer; padding:6px; border-radius:6px; font-size:14px; }
     .edit-input { width:100%; border:1px solid #E6E6E9; padding:8px; border-radius:8px; }
+
+    /* Small style for markdown inside bubbles */
+    .bubble-incoming :is(p,ul,ol,pre,code) { margin: 0.25rem 0; }
+    .bubble-outgoing :is(p,ul,ol,pre,code) { margin: 0.25rem 0; }
+    .bubble-incoming a, .bubble-outgoing a { color: #1664FF; text-decoration: underline; }
+    .bubble-incoming code, .bubble-outgoing code { background:#F3F4F6; padding:0.1rem 0.3rem; border-radius:4px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", "Courier New", monospace; font-size:12px; }
   </style>
 </head>
 <body>
@@ -213,7 +232,7 @@
     function checkIfAtBottom(){ const threshold = 120; const pos = messagesWrapper.scrollTop + messagesWrapper.clientHeight; isAtBottom = (messagesWrapper.scrollHeight - pos) < threshold; }
     function scrollToBottom(smooth=true){ try{ messagesWrapper.scrollTo({ top: messagesWrapper.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); }catch(e){ messagesWrapper.scrollTop = messagesWrapper.scrollHeight; } }
 
-    function formatTime(ts){ if (!ts) return ''; const d=new Date(ts); const now=new Date(); const diff=Math.round((now-d)/1000); if (diff<60) return 'Just now'; if (diff<3600) return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); if (diff<86400) return d.toLocaleDateString(); return d.toLocaleDateString(); }
+    function formatTime(ts){ if (!ts) return ''; const d=new Date(ts); const now=new Date(); const diff=Math.round((now-d)/1000); if (diff<60) return 'Just now'; if (diff<3600) return d.toLocaleTimeString([], { hour:'numeric', minute:'2-digit' }); if (diff<86400) return d.toLocaleTimeString([], { hour:'numeric', minute:'2-digit' }); return d.toLocaleDateString([], { day:'numeric', month:'short' }); }
 
     function normalizeMessages(arr){ return (arr||[]).map(m => ({
       _id: m._id,
@@ -226,18 +245,29 @@
       time: m.time || m.createdAt || m.createdAt
     })); }
 
+    // Render markdown safely (marked -> DOMPurify)
+    function renderMessage(rawText) {
+      const text = (rawText == null) ? '' : String(rawText);
+      try {
+        const html = (window.marked ? marked.parse(text) : text.replace(/\n/g, '<br>'));
+        return (window.DOMPurify ? DOMPurify.sanitize(html) : html);
+      } catch (e) {
+        return (window.DOMPurify ? DOMPurify.sanitize(safeHtml(text).replace(/\n/g, '<br>')) : safeHtml(text).replace(/\n/g, '<br>'));
+      }
+    }
+
     function buildMessageHtml(m){
       const isOutgoing = String(m.from) === String(currentUserId);
       const time = formatTime(m.time);
-      const safeText = safeHtml(m.text);
+      const messageHtml = renderMessage(m.text); // <-- markdown renderer used here
       const attachmentsHtml = (m.attachments||[]).map(a => {
         const url = safeHtml(a.url || a.path || '');
         const name = safeHtml(a.filename || a.name || '');
         const type = (a.contentType || '').toLowerCase();
         if (type.startsWith('image') || /\.(png|jpe?g|gif|webp)$/i.test(name)){
-          return `<div class="${isOutgoing ? 'justify-end' : ''}"><a href="${url}" target="_blank" rel="noopener noreferrer"><img src="${url}" alt="${name}" class="rounded-md mt-2 max-w-xs object-cover" /></a></div>`;
+          return `<div class="${isOutgoing ? 'justify-end' : ''}"><a href="${url}" target="_blank" rel="noopener noreferrer"><img src="${url}" alt="${name}" class="rounded-md mt-2 max-w-xs object-cover"></a></div>`;
         }
-        return `<div class="${isOutgoing ? 'justify-end' : ''}"><a href="${url}" target="_blank" rel="noopener noreferrer" class="file-preview mt-2 ${isOutgoing ? 'mr-2' : ''}"><div class="w-10 h-10 bg-gray-100 rounded flex items-center justify-center text-gray-700"><i class="fa-solid fa-file"></i></div><div class="flex-1 ml-2"><div class="text-sm font-medium">${name}</div><div class="text-xs text-gray-500">${safeHtml(a.contentType||'')}</div></div></a></div>`;
+        return `<div class="${isOutgoing ? 'justify-end' : ''}"><a href="${url}" target="_blank" rel="noopener noreferrer" class="file-preview mt-2 ${isOutgoing ? 'mr-2' : ''}"><div class="w-10 h-10 bg-gray-50 rounded flex items-center justify-center text-gray-700"><i class="${type && type.startsWith('image') ? 'fa-regular fa-image' : 'fa-solid fa-file'}"></i></div><div class="flex-1 ml-2"><div class="text-sm font-medium">${name}</div><div class="text-xs text-gray-500">${Math.round((a.size||0)/1024)} KB</div></div></a></div>`;
       }).join('');
 
       let reactionsHtml = '';
@@ -262,14 +292,14 @@
         return `<div class="reaction-pill ${you ? 'you' : ''}" data-msg="${safeHtml(m._id)}" data-emoji="${safeHtml(emoji)}"><span>${safeHtml(emoji)}</span><span class="text-xs text-gray-700 font-semibold">${safeHtml(info.count)}</span></div>`;
       }).join('');
 
-      const menuHtml = isOutgoing ? `<div class="message-menu ml-2 relative"><button class="p-1 text-gray-400 message-menu-btn" data-id="${safeHtml(m._id)}" aria-label="Message options"><i class="fa-solid fa-ellipsis-vertical"></i></button></div>` : '';
+      const menuHtml = isOutgoing ? `<div class="message-menu ml-2 relative"><button class="p-1 text-gray-400 message-menu-btn" data-id="${safeHtml(m._id)}" aria-label="Message options"><i class="fa-solid fa-ellipsis"></i></button></div>` : '';
 
       if (isOutgoing) {
         return `
           <div class="msg-wrap flex justify-end mt-1" data-id="${safeHtml(m._id)}">
             <div class="flex flex-col max-w-[80%] relative">
               <div class="flex items-center justify-end gap-2">
-                <div class="bubble-outgoing px-3 py-2 inline-block text-sm text-gray-900">${safeText}${attachmentsHtml}</div>
+                <div class="bubble-outgoing px-3 py-2 inline-block text-sm text-gray-900">${messageHtml}${attachmentsHtml}</div>
                 ${menuHtml}
               </div>
               <div class="flex items-center justify-end gap-2 mt-1">
@@ -287,7 +317,7 @@
             <img src="${avatar}" class="w-9 h-9 rounded-full object-cover mt-0.5" alt="${fromName}" />
             <div class="flex flex-col max-w-[78%]">
               <div class="text-xs font-medium text-chat-purple">${fromName}</div>
-              <div class="bubble-incoming p-3 mt-1 text-sm text-gray-800">${safeText}${attachmentsHtml}</div>
+              <div class="bubble-incoming p-3 mt-1 text-sm text-gray-800">${messageHtml}${attachmentsHtml}</div>
               <div class="msg-meta mt-1">${safeHtml(time)}</div>
               ${reactionItems ? `<div class="reactions-row">${reactionItems}</div>` : `<div class="reactions-row"></div>`}
             </div>
@@ -568,7 +598,7 @@
         const body = await res.json();
         if (isGroup){
           const group = (body.groups||[]).find(g=>String(g._id)===String(groupId));
-          if (group){ chatTitle.textContent = group.name || 'Group'; chatSub.textContent = `${group.memberCount||0} members`; if (group.avatar) chatAvatar.src = group.avatar; if (group.pinnedMessage){ pinnedText.textContent = group.pinnedMessage; pinnedContainer.classList.remove('hidden'); } else pinnedContainer.classList.add('hidden'); }
+          if (group){ chatTitle.textContent = group.name || 'Group'; chatSub.textContent = `${group.memberCount||0} members`; if (group.avatar) chatAvatar.src = group.avatar; if (group.pinnedMessage){ pinnedContainer.classList.remove('hidden'); pinnedText.textContent = group.pinnedMessage; } }
         } else {
           const chat = (body.chats||[]).find(c=>String(c._id)===String(userId) || String(c._id)===String(userId));
           if (chat){ chatTitle.textContent = chat.fullname || chat.username || 'User'; chatSub.textContent = chat.username ? `@${chat.username}` : ''; if (chat.avatar) chatAvatar.src = chat.avatar; }
