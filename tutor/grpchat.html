@@ -1418,98 +1418,130 @@ function switchTab(tab) {
             });
         }
 
-        // Create discussion - uploads cover image (if any) to /api/images then POSTs the discussion JSON
-        async function createDiscussion(e) {
-            e.preventDefault();
-            const btn = document.getElementById('createDiscussionBtn');
-            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Posting...'; }
+        // Helper: upload a single File to /api/images and return the secure url
+async function uploadImageToServer(file) {
+  if (!file) return null;
+  const fd = new FormData();
+  fd.append('image', file); // must match server's uploadToMemory.single("image")
 
-            try {
-                const title = (document.getElementById('discussionTitle')?.value || '').trim();
-                const description = (document.getElementById('discussionDesc')?.value || '').trim();
-                const category = document.getElementById('discussionCategory')?.value || 'general';
-                const groupId = document.getElementById('discussionGroup')?.value || '';
-                const tagsRaw = (document.getElementById('discussionTags')?.value || '').trim();
-                const isPinned = !!document.getElementById('discussionPin')?.checked;
+  const res = await fetch(`${API_BASE}/images`, {
+    method: 'POST',
+    headers: token ? { 'Authorization': `Bearer ${token}` } : {}, // don't set Content-Type
+    body: fd
+  });
 
-                if (!title || !description) {
-                    alert('Title and details are required.');
-                    if (btn) { btn.disabled = false; btn.innerHTML = 'Post Discussion'; }
-                    return;
-                }
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    const msg = body?.error || body?.message || `Upload failed (${res.status})`;
+    throw new Error(msg);
+  }
+  // Expecting { url: 'https://...' }
+  return body.url || body.secure_url || null;
+}
 
-                // Build tags array
-                const tags = tagsRaw.length > 0
-                    ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean)
-                    : [];
+// Updated createDiscussion() - uploads cover image (if any) then posts discussion
+async function createDiscussion(e) {
+  e.preventDefault();
+  const btn = document.getElementById('createDiscussionBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.dataset.orig = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Posting...';
+  }
 
-                // If cover image provided -> upload it to /api/images
-                let coverUrl = '';
-                const coverEl = document.getElementById('discussionCover');
-                const file = coverEl && coverEl.files && coverEl.files[0];
-                if (file) {
-                    const fd = new FormData();
-                    fd.append('image', file);
-                    const res = await fetch(`${API_BASE}/images`, {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${token}` },
-                        body: fd
-                    });
-                    const json = await res.json().catch(()=>null);
-                    if (!res.ok) {
-                        const msg = json?.error || json?.message || `Upload failed (${res.status})`;
-                        throw new Error(msg);
-                    }
-                    coverUrl = json?.url || '';
-                }
+  try {
+    const title = (document.getElementById('discussionTitle')?.value || '').trim();
+    const description = (document.getElementById('discussionDesc')?.value || '').trim();
+    const category = document.getElementById('discussionCategory')?.value || 'general';
+    const groupId = document.getElementById('discussionGroup')?.value || '';
+    const tagsRaw = (document.getElementById('discussionTags')?.value || '').trim();
+    const isPinned = !!document.getElementById('discussionPin')?.checked;
 
-                // Create payload
-                const payload = {
-                    title,
-                    description,
-                    category,
-                    tags,
-                    content: description,
-                    groupId: groupId || undefined,
-                    coverImage: coverUrl || undefined,
-                    isPinned: !!isPinned
-                };
+    if (!title || !description) {
+      alert('Title and details are required.');
+      return;
+    }
 
-                const createRes = await fetch(`${DISCUSSIONS_API}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify(payload)
-                });
+    const tags = tagsRaw.length > 0 ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
 
-                const createBody = await createRes.json().catch(()=>null);
-                if (!createRes.ok) {
-                    const msg = (createBody && (createBody.error || createBody.message)) || `Create failed (${createRes.status})`;
-                    throw new Error(msg);
-                }
+    // If there's a chosen cover image file, upload it first
+    const coverEl = document.getElementById('discussionCover');
+    const file = coverEl && coverEl.files && coverEl.files[0];
+    let coverUrl = '';
 
-                // Success -> close modal, refresh discussions and reset form
-                closeNewDiscussionModal();
-                // Reset form fields
-                document.getElementById('newDiscussionForm').reset();
-                const preview = document.getElementById('discussionCoverPreview');
-                const placeholder = document.getElementById('discussionCoverPlaceholder');
-                if (preview) { preview.src = ''; preview.classList.add('hidden'); }
-                if (placeholder) { placeholder.classList.remove('hidden'); }
+    if (file) {
+      try {
+        coverUrl = await uploadImageToServer(file);
+        if (!coverUrl) throw new Error('Upload returned no URL');
+      } catch (upErr) {
+        console.error('Cover image upload failed', upErr);
+        alert('Failed to upload cover image: ' + (upErr.message || 'unknown'));
+        return;
+      }
+    }
 
-                // Refresh list (use your existing loader)
-                await loadDiscussions();
-                updateDiscussionCounts();
+    // Build discussion payload (include coverImage only when present)
+    const payload = {
+      title,
+      description,
+      category,
+      tags,
+      content: description,
+      groupId: groupId || undefined,
+      coverImage: coverUrl || undefined,
+      isPinned: !!isPinned
+    };
 
-            } catch (err) {
-                console.error('createDiscussion error', err);
-                alert('Failed to create discussion: ' + (err.message || 'unknown'));
-            } finally {
-                if (btn) { btn.disabled = false; btn.innerHTML = 'Post Discussion'; }
-            }
-        }
+    const createRes = await fetch(`${DISCUSSIONS_API}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const createBody = await createRes.json().catch(()=>null);
+    if (!createRes.ok) {
+      const msg = (createBody && (createBody.error || createBody.message)) || `Create failed (${createRes.status})`;
+      throw new Error(msg);
+    }
+
+    // Redirect to the new discussion thread if API returned id
+    const newId =
+      createBody?.discussion?._id ||
+      createBody?.discussion?.id ||
+      createBody?._id ||
+      createBody?.id;
+
+    // Reset form & preview
+    try {
+      document.getElementById('newDiscussionForm').reset();
+      const preview = document.getElementById('discussionCoverPreview');
+      const placeholder = document.getElementById('discussionCoverPlaceholder');
+      if (preview) { preview.src = ''; preview.classList.add('hidden'); }
+      if (placeholder) { placeholder.classList.remove('hidden'); }
+    } catch (ignore) {}
+
+    if (newId) {
+      // redirect to discussion page
+      window.location.href = `/tutor/discuss.html?id=${encodeURIComponent(newId)}`;
+    } else {
+      // fallback: reload list
+      closeNewDiscussionModal();
+      await loadDiscussions();
+      updateDiscussionCounts();
+    }
+  } catch (err) {
+    console.error('createDiscussion error', err);
+    alert('Failed to create discussion: ' + (err.message || 'unknown'));
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = btn.dataset.orig || 'Post Discussion';
+    }
+  }
+}
 
 
         // Close modals on outside click
