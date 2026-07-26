@@ -1,11 +1,18 @@
+// tutor/pwa-register.js
+
+// PWA Registration with Auto-Install Banner & Fixed Updates
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    //navigator.serviceWorker.register('../tutor/service-worker.js')
+    navigator.serviceWorker.register('../tutor/service-worker.js')
       .then(registration => {
+        console.log('Service Worker registered successfully:', registration);
+        
+        // Check for updates every 10 seconds (instead of 60000)
         setInterval(() => {
           registration.update();
-        }, 60000);
+        }, 10000);
 
+        // Listen for updates
         registration.addEventListener('updatefound', () => {
           const newWorker = registration.installing;
           newWorker.addEventListener('statechange', () => {
@@ -15,9 +22,13 @@ if ('serviceWorker' in navigator) {
           });
         });
       })
-      .catch(error => {});
+      .catch(error => {
+        console.log('Service Worker registration failed:', error);
+      });
 
-    navigator.serviceWorker.addEventListener('message', event => {});
+    navigator.serviceWorker.addEventListener('message', event => {
+      console.log('Message from service worker:', event.data);
+    });
   });
 }
 
@@ -62,8 +73,14 @@ function showUpdatePrompt(registration) {
     </div>
     <style>
       @keyframes slideUp {
-        from { transform: translateY(120%); opacity: 0; }
-        to { transform: translateY(0); opacity: 1; }
+        from {
+          transform: translateY(120%);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
       }
     </style>
   `;
@@ -71,28 +88,39 @@ function showUpdatePrompt(registration) {
   document.body.appendChild(updatePrompt);
 
   document.getElementById('pwa-update-btn').addEventListener('click', () => {
+    console.log('Update button clicked');
+    
+    // Find the waiting service worker
     if (registration.waiting) {
+      console.log('Sending SKIP_WAITING message to service worker');
       registration.waiting.postMessage({ type: 'SKIP_WAITING' });
       
+      // Show loading state
       const btn = document.getElementById('pwa-update-btn');
       btn.disabled = true;
       btn.innerText = 'Updating...';
       
+      // Wait for controller change and reload
       let controllerChanged = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         if (!controllerChanged) {
           controllerChanged = true;
+          console.log('Controller changed, reloading page...');
           updatePrompt.remove();
           window.location.reload();
         }
       });
       
+      // Fallback reload after 3 seconds if no controller change
       setTimeout(() => {
         if (!controllerChanged) {
+          console.log('Fallback reload');
           window.location.reload();
         }
       }, 3000);
     } else {
+      console.warn('No waiting service worker found');
+      // Just reload if no waiting worker
       window.location.reload();
     }
   });
@@ -101,6 +129,7 @@ function showUpdatePrompt(registration) {
 let deferredPrompt;
 let installPromptShown = false;
 
+// Show install banner
 function showInstallBanner() {
   const banner = document.createElement('div');
   banner.id = 'pwa-install-banner';
@@ -156,8 +185,14 @@ function showInstallBanner() {
     </div>
     <style>
       @keyframes slideDown {
-        from { transform: translateY(-100%); opacity: 0; }
-        to { transform: translateY(0); opacity: 1; }
+        from {
+          transform: translateY(-100%);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
       }
     </style>
   `;
@@ -165,9 +200,15 @@ function showInstallBanner() {
   document.body.insertBefore(banner, document.body.firstChild);
 
   document.getElementById('pwa-install-btn').addEventListener('click', () => {
+    console.log('Install button clicked');
     if (deferredPrompt) {
       deferredPrompt.prompt();
       deferredPrompt.userChoice.then(choiceResult => {
+        if (choiceResult.outcome === 'accepted') {
+          console.log('User accepted installation');
+        } else {
+          console.log('User dismissed installation');
+        }
         deferredPrompt = null;
         banner.remove();
       });
@@ -175,12 +216,15 @@ function showInstallBanner() {
   });
 
   document.getElementById('pwa-dismiss-btn').addEventListener('click', () => {
+    console.log('Install banner dismissed');
     banner.remove();
+    // Don't show banner again this session
     installPromptShown = true;
   });
 }
 
 window.addEventListener('beforeinstallprompt', e => {
+  console.log('beforeinstallprompt fired');
   e.preventDefault();
   deferredPrompt = e;
   
@@ -193,121 +237,94 @@ window.addEventListener('beforeinstallprompt', e => {
 });
 
 window.addEventListener('appinstalled', () => {
+  console.log('PWA was installed');
   installPromptShown = true;
   deferredPrompt = null;
   const banner = document.getElementById('pwa-install-banner');
   if (banner) banner.remove();
 });
 
-class PWAWindowManager {
-  constructor() {
-    this.isStandalone = window.navigator.standalone === true || 
-                       window.matchMedia('(display-mode: standalone)').matches;
-    this.windowStack = [];
-    this.currentWindowId = this.generateId();
-    
-    if (this.isStandalone) {
-      this.init();
-    }
-  }
+// --- Auto Refresh & Silent Content Update Logic ---
+let refreshInterval;
 
-  generateId() {
-    return `window_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
-
-  init() {
-    sessionStorage.setItem('pwa_window_id', this.currentWindowId);
-    this.windowStack.push(this.currentWindowId);
-    sessionStorage.setItem('pwa_window_stack', JSON.stringify(this.windowStack));
-    
-    this.handleBackButton();
-    this.handleExternalNavigation();
-    this.monitorVisibility();
-  }
-
-  handleBackButton() {
-    window.addEventListener('popstate', (event) => {
-      if (history.length > 1) {
-        history.back();
-      } else {
-        window.location.href = '/tutor/splash.html';
-      }
-    });
-
-    document.addEventListener('backbutton', (event) => {
-      event.preventDefault();
-      if (history.length > 1) {
-        history.back();
-      } else {
-        navigator.app.exitApp();
-      }
-    });
-  }
-
-  handleExternalNavigation() {
-    document.addEventListener('click', (event) => {
-      const link = event.target.closest('a');
-      
-      if (!link) return;
-
-      const hrefAttr = link.getAttribute('href');
-      const hasOnclick = link.getAttribute('onclick');
-      
-      if (!hrefAttr || hrefAttr === '#' || hrefAttr.startsWith('#')) {
-        return;
-      }
-
-      if (hasOnclick) {
-        return;
-      }
-
-      if (hrefAttr.startsWith('mailto:') || hrefAttr.startsWith('tel:')) {
-        return;
-      }
-
-      if (hrefAttr.startsWith('http') && !link.href.startsWith(window.location.origin)) {
-        return;
-      }
-
-      event.preventDefault();
-      window.location.href = link.href;
-
-    }, true);
-  }
-
-  monitorVisibility() {
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) {
-        this.notifyServiceWorker('APP_VISIBLE');
-      }
-    });
-  }
-
-  notifyServiceWorker(action) {
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage({
-        type: action,
-        timestamp: Date.now()
+function startAutoRefresh() {
+  refreshInterval = setInterval(() => {
+    // Check for service worker updates
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(registrations => {
+        registrations.forEach(registration => {
+          registration.update();
+        });
       });
     }
-  }
-
-
-  closeApp() {
-    if (confirm('Close OAU ExamCompass?')) {
-      sessionStorage.removeItem('pwa_window_id');
-      sessionStorage.removeItem('pwa_window_stack');
-      
-      if (window.cordova) {
-        navigator.app.exitApp();
-      } else {
-        window.close();
+    
+    // Silently refresh page content via fetch
+    fetch(window.location.href, { 
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache'
       }
-    }
-  }
+    })
+    .then(response => response.text())
+    .then(html => {
+      // Parse new HTML
+      const parser = new DOMParser();
+      const newDoc = parser.parseFromString(html, 'text/html');
+      
+      // Update specific sections silently (avoiding disruption)
+      const mainContent = document.querySelector('main');
+      const newMainContent = newDoc.querySelector('main');
+      
+      if (newMainContent && mainContent) {
+        mainContent.innerHTML = newMainContent.innerHTML;
+      }
+      
+      console.log('Page auto-refreshed at', new Date().toLocaleTimeString());
+    })
+    .catch(error => console.log('Auto-refresh fetch error:', error));
+  }, 10000); // 10 seconds
 }
 
-const pwaWindowManager = new PWAWindowManager();
+function stopAutoRefresh() {
+  clearInterval(refreshInterval);
+}
 
-window.PWAWindowManager = PWAWindowManager;
-window.pwaWindowManager = pwaWindowManager;
+// Start auto-refresh when page loads
+window.addEventListener('load', () => {
+  setTimeout(startAutoRefresh, 2000); // Start after 2 seconds
+});
+
+// Pause auto-refresh when user is interacting
+let userInactivityTimeout;
+
+document.addEventListener('click', () => {
+  stopAutoRefresh();
+  clearTimeout(userInactivityTimeout);
+  
+  // Resume after 5 seconds of inactivity
+  userInactivityTimeout = setTimeout(startAutoRefresh, 5000);
+});
+
+document.addEventListener('scroll', () => {
+  stopAutoRefresh();
+  clearTimeout(userInactivityTimeout);
+  
+  userInactivityTimeout = setTimeout(startAutoRefresh, 5000);
+});
+
+// Force update on visibility change (when user returns to tab)
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    stopAutoRefresh();
+  } else {
+    // Force immediate update when user returns
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(registrations => {
+        registrations.forEach(registration => {
+          registration.update();
+        });
+      });
+    }
+    startAutoRefresh();
+  }
+});
