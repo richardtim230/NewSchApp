@@ -1,6 +1,6 @@
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('../tutor/service-worker.js')
+    //navigator.serviceWorker.register('../tutor/service-worker.js')
       .then(registration => {
         setInterval(() => {
           registration.update();
