@@ -1,13 +1,16 @@
+// PWA Registration with Auto-Install Banner & Fixed Updates
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('../tutor/service-worker.js')
       .then(registration => {
         console.log('Service Worker registered successfully:', registration);
         
+        // Check for updates periodically
         setInterval(() => {
           registration.update();
         }, 60000);
 
+        // Listen for updates
         registration.addEventListener('updatefound', () => {
           const newWorker = registration.installing;
           newWorker.addEventListener('statechange', () => {
@@ -232,16 +235,20 @@ window.addEventListener('appinstalled', () => {
   if (banner) banner.remove();
 });
 
+// ========== PWA WINDOW MANAGEMENT ==========
+
+/**
+ * Handle window navigation in PWA mode
+ * Prevents closing the app when navigating between pages
+ */
 class PWAWindowManager {
   constructor() {
     this.isStandalone = window.navigator.standalone === true || 
                        window.matchMedia('(display-mode: standalone)').matches;
     this.windowStack = [];
     this.currentWindowId = this.generateId();
-    this.isNavigating = false;
     
     console.log('PWA Standalone Mode:', this.isStandalone);
-    console.log('Display Mode:', window.matchMedia('(display-mode: standalone)').matches ? 'standalone' : 'browser');
     
     if (this.isStandalone) {
       this.init();
@@ -253,110 +260,116 @@ class PWAWindowManager {
   }
 
   init() {
+    // Store current window in session
     sessionStorage.setItem('pwa_window_id', this.currentWindowId);
     this.windowStack.push(this.currentWindowId);
     
+    // Update window stack
     sessionStorage.setItem('pwa_window_stack', JSON.stringify(this.windowStack));
     
     console.log('PWA Window initialized:', this.currentWindowId);
 
+    // Handle back button behavior
     this.handleBackButton();
     
-    this.handleLinkNavigation();
+    // Handle external/absolute path links ONLY
+    this.handleExternalNavigation();
     
+    // Monitor page visibility
     this.monitorVisibility();
   }
 
   handleBackButton() {
+    // Override default back button behavior in PWA
     window.addEventListener('popstate', (event) => {
       console.log('Popstate event triggered');
       
+      // In standalone mode, use history.back() instead of closing
       if (history.length > 1) {
         history.back();
       } else {
+        // If no history, go to home
         window.location.href = '/tutor/splash.html';
       }
     });
 
+    // Handle Android back button via pause event
     document.addEventListener('backbutton', (event) => {
       event.preventDefault();
       if (history.length > 1) {
         history.back();
-      } else if (window.cordova) {
+      } else {
         navigator.app.exitApp();
       }
     });
   }
 
-  handleLinkNavigation() {
+  handleExternalNavigation() {
+    // Only handle absolute path navigation, NOT hash or onclick handlers
     document.addEventListener('click', (event) => {
       const link = event.target.closest('a');
       
       if (!link) return;
 
       const href = link.getAttribute('href');
-      const target = link.getAttribute('target');
-      const dataPrevent = link.getAttribute('data-prevent-pwa');
+      const hasOnclick = link.getAttribute('onclick');
       
-      if (dataPrevent === 'true') {
+      // IMPORTANT: Skip ALL hash-only links (they have inline handlers)
+      if (!href || href === '#' || href.startsWith('#')) {
         return;
       }
 
-      if (this.isNavigating) {
-        console.log('Navigation in progress, skipping');
+      // Skip if link has inline onclick - let it handle naturally
+      if (hasOnclick) {
+        return;
+      }
+
+      // Skip mailto and tel links
+      if (href.startsWith('mailto:') || href.startsWith('tel:')) {
+        return;
+      }
+
+      // Handle external HTTP links
+      if (href.startsWith('http')) {
+        // Let browser handle external links normally
+        return;
+      }
+
+      // Handle absolute path navigation (starting with /)
+      if (href.startsWith('/')) {
         event.preventDefault();
+        window.location.href = href;
         return;
       }
 
-      if (href === '#' || (href && href.startsWith('#'))) {
-        return;
-      }
-
-      if (href && (href.startsWith('mailto:') || href.startsWith('tel:'))) {
-        return;
-      }
-
-      if (href && href.startsWith('http')) {
-        if (target === '_blank') {
-          event.preventDefault();
-          window.open(href, '_self');
-        }
-        return;
-      }
-
-      if (href && !href.startsWith('http')) {
+      // Handle relative path navigation
+      if (!href.startsWith('http')) {
         event.preventDefault();
-        
-        const absolutePath = this.resolveAbsolutePath(href);
-        
-        if (absolutePath !== window.location.pathname) {
-          this.navigateTo(absolutePath);
-        }
+        const resolvedPath = this.resolveRelativePath(href);
+        window.location.href = resolvedPath;
         return;
       }
 
     }, true);
   }
 
-  resolveAbsolutePath(url) {
-    if (url.startsWith('/')) {
-      return url;
-    }
-
-    const currentPath = window.location.pathname;
-    const parts = currentPath.split('/').filter(p => p);
-    parts.pop();
-
-    const urlParts = url.split('/');
-    for (const part of urlParts) {
+  /**
+   * Resolve relative paths to absolute paths
+   */
+  resolveRelativePath(relativePath) {
+    const base = window.location.pathname;
+    const baseParts = base.split('/').slice(0, -1);
+    const pathParts = relativePath.split('/');
+    
+    for (const part of pathParts) {
       if (part === '..') {
-        parts.pop();
+        baseParts.pop();
       } else if (part !== '.' && part !== '') {
-        parts.push(part);
+        baseParts.push(part);
       }
     }
-
-    return '/' + parts.join('/');
+    
+    return baseParts.join('/');
   }
 
   monitorVisibility() {
@@ -365,6 +378,7 @@ class PWAWindowManager {
         console.log('PWA app hidden');
       } else {
         console.log('PWA app visible');
+        // Refresh data when app comes to foreground
         this.notifyServiceWorker('APP_VISIBLE');
       }
     });
@@ -379,21 +393,9 @@ class PWAWindowManager {
     }
   }
 
-  navigateTo(url) {
-    if (!url || this.isNavigating) {
-      return;
-    }
-
-    console.log('PWA navigating to:', url);
-    this.isNavigating = true;
-
-    window.location.href = url;
-
-    setTimeout(() => {
-      this.isNavigating = false;
-    }, 2000);
-  }
-
+  /**
+   * Go back safely in PWA
+   */
   goBack() {
     if (history.length > 1) {
       history.back();
@@ -402,11 +404,16 @@ class PWAWindowManager {
     }
   }
 
+  /**
+   * Close PWA gracefully
+   */
   closeApp() {
     if (confirm('Close OAU ExamCompass?')) {
+      // Clear PWA data
       sessionStorage.removeItem('pwa_window_id');
       sessionStorage.removeItem('pwa_window_stack');
       
+      // Attempt to close
       if (window.cordova) {
         navigator.app.exitApp();
       } else {
@@ -416,7 +423,9 @@ class PWAWindowManager {
   }
 }
 
+// Initialize PWA Window Manager
 const pwaWindowManager = new PWAWindowManager();
 
+// Make available globally
 window.PWAWindowManager = PWAWindowManager;
 window.pwaWindowManager = pwaWindowManager;
