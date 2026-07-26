@@ -1,18 +1,13 @@
-// tutor/pwa-register.js
-
-// PWA Registration with Auto-Install Banner & Fixed Updates
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('../tutor/service-worker.js')
       .then(registration => {
         console.log('Service Worker registered successfully:', registration);
         
-        // Check for updates every 10 seconds (instead of 60000)
         setInterval(() => {
           registration.update();
-        }, 10000);
+        }, 60000);
 
-        // Listen for updates
         registration.addEventListener('updatefound', () => {
           const newWorker = registration.installing;
           newWorker.addEventListener('statechange', () => {
@@ -90,17 +85,14 @@ function showUpdatePrompt(registration) {
   document.getElementById('pwa-update-btn').addEventListener('click', () => {
     console.log('Update button clicked');
     
-    // Find the waiting service worker
     if (registration.waiting) {
       console.log('Sending SKIP_WAITING message to service worker');
       registration.waiting.postMessage({ type: 'SKIP_WAITING' });
       
-      // Show loading state
       const btn = document.getElementById('pwa-update-btn');
       btn.disabled = true;
       btn.innerText = 'Updating...';
       
-      // Wait for controller change and reload
       let controllerChanged = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         if (!controllerChanged) {
@@ -111,7 +103,6 @@ function showUpdatePrompt(registration) {
         }
       });
       
-      // Fallback reload after 3 seconds if no controller change
       setTimeout(() => {
         if (!controllerChanged) {
           console.log('Fallback reload');
@@ -120,7 +111,6 @@ function showUpdatePrompt(registration) {
       }, 3000);
     } else {
       console.warn('No waiting service worker found');
-      // Just reload if no waiting worker
       window.location.reload();
     }
   });
@@ -129,7 +119,6 @@ function showUpdatePrompt(registration) {
 let deferredPrompt;
 let installPromptShown = false;
 
-// Show install banner
 function showInstallBanner() {
   const banner = document.createElement('div');
   banner.id = 'pwa-install-banner';
@@ -218,7 +207,6 @@ function showInstallBanner() {
   document.getElementById('pwa-dismiss-btn').addEventListener('click', () => {
     console.log('Install banner dismissed');
     banner.remove();
-    // Don't show banner again this session
     installPromptShown = true;
   });
 }
@@ -244,87 +232,191 @@ window.addEventListener('appinstalled', () => {
   if (banner) banner.remove();
 });
 
-// --- Auto Refresh & Silent Content Update Logic ---
-let refreshInterval;
-
-function startAutoRefresh() {
-  refreshInterval = setInterval(() => {
-    // Check for service worker updates
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(registrations => {
-        registrations.forEach(registration => {
-          registration.update();
-        });
-      });
-    }
+class PWAWindowManager {
+  constructor() {
+    this.isStandalone = window.navigator.standalone === true || 
+                       window.matchMedia('(display-mode: standalone)').matches;
+    this.windowStack = [];
+    this.currentWindowId = this.generateId();
+    this.isNavigating = false;
     
-    // Silently refresh page content via fetch
-    fetch(window.location.href, { 
-      cache: 'no-store',
-      headers: {
-        'Cache-Control': 'no-cache'
+    console.log('PWA Standalone Mode:', this.isStandalone);
+    console.log('Display Mode:', window.matchMedia('(display-mode: standalone)').matches ? 'standalone' : 'browser');
+    
+    if (this.isStandalone) {
+      this.init();
+    }
+  }
+
+  generateId() {
+    return `window_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  init() {
+    sessionStorage.setItem('pwa_window_id', this.currentWindowId);
+    this.windowStack.push(this.currentWindowId);
+    
+    sessionStorage.setItem('pwa_window_stack', JSON.stringify(this.windowStack));
+    
+    console.log('PWA Window initialized:', this.currentWindowId);
+
+    this.handleBackButton();
+    
+    this.handleLinkNavigation();
+    
+    this.monitorVisibility();
+  }
+
+  handleBackButton() {
+    window.addEventListener('popstate', (event) => {
+      console.log('Popstate event triggered');
+      
+      if (history.length > 1) {
+        history.back();
+      } else {
+        window.location.href = '/tutor/splash.html';
       }
-    })
-    .then(response => response.text())
-    .then(html => {
-      // Parse new HTML
-      const parser = new DOMParser();
-      const newDoc = parser.parseFromString(html, 'text/html');
-      
-      // Update specific sections silently (avoiding disruption)
-      const mainContent = document.querySelector('main');
-      const newMainContent = newDoc.querySelector('main');
-      
-      if (newMainContent && mainContent) {
-        mainContent.innerHTML = newMainContent.innerHTML;
+    });
+
+    document.addEventListener('backbutton', (event) => {
+      event.preventDefault();
+      if (history.length > 1) {
+        history.back();
+      } else if (window.cordova) {
+        navigator.app.exitApp();
       }
+    });
+  }
+
+  handleLinkNavigation() {
+    document.addEventListener('click', (event) => {
+      const link = event.target.closest('a');
       
-      console.log('Page auto-refreshed at', new Date().toLocaleTimeString());
-    })
-    .catch(error => console.log('Auto-refresh fetch error:', error));
-  }, 10000); // 10 seconds
-}
+      if (!link) return;
 
-function stopAutoRefresh() {
-  clearInterval(refreshInterval);
-}
+      const href = link.getAttribute('href');
+      const target = link.getAttribute('target');
+      const dataPrevent = link.getAttribute('data-prevent-pwa');
+      
+      if (dataPrevent === 'true') {
+        return;
+      }
 
-// Start auto-refresh when page loads
-window.addEventListener('load', () => {
-  setTimeout(startAutoRefresh, 2000); // Start after 2 seconds
-});
+      if (this.isNavigating) {
+        console.log('Navigation in progress, skipping');
+        event.preventDefault();
+        return;
+      }
 
-// Pause auto-refresh when user is interacting
-let userInactivityTimeout;
+      if (href === '#' || (href && href.startsWith('#'))) {
+        return;
+      }
 
-document.addEventListener('click', () => {
-  stopAutoRefresh();
-  clearTimeout(userInactivityTimeout);
-  
-  // Resume after 5 seconds of inactivity
-  userInactivityTimeout = setTimeout(startAutoRefresh, 5000);
-});
+      if (href && (href.startsWith('mailto:') || href.startsWith('tel:'))) {
+        return;
+      }
 
-document.addEventListener('scroll', () => {
-  stopAutoRefresh();
-  clearTimeout(userInactivityTimeout);
-  
-  userInactivityTimeout = setTimeout(startAutoRefresh, 5000);
-});
+      if (href && href.startsWith('http')) {
+        if (target === '_blank') {
+          event.preventDefault();
+          window.open(href, '_self');
+        }
+        return;
+      }
 
-// Force update on visibility change (when user returns to tab)
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) {
-    stopAutoRefresh();
-  } else {
-    // Force immediate update when user returns
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(registrations => {
-        registrations.forEach(registration => {
-          registration.update();
-        });
+      if (href && !href.startsWith('http')) {
+        event.preventDefault();
+        
+        const absolutePath = this.resolveAbsolutePath(href);
+        
+        if (absolutePath !== window.location.pathname) {
+          this.navigateTo(absolutePath);
+        }
+        return;
+      }
+
+    }, true);
+  }
+
+  resolveAbsolutePath(url) {
+    if (url.startsWith('/')) {
+      return url;
+    }
+
+    const currentPath = window.location.pathname;
+    const parts = currentPath.split('/').filter(p => p);
+    parts.pop();
+
+    const urlParts = url.split('/');
+    for (const part of urlParts) {
+      if (part === '..') {
+        parts.pop();
+      } else if (part !== '.' && part !== '') {
+        parts.push(part);
+      }
+    }
+
+    return '/' + parts.join('/');
+  }
+
+  monitorVisibility() {
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        console.log('PWA app hidden');
+      } else {
+        console.log('PWA app visible');
+        this.notifyServiceWorker('APP_VISIBLE');
+      }
+    });
+  }
+
+  notifyServiceWorker(action) {
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: action,
+        timestamp: Date.now()
       });
     }
-    startAutoRefresh();
   }
-});
+
+  navigateTo(url) {
+    if (!url || this.isNavigating) {
+      return;
+    }
+
+    console.log('PWA navigating to:', url);
+    this.isNavigating = true;
+
+    window.location.href = url;
+
+    setTimeout(() => {
+      this.isNavigating = false;
+    }, 2000);
+  }
+
+  goBack() {
+    if (history.length > 1) {
+      history.back();
+    } else {
+      window.location.href = '/tutor/splash.html';
+    }
+  }
+
+  closeApp() {
+    if (confirm('Close OAU ExamCompass?')) {
+      sessionStorage.removeItem('pwa_window_id');
+      sessionStorage.removeItem('pwa_window_stack');
+      
+      if (window.cordova) {
+        navigator.app.exitApp();
+      } else {
+        window.close();
+      }
+    }
+  }
+}
+
+const pwaWindowManager = new PWAWindowManager();
+
+window.PWAWindowManager = PWAWindowManager;
+window.pwaWindowManager = pwaWindowManager;
