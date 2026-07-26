@@ -324,7 +324,7 @@
         </div>
     </div>
 
-    <!-- New Discussion Modal -->
+        <!-- New Discussion Modal -->
     <div id="newDiscussionModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
         <div class="bg-white w-full sm:w-96 rounded-t-3xl sm:rounded-2xl p-6 max-h-[80vh] overflow-y-auto">
             <div class="flex items-center justify-between mb-4">
@@ -334,27 +334,70 @@
                 </button>
             </div>
             
-            <form onsubmit="createDiscussion(event)" class="space-y-4">
+            <form id="newDiscussionForm" onsubmit="createDiscussion(event)" class="space-y-4">
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Question/Topic</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Question / Topic</label>
                     <input type="text" id="discussionTitle" placeholder="What's on your mind?" class="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:border-brand-blue" required>
                 </div>
+
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Details</label>
-                    <textarea id="discussionDesc" placeholder="Provide more context or details..." class="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:border-brand-blue resize-none" rows="4"></textarea>
+                    <textarea id="discussionDesc" placeholder="Provide more context or details..." rows="4" class="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:border-brand-blue resize-none"></textarea>
                 </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                        <select id="discussionCategory" class="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:border-brand-blue">
+                            <option value="general">General</option>
+                            <option value="academic">Academic</option>
+                            <option value="social">Social</option>
+                            <option value="technical">Technical</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Group (optional)</label>
+                        <select id="discussionGroup" class="w-full px-3 py-2.5 border border-gray-200 rounded-lg outline-none focus:border-brand-blue">
+                            <option value="">No group / Public</option>
+                            <!-- populated by loadGroupsForDiscussion() -->
+                        </select>
+                    </div>
+                </div>
+
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Category</label>
-                    <select id="discussionCategory" class="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:border-brand-blue">
-                        <option value="general">General</option>
-                        <option value="academic">Academic</option>
-                        <option value="social">Social</option>
-                        <option value="technical">Technical</option>
-                    </select>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Tags (comma separated)</label>
+                    <input type="text" id="discussionTags" placeholder="e.g., limits,integration,calculus" class="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:border-brand-blue">
+                    <p class="text-xs text-gray-400 mt-1">Add tags separated by commas. These help others find your discussion.</p>
                 </div>
-                <button type="submit" class="w-full bg-brand-blue text-white py-2.5 rounded-lg font-semibold hover:opacity-90 transition">
-                    Post Discussion
-                </button>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Cover image (optional)</label>
+                    <div class="flex items-center gap-3">
+                        <div class="w-20 h-14 bg-gray-50 rounded-lg overflow-hidden border border-gray-100 flex items-center justify-center">
+                            <img id="discussionCoverPreview" src="" alt="Preview" class="w-full h-full object-cover hidden">
+                            <span id="discussionCoverPlaceholder" class="text-xs text-gray-400">No image</span>
+                        </div>
+                        <div class="flex-1">
+                            <input type="file" id="discussionCover" accept="image/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:bg-brand-blue file:text-white" />
+                            <p class="text-xs text-gray-400 mt-1">PNG/JPG/GIF up to 10MB. Will be uploaded to the server.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between gap-3">
+                    <label class="inline-flex items-center gap-2">
+                        <input id="discussionPin" type="checkbox" class="rounded border-gray-200 text-brand-blue" />
+                        <span class="text-sm text-gray-600">Pin discussion</span>
+                    </label>
+
+                    <div class="text-right">
+                        <button type="button" onclick="closeNewDiscussionModal()" class="mr-2 text-sm text-gray-600 px-4 py-2 rounded-lg">Cancel</button>
+                        <button type="submit" id="createDiscussionBtn" class="bg-brand-blue text-white px-5 py-2.5 rounded-lg font-semibold hover:opacity-90 transition">
+                            Post Discussion
+                        </button>
+                    </div>
+                </div>
             </form>
         </div>
     </div>
@@ -382,13 +425,14 @@
 
         // --- Initialize on page load ---
         document.addEventListener('DOMContentLoaded', async () => {
-            await loadCurrentUser();
-            await Promise.all([ loadChats(), loadForums(), loadDiscussions() ]);
-            setupSearch();
-            setupUserSearch();
-            // Start silent refresh every 3 seconds
-            setInterval(refreshAll, 3000);
-        });
+    await loadCurrentUser();
+    // Load chats, forums, discussions and groups in parallel
+    await Promise.all([ loadChats(), loadForums(), loadDiscussions(), loadGroupsForDiscussion() ]);
+    setupSearch();
+    setupUserSearch();
+    // Start silent refresh every 3 seconds
+    setInterval(refreshAll, 3000);
+});
 
         // Refresh function (silent)
         async function refreshAll() {
@@ -1318,73 +1362,155 @@ function switchTab(tab) {
             }
         }
 
-        // --- Create a discussion (integrated with backend) ---
-        async function createDiscussion(event) {
-            event.preventDefault();
-            const titleEl = document.getElementById('discussionTitle');
-            const descEl = document.getElementById('discussionDesc');
-            const categoryEl = document.getElementById('discussionCategory');
-
-            const title = titleEl ? titleEl.value.trim() : '';
-            const desc = descEl ? descEl.value.trim() : '';
-            const category = categoryEl ? categoryEl.value : 'general';
-            
-            if (!title || !desc) {
-                alert('Please provide a title and description.');
-                return;
-            }
-            
+                // Load groups into the Group dropdown in the discussion modal
+        async function loadGroupsForDiscussion() {
             try {
-                const res = await fetch(`${DISCUSSIONS_API}`, {
+                const sel = document.getElementById('discussionGroup');
+                if (!sel) return;
+
+                // Fetch groups (reuse GROUPS_API constant). If your groups endpoint uses a different path, change it.
+                const res = await fetch(`${GROUPS_API}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) {
+                    console.debug('Failed to load groups for discussion modal', res.status);
+                    return;
+                }
+                const data = await res.json();
+                let groups = [];
+                if (Array.isArray(data)) groups = data;
+                else if (Array.isArray(data.groups)) groups = data.groups;
+                else if (Array.isArray(data.data)) groups = data.data;
+                else groups = [];
+
+                // Clear existing options except the first (No group)
+                while (sel.options.length > 1) sel.remove(1);
+
+                groups.forEach(g => {
+                    const id = g._id || g.id || g.groupId || g.slug;
+                    const name = g.name || g.title || g.groupName || 'Unnamed group';
+                    const opt = document.createElement('option');
+                    opt.value = id;
+                    opt.textContent = name;
+                    sel.appendChild(opt);
+                });
+            } catch (err) {
+                console.error('loadGroupsForDiscussion error', err);
+            }
+        }
+
+        // Cover image preview handler
+        const coverInput = document.getElementById('discussionCover');
+        if (coverInput) {
+            coverInput.addEventListener('change', (e) => {
+                const file = e.target.files && e.target.files[0];
+                const preview = document.getElementById('discussionCoverPreview');
+                const placeholder = document.getElementById('discussionCoverPlaceholder');
+                if (file && preview) {
+                    const url = URL.createObjectURL(file);
+                    preview.src = url;
+                    preview.classList.remove('hidden');
+                    if (placeholder) placeholder.classList.add('hidden');
+                } else {
+                    if (preview) { preview.src = ''; preview.classList.add('hidden'); }
+                    if (placeholder) placeholder.classList.remove('hidden');
+                }
+            });
+        }
+
+        // Create discussion - uploads cover image (if any) to /api/images then POSTs the discussion JSON
+        async function createDiscussion(e) {
+            e.preventDefault();
+            const btn = document.getElementById('createDiscussionBtn');
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Posting...'; }
+
+            try {
+                const title = (document.getElementById('discussionTitle')?.value || '').trim();
+                const description = (document.getElementById('discussionDesc')?.value || '').trim();
+                const category = document.getElementById('discussionCategory')?.value || 'general';
+                const groupId = document.getElementById('discussionGroup')?.value || '';
+                const tagsRaw = (document.getElementById('discussionTags')?.value || '').trim();
+                const isPinned = !!document.getElementById('discussionPin')?.checked;
+
+                if (!title || !description) {
+                    alert('Title and details are required.');
+                    if (btn) { btn.disabled = false; btn.innerHTML = 'Post Discussion'; }
+                    return;
+                }
+
+                // Build tags array
+                const tags = tagsRaw.length > 0
+                    ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean)
+                    : [];
+
+                // If cover image provided -> upload it to /api/images
+                let coverUrl = '';
+                const coverEl = document.getElementById('discussionCover');
+                const file = coverEl && coverEl.files && coverEl.files[0];
+                if (file) {
+                    const fd = new FormData();
+                    fd.append('image', file);
+                    const res = await fetch(`${API_BASE}/images`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` },
+                        body: fd
+                    });
+                    const json = await res.json().catch(()=>null);
+                    if (!res.ok) {
+                        const msg = json?.error || json?.message || `Upload failed (${res.status})`;
+                        throw new Error(msg);
+                    }
+                    coverUrl = json?.url || '';
+                }
+
+                // Create payload
+                const payload = {
+                    title,
+                    description,
+                    category,
+                    tags,
+                    content: description,
+                    groupId: groupId || undefined,
+                    coverImage: coverUrl || undefined,
+                    isPinned: !!isPinned
+                };
+
+                const createRes = await fetch(`${DISCUSSIONS_API}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
                     },
-                    body: JSON.stringify({
-                        title,
-                        description: desc,
-                        category
-                    })
+                    body: JSON.stringify(payload)
                 });
 
-                const body = await res.json().catch(()=>null);
-
-                if (!res.ok) {
-                    const msg = (body && (body.error || body.message)) ? (body.error || body.message) : `Failed to post discussion (${res.status})`;
+                const createBody = await createRes.json().catch(()=>null);
+                if (!createRes.ok) {
+                    const msg = (createBody && (createBody.error || createBody.message)) || `Create failed (${createRes.status})`;
                     throw new Error(msg);
                 }
-                
-                // On success, either add returned discussion or reload
-                if (body && body.discussion) {
-                    // push into discussions and re-render
-                    allDiscussions.unshift({
-                        _id: body.discussion._id,
-                        title: body.discussion.title,
-                        description: body.discussion.description,
-                        createdAt: body.discussion.createdAt,
-                        replies: body.discussion.replyCount || 0,
-                        author: body.discussion.author || null,
-                        category: body.discussion.category || category
-                    });
-                    renderDiscussions();
-                    updateDiscussionCounts();
-                } else {
-                    // Fallback to reloading list
-                    await loadDiscussions();
-                }
-                
+
+                // Success -> close modal, refresh discussions and reset form
                 closeNewDiscussionModal();
-                alert('Discussion posted successfully!');
-                // Reset form
-                if (titleEl) titleEl.value = '';
-                if (descEl) descEl.value = '';
-                if (categoryEl) categoryEl.value = 'general';
-            } catch (error) {
-                console.error("Error creating discussion:", error);
-                alert('Failed to post discussion: ' + (error.message || 'unknown error'));
+                // Reset form fields
+                document.getElementById('newDiscussionForm').reset();
+                const preview = document.getElementById('discussionCoverPreview');
+                const placeholder = document.getElementById('discussionCoverPlaceholder');
+                if (preview) { preview.src = ''; preview.classList.add('hidden'); }
+                if (placeholder) { placeholder.classList.remove('hidden'); }
+
+                // Refresh list (use your existing loader)
+                await loadDiscussions();
+                updateDiscussionCounts();
+
+            } catch (err) {
+                console.error('createDiscussion error', err);
+                alert('Failed to create discussion: ' + (err.message || 'unknown'));
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = 'Post Discussion'; }
             }
         }
+
 
         // Close modals on outside click
         ['newChatModal', 'newForumModal', 'newDiscussionModal'].forEach(modalId => {
