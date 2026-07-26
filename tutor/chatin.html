@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=0.81, maximum-scale=0.81, user-scalable=no" />
   <title>Chat — OAU Campus Hub</title>
 
-  <!-- Tailwind + Font Awesome + Socket.IO client -->
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" />
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
@@ -35,35 +34,25 @@
     body { margin:0; background:#F6F7FA; font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; height:100vh; }
     .mobile-container{ display:flex; flex-direction:column; height:100dvh; max-height:100vh; }
     .no-scrollbar::-webkit-scrollbar{ display:none; } .no-scrollbar{ -ms-overflow-style:none; scrollbar-width:none; }
-
     .bubble-incoming{ border-radius:18px 18px 18px 6px; box-shadow:0 1px 2px rgba(0,0,0,0.02); background:var(--incoming,#fff); }
     .bubble-outgoing{ border-radius:18px 18px 6px 18px; box-shadow:0 1px 2px rgba(0,0,0,0.02); background:var(--outgoing,#D6EAFF); }
     .msg-meta{ font-size:11px; color:#9AA4B2; }
-
-    /* Skeleton */
     .skeleton { background: linear-gradient(90deg,#eee 25%, #e6e6e6 50%, #eee 75%); background-size:200% 100%; animation: shimmer 1.2s linear infinite; border-radius:8px; }
     @keyframes shimmer { 0% { background-position:200% 0 } 100% { background-position:-200% 0 } }
-
     .file-preview { background:#fff; border:1px solid #EEF2F7; padding:8px; border-radius:8px; display:flex; gap:8px; align-items:center; }
     .hidden-input { display:none; }
-
     .reactions-row { display:flex; gap:8px; margin-top:6px; align-items:center; flex-wrap:wrap; }
     .reaction-pill { background:#F3F4F6; padding:4px 8px; border-radius:16px; font-size:12px; display:flex; gap:6px; align-items:center; cursor:pointer; }
     .reaction-pill.you { background:#DDEEFF; border:1px solid #BFDFFF; }
-
     .message-menu { visibility:hidden; position:relative; }
     .msg-wrap:hover .message-menu { visibility:visible; }
-
     .emoji-picker { position:absolute; z-index:40; background:#fff; border:1px solid #E6E6E9; padding:6px; border-radius:8px; display:flex; gap:6px; box-shadow:0 6px 20px rgba(0,0,0,0.08); }
     .emoji-btn { cursor:pointer; padding:6px; border-radius:6px; font-size:14px; }
-
     .edit-input { width:100%; border:1px solid #E6E6E9; padding:8px; border-radius:8px; }
   </style>
 </head>
 <body>
   <div class="mobile-container">
-
-    <!-- Header -->
     <header class="bg-white px-4 py-2 flex items-center justify-between shrink-0 z-10 border-b border-gray-100">
       <div class="flex items-center gap-3">
         <button id="backBtn" class="p-1 rounded-full hover:bg-gray-100" aria-label="Back"><i class="fa-solid fa-chevron-left text-lg"></i></button>
@@ -76,7 +65,6 @@
           <p id="chatSub" class="text-xs text-gray-500">—</p>
         </div>
       </div>
-
       <div class="flex items-center gap-3">
         <button id="callBtn" class="p-2 rounded-full hover:bg-gray-100" aria-label="Start voice call"><i class="fa-solid fa-phone"></i></button>
         <button id="videoBtn" class="p-2 rounded-full hover:bg-gray-100" aria-label="Start video call"><i class="fa-solid fa-video"></i></button>
@@ -84,7 +72,6 @@
       </div>
     </header>
 
-    <!-- Pinned -->
     <div id="pinnedContainer" class="px-4 py-2 hidden">
       <div class="bg-white rounded-2xl p-3 flex items-start gap-3 border border-gray-100">
         <div class="text-chat-blue"><i class="fa-solid fa-thumbtack rotate-45"></i></div>
@@ -96,7 +83,6 @@
       </div>
     </div>
 
-    <!-- Messages area -->
     <main id="messagesWrapper" class="flex-1 overflow-y-auto no-scrollbar px-4 pb-4 pt-3 relative">
       <div id="skeletonLoader" class="space-y-4 mt-2">
         <div class="flex items-start gap-3">
@@ -123,10 +109,8 @@
       <div id="messagesList" class="flex flex-col gap-4 mt-2" aria-live="polite"></div>
     </main>
 
-    <!-- Attachment previews -->
     <div id="attachmentsPreview" class="px-4 pb-2 space-y-2 hidden"></div>
 
-    <!-- Input -->
     <div class="bg-white border-t border-gray-100 px-3 pt-3 pb-6 flex items-center gap-3 shrink-0">
       <button id="addBtn" class="w-10 h-10 rounded-full bg-chat-blue text-white flex items-center justify-center shadow-sm" aria-label="More actions"><i class="fa-solid fa-plus"></i></button>
 
@@ -148,18 +132,15 @@
   <script>
   (function () {
     'use strict';
-
-    // CONFIG
     const API_BASE = 'https://examguide.onrender.com/api';
     const MESSAGES_API = `${API_BASE}/messages`;
     const DISCUSSIONS_API = `${API_BASE}/discussions`;
-    const UPLOAD_ENDPOINT = `${API_BASE}/uploads`; // update if different
-    const SOCKET_URL = 'https://examguide.onrender.com'; // socket.io server origin
+    const UPLOAD_ENDPOINT = `${API_BASE}/uploads`;
+    const SOCKET_URL = 'https://examguide.onrender.com';
     const POLL_INTERVAL_FALLBACK = 2000;
     const FETCH_TIMEOUT_MS = 10000;
     const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
 
-    // DOM
     const messagesWrapper = document.getElementById('messagesWrapper');
     const messagesList = document.getElementById('messagesList');
     const skeletonLoader = document.getElementById('skeletonLoader');
@@ -178,7 +159,6 @@
     const pinnedText = document.getElementById('pinnedText');
     const clearPinBtn = document.getElementById('clearPinBtn');
 
-    // state
     let token = localStorage.getItem('token') || null;
     let userId = getQueryParam('userId');
     let groupId = getQueryParam('groupId');
@@ -191,11 +171,8 @@
     let socket = null;
     let fallbackPollHandle = null;
     let consecutiveErrors = 0;
-
-    // quick emoji set
     const EMOJIS = ['👍','❤️','😂','🎉','😮','😢','👏','🤔'];
 
-    // util
     function getQueryParam(name) { return new URLSearchParams(window.location.search).get(name); }
     function safeHtml(s){ if (s===null||s===undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
     function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
@@ -213,7 +190,6 @@
       }
     }
 
-    // UI helpers
     function showSkeleton(show=true){ skeletonLoader.style.display = show ? '' : 'none'; messagesList.style.display = show ? 'none' : ''; }
     function setHeaderDefaults(){
       if (isGroup){ chatTitle.textContent='Group'; chatSub.textContent='— members'; chatAvatar.src=`https://ui-avatars.com/api/?name=Group&background=F59E0B&color=fff`; chatEmoji.textContent='👥'; }
@@ -223,10 +199,8 @@
     function checkIfAtBottom(){ const threshold = 120; const pos = messagesWrapper.scrollTop + messagesWrapper.clientHeight; isAtBottom = (messagesWrapper.scrollHeight - pos) < threshold; }
     function scrollToBottom(smooth=true){ try{ messagesWrapper.scrollTo({ top: messagesWrapper.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); }catch(e){ messagesWrapper.scrollTop = messagesWrapper.scrollHeight; } }
 
-    // formatting
     function formatTime(ts){ if (!ts) return ''; const d=new Date(ts); const now=new Date(); const diff=Math.round((now-d)/1000); if (diff<60) return 'Just now'; if (diff<3600) return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); if (diff<86400) return d.toLocaleDateString(); return d.toLocaleDateString(); }
 
-    // normalize backend message objects
     function normalizeMessages(arr){ return (arr||[]).map(m => ({
       _id: m._id,
       from: m.from,
@@ -234,11 +208,10 @@
       fromAvatar: m.fromAvatar || m.from?.profilePicture || '',
       text: m.text || '',
       attachments: m.attachments || (m.attachmentUrl ? [{ url: m.attachmentUrl, filename: m.attachmentFilename || '', contentType: m.attachmentType }] : []),
-      reactions: m.reactions || {}, // expected keyed by emoji with array of userIds OR object { emoji: count } depending on backend
+      reactions: m.reactions || {},
       time: m.time || m.createdAt || m.createdAt
     })); }
 
-    // build message HTML including reactions and menu
     function buildMessageHtml(m){
       const isOutgoing = String(m.from) === String(currentUserId);
       const time = formatTime(m.time);
@@ -253,18 +226,14 @@
         return `<div class="${isOutgoing ? 'justify-end' : ''}"><a href="${url}" target="_blank" rel="noopener noreferrer" class="file-preview mt-2 ${isOutgoing ? 'mr-2' : ''}"><div class="w-10 h-10 bg-gray-100 rounded flex items-center justify-center text-gray-700"><i class="fa-solid fa-file"></i></div><div class="flex-1 ml-2"><div class="text-sm font-medium">${name}</div><div class="text-xs text-gray-500">${safeHtml(a.contentType||'')}</div></div></a></div>`;
       }).join('');
 
-      // render reactions
       let reactionsHtml = '';
       const reactions = m.reactions || {};
-      // backend may send array or object; normalize to map of emoji->{count, you}
       const reactMap = {};
       if (Array.isArray(reactions)) {
-        // array of { emoji, users: [] }? fallback:
         reactions.forEach(r => {
           if (r.emoji) reactMap[r.emoji] = { count: (r.users?.length || 0), users: r.users || [] };
         });
       } else if (typeof reactions === 'object') {
-        // could be { emoji: [userId,...] } or { emoji: count }
         for (const k of Object.keys(reactions)) {
           const v = reactions[k];
           if (Array.isArray(v)) reactMap[k] = { count: v.length, users: v };
@@ -273,17 +242,14 @@
         }
       }
 
-      // reactions badge html
       const reactionItems = Object.keys(reactMap).map(emoji => {
         const info = reactMap[emoji];
         const you = info.users && info.users.includes(String(currentUserId));
         return `<div class="reaction-pill ${you ? 'you' : ''}" data-msg="${safeHtml(m._id)}" data-emoji="${safeHtml(emoji)}"><span>${safeHtml(emoji)}</span><span class="text-xs text-gray-700 font-semibold">${safeHtml(info.count)}</span></div>`;
       }).join('');
 
-      // message menu (edit/delete) for outgoing only
       const menuHtml = isOutgoing ? `<div class="message-menu ml-2 relative"><button class="p-1 text-gray-400 message-menu-btn" data-id="${safeHtml(m._id)}" aria-label="Message options"><i class="fa-solid fa-ellipsis-vertical"></i></button></div>` : '';
 
-      // combine html
       if (isOutgoing) {
         return `
           <div class="msg-wrap flex justify-end mt-1" data-id="${safeHtml(m._id)}">
@@ -322,7 +288,6 @@
       checkIfAtBottom();
       messages = newMessages;
       lastMessageId = lastNewId;
-
       const parts = [];
       let lastDate = null;
       for (const m of messages) {
@@ -335,15 +300,11 @@
       }
       messagesList.innerHTML = parts.join('');
       showSkeleton(false);
-      // update menu and reaction handlers after render
       attachMessageControls();
-
       if (isAtBottom) scrollToBottom(true);
     }
 
-    // attach handlers for reaction clicks, message menu, edit inputs, delete
     function attachMessageControls(){
-      // reaction click
       document.querySelectorAll('.reaction-pill').forEach(el=>{
         el.onclick = async (e) => {
           const msgId = el.dataset.msg;
@@ -351,18 +312,13 @@
           await toggleReaction(msgId, emoji);
         };
       });
-
-      // add reaction picker trigger: clicking on empty reaction row opens picker
       document.querySelectorAll('.msg-wrap').forEach(container => {
         const row = container.querySelector('.reactions-row');
         if (!row) return;
-        // add emoji picker toggle on right-click or long-press? Here we add on double-click of the row
         row.ondblclick = (e) => {
           showEmojiPickerForMessage(container.dataset.id, row, e);
         };
       });
-
-      // message menu
       document.querySelectorAll('.message-menu-btn').forEach(btn=>{
         btn.onclick = (e) => {
           e.stopPropagation();
@@ -372,12 +328,9 @@
       });
     }
 
-    // emoji picker
     function showEmojiPickerForMessage(messageId, anchorEl, event) {
-      // remove any existing picker
       const existing = document.querySelector('.emoji-picker');
       if (existing) existing.remove();
-
       const picker = document.createElement('div');
       picker.className = 'emoji-picker';
       EMOJIS.forEach(em => {
@@ -391,12 +344,9 @@
         };
         picker.appendChild(b);
       });
-      // position
       picker.style.left = (event?.clientX || 100) + 'px';
       picker.style.top = (event?.clientY || 100) + 'px';
       document.body.appendChild(picker);
-
-      // close on outside click
       setTimeout(()=> {
         const onDoc = (e) => {
           if (!picker.contains(e.target)) picker.remove();
@@ -406,7 +356,6 @@
       }, 0);
     }
 
-    // toggle reaction (calls existing backend endpoint)
     async function toggleReaction(messageId, emoji) {
       if (!token) { alert('Not authenticated'); return; }
       try {
@@ -420,7 +369,6 @@
           throw new Error(err?.error || `Reaction failed (${res.status})`);
         }
         const body = await res.json().catch(()=>null);
-        // If socket exists, server likely will broadcast; otherwise refresh messages
         if (!socket) await loadMessages();
       } catch (err) {
         console.error('toggleReaction error', err);
@@ -428,9 +376,7 @@
       }
     }
 
-    // message menu: edit / delete
     function openMessageMenu(buttonEl, messageId) {
-      // simple inline menu
       const rect = buttonEl.getBoundingClientRect();
       const menu = document.createElement('div');
       menu.className = 'bg-white border border-gray-200 rounded-md shadow-md p-2';
@@ -443,9 +389,7 @@
         <button class="block px-3 py-2 text-sm w-full text-left delete-msg text-red-600">Delete</button>
       `;
       document.body.appendChild(menu);
-
       const removeMenu = () => { menu.remove(); document.removeEventListener('click', removeMenu); };
-
       menu.querySelector('.edit-msg').onclick = (e) => {
         e.stopPropagation();
         removeMenu();
@@ -457,26 +401,21 @@
         if (!confirm('Delete message? This cannot be undone.')) return;
         await deleteMessage(messageId);
       };
-
       setTimeout(()=> document.addEventListener('click', removeMenu), 0);
     }
 
-    // enable inline edit mode for a message
     function enableEditMode(messageId) {
       const container = document.querySelector(`.msg-wrap[data-id="${CSS.escape(messageId)}"]`);
       if (!container) return;
       const bubble = container.querySelector('.bubble-outgoing, .bubble-incoming');
       if (!bubble) return;
       const originalText = bubble.textContent || '';
-      // create input
       const input = document.createElement('textarea');
       input.className = 'edit-input';
       input.value = originalText.trim();
       bubble.style.display = 'none';
       bubble.parentNode.insertBefore(input, bubble);
       input.focus();
-
-      // Save on Enter+Ctrl or on blur
       input.addEventListener('keydown', async (e) => {
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();
@@ -489,7 +428,6 @@
     }
 
     async function saveEditMessage(messageId, newText) {
-      // optimistic UI update locally
       const idx = messages.findIndex(m => String(m._id) === String(messageId));
       if (idx > -1) {
         messages[idx].text = newText;
@@ -505,7 +443,6 @@
           const err = await res.json().catch(()=>null);
           throw new Error(err?.error || `Edit failed (${res.status})`);
         }
-        // server will broadcast via socket; otherwise refresh
         if (!socket) await loadMessages();
       } catch (err) {
         console.error('saveEditMessage error', err);
@@ -524,7 +461,6 @@
           const err = await res.json().catch(()=>null);
           throw new Error(err?.error || `Delete failed (${res.status})`);
         }
-        // server likely broadcasts; otherwise refresh
         if (!socket) await loadMessages();
       } catch (err) {
         console.error('deleteMessage error', err);
@@ -533,7 +469,6 @@
       }
     }
 
-    // upload files
     async function uploadFiles(files) {
       if (!files || !files.length) return [];
       const uploaded = [];
@@ -570,13 +505,10 @@
       return uploaded;
     }
 
-    // send message (text + attachments metadata)
     async function sendMessage(text, attachmentMeta=[]) {
       if (!token) { alert('Not authenticated'); return; }
       if (!text && !attachmentMeta.length) return;
-
       const url = isGroup ? `${MESSAGES_API}/group/${groupId}/send` : `${MESSAGES_API}/user/${userId}/send`;
-      // optimistic local
       const tmpId = `tmp-${Date.now()}`;
       const optimistic = { _id: tmpId, from: currentUserId||'me', fromName: 'You', fromAvatar: '', text: text|| (attachmentMeta[0]?.filename || ''), attachments: attachmentMeta, reactions: {}, time: new Date().toISOString() };
       renderMessages([ ...(messages||[]), optimistic ]);
@@ -584,7 +516,6 @@
       attachmentsToUpload = [];
       attachmentsPreview.classList.add('hidden');
       scrollToBottom(true);
-
       try {
         const res = await fetchWithTimeout(url, {
           method: 'POST',
@@ -595,7 +526,6 @@
           const err = await res.json().catch(()=>null);
           throw new Error(err?.error || `Send failed (${res.status})`);
         }
-        // prefer server-driven update via socket; otherwise reload
         if (!socket) await loadMessages();
       } catch (err) {
         console.error('sendMessage error', err);
@@ -604,7 +534,6 @@
       }
     }
 
-    // load current user
     async function loadCurrentUser() {
       if (!token) return;
       try {
@@ -617,7 +546,6 @@
       }
     }
 
-    // load meta for header
     async function loadMeta() {
       if (!token) return;
       try {
@@ -631,7 +559,6 @@
           const chat = (body.chats||[]).find(c=>String(c._id)===String(userId) || String(c._id)===String(userId));
           if (chat){ chatTitle.textContent = chat.fullname || chat.username || 'User'; chatSub.textContent = chat.username ? `@${chat.username}` : ''; if (chat.avatar) chatAvatar.src = chat.avatar; }
           else {
-            // try users endpoint
             const r2 = await fetchWithTimeout(`${API_BASE}/users/${userId}`, { headers:{ 'Authorization': `Bearer ${token}` } }, 8000);
             if (r2.ok){ const u = await r2.json(); chatTitle.textContent = u.fullname||u.username||'User'; chatSub.textContent = u.department? `${u.department} • ${u.level||''}` : ''; if (u.profilePicture) chatAvatar.src = u.profilePicture; }
           }
@@ -639,7 +566,6 @@
       } catch(err){ console.warn('loadMeta error', err); }
     }
 
-    // load messages
     async function loadMessages(){
       if (!token) return;
       if (!userId && !groupId) return;
@@ -658,58 +584,40 @@
       }
     }
 
-    // Socket.IO setup with fallback to polling
     function initSocket() {
       if (!window.io) {
-        console.warn('Socket.IO client not loaded; falling back to polling.');
         startFallbackPolling();
         return;
       }
       try {
         socket = io(SOCKET_URL, { auth: { token } , transports: ['websocket','polling'], reconnectionAttempts: 5 });
       } catch (err) {
-        console.warn('Socket init failed', err);
         startFallbackPolling();
         return;
       }
 
       socket.on('connect', () => {
-        console.info('Socket connected', socket.id);
-        // stop fallback if running
         stopFallbackPolling();
-        // optionally join room for chat to reduce events (server should implement)
         if (isGroup) socket.emit('join', { room: `group_${groupId}` });
         else socket.emit('join', { room: `chat_user_${userId}` });
       });
 
-      socket.on('connect_error', (err) => {
-        console.warn('Socket connect_error', err);
-      });
+      socket.on('connect_error', (err) => {});
 
       socket.on('message:created', async (payload) => {
-        // payload should be message object
-        // If message belongs to current conversation, append or refresh
         try {
           const msg = normalizeMessages([payload])[0];
           if (!msg) return;
-          // ensure belongs to this conversation: assume payload.chat or payload.to/group info
-          // simplest: reload messages (cheap if message small)
           await loadMessages();
-        } catch (err) { console.warn('message:created handler error',err); }
+        } catch (err) {}
       });
 
       socket.on('message:updated', async (payload) => { await loadMessages(); });
       socket.on('message:deleted', async (payload) => { await loadMessages(); });
       socket.on('message:reaction', async (payload) => { await loadMessages(); });
 
-      // reconnect fallback
-      socket.on('disconnect', (reason) => {
-        console.warn('Socket disconnected', reason);
-        // start fallback polling
-        startFallbackPolling();
-      });
+      socket.on('disconnect', (reason) => { startFallbackPolling(); });
 
-      // If socket fails to connect within a short window, enable fallback
       setTimeout(()=>{ if (!socket.connected) startFallbackPolling(); }, 3000);
     }
 
@@ -719,11 +627,9 @@
         if (document.hidden) return;
         await loadMessages();
       }, POLL_INTERVAL_FALLBACK);
-      console.info('Started fallback polling every', POLL_INTERVAL_FALLBACK, 'ms');
     }
     function stopFallbackPolling(){ if (fallbackPollHandle){ clearInterval(fallbackPollHandle); fallbackPollHandle = null; } }
 
-    // message send flow (uploads then send)
     async function submitMessageFlow() {
       if (!token) { alert('Not authenticated'); return; }
       const text = messageInput.value.trim();
@@ -772,7 +678,6 @@
       showAttachmentsPreview(attachmentsToUpload);
     });
 
-    // input behaviors
     messageInput.addEventListener('input', updateActionIcon);
     messageInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); submitMessageFlow(); } });
 
@@ -788,10 +693,9 @@
 
     actionBtn.addEventListener('click', async () => {
       if (messageInput.value.trim()) { await submitMessageFlow(); }
-      else { /* placeholder: start recording */ console.log('voice placeholder'); }
+      else { }
     });
 
-    // init lifecycle
     async function init() {
       setHeaderDefaults();
       showSkeleton(true);
@@ -802,17 +706,12 @@
       scrollToBottom(false);
       updateActionIcon();
       initSocket();
-      // fallback safety: if socket not connected after some time, ensure polling runs
       setTimeout(()=>{ if (!socket || !socket.connected) startFallbackPolling(); }, 3500);
-      // visibility fetch on focus
       document.addEventListener('visibilitychange', async () => { if (!document.hidden) { await loadCurrentUser(); await loadMessages(); }});
       messagesWrapper.addEventListener('scroll', () => checkIfAtBottom());
-      // expose minimal debug
       window.chatClient = { loadMessages, sendMessage, startFallbackPolling, stopFallbackPolling, socket };
     }
 
-    // upload wrapper
-    async function uploadFiles(files){ return uploadFilesImpl(files); }
     async function uploadFilesImpl(files){
       if (!files.length) return [];
       const uploaded = [];
@@ -831,33 +730,23 @@
       return uploaded;
     }
 
-    // sendMessage wrapper used in UI
-    async function sendMessage(text, attachmentMeta=[]){
-      await sendMessageImpl(text, attachmentMeta);
-    }
     async function sendMessageImpl(text, attachmentMeta=[]){
       if (!token) { alert('Not authenticated'); return; }
       const url = isGroup ? `${MESSAGES_API}/group/${groupId}/send` : `${MESSAGES_API}/user/${userId}/send`;
-      // optimistic
       const tmpId = `tmp-${Date.now()}`;
       const optimistic = { _id: tmpId, from: currentUserId||'me', fromName:'You', fromAvatar:'', text: text|| (attachmentMeta[0]?.filename||''), attachments: attachmentMeta, reactions: {}, time: new Date().toISOString() };
       renderMessages([ ...(messages||[]), optimistic ]);
       messageInput.value=''; attachmentsToUpload=[]; attachmentsPreview.classList.add('hidden'); scrollToBottom(true);
-
       try {
         const res = await fetchWithTimeout(url, { method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${token}` }, body: JSON.stringify({ text, attachments: attachmentMeta }) }, 15000);
         if (!res.ok) { const err = await res.json().catch(()=>null); throw new Error(err?.error||`Send failed (${res.status})`); }
-        // server should broadcast via socket; if not, reload
         if (!socket || !socket.connected) await loadMessages();
       } catch (err){ console.error('sendMessageImpl error', err); alert('Failed to send message: ' + (err.message||'error')); await loadMessages(); }
     }
 
-    // init
     init().catch(err=>{ console.error('chat init failed', err); showSkeleton(false); });
 
-    // keep functions reachable for inline handlers
     window._chatHelpers = { toggleReaction, sendMessage: sendMessageImpl };
-
   })();
   </script>
 </body>
