@@ -1439,7 +1439,7 @@ async function uploadImageToServer(file) {
   return body.url || body.secure_url || null;
 }
 
-// Updated createDiscussion() - uploads cover image (if any) then posts discussion
+// Replace createDiscussion with this implementation
 async function createDiscussion(e) {
   e.preventDefault();
   const btn = document.getElementById('createDiscussionBtn');
@@ -1452,45 +1452,87 @@ async function createDiscussion(e) {
   try {
     const title = (document.getElementById('discussionTitle')?.value || '').trim();
     const description = (document.getElementById('discussionDesc')?.value || '').trim();
-    const category = document.getElementById('discussionCategory')?.value || 'general';
-    const groupId = document.getElementById('discussionGroup')?.value || '';
-    const tagsRaw = (document.getElementById('discussionTags')?.value || '').trim();
-    const isPinned = !!document.getElementById('discussionPin')?.checked;
-
     if (!title || !description) {
       alert('Title and details are required.');
       return;
     }
 
-    const tags = tagsRaw.length > 0 ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
+    // Build tags array
+    const tagsRaw = (document.getElementById('discussionTags')?.value || '').trim();
+    const tags = tagsRaw.length ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
 
-    // If there's a chosen cover image file, upload it first
-    const coverEl = document.getElementById('discussionCover');
-    const file = coverEl && coverEl.files && coverEl.files[0];
-    let coverUrl = '';
-
-    if (file) {
-      try {
-        coverUrl = await uploadImageToServer(file);
-        if (!coverUrl) throw new Error('Upload returned no URL');
-      } catch (upErr) {
-        console.error('Cover image upload failed', upErr);
-        alert('Failed to upload cover image: ' + (upErr.message || 'unknown'));
-        return;
+    // Prepare cover file or canvas blob (prefer user-selected file)
+    let coverFile = null;
+    const coverInput = document.getElementById('discussionCover');
+    if (coverInput && coverInput.files && coverInput.files[0]) {
+      coverFile = coverInput.files[0];
+      console.log('Using selected cover file:', coverFile.name, coverFile.size, coverFile.type);
+    } else {
+      // Optional: if you have a preview canvas and want to upload that instead
+      const preview = document.getElementById('discussionCoverPreview');
+      if (preview && !preview.classList.contains('hidden') && preview.src) {
+        // convert dataURL to blob
+        const dataUrl = preview.src;
+        const res = await fetch(dataUrl);
+        coverFile = await res.blob();
+        // give a filename
+        coverFile = new File([coverFile], (document.getElementById('discussionTitle')?.value || 'cover') + '.png', { type: coverFile.type || 'image/png' });
+        console.log('Using canvas preview blob as cover file');
       }
     }
 
-    // Build discussion payload (include coverImage only when present)
+    let coverUrl = '';
+    if (coverFile) {
+      // Upload the image to /api/images (FormData, field name must be "image")
+      try {
+        const fd = new FormData();
+        fd.append('image', coverFile);
+
+        console.log('Uploading cover image to /api/images...');
+
+        const res = await fetch(`${API_BASE}/images`, {
+          method: 'POST',
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {}, // do NOT set Content-Type here
+          body: fd
+        });
+
+        const body = await res.json().catch(() => null);
+        console.log('/api/images response', res.status, body);
+
+        if (!res.ok) {
+          const msg = body?.error || body?.message || `Upload failed (${res.status})`;
+          throw new Error(msg);
+        }
+
+        // Accept multiple keys returned by the server
+        coverUrl = body?.url || body?.secure_url || (body?.result && body.result.secure_url) || '';
+        if (!coverUrl) {
+          console.warn('Upload succeeded but no URL returned; server body:', body);
+        } else {
+          console.log('Uploaded cover image URL:', coverUrl);
+        }
+      } catch (uploadErr) {
+        console.error('Cover image upload failed:', uploadErr);
+        alert('Failed to upload cover image: ' + (uploadErr.message || 'unknown'));
+        return;
+      }
+    } else {
+      console.log('No cover file selected, skipping upload.');
+    }
+
+    // Build and send discussion payload
     const payload = {
       title,
       description,
-      category,
+      category: document.getElementById('discussionCategory')?.value || 'general',
       tags,
       content: description,
-      groupId: groupId || undefined,
+      groupId: document.getElementById('discussionGroup')?.value || undefined,
       coverImage: coverUrl || undefined,
-      isPinned: !!isPinned
+      isPinned: !!document.getElementById('discussionPin')?.checked
     };
+
+    console.log('Creating discussion with payload:', payload);
 
     const createRes = await fetch(`${DISCUSSIONS_API}`, {
       method: 'POST',
@@ -1501,20 +1543,21 @@ async function createDiscussion(e) {
       body: JSON.stringify(payload)
     });
 
-    const createBody = await createRes.json().catch(()=>null);
+    const createBody = await createRes.json().catch(() => null);
+    console.log('Create discussion response', createRes.status, createBody);
+
     if (!createRes.ok) {
       const msg = (createBody && (createBody.error || createBody.message)) || `Create failed (${createRes.status})`;
       throw new Error(msg);
     }
 
-    // Redirect to the new discussion thread if API returned id
     const newId =
       createBody?.discussion?._id ||
       createBody?.discussion?.id ||
       createBody?._id ||
       createBody?.id;
 
-    // Reset form & preview
+    // Reset UI and redirect to the new discussion
     try {
       document.getElementById('newDiscussionForm').reset();
       const preview = document.getElementById('discussionCoverPreview');
@@ -1524,10 +1567,8 @@ async function createDiscussion(e) {
     } catch (ignore) {}
 
     if (newId) {
-      // redirect to discussion page
-      window.location.href = `/tutor/discuss.html?id=${encodeURIComponent(newId)}`;
+      window.location.href = `/tutor/discussion.html?id=${encodeURIComponent(newId)}`;
     } else {
-      // fallback: reload list
       closeNewDiscussionModal();
       await loadDiscussions();
       updateDiscussionCounts();
@@ -1542,6 +1583,7 @@ async function createDiscussion(e) {
     }
   }
 }
+    
 
 
         // Close modals on outside click
