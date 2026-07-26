@@ -292,13 +292,6 @@ class PWAWindowManager {
     }
   }
 
-  goBack() {
-    if (history.length > 1) {
-      history.back();
-    } else {
-      window.location.href = '/tutor/splash.html';
-    }
-  }
 
   closeApp() {
     if (confirm('Close OAU ExamCompass?')) {
