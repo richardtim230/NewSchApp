@@ -2,12 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=0.8, maximum-scale=0.8, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=0.81, maximum-scale=0.81, user-scalable=no" />
   <title>Chat — OAU Campus Hub</title>
 
-  <!-- Tailwind + Font Awesome -->
+  <!-- Tailwind + Font Awesome + Socket.IO client -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="" crossorigin="anonymous" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" />
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <script>
@@ -31,7 +32,7 @@
 
   <style>
     :root { -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
-    body { margin:0; background:#F6F7FA; font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; -webkit-font-smoothing:antialiased; height:100vh; }
+    body { margin:0; background:#F6F7FA; font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; height:100vh; }
     .mobile-container{ display:flex; flex-direction:column; height:100dvh; max-height:100vh; }
     .no-scrollbar::-webkit-scrollbar{ display:none; } .no-scrollbar{ -ms-overflow-style:none; scrollbar-width:none; }
 
@@ -43,9 +44,20 @@
     .skeleton { background: linear-gradient(90deg,#eee 25%, #e6e6e6 50%, #eee 75%); background-size:200% 100%; animation: shimmer 1.2s linear infinite; border-radius:8px; }
     @keyframes shimmer { 0% { background-position:200% 0 } 100% { background-position:-200% 0 } }
 
-    /* Small helpers */
     .file-preview { background:#fff; border:1px solid #EEF2F7; padding:8px; border-radius:8px; display:flex; gap:8px; align-items:center; }
     .hidden-input { display:none; }
+
+    .reactions-row { display:flex; gap:8px; margin-top:6px; align-items:center; flex-wrap:wrap; }
+    .reaction-pill { background:#F3F4F6; padding:4px 8px; border-radius:16px; font-size:12px; display:flex; gap:6px; align-items:center; cursor:pointer; }
+    .reaction-pill.you { background:#DDEEFF; border:1px solid #BFDFFF; }
+
+    .message-menu { visibility:hidden; position:relative; }
+    .msg-wrap:hover .message-menu { visibility:visible; }
+
+    .emoji-picker { position:absolute; z-index:40; background:#fff; border:1px solid #E6E6E9; padding:6px; border-radius:8px; display:flex; gap:6px; box-shadow:0 6px 20px rgba(0,0,0,0.08); }
+    .emoji-btn { cursor:pointer; padding:6px; border-radius:6px; font-size:14px; }
+
+    .edit-input { width:100%; border:1px solid #E6E6E9; padding:8px; border-radius:8px; }
   </style>
 </head>
 <body>
@@ -54,9 +66,7 @@
     <!-- Header -->
     <header class="bg-white px-4 py-2 flex items-center justify-between shrink-0 z-10 border-b border-gray-100">
       <div class="flex items-center gap-3">
-        <button id="backBtn" class="p-1 rounded-full hover:bg-gray-100" aria-label="Back">
-          <i class="fa-solid fa-chevron-left text-lg"></i>
-        </button>
+        <button id="backBtn" class="p-1 rounded-full hover:bg-gray-100" aria-label="Back"><i class="fa-solid fa-chevron-left text-lg"></i></button>
         <img id="chatAvatar" class="w-11 h-11 rounded-full object-cover" src="https://ui-avatars.com/api/?name=Chat&background=1664FF&color=fff" alt="chat avatar" />
         <div>
           <div class="flex items-center gap-2">
@@ -74,7 +84,7 @@
       </div>
     </header>
 
-    <!-- Pinned placeholder (hidden unless pinned exists) -->
+    <!-- Pinned -->
     <div id="pinnedContainer" class="px-4 py-2 hidden">
       <div class="bg-white rounded-2xl p-3 flex items-start gap-3 border border-gray-100">
         <div class="text-chat-blue"><i class="fa-solid fa-thumbtack rotate-45"></i></div>
@@ -86,9 +96,8 @@
       </div>
     </div>
 
-    <!-- Messages / skeleton area -->
+    <!-- Messages area -->
     <main id="messagesWrapper" class="flex-1 overflow-y-auto no-scrollbar px-4 pb-4 pt-3 relative">
-      <!-- Skeleton loader while initial fetch running -->
       <div id="skeletonLoader" class="space-y-4 mt-2">
         <div class="flex items-start gap-3">
           <div class="w-10 h-10 rounded-full skeleton"></div>
@@ -111,18 +120,15 @@
         </div>
       </div>
 
-      <!-- Real messages list -->
       <div id="messagesList" class="flex flex-col gap-4 mt-2" aria-live="polite"></div>
     </main>
 
     <!-- Attachment previews -->
     <div id="attachmentsPreview" class="px-4 pb-2 space-y-2 hidden"></div>
 
-    <!-- Input bar -->
+    <!-- Input -->
     <div class="bg-white border-t border-gray-100 px-3 pt-3 pb-6 flex items-center gap-3 shrink-0">
-      <button id="addBtn" class="w-10 h-10 rounded-full bg-chat-blue text-white flex items-center justify-center shadow-sm" aria-label="More actions">
-        <i class="fa-solid fa-plus"></i>
-      </button>
+      <button id="addBtn" class="w-10 h-10 rounded-full bg-chat-blue text-white flex items-center justify-center shadow-sm" aria-label="More actions"><i class="fa-solid fa-plus"></i></button>
 
       <div class="flex-1 bg-[#F4F5F7] rounded-full border border-gray-200 px-3 py-2 flex items-center gap-3">
         <input id="messageInput" type="text" placeholder="Type a message…" class="bg-transparent flex-1 outline-none text-sm" autocomplete="off" aria-label="Message input" />
@@ -135,621 +141,724 @@
       </button>
     </div>
 
-    <!-- Hidden file input for attachments -->
     <input id="fileInput" class="hidden-input" type="file" accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple />
 
   </div>
 
   <script>
-    // Best-practice, production-ready chat page
-    (function () {
-      'use strict';
+  (function () {
+    'use strict';
 
-      // CONFIG
-      const API_BASE = 'https://examguide.onrender.com/api';
-      const MESSAGES_API = `${API_BASE}/messages`;
-      const DISCUSSIONS_API = `${API_BASE}/discussions`;
-      const UPLOAD_ENDPOINT = `${API_BASE}/uploads`; // change if your upload endpoint is elsewhere
-      const POLL_INTERVAL_MS = 1000;       // asked for 1s polling
-      const FETCH_TIMEOUT_MS = 10000;      // abort slow requests
-      const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024; // 10MB file limit in UI
+    // CONFIG
+    const API_BASE = 'https://examguide.onrender.com/api';
+    const MESSAGES_API = `${API_BASE}/messages`;
+    const DISCUSSIONS_API = `${API_BASE}/discussions`;
+    const UPLOAD_ENDPOINT = `${API_BASE}/uploads`; // update if different
+    const SOCKET_URL = 'https://examguide.onrender.com'; // socket.io server origin
+    const POLL_INTERVAL_FALLBACK = 2000;
+    const FETCH_TIMEOUT_MS = 10000;
+    const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
 
-      // Elements
-      const messagesWrapper = document.getElementById('messagesWrapper');
-      const messagesList = document.getElementById('messagesList');
-      const skeletonLoader = document.getElementById('skeletonLoader');
-      const messageInput = document.getElementById('messageInput');
-      const actionBtn = document.getElementById('actionBtn');
-      const actionIcon = document.getElementById('actionIcon');
-      const attachBtn = document.getElementById('attachBtn');
-      const fileInput = document.getElementById('fileInput');
-      const attachmentsPreview = document.getElementById('attachmentsPreview');
-      const addBtn = document.getElementById('addBtn');
-      const chatTitle = document.getElementById('chatTitle');
-      const chatSub = document.getElementById('chatSub');
-      const chatAvatar = document.getElementById('chatAvatar');
-      const chatEmoji = document.getElementById('chatEmoji');
-      const pinnedContainer = document.getElementById('pinnedContainer');
-      const pinnedText = document.getElementById('pinnedText');
-      const clearPinBtn = document.getElementById('clearPinBtn');
+    // DOM
+    const messagesWrapper = document.getElementById('messagesWrapper');
+    const messagesList = document.getElementById('messagesList');
+    const skeletonLoader = document.getElementById('skeletonLoader');
+    const messageInput = document.getElementById('messageInput');
+    const actionBtn = document.getElementById('actionBtn');
+    const actionIcon = document.getElementById('actionIcon');
+    const attachBtn = document.getElementById('attachBtn');
+    const fileInput = document.getElementById('fileInput');
+    const attachmentsPreview = document.getElementById('attachmentsPreview');
+    const addBtn = document.getElementById('addBtn');
+    const chatTitle = document.getElementById('chatTitle');
+    const chatSub = document.getElementById('chatSub');
+    const chatAvatar = document.getElementById('chatAvatar');
+    const chatEmoji = document.getElementById('chatEmoji');
+    const pinnedContainer = document.getElementById('pinnedContainer');
+    const pinnedText = document.getElementById('pinnedText');
+    const clearPinBtn = document.getElementById('clearPinBtn');
 
-      // State
-      let token = localStorage.getItem('token') || null;
-      let userId = getQueryParam('userId');
-      let groupId = getQueryParam('groupId');
-      const isGroup = !!groupId;
-      let currentUserId = null;
-      let messages = [];            // current normalized messages
-      let pollingHandle = null;
-      let lastMessageId = null;
-      let isAtBottom = true;
-      let attachmentsToUpload = []; // File objects waiting to upload
-      let uploading = false;
-      let stopped = false;
-      let consecutiveErrors = 0;
+    // state
+    let token = localStorage.getItem('token') || null;
+    let userId = getQueryParam('userId');
+    let groupId = getQueryParam('groupId');
+    const isGroup = !!groupId;
+    let currentUserId = null;
+    let messages = [];
+    let lastMessageId = null;
+    let isAtBottom = true;
+    let attachmentsToUpload = [];
+    let socket = null;
+    let fallbackPollHandle = null;
+    let consecutiveErrors = 0;
 
-      // UTILITIES
-      function getQueryParam(name) {
-        const p = new URLSearchParams(window.location.search);
-        return p.get(name);
+    // quick emoji set
+    const EMOJIS = ['👍','❤️','😂','🎉','😮','😢','👏','🤔'];
+
+    // util
+    function getQueryParam(name) { return new URLSearchParams(window.location.search).get(name); }
+    function safeHtml(s){ if (s===null||s===undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
+    function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
+    async function fetchWithTimeout(url, opts={}, timeout=FETCH_TIMEOUT_MS){
+      const c = new AbortController(); opts.signal = c.signal;
+      const timer = setTimeout(()=>c.abort(), timeout);
+      try {
+        const res = await fetch(url, opts);
+        clearTimeout(timer);
+        return res;
+      } catch (err) {
+        clearTimeout(timer);
+        throw err;
       }
-      function safeHtml(str) {
-        if (str === null || str === undefined) return '';
-        return String(str)
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;')
-          .replace(/'/g, '&#039;');
-      }
-      function isoNow() { return (new Date()).toISOString(); }
-      function sleep(ms){ return new Promise(resolve => setTimeout(resolve, ms)); }
+    }
 
-      // Network helpers with timeout + abort
-      async function fetchWithTimeout(url, opts = {}, timeout = FETCH_TIMEOUT_MS) {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeout);
-        opts.signal = controller.signal;
-        try {
-          const res = await fetch(url, opts);
-          clearTimeout(timer);
-          return res;
-        } catch (err) {
-          clearTimeout(timer);
-          throw err;
+    // UI helpers
+    function showSkeleton(show=true){ skeletonLoader.style.display = show ? '' : 'none'; messagesList.style.display = show ? 'none' : ''; }
+    function setHeaderDefaults(){
+      if (isGroup){ chatTitle.textContent='Group'; chatSub.textContent='— members'; chatAvatar.src=`https://ui-avatars.com/api/?name=Group&background=F59E0B&color=fff`; chatEmoji.textContent='👥'; }
+      else if (userId){ chatTitle.textContent='Direct'; chatSub.textContent='One-on-one'; chatAvatar.src=`https://ui-avatars.com/api/?name=User&background=34C759&color=fff`; chatEmoji.textContent='💬'; }
+      else { chatTitle.textContent='Chat'; chatSub.textContent=''; }
+    }
+    function checkIfAtBottom(){ const threshold = 120; const pos = messagesWrapper.scrollTop + messagesWrapper.clientHeight; isAtBottom = (messagesWrapper.scrollHeight - pos) < threshold; }
+    function scrollToBottom(smooth=true){ try{ messagesWrapper.scrollTo({ top: messagesWrapper.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); }catch(e){ messagesWrapper.scrollTop = messagesWrapper.scrollHeight; } }
+
+    // formatting
+    function formatTime(ts){ if (!ts) return ''; const d=new Date(ts); const now=new Date(); const diff=Math.round((now-d)/1000); if (diff<60) return 'Just now'; if (diff<3600) return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); if (diff<86400) return d.toLocaleDateString(); return d.toLocaleDateString(); }
+
+    // normalize backend message objects
+    function normalizeMessages(arr){ return (arr||[]).map(m => ({
+      _id: m._id,
+      from: m.from,
+      fromName: m.fromName || m.from?.fullname || m.from?.username || '',
+      fromAvatar: m.fromAvatar || m.from?.profilePicture || '',
+      text: m.text || '',
+      attachments: m.attachments || (m.attachmentUrl ? [{ url: m.attachmentUrl, filename: m.attachmentFilename || '', contentType: m.attachmentType }] : []),
+      reactions: m.reactions || {}, // expected keyed by emoji with array of userIds OR object { emoji: count } depending on backend
+      time: m.time || m.createdAt || m.createdAt
+    })); }
+
+    // build message HTML including reactions and menu
+    function buildMessageHtml(m){
+      const isOutgoing = String(m.from) === String(currentUserId);
+      const time = formatTime(m.time);
+      const safeText = safeHtml(m.text);
+      const attachmentsHtml = (m.attachments||[]).map(a => {
+        const url = safeHtml(a.url || a.path || '');
+        const name = safeHtml(a.filename || a.name || '');
+        const type = (a.contentType || '').toLowerCase();
+        if (type.startsWith('image') || /\.(png|jpe?g|gif|webp)$/i.test(name)){
+          return `<div class="${isOutgoing ? 'justify-end' : ''}"><a href="${url}" target="_blank" rel="noopener noreferrer"><img src="${url}" alt="${name}" class="rounded-md mt-2 max-w-xs object-cover" /></a></div>`;
         }
-      }
+        return `<div class="${isOutgoing ? 'justify-end' : ''}"><a href="${url}" target="_blank" rel="noopener noreferrer" class="file-preview mt-2 ${isOutgoing ? 'mr-2' : ''}"><div class="w-10 h-10 bg-gray-100 rounded flex items-center justify-center text-gray-700"><i class="fa-solid fa-file"></i></div><div class="flex-1 ml-2"><div class="text-sm font-medium">${name}</div><div class="text-xs text-gray-500">${safeHtml(a.contentType||'')}</div></div></a></div>`;
+      }).join('');
 
-      // INITIAL UI
-      function showSkeleton(show = true) {
-        skeletonLoader.style.display = show ? '' : 'none';
-        messagesList.style.display = show ? 'none' : '';
-      }
-
-      function setHeaderDefaults() {
-        if (isGroup) {
-          chatTitle.textContent = 'Group';
-          chatSub.textContent = '— members';
-          chatAvatar.src = `https://ui-avatars.com/api/?name=Group&background=F59E0B&color=fff`;
-          chatEmoji.textContent = '👥';
-        } else if (userId) {
-          chatTitle.textContent = 'Direct';
-          chatSub.textContent = 'One-on-one';
-          chatAvatar.src = `https://ui-avatars.com/api/?name=User&background=34C759&color=fff`;
-          chatEmoji.textContent = '💬';
-        } else {
-          chatTitle.textContent = 'Chat';
-          chatSub.textContent = '';
-        }
-      }
-
-      // Scroll helpers
-      function checkIfAtBottom() {
-        const threshold = 120;
-        const pos = messagesWrapper.scrollTop + messagesWrapper.clientHeight;
-        isAtBottom = (messagesWrapper.scrollHeight - pos) < threshold;
-      }
-      function scrollToBottom(smooth = true) {
-        try {
-          messagesWrapper.scrollTo({ top: messagesWrapper.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
-        } catch (e) {
-          messagesWrapper.scrollTop = messagesWrapper.scrollHeight;
-        }
-      }
-
-      // Render helpers
-      function buildMessageHtml(m, isOutgoing) {
-        const time = formatTime(m.time);
-        const escapedText = safeHtml(m.text || '');
-        if (isOutgoing) {
-          return `
-            <div class="flex justify-end mt-1">
-              <div class="flex flex-col max-w-[80%]">
-                <div class="bubble-outgoing px-3 py-2 inline-block">
-                  <div class="text-sm text-gray-900">${escapedText}</div>
-                </div>
-                <div class="text-right msg-meta mt-1">${safeHtml(time)}</div>
-              </div>
-            </div>
-          `;
-        } else {
-          const avatar = safeHtml(m.fromAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(m.fromName || 'A')}&background=CCC&color=fff`);
-          const fromName = safeHtml(m.fromName || 'Anonymous');
-          return `
-            <div class="flex gap-3">
-              <img src="${avatar}" class="w-9 h-9 rounded-full object-cover mt-0.5" alt="${fromName}" />
-              <div class="flex flex-col max-w-[78%]">
-                <div class="text-xs font-medium text-chat-purple">${fromName}</div>
-                <div class="bubble-incoming p-3 mt-1">
-                  <div class="text-sm text-gray-800">${escapedText}</div>
-                </div>
-                <div class="msg-meta mt-1">${safeHtml(time)}</div>
-              </div>
-            </div>
-          `;
-        }
-      }
-
-      function formatTime(ts) {
-        if (!ts) return '';
-        const d = new Date(ts);
-        const now = new Date();
-        const diff = Math.round((now - d) / 1000);
-        if (diff < 60) return 'Just now';
-        if (diff < 3600) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        if (diff < 86400) return d.toLocaleDateString();
-        return d.toLocaleDateString();
-      }
-
-      function renderMessages(newMessages) {
-        // newMessages is normalized array of { _id, from, fromName, fromAvatar, text, attachments, time }
-        const lastNewId = (newMessages.length ? newMessages[newMessages.length - 1]._id : null);
-        if (lastMessageId === lastNewId && messages.length === newMessages.length) {
-          // nothing new
-          return;
-        }
-
-        checkIfAtBottom();
-        messages = newMessages;
-        lastMessageId = lastNewId;
-
-        // compose HTML
-        const parts = [];
-        let lastDate = null;
-        for (const msg of messages) {
-          const msgDate = new Date(msg.time).toDateString();
-          if (msgDate !== lastDate) {
-            parts.push(`<div class="flex justify-center my-2"><span class="bg-[#E4E6EB] text-gray-700 text-xs font-medium px-3 py-1 rounded-full">${safeHtml(msgDate)}</span></div>`);
-            lastDate = msgDate;
-          }
-          const isOutgoing = String(msg.from) === String(currentUserId);
-          parts.push(buildMessageHtml(msg, isOutgoing));
-          // attachments
-          if (Array.isArray(msg.attachments) && msg.attachments.length) {
-            for (const a of msg.attachments) {
-              const aname = safeHtml(a.filename || a.name || 'file');
-              const aurl = safeHtml(a.url || a.path || a.fileUrl || '');
-              const atype = safeHtml(a.contentType || '');
-              parts.push(`
-                <div class="flex ${isOutgoing ? 'justify-end' : ''}">
-                  <a href="${aurl}" target="_blank" rel="noopener noreferrer" class="file-preview mt-2 ${isOutgoing ? 'mr-2' : ''}">
-                    <div class="w-10 h-10 bg-gray-100 rounded flex items-center justify-center text-gray-700">
-                      <i class="${atype.startsWith('image') ? 'fa-regular fa-image' : 'fa-solid fa-file'}"></i>
-                    </div>
-                    <div class="flex-1">
-                      <div class="text-sm font-medium">${aname}</div>
-                      <div class="text-xs text-gray-500">${safeHtml(a.contentType || '')}</div>
-                    </div>
-                  </a>
-                </div>
-              `);
-            }
-          }
-        }
-
-        messagesList.innerHTML = parts.join('');
-
-        // hide skeleton and show messages area
-        showSkeleton(false);
-
-        // scroll rules
-        if (isAtBottom) {
-          scrollToBottom(true);
-        }
-      }
-
-      // Load current user id
-      async function loadCurrentUser() {
-        if (!token) return;
-        try {
-          const res = await fetchWithTimeout(`${API_BASE}/auth/me`, { headers: { 'Authorization': `Bearer ${token}` } }, FETCH_TIMEOUT_MS);
-          if (!res.ok) return;
-          const body = await res.json();
-          currentUserId = body?.user?._id || body?.user?.id || null;
-        } catch (err) {
-          console.warn('loadCurrentUser error', err);
-        }
-      }
-
-      // Load metadata for header (group/user)
-      async function loadMeta() {
-        if (!token) return;
-        try {
-          // reuse messages/chats endpoint to find names / avatars
-          const res = await fetchWithTimeout(`${MESSAGES_API}/chats`, { headers: { 'Authorization': `Bearer ${token}` } }, FETCH_TIMEOUT_MS);
-          if (!res.ok) return;
-          const body = await res.json();
-          if (isGroup) {
-            const group = (body.groups || []).find(g => String(g._id) === String(groupId));
-            if (group) {
-              chatTitle.textContent = group.name || 'Group';
-              chatSub.textContent = `${group.memberCount || 0} members`;
-              if (group.avatar) chatAvatar.src = group.avatar;
-              // pinned message if available (group model currently does not include pinnedMessage by default)
-              if (group.pinnedMessage) {
-                pinnedText.textContent = group.pinnedMessage;
-                pinnedContainer.classList.remove('hidden');
-              } else {
-                pinnedContainer.classList.add('hidden');
-              }
-            }
-          } else {
-            // direct
-            const chat = (body.chats || []).find(c => String(c._id) === String(userId) || String(c._id) === String(userId));
-            if (chat) {
-              chatTitle.textContent = chat.fullname || chat.username || 'User';
-              chatSub.textContent = chat.username ? `@${chat.username}` : '';
-              if (chat.avatar) chatAvatar.src = chat.avatar;
-            } else {
-              // fallback: try user endpoint
-              const r2 = await fetchWithTimeout(`${API_BASE}/users/${userId}`, { headers: { 'Authorization': `Bearer ${token}` } }, FETCH_TIMEOUT_MS);
-              if (r2.ok) {
-                const u = await r2.json();
-                chatTitle.textContent = u.fullname || u.username || 'User';
-                chatSub.textContent = u.department ? `${u.department} • ${u.level || ''}` : '';
-                if (u.profilePicture) chatAvatar.src = u.profilePicture;
-              }
-            }
-          }
-        } catch (err) {
-          console.warn('loadMeta error', err);
-        }
-      }
-
-      // Normalize backend message shape to local shape
-      function normalizeMessages(arr) {
-        // backend returns array of messages for group or direct chat (routes/messages.js)
-        return (arr || []).map(m => ({
-          _id: m._id,
-          from: m.from,
-          fromName: m.fromName || m.from?.fullname || m.from?.username || '',
-          fromAvatar: m.fromAvatar || m.from?.profilePicture || '',
-          text: m.text || '',
-          attachments: m.attachments || (m.attachmentUrl ? [{ url: m.attachmentUrl, filename: m.attachmentFilename || '' , contentType: m.attachmentType }] : []),
-          time: m.time || m.createdAt || m.createdAt
-        }));
-      }
-
-      // Load messages from server
-      async function loadMessages() {
-        if (!token) return;
-        if (!userId && !groupId) return;
-        const url = isGroup ? `${MESSAGES_API}/group/${groupId}/messages` : `${MESSAGES_API}/user/${userId}/messages`;
-        try {
-          const res = await fetchWithTimeout(url, { headers: { 'Authorization': `Bearer ${token}` } }, FETCH_TIMEOUT_MS);
-          if (!res.ok) {
-            consecutiveErrors++;
-            console.warn('Failed to fetch messages', res.status);
-            return;
-          }
-          consecutiveErrors = 0;
-          const arr = await res.json();
-          const normalized = normalizeMessages(arr);
-          renderMessages(normalized);
-        } catch (err) {
-          consecutiveErrors++;
-          if (err.name === 'AbortError') {
-            console.warn('loadMessages aborted (timeout)');
-          } else {
-            console.warn('loadMessages error', err);
-          }
-        }
-      }
-
-      // Upload files to server (returns array of uploaded attachment metadata)
-      async function uploadFiles(files) {
-        if (!files || !files.length) return [];
-        const uploaded = [];
-        for (const f of files) {
-          if (f.size > MAX_UPLOAD_SIZE_BYTES) {
-            alert(`File "${f.name}" is too large. Max ${Math.round(MAX_UPLOAD_SIZE_BYTES / (1024 * 1024))}MB allowed.`);
-            continue;
-          }
-          const fd = new FormData();
-          fd.append('file', f);
-          try {
-            const res = await fetchWithTimeout(UPLOAD_ENDPOINT, {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${token}` },
-              body: fd
-            }, 30000);
-            if (!res.ok) {
-              const err = await res.json().catch(()=>null);
-              throw new Error(err?.error || `Upload failed (${res.status})`);
-            }
-            const body = await res.json();
-            // normalize returned object to { url, filename, contentType, size }
-            if (body && (body.url || body.fileUrl || body.path)) {
-              uploaded.push({
-                url: body.url || body.fileUrl || body.path,
-                filename: body.filename || f.name,
-                contentType: body.contentType || f.type,
-                size: body.size || f.size
-              });
-            } else if (body && Array.isArray(body.files)) {
-              // some upload endpoints return { files: [...] }
-              body.files.forEach(x => uploaded.push({
-                url: x.url || x.path,
-                filename: x.filename || x.name,
-                contentType: x.contentType,
-                size: x.size
-              }));
-            } else {
-              // fallback: if server returns id or similar, include as best-effort
-              uploaded.push({ url: body?.url || '', filename: f.name, contentType: f.type, size: f.size });
-            }
-          } catch (err) {
-            console.error('uploadFiles error', err);
-            alert(`Failed to upload "${f.name}": ${err.message || 'upload error'}`);
-          }
-        }
-        return uploaded;
-      }
-
-      // Send message (supports text + attachments metadata)
-      async function sendMessage(text, attachmentsMetadata = []) {
-        if (!token) { alert('Not authenticated'); return; }
-        if (!text && (!attachmentsMetadata || !attachmentsMetadata.length)) return;
-
-        let url, payload;
-        if (isGroup) {
-          url = `${MESSAGES_API}/group/${groupId}/send`;
-          payload = { text, attachments: attachmentsMetadata };
-        } else {
-          url = `${MESSAGES_API}/user/${userId}/send`;
-          payload = { text, attachments: attachmentsMetadata };
-        }
-
-        // optimistic UI append
-        const tempId = `tmp-${Date.now()}`;
-        const outgoing = { _id: tempId, from: currentUserId || 'me', fromName: 'You', fromAvatar: '', text: text || (attachmentsMetadata[0]?.filename || 'Attachment'), attachments: attachmentsMetadata, time: new Date().toISOString() };
-        renderMessages([ ...(messages || []), outgoing ]);
-        messageInput.value = '';
-        attachmentsToUpload = [];
-        attachmentsPreview.classList.add('hidden');
-        checkIfAtBottom();
-        scrollToBottom(true);
-
-        try {
-          const res = await fetchWithTimeout(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify(payload)
-          }, 15000);
-          if (!res.ok) {
-            const err = await res.json().catch(()=>null);
-            throw new Error(err?.error || `Send failed (${res.status})`);
-          }
-          // refresh messages from server to get canonical ids
-          await loadMessages();
-        } catch (err) {
-          console.error('sendMessage error', err);
-          alert('Failed to send message: ' + (err.message || 'unknown'));
-        }
-      }
-
-      // UI: attachments preview
-      function showAttachmentsPreview(files) {
-        attachmentsPreview.innerHTML = '';
-        if (!files || !files.length) {
-          attachmentsPreview.classList.add('hidden');
-          return;
-        }
-        attachmentsPreview.classList.remove('hidden');
-        for (const f of files) {
-          const el = document.createElement('div');
-          el.className = 'file-preview';
-          el.innerHTML = `
-            <div class="w-10 h-10 bg-gray-100 rounded flex items-center justify-center text-gray-700">
-              <i class="${f.type && f.type.startsWith('image') ? 'fa-regular fa-image' : 'fa-solid fa-file'}"></i>
-            </div>
-            <div class="flex-1">
-              <div class="text-sm font-medium">${safeHtml(f.name)}</div>
-              <div class="text-xs text-gray-500">${Math.round((f.size||0)/1024)} KB</div>
-            </div>
-            <button class="text-gray-400 ml-2 remove-file" data-name="${safeHtml(f.name)}" aria-label="Remove attachment"><i class="fa-solid fa-xmark"></i></button>
-          `;
-          attachmentsPreview.appendChild(el);
-        }
-      }
-
-      // Event handlers
-      attachBtn.addEventListener('click', () => fileInput.click());
-      fileInput.addEventListener('change', (e) => {
-        const files = Array.from(e.target.files || []);
-        if (!files.length) return;
-        attachmentsToUpload = files;
-        showAttachmentsPreview(files);
-      });
-
-      // Remove attachment click (delegated)
-      attachmentsPreview.addEventListener('click', (e) => {
-        const rem = e.target.closest('.remove-file');
-        if (!rem) return;
-        const name = rem.dataset.name;
-        attachmentsToUpload = attachmentsToUpload.filter(f => f.name !== name);
-        showAttachmentsPreview(attachmentsToUpload);
-      });
-
-      // Enter sends (no shift)
-      messageInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          messageSubmitHandler();
-        }
-      });
-
-      // Toggle mic/send icon
-      function updateActionIcon() {
-        if (messageInput.value.trim().length) {
-          actionIcon.classList.remove('fa-microphone');
-          actionIcon.classList.add('fa-paper-plane');
-          actionBtn.setAttribute('aria-label', 'Send message');
-        } else {
-          actionIcon.classList.remove('fa-paper-plane');
-          actionIcon.classList.add('fa-microphone');
-          actionBtn.setAttribute('aria-label', 'Start voice');
-        }
-      }
-      messageInput.addEventListener('input', updateActionIcon);
-
-      // Send flow handler: if attachments queued -> upload first, then send; else send text
-      async function messageSubmitHandler() {
-        if (uploading) return;
-        const text = messageInput.value.trim();
-        try {
-          let uploadedMeta = [];
-          if (attachmentsToUpload.length) {
-            uploading = true;
-            uploadedMeta = await uploadFiles(attachmentsToUpload);
-            uploading = false;
-            // if upload failed for all files, do not proceed
-            if (!uploadedMeta.length && !text) {
-              alert('No files uploaded; message not sent.');
-              return;
-            }
-          }
-          await sendMessage(text, uploadedMeta);
-        } catch (err) {
-          uploading = false;
-          console.error(err);
-          alert('Failed to send message: ' + (err.message || 'error'));
-        }
-      }
-
-      actionBtn.addEventListener('click', async (e) => {
-        if (messageInput.value.trim()) {
-          await messageSubmitHandler();
-        } else {
-          // placeholder: start/stop voice recording (implement as needed)
-          toggleVoicePlaceholder();
-        }
-      });
-
-      function toggleVoicePlaceholder() {
-        // Simple UI feedback for production: could be replaced by real recording
-        if (actionIcon.classList.contains('fa-microphone')) {
-          actionIcon.classList.remove('fa-microphone');
-          actionIcon.classList.add('fa-circle-stop'); // stub class - not a real fa class; just visual change is fine
-          // better UX would show recording state, duration, etc.
-          setTimeout(() => {
-            updateActionIcon();
-          }, 1200);
-        } else {
-          updateActionIcon();
-        }
-      }
-
-      // Back button
-      document.getElementById('backBtn').addEventListener('click', () => window.history.back());
-
-      // Pinned clear (stub)
-      if (clearPinBtn) {
-        clearPinBtn.addEventListener('click', () => {
-          pinnedContainer.classList.add('hidden');
-          pinnedText.textContent = '';
-          // optionally call API to clear pinned message for group
+      // render reactions
+      let reactionsHtml = '';
+      const reactions = m.reactions || {};
+      // backend may send array or object; normalize to map of emoji->{count, you}
+      const reactMap = {};
+      if (Array.isArray(reactions)) {
+        // array of { emoji, users: [] }? fallback:
+        reactions.forEach(r => {
+          if (r.emoji) reactMap[r.emoji] = { count: (r.users?.length || 0), users: r.users || [] };
         });
+      } else if (typeof reactions === 'object') {
+        // could be { emoji: [userId,...] } or { emoji: count }
+        for (const k of Object.keys(reactions)) {
+          const v = reactions[k];
+          if (Array.isArray(v)) reactMap[k] = { count: v.length, users: v };
+          else if (typeof v === 'number') reactMap[k] = { count: v, users: [] };
+          else reactMap[k] = { count: 0, users: [] };
+        }
       }
 
-      // Polling management with visibility handling and error backoff
-      function startPolling() {
-        if (pollingHandle) return;
-        let interval = POLL_INTERVAL_MS;
-        pollingHandle = setInterval(async () => {
-          if (document.hidden) return; // pause while not visible
-          try {
-            await loadMessages();
-            consecutiveErrors = 0;
-            // restore interval if previously backed off
-            if (interval !== POLL_INTERVAL_MS) {
-              clearInterval(pollingHandle);
-              pollingHandle = null;
-              interval = POLL_INTERVAL_MS;
-              startPolling();
-            }
-          } catch (err) {
-            consecutiveErrors++;
-            if (consecutiveErrors >= 3) {
-              // back off (double interval up to 8s)
-              interval = Math.min(8000, interval * 2);
-              clearInterval(pollingHandle);
-              pollingHandle = null;
-              startPolling();
-            }
-          }
-        }, interval);
+      // reactions badge html
+      const reactionItems = Object.keys(reactMap).map(emoji => {
+        const info = reactMap[emoji];
+        const you = info.users && info.users.includes(String(currentUserId));
+        return `<div class="reaction-pill ${you ? 'you' : ''}" data-msg="${safeHtml(m._id)}" data-emoji="${safeHtml(emoji)}"><span>${safeHtml(emoji)}</span><span class="text-xs text-gray-700 font-semibold">${safeHtml(info.count)}</span></div>`;
+      }).join('');
+
+      // message menu (edit/delete) for outgoing only
+      const menuHtml = isOutgoing ? `<div class="message-menu ml-2 relative"><button class="p-1 text-gray-400 message-menu-btn" data-id="${safeHtml(m._id)}" aria-label="Message options"><i class="fa-solid fa-ellipsis-vertical"></i></button></div>` : '';
+
+      // combine html
+      if (isOutgoing) {
+        return `
+          <div class="msg-wrap flex justify-end mt-1" data-id="${safeHtml(m._id)}">
+            <div class="flex flex-col max-w-[80%] relative">
+              <div class="flex items-center justify-end gap-2">
+                <div class="bubble-outgoing px-3 py-2 inline-block text-sm text-gray-900">${safeText}${attachmentsHtml}</div>
+                ${menuHtml}
+              </div>
+              <div class="flex items-center justify-end gap-2 mt-1">
+                <div class="msg-meta">${safeHtml(time)}</div>
+              </div>
+              ${reactionItems ? `<div class="reactions-row">${reactionItems}</div>` : `<div class="reactions-row"></div>`}
+            </div>
+          </div>
+        `;
+      } else {
+        const avatar = safeHtml(m.fromAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(m.fromName||'A')}&background=CCC&color=fff`);
+        const fromName = safeHtml(m.fromName || 'Anonymous');
+        return `
+          <div class="msg-wrap flex gap-3" data-id="${safeHtml(m._id)}">
+            <img src="${avatar}" class="w-9 h-9 rounded-full object-cover mt-0.5" alt="${fromName}" />
+            <div class="flex flex-col max-w-[78%]">
+              <div class="text-xs font-medium text-chat-purple">${fromName}</div>
+              <div class="bubble-incoming p-3 mt-1 text-sm text-gray-800">${safeText}${attachmentsHtml}</div>
+              <div class="msg-meta mt-1">${safeHtml(time)}</div>
+              ${reactionItems ? `<div class="reactions-row">${reactionItems}</div>` : `<div class="reactions-row"></div>`}
+            </div>
+          </div>
+        `;
       }
+    }
 
-      function stopPolling() {
-        if (!pollingHandle) return;
-        clearInterval(pollingHandle);
-        pollingHandle = null;
+    function renderMessages(newMessages) {
+      const lastNewId = (newMessages.length ? newMessages[newMessages.length - 1]._id : null);
+      if (lastMessageId === lastNewId && messages.length === newMessages.length) return;
+      checkIfAtBottom();
+      messages = newMessages;
+      lastMessageId = lastNewId;
+
+      const parts = [];
+      let lastDate = null;
+      for (const m of messages) {
+        const dateStr = new Date(m.time).toDateString();
+        if (dateStr !== lastDate) {
+          parts.push(`<div class="flex justify-center my-2"><span class="bg-[#E4E6EB] text-gray-700 text-xs font-medium px-3 py-1 rounded-full">${safeHtml(dateStr)}</span></div>`);
+          lastDate = dateStr;
+        }
+        parts.push(buildMessageHtml(m));
       }
+      messagesList.innerHTML = parts.join('');
+      showSkeleton(false);
+      // update menu and reaction handlers after render
+      attachMessageControls();
 
-      // Lifecycle: start everything
-      async function start() {
-        setHeaderDefaults();
-        showSkeleton(true);
-        await loadCurrentUser();
-        await loadMeta();
+      if (isAtBottom) scrollToBottom(true);
+    }
 
-        // initial load
-        await loadMessages();
-        showSkeleton(false);
-        scrollToBottom(false);
-
-        // update action icon state
-        updateActionIcon();
-
-        // start polling
-        startPolling();
-
-        // visibility change handler: when becoming visible, force a fetch
-        document.addEventListener('visibilitychange', async () => {
-          if (!document.hidden) {
-            await loadCurrentUser();
-            await loadMessages();
-          }
-        });
-
-        // track scroll to determine if we auto-scroll
-        messagesWrapper.addEventListener('scroll', () => checkIfAtBottom());
-      }
-
-      // Start
-      start().catch(err => {
-        console.error('Chat init failed', err);
-        showSkeleton(false);
+    // attach handlers for reaction clicks, message menu, edit inputs, delete
+    function attachMessageControls(){
+      // reaction click
+      document.querySelectorAll('.reaction-pill').forEach(el=>{
+        el.onclick = async (e) => {
+          const msgId = el.dataset.msg;
+          const emoji = el.dataset.emoji;
+          await toggleReaction(msgId, emoji);
+        };
       });
 
-      // Expose debug helpers
-      window.chatClient = {
-        loadMessages, sendMessage, startPolling, stopPolling
+      // add reaction picker trigger: clicking on empty reaction row opens picker
+      document.querySelectorAll('.msg-wrap').forEach(container => {
+        const row = container.querySelector('.reactions-row');
+        if (!row) return;
+        // add emoji picker toggle on right-click or long-press? Here we add on double-click of the row
+        row.ondblclick = (e) => {
+          showEmojiPickerForMessage(container.dataset.id, row, e);
+        };
+      });
+
+      // message menu
+      document.querySelectorAll('.message-menu-btn').forEach(btn=>{
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          const msgId = btn.dataset.id;
+          openMessageMenu(btn, msgId);
+        };
+      });
+    }
+
+    // emoji picker
+    function showEmojiPickerForMessage(messageId, anchorEl, event) {
+      // remove any existing picker
+      const existing = document.querySelector('.emoji-picker');
+      if (existing) existing.remove();
+
+      const picker = document.createElement('div');
+      picker.className = 'emoji-picker';
+      EMOJIS.forEach(em => {
+        const b = document.createElement('button');
+        b.className = 'emoji-btn';
+        b.textContent = em;
+        b.onclick = async (ev) => {
+          ev.stopPropagation();
+          await toggleReaction(messageId, em);
+          picker.remove();
+        };
+        picker.appendChild(b);
+      });
+      // position
+      picker.style.left = (event?.clientX || 100) + 'px';
+      picker.style.top = (event?.clientY || 100) + 'px';
+      document.body.appendChild(picker);
+
+      // close on outside click
+      setTimeout(()=> {
+        const onDoc = (e) => {
+          if (!picker.contains(e.target)) picker.remove();
+          document.removeEventListener('click', onDoc);
+        };
+        document.addEventListener('click', onDoc);
+      }, 0);
+    }
+
+    // toggle reaction (calls existing backend endpoint)
+    async function toggleReaction(messageId, emoji) {
+      if (!token) { alert('Not authenticated'); return; }
+      try {
+        const res = await fetchWithTimeout(`${MESSAGES_API}/message/${messageId}/reaction`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ emoji })
+        }, 8000);
+        if (!res.ok) {
+          const err = await res.json().catch(()=>null);
+          throw new Error(err?.error || `Reaction failed (${res.status})`);
+        }
+        const body = await res.json().catch(()=>null);
+        // If socket exists, server likely will broadcast; otherwise refresh messages
+        if (!socket) await loadMessages();
+      } catch (err) {
+        console.error('toggleReaction error', err);
+        alert('Failed to toggle reaction: ' + (err.message || 'error'));
+      }
+    }
+
+    // message menu: edit / delete
+    function openMessageMenu(buttonEl, messageId) {
+      // simple inline menu
+      const rect = buttonEl.getBoundingClientRect();
+      const menu = document.createElement('div');
+      menu.className = 'bg-white border border-gray-200 rounded-md shadow-md p-2';
+      menu.style.position = 'absolute';
+      menu.style.zIndex = 50;
+      menu.style.left = rect.left + 'px';
+      menu.style.top = (rect.bottom + 6) + 'px';
+      menu.innerHTML = `
+        <button class="block px-3 py-2 text-sm w-full text-left edit-msg">Edit</button>
+        <button class="block px-3 py-2 text-sm w-full text-left delete-msg text-red-600">Delete</button>
+      `;
+      document.body.appendChild(menu);
+
+      const removeMenu = () => { menu.remove(); document.removeEventListener('click', removeMenu); };
+
+      menu.querySelector('.edit-msg').onclick = (e) => {
+        e.stopPropagation();
+        removeMenu();
+        enableEditMode(messageId);
+      };
+      menu.querySelector('.delete-msg').onclick = async (e) => {
+        e.stopPropagation();
+        removeMenu();
+        if (!confirm('Delete message? This cannot be undone.')) return;
+        await deleteMessage(messageId);
       };
 
-      // END IIFE
-    })();
+      setTimeout(()=> document.addEventListener('click', removeMenu), 0);
+    }
+
+    // enable inline edit mode for a message
+    function enableEditMode(messageId) {
+      const container = document.querySelector(`.msg-wrap[data-id="${CSS.escape(messageId)}"]`);
+      if (!container) return;
+      const bubble = container.querySelector('.bubble-outgoing, .bubble-incoming');
+      if (!bubble) return;
+      const originalText = bubble.textContent || '';
+      // create input
+      const input = document.createElement('textarea');
+      input.className = 'edit-input';
+      input.value = originalText.trim();
+      bubble.style.display = 'none';
+      bubble.parentNode.insertBefore(input, bubble);
+      input.focus();
+
+      // Save on Enter+Ctrl or on blur
+      input.addEventListener('keydown', async (e) => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          await saveEditMessage(messageId, input.value);
+        }
+      });
+      input.addEventListener('blur', async () => {
+        await saveEditMessage(messageId, input.value);
+      });
+    }
+
+    async function saveEditMessage(messageId, newText) {
+      // optimistic UI update locally
+      const idx = messages.findIndex(m => String(m._id) === String(messageId));
+      if (idx > -1) {
+        messages[idx].text = newText;
+        renderMessages(messages);
+      }
+      try {
+        const res = await fetchWithTimeout(`${MESSAGES_API}/message/${messageId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ text: newText })
+        }, 8000);
+        if (!res.ok) {
+          const err = await res.json().catch(()=>null);
+          throw new Error(err?.error || `Edit failed (${res.status})`);
+        }
+        // server will broadcast via socket; otherwise refresh
+        if (!socket) await loadMessages();
+      } catch (err) {
+        console.error('saveEditMessage error', err);
+        alert('Failed to edit message: ' + (err.message || 'error'));
+        await loadMessages();
+      }
+    }
+
+    async function deleteMessage(messageId) {
+      try {
+        const res = await fetchWithTimeout(`${MESSAGES_API}/message/${messageId}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        }, 8000);
+        if (!res.ok) {
+          const err = await res.json().catch(()=>null);
+          throw new Error(err?.error || `Delete failed (${res.status})`);
+        }
+        // server likely broadcasts; otherwise refresh
+        if (!socket) await loadMessages();
+      } catch (err) {
+        console.error('deleteMessage error', err);
+        alert('Failed to delete message: ' + (err.message || 'error'));
+        await loadMessages();
+      }
+    }
+
+    // upload files
+    async function uploadFiles(files) {
+      if (!files || !files.length) return [];
+      const uploaded = [];
+      for (const f of files) {
+        if (f.size > MAX_UPLOAD_SIZE_BYTES) {
+          alert(`File "${f.name}" too large (max ${Math.round(MAX_UPLOAD_SIZE_BYTES/1024/1024)}MB).`);
+          continue;
+        }
+        const fd = new FormData();
+        fd.append('file', f);
+        try {
+          const res = await fetchWithTimeout(UPLOAD_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+            body: fd
+          }, 30000);
+          if (!res.ok) {
+            const err = await res.json().catch(()=>null);
+            throw new Error(err?.error || `Upload failed (${res.status})`);
+          }
+          const body = await res.json();
+          if (body && (body.url || body.fileUrl || body.path)) {
+            uploaded.push({ url: body.url || body.fileUrl || body.path, filename: body.filename || f.name, contentType: body.contentType || f.type, size: body.size || f.size });
+          } else if (body && Array.isArray(body.files)) {
+            body.files.forEach(x => uploaded.push({ url: x.url || x.path, filename: x.filename || x.name, contentType: x.contentType, size: x.size }));
+          } else {
+            uploaded.push({ url: body?.url || '', filename: f.name, contentType: f.type, size: f.size });
+          }
+        } catch (err) {
+          console.error('uploadFiles error', err);
+          alert(`Failed to upload "${f.name}": ${err.message || 'upload error'}`);
+        }
+      }
+      return uploaded;
+    }
+
+    // send message (text + attachments metadata)
+    async function sendMessage(text, attachmentMeta=[]) {
+      if (!token) { alert('Not authenticated'); return; }
+      if (!text && !attachmentMeta.length) return;
+
+      const url = isGroup ? `${MESSAGES_API}/group/${groupId}/send` : `${MESSAGES_API}/user/${userId}/send`;
+      // optimistic local
+      const tmpId = `tmp-${Date.now()}`;
+      const optimistic = { _id: tmpId, from: currentUserId||'me', fromName: 'You', fromAvatar: '', text: text|| (attachmentMeta[0]?.filename || ''), attachments: attachmentMeta, reactions: {}, time: new Date().toISOString() };
+      renderMessages([ ...(messages||[]), optimistic ]);
+      messageInput.value = '';
+      attachmentsToUpload = [];
+      attachmentsPreview.classList.add('hidden');
+      scrollToBottom(true);
+
+      try {
+        const res = await fetchWithTimeout(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ text, attachments: attachmentMeta })
+        }, 15000);
+        if (!res.ok) {
+          const err = await res.json().catch(()=>null);
+          throw new Error(err?.error || `Send failed (${res.status})`);
+        }
+        // prefer server-driven update via socket; otherwise reload
+        if (!socket) await loadMessages();
+      } catch (err) {
+        console.error('sendMessage error', err);
+        alert('Failed to send message: ' + (err.message || 'error'));
+        await loadMessages();
+      }
+    }
+
+    // load current user
+    async function loadCurrentUser() {
+      if (!token) return;
+      try {
+        const res = await fetchWithTimeout(`${API_BASE}/auth/me`, { headers: { 'Authorization': `Bearer ${token}` } }, FETCH_TIMEOUT_MS);
+        if (!res.ok) return;
+        const body = await res.json();
+        currentUserId = body?.user?._id || body?.user?.id || null;
+      } catch (err) {
+        console.warn('loadCurrentUser error', err);
+      }
+    }
+
+    // load meta for header
+    async function loadMeta() {
+      if (!token) return;
+      try {
+        const res = await fetchWithTimeout(`${MESSAGES_API}/chats`, { headers: { 'Authorization': `Bearer ${token}` } }, 8000);
+        if (!res.ok) return;
+        const body = await res.json();
+        if (isGroup){
+          const group = (body.groups||[]).find(g=>String(g._id)===String(groupId));
+          if (group){ chatTitle.textContent = group.name || 'Group'; chatSub.textContent = `${group.memberCount||0} members`; if (group.avatar) chatAvatar.src = group.avatar; if (group.pinnedMessage){ pinnedText.textContent = group.pinnedMessage; pinnedContainer.classList.remove('hidden'); } else pinnedContainer.classList.add('hidden'); }
+        } else {
+          const chat = (body.chats||[]).find(c=>String(c._id)===String(userId) || String(c._id)===String(userId));
+          if (chat){ chatTitle.textContent = chat.fullname || chat.username || 'User'; chatSub.textContent = chat.username ? `@${chat.username}` : ''; if (chat.avatar) chatAvatar.src = chat.avatar; }
+          else {
+            // try users endpoint
+            const r2 = await fetchWithTimeout(`${API_BASE}/users/${userId}`, { headers:{ 'Authorization': `Bearer ${token}` } }, 8000);
+            if (r2.ok){ const u = await r2.json(); chatTitle.textContent = u.fullname||u.username||'User'; chatSub.textContent = u.department? `${u.department} • ${u.level||''}` : ''; if (u.profilePicture) chatAvatar.src = u.profilePicture; }
+          }
+        }
+      } catch(err){ console.warn('loadMeta error', err); }
+    }
+
+    // load messages
+    async function loadMessages(){
+      if (!token) return;
+      if (!userId && !groupId) return;
+      const url = isGroup ? `${MESSAGES_API}/group/${groupId}/messages` : `${MESSAGES_API}/user/${userId}/messages`;
+      try {
+        const res = await fetchWithTimeout(url, { headers:{ 'Authorization': `Bearer ${token}` } }, FETCH_TIMEOUT_MS);
+        if (!res.ok){ consecutiveErrors++; console.warn('loadMessages failed', res.status); return; }
+        consecutiveErrors = 0;
+        const arr = await res.json();
+        const normalized = normalizeMessages(arr);
+        renderMessages(normalized);
+      } catch (err) {
+        consecutiveErrors++;
+        if (err.name === 'AbortError') console.warn('loadMessages timeout');
+        else console.warn('loadMessages error', err);
+      }
+    }
+
+    // Socket.IO setup with fallback to polling
+    function initSocket() {
+      if (!window.io) {
+        console.warn('Socket.IO client not loaded; falling back to polling.');
+        startFallbackPolling();
+        return;
+      }
+      try {
+        socket = io(SOCKET_URL, { auth: { token } , transports: ['websocket','polling'], reconnectionAttempts: 5 });
+      } catch (err) {
+        console.warn('Socket init failed', err);
+        startFallbackPolling();
+        return;
+      }
+
+      socket.on('connect', () => {
+        console.info('Socket connected', socket.id);
+        // stop fallback if running
+        stopFallbackPolling();
+        // optionally join room for chat to reduce events (server should implement)
+        if (isGroup) socket.emit('join', { room: `group_${groupId}` });
+        else socket.emit('join', { room: `chat_user_${userId}` });
+      });
+
+      socket.on('connect_error', (err) => {
+        console.warn('Socket connect_error', err);
+      });
+
+      socket.on('message:created', async (payload) => {
+        // payload should be message object
+        // If message belongs to current conversation, append or refresh
+        try {
+          const msg = normalizeMessages([payload])[0];
+          if (!msg) return;
+          // ensure belongs to this conversation: assume payload.chat or payload.to/group info
+          // simplest: reload messages (cheap if message small)
+          await loadMessages();
+        } catch (err) { console.warn('message:created handler error',err); }
+      });
+
+      socket.on('message:updated', async (payload) => { await loadMessages(); });
+      socket.on('message:deleted', async (payload) => { await loadMessages(); });
+      socket.on('message:reaction', async (payload) => { await loadMessages(); });
+
+      // reconnect fallback
+      socket.on('disconnect', (reason) => {
+        console.warn('Socket disconnected', reason);
+        // start fallback polling
+        startFallbackPolling();
+      });
+
+      // If socket fails to connect within a short window, enable fallback
+      setTimeout(()=>{ if (!socket.connected) startFallbackPolling(); }, 3000);
+    }
+
+    function startFallbackPolling() {
+      if (fallbackPollHandle) return;
+      fallbackPollHandle = setInterval(async () => {
+        if (document.hidden) return;
+        await loadMessages();
+      }, POLL_INTERVAL_FALLBACK);
+      console.info('Started fallback polling every', POLL_INTERVAL_FALLBACK, 'ms');
+    }
+    function stopFallbackPolling(){ if (fallbackPollHandle){ clearInterval(fallbackPollHandle); fallbackPollHandle = null; } }
+
+    // message send flow (uploads then send)
+    async function submitMessageFlow() {
+      if (!token) { alert('Not authenticated'); return; }
+      const text = messageInput.value.trim();
+      let uploadedMeta = [];
+      if (attachmentsToUpload.length) {
+        uploadedMeta = await uploadFiles(attachmentsToUpload);
+      }
+      if (!text && uploadedMeta.length === 0) return;
+      await sendMessage(text, uploadedMeta);
+    }
+
+    attachBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
+      attachmentsToUpload = files;
+      showAttachmentsPreview(files);
+    });
+
+    function showAttachmentsPreview(files) {
+      attachmentsPreview.innerHTML = '';
+      if (!files || !files.length) { attachmentsPreview.classList.add('hidden'); return; }
+      attachmentsPreview.classList.remove('hidden');
+      files.forEach(f => {
+        const el = document.createElement('div');
+        el.className = 'file-preview';
+        el.innerHTML = `
+          <div class="w-10 h-10 bg-gray-100 rounded flex items-center justify-center text-gray-700">
+            <i class="${f.type && f.type.startsWith('image') ? 'fa-regular fa-image' : 'fa-solid fa-file'}"></i>
+          </div>
+          <div class="flex-1">
+            <div class="text-sm font-medium">${safeHtml(f.name)}</div>
+            <div class="text-xs text-gray-500">${Math.round(f.size/1024)} KB</div>
+          </div>
+          <button class="text-gray-400 remove-file" data-name="${safeHtml(f.name)}" aria-label="Remove attachment"><i class="fa-solid fa-xmark"></i></button>
+        `;
+        attachmentsPreview.appendChild(el);
+      });
+    }
+
+    attachmentsPreview.addEventListener('click', (e) => {
+      const btn = e.target.closest('.remove-file');
+      if (!btn) return;
+      const name = btn.dataset.name;
+      attachmentsToUpload = attachmentsToUpload.filter(f => f.name !== name);
+      showAttachmentsPreview(attachmentsToUpload);
+    });
+
+    // input behaviors
+    messageInput.addEventListener('input', updateActionIcon);
+    messageInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); submitMessageFlow(); } });
+
+    function updateActionIcon(){
+      if (messageInput.value.trim().length) {
+        actionIcon.classList.remove('fa-microphone');
+        actionIcon.classList.add('fa-paper-plane');
+      } else {
+        actionIcon.classList.remove('fa-paper-plane');
+        actionIcon.classList.add('fa-microphone');
+      }
+    }
+
+    actionBtn.addEventListener('click', async () => {
+      if (messageInput.value.trim()) { await submitMessageFlow(); }
+      else { /* placeholder: start recording */ console.log('voice placeholder'); }
+    });
+
+    // init lifecycle
+    async function init() {
+      setHeaderDefaults();
+      showSkeleton(true);
+      await loadCurrentUser();
+      await loadMeta();
+      await loadMessages();
+      showSkeleton(false);
+      scrollToBottom(false);
+      updateActionIcon();
+      initSocket();
+      // fallback safety: if socket not connected after some time, ensure polling runs
+      setTimeout(()=>{ if (!socket || !socket.connected) startFallbackPolling(); }, 3500);
+      // visibility fetch on focus
+      document.addEventListener('visibilitychange', async () => { if (!document.hidden) { await loadCurrentUser(); await loadMessages(); }});
+      messagesWrapper.addEventListener('scroll', () => checkIfAtBottom());
+      // expose minimal debug
+      window.chatClient = { loadMessages, sendMessage, startFallbackPolling, stopFallbackPolling, socket };
+    }
+
+    // upload wrapper
+    async function uploadFiles(files){ return uploadFilesImpl(files); }
+    async function uploadFilesImpl(files){
+      if (!files.length) return [];
+      const uploaded = [];
+      for (const f of files){
+        if (f.size > MAX_UPLOAD_SIZE_BYTES) { alert(`"${f.name}" too large`); continue; }
+        const fd = new FormData(); fd.append('file', f);
+        try {
+          const res = await fetchWithTimeout(UPLOAD_ENDPOINT, { method:'POST', headers:{ 'Authorization': `Bearer ${token}` }, body: fd }, 30000);
+          if (!res.ok){ const err = await res.json().catch(()=>null); throw new Error(err?.error || `Upload failed (${res.status})`); }
+          const body = await res.json();
+          if (body && (body.url || body.fileUrl || body.path)) uploaded.push({ url: body.url || body.fileUrl || body.path, filename: body.filename || f.name, contentType: body.contentType || f.type, size: body.size || f.size });
+          else if (body && Array.isArray(body.files)){ body.files.forEach(x=>uploaded.push({ url:x.url||x.path, filename:x.filename||x.name, contentType:x.contentType, size:x.size })); }
+          else uploaded.push({ url: body?.url || '', filename: f.name, contentType: f.type, size: f.size });
+        } catch (err){ console.error('upload error', err); alert(`Failed to upload "${f.name}": ${err.message||'upload error'}`); }
+      }
+      return uploaded;
+    }
+
+    // sendMessage wrapper used in UI
+    async function sendMessage(text, attachmentMeta=[]){
+      await sendMessageImpl(text, attachmentMeta);
+    }
+    async function sendMessageImpl(text, attachmentMeta=[]){
+      if (!token) { alert('Not authenticated'); return; }
+      const url = isGroup ? `${MESSAGES_API}/group/${groupId}/send` : `${MESSAGES_API}/user/${userId}/send`;
+      // optimistic
+      const tmpId = `tmp-${Date.now()}`;
+      const optimistic = { _id: tmpId, from: currentUserId||'me', fromName:'You', fromAvatar:'', text: text|| (attachmentMeta[0]?.filename||''), attachments: attachmentMeta, reactions: {}, time: new Date().toISOString() };
+      renderMessages([ ...(messages||[]), optimistic ]);
+      messageInput.value=''; attachmentsToUpload=[]; attachmentsPreview.classList.add('hidden'); scrollToBottom(true);
+
+      try {
+        const res = await fetchWithTimeout(url, { method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${token}` }, body: JSON.stringify({ text, attachments: attachmentMeta }) }, 15000);
+        if (!res.ok) { const err = await res.json().catch(()=>null); throw new Error(err?.error||`Send failed (${res.status})`); }
+        // server should broadcast via socket; if not, reload
+        if (!socket || !socket.connected) await loadMessages();
+      } catch (err){ console.error('sendMessageImpl error', err); alert('Failed to send message: ' + (err.message||'error')); await loadMessages(); }
+    }
+
+    // init
+    init().catch(err=>{ console.error('chat init failed', err); showSkeleton(false); });
+
+    // keep functions reachable for inline handlers
+    window._chatHelpers = { toggleReaction, sendMessage: sendMessageImpl };
+
+  })();
   </script>
 </body>
 </html>
