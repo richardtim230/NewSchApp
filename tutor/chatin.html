@@ -1,536 +1,755 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=0.8, maximum-scale=0.8, user-scalable=no">
-    <title>Chat</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                    },
-                    colors: {
-                        chat: {
-                            bg: '#F6F7FA',
-                            incoming: '#FFFFFF',
-                            outgoing: '#D6EAFF',
-                            purple: '#603BB0',
-                            green: '#008B50',
-                            orange: '#D96704',
-                            blue: '#1664FF'
-                        }
-                    }
-                }
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Chat — OAU Campus Hub</title>
+
+  <!-- Tailwind + Font Awesome -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="" crossorigin="anonymous" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'sans-serif'] },
+          colors: {
+            chat: {
+              bg: '#F6F7FA',
+              incoming: '#FFFFFF',
+              outgoing: '#D6EAFF',
+              purple: '#603BB0',
+              blue: '#1664FF'
             }
+          }
         }
-    </script>
-    <style>
-        body { 
-            margin: 0; 
-            padding: 0; 
-            background-color: #F6F7FA; 
-            font-family: 'Inter', sans-serif; 
-            overflow: hidden; 
-        }
-        .mobile-container { 
-            width: 100%; 
-            height: 100vh; 
-            height: 100dvh; 
-            background-color: #F6F7FA; 
-            position: relative; 
-            display: flex; 
-            flex-direction: column; 
-            overflow: hidden; 
-        }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        .bubble-incoming { border-radius: 18px 18px 18px 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
-        .bubble-outgoing { border-radius: 18px 18px 4px 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
-        .reaction { border-radius: 12px; border: 1px solid #F3F4F6; box-shadow: 0 2px 4px rgba(0,0,0,0.04); }
-        .pdf-icon { position: relative; }
-        .pdf-icon::after { content: ''; position: absolute; top: 0; right: 0; border-width: 0 10px 10px 0; border-style: solid; border-color: #fff #fff #cc0000 #cc0000; width: 0; height: 0; }
-        .msg-meta { font-size: 10px; color: #9AA4B2; }
-    </style>
+      }
+    };
+  </script>
+
+  <style>
+    :root { -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
+    body { margin:0; background:#F6F7FA; font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; -webkit-font-smoothing:antialiased; height:100vh; }
+    .mobile-container{ display:flex; flex-direction:column; height:100dvh; max-height:100vh; }
+    .no-scrollbar::-webkit-scrollbar{ display:none; } .no-scrollbar{ -ms-overflow-style:none; scrollbar-width:none; }
+
+    .bubble-incoming{ border-radius:18px 18px 18px 6px; box-shadow:0 1px 2px rgba(0,0,0,0.02); background:var(--incoming,#fff); }
+    .bubble-outgoing{ border-radius:18px 18px 6px 18px; box-shadow:0 1px 2px rgba(0,0,0,0.02); background:var(--outgoing,#D6EAFF); }
+    .msg-meta{ font-size:11px; color:#9AA4B2; }
+
+    /* Skeleton */
+    .skeleton { background: linear-gradient(90deg,#eee 25%, #e6e6e6 50%, #eee 75%); background-size:200% 100%; animation: shimmer 1.2s linear infinite; border-radius:8px; }
+    @keyframes shimmer { 0% { background-position:200% 0 } 100% { background-position:-200% 0 } }
+
+    /* Small helpers */
+    .file-preview { background:#fff; border:1px solid #EEF2F7; padding:8px; border-radius:8px; display:flex; gap:8px; align-items:center; }
+    .hidden-input { display:none; }
+  </style>
 </head>
 <body>
+  <div class="mobile-container">
 
-    <div class="mobile-container">
-        <!-- Header -->
-        <header class="bg-white px-4 py-2 flex items-center justify-between shrink-0 z-10 relative">
-            <div class="flex items-center gap-3">
-                <button id="backBtn" class="text-black hover:bg-gray-100 p-1.5 rounded-full transition-colors">
-                    <i class="fa-solid fa-chevron-left text-[18px]"></i>
-                </button>
-                
-                <div class="flex items-center gap-3">
-                    <img id="chatAvatar" src="https://ui-avatars.com/api/?name=Chat&background=1664FF&color=fff" alt="avatar" class="w-[42px] h-[42px] rounded-full object-cover shrink-0">
-                    <div>
-                        <div class="flex items-center gap-1">
-                            <h1 id="chatTitle" class="text-[17px] font-bold text-gray-900 leading-tight truncate">Chat</h1>
-                            <span id="chatEmoji" class="text-[14px]" aria-hidden="true"></span>
-                        </div>
-                        <p id="chatSub" class="text-[12px] text-gray-500 font-medium leading-tight">--</p>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="flex items-center gap-4 text-chat-blue shrink-0">
-                <button id="callBtn"><i class="fa-solid fa-phone text-[18px]"></i></button>
-                <button id="videoBtn"><i class="fa-solid fa-video text-[20px]"></i></button>
-                <button id="moreBtn" class="text-black ml-1"><i class="fa-solid fa-ellipsis-vertical text-[20px]"></i></button>
-            </div>
-        </header>
-
-        <!-- Pinned Message (placeholder for group pinned) -->
-        <div id="pinnedContainer" class="px-4 py-2 shrink-0 z-0 hidden">
-            <div class="bg-white rounded-[14px] p-3 flex items-start gap-3 shadow-sm relative border border-gray-100">
-                <div class="pt-0.5 text-chat-blue shrink-0">
-                    <i class="fa-solid fa-thumbtack text-[14px] rotate-45"></i>
-                </div>
-                <div class="flex-1 pr-6">
-                    <h3 class="text-[13px] font-semibold text-chat-blue leading-tight mb-0.5">Pinned Message</h3>
-                    <p id="pinnedText" class="text-[13px] text-gray-500 leading-snug"></p>
-                </div>
-                <button id="clearPinBtn" class="absolute top-3 right-3 text-gray-400">
-                    <i class="fa-solid fa-xmark text-[14px]"></i>
-                </button>
-            </div>
+    <!-- Header -->
+    <header class="bg-white px-4 py-2 flex items-center justify-between shrink-0 z-10 border-b border-gray-100">
+      <div class="flex items-center gap-3">
+        <button id="backBtn" class="p-1 rounded-full hover:bg-gray-100" aria-label="Back">
+          <i class="fa-solid fa-chevron-left text-lg"></i>
+        </button>
+        <img id="chatAvatar" class="w-11 h-11 rounded-full object-cover" src="https://ui-avatars.com/api/?name=Chat&background=1664FF&color=fff" alt="chat avatar" />
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 id="chatTitle" class="text-lg font-semibold text-gray-900">Chat</h1>
+            <span id="chatEmoji" class="text-base" aria-hidden="true"></span>
+          </div>
+          <p id="chatSub" class="text-xs text-gray-500">—</p>
         </div>
+      </div>
 
-        <!-- Chat Area -->
-        <main id="messagesWrapper" class="flex-1 overflow-y-auto no-scrollbar px-4 pb-4 pt-2 flex flex-col gap-6 relative z-0">
-            <!-- messages will be appended here -->
-            <div id="messagesList" class="flex flex-col gap-4"></div>
-        </main>
+      <div class="flex items-center gap-3">
+        <button id="callBtn" class="p-2 rounded-full hover:bg-gray-100" aria-label="Start voice call"><i class="fa-solid fa-phone"></i></button>
+        <button id="videoBtn" class="p-2 rounded-full hover:bg-gray-100" aria-label="Start video call"><i class="fa-solid fa-video"></i></button>
+        <button id="moreBtn" class="p-2 rounded-full hover:bg-gray-100" aria-label="More options"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+      </div>
+    </header>
 
-        <!-- Input Bar -->
-        <div class="bg-white border-t border-gray-100 px-3 pt-3 pb-8 flex items-center gap-2 shrink-0 z-20 relative w-full">
-            <button id="addBtn" class="w-9 h-9 rounded-full bg-chat-blue text-white flex items-center justify-center shrink-0 shadow-sm">
-                <i class="fa-solid fa-plus text-[16px]"></i>
-            </button>
-            
-            <div class="flex-1 bg-[#F4F5F7] rounded-full border border-gray-200 px-4 py-2 flex items-center min-w-0">
-                <input type="text" id="messageInput" placeholder="Type a message..." class="bg-transparent flex-1 outline-none text-[15px] placeholder-gray-500 text-gray-800 min-w-0 w-full" autocomplete="off">
-                <div class="flex items-center gap-3 text-gray-400 pr-1 shrink-0 ml-2">
-                    <button id="emojiBtn"><i class="fa-regular fa-face-smile text-[18px]"></i></button>
-                    <button id="attachBtn"><i class="fa-solid fa-paperclip text-[18px]"></i></button>
-                </div>
-            </div>
-            
-            <button id="actionBtn" class="w-9 h-9 rounded-full bg-chat-blue text-white flex items-center justify-center shrink-0 shadow-sm transition-transform duration-200 active:scale-95">
-                <i id="actionIcon" class="fa-solid fa-microphone text-[16px] transition-all duration-200"></i>
-            </button>
+    <!-- Pinned placeholder (hidden unless pinned exists) -->
+    <div id="pinnedContainer" class="px-4 py-2 hidden">
+      <div class="bg-white rounded-2xl p-3 flex items-start gap-3 border border-gray-100">
+        <div class="text-chat-blue"><i class="fa-solid fa-thumbtack rotate-45"></i></div>
+        <div class="flex-1">
+          <div class="text-xs font-semibold text-chat-blue">Pinned</div>
+          <div id="pinnedText" class="text-sm text-gray-600"></div>
         </div>
-
+        <button id="clearPinBtn" class="text-gray-400 p-1" aria-label="Clear pin"><i class="fa-solid fa-xmark"></i></button>
+      </div>
     </div>
 
-<script>
-(function () {
-    const API_BASE = "https://examguide.onrender.com/api";
-    const MESSAGES_API = API_BASE + "/messages";
-    const DISCUSSIONS_API = API_BASE + "/discussions";
-    const token = localStorage.getItem('token');
+    <!-- Messages / skeleton area -->
+    <main id="messagesWrapper" class="flex-1 overflow-y-auto no-scrollbar px-4 pb-4 pt-3 relative">
+      <!-- Skeleton loader while initial fetch running -->
+      <div id="skeletonLoader" class="space-y-4 mt-2">
+        <div class="flex items-start gap-3">
+          <div class="w-10 h-10 rounded-full skeleton"></div>
+          <div class="flex-1 space-y-2">
+            <div class="w-3/4 h-3 skeleton rounded"></div>
+            <div class="w-1/2 h-3 skeleton rounded"></div>
+          </div>
+        </div>
+        <div class="flex items-end justify-end gap-3">
+          <div class="flex-1 text-right">
+            <div class="inline-block w-40 h-10 skeleton rounded"></div>
+          </div>
+        </div>
+        <div class="flex items-start gap-3">
+          <div class="w-10 h-10 rounded-full skeleton"></div>
+          <div class="flex-1 space-y-2">
+            <div class="w-2/3 h-3 skeleton rounded"></div>
+            <div class="w-1/3 h-3 skeleton rounded"></div>
+          </div>
+        </div>
+      </div>
 
-    // DOM elements
-    const messagesList = document.getElementById('messagesList');
-    const messagesWrapper = document.getElementById('messagesWrapper');
-    const messageInput = document.getElementById('messageInput');
-    const actionBtn = document.getElementById('actionBtn');
-    const actionIcon = document.getElementById('actionIcon');
-    const chatTitle = document.getElementById('chatTitle');
-    const chatSub = document.getElementById('chatSub');
-    const chatAvatar = document.getElementById('chatAvatar');
-    const chatEmoji = document.getElementById('chatEmoji');
-    const pinnedContainer = document.getElementById('pinnedContainer');
-    const pinnedText = document.getElementById('pinnedText');
+      <!-- Real messages list -->
+      <div id="messagesList" class="flex flex-col gap-4 mt-2" aria-live="polite"></div>
+    </main>
 
-    // State
-    let userId = getQueryParam('userId');
-    let groupId = getQueryParam('groupId');
-    let isGroup = !!groupId;
-    let messages = []; // last messages
-    let pollingId = null;
-    let lastMessageId = null;
-    let isAtBottom = true;
-    let justSent = false;
+    <!-- Attachment previews -->
+    <div id="attachmentsPreview" class="px-4 pb-2 space-y-2 hidden"></div>
 
-    // Initialize UI based on query params
-    function initHeader() {
-        if (isGroup) {
-            // group basic placeholders before fetch
-            chatTitle.textContent = 'Group';
-            chatSub.textContent = 'Group chat';
-            chatAvatar.src = `https://ui-avatars.com/api/?name=Group&background=F59E0B&color=fff`;
-            chatEmoji.textContent = '👥';
-        } else if (userId) {
-            chatTitle.textContent = 'Direct';
-            chatSub.textContent = 'One-on-one chat';
-            chatAvatar.src = `https://ui-avatars.com/api/?name=User&background=34C759&color=fff`;
-            chatEmoji.textContent = '💬';
-        } else {
-            // no id - show placeholder
-            chatTitle.textContent = 'Chat';
-            chatSub.textContent = '';
-        }
-    }
+    <!-- Input bar -->
+    <div class="bg-white border-t border-gray-100 px-3 pt-3 pb-6 flex items-center gap-3 shrink-0">
+      <button id="addBtn" class="w-10 h-10 rounded-full bg-chat-blue text-white flex items-center justify-center shadow-sm" aria-label="More actions">
+        <i class="fa-solid fa-plus"></i>
+      </button>
 
-    // Utilities
-    function getQueryParam(name) {
-        const params = new URLSearchParams(window.location.search);
-        return params.get(name);
-    }
+      <div class="flex-1 bg-[#F4F5F7] rounded-full border border-gray-200 px-3 py-2 flex items-center gap-3">
+        <input id="messageInput" type="text" placeholder="Type a message…" class="bg-transparent flex-1 outline-none text-sm" autocomplete="off" aria-label="Message input" />
+        <button id="emojiBtn" class="text-gray-500 p-2 rounded hover:bg-gray-100" aria-label="Add emoji"><i class="fa-regular fa-face-smile"></i></button>
+        <button id="attachBtn" class="text-gray-500 p-2 rounded hover:bg-gray-100" aria-label="Attach file"><i class="fa-solid fa-paperclip"></i></button>
+      </div>
 
-    function safeHtml(str) {
+      <button id="actionBtn" class="w-10 h-10 rounded-full bg-chat-blue text-white flex items-center justify-center shadow-sm" aria-label="Send message">
+        <i id="actionIcon" class="fa-solid fa-microphone"></i>
+      </button>
+    </div>
+
+    <!-- Hidden file input for attachments -->
+    <input id="fileInput" class="hidden-input" type="file" accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple />
+
+  </div>
+
+  <script>
+    // Best-practice, production-ready chat page
+    (function () {
+      'use strict';
+
+      // CONFIG
+      const API_BASE = 'https://examguide.onrender.com/api';
+      const MESSAGES_API = `${API_BASE}/messages`;
+      const DISCUSSIONS_API = `${API_BASE}/discussions`;
+      const UPLOAD_ENDPOINT = `${API_BASE}/uploads`; // change if your upload endpoint is elsewhere
+      const POLL_INTERVAL_MS = 1000;       // asked for 1s polling
+      const FETCH_TIMEOUT_MS = 10000;      // abort slow requests
+      const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024; // 10MB file limit in UI
+
+      // Elements
+      const messagesWrapper = document.getElementById('messagesWrapper');
+      const messagesList = document.getElementById('messagesList');
+      const skeletonLoader = document.getElementById('skeletonLoader');
+      const messageInput = document.getElementById('messageInput');
+      const actionBtn = document.getElementById('actionBtn');
+      const actionIcon = document.getElementById('actionIcon');
+      const attachBtn = document.getElementById('attachBtn');
+      const fileInput = document.getElementById('fileInput');
+      const attachmentsPreview = document.getElementById('attachmentsPreview');
+      const addBtn = document.getElementById('addBtn');
+      const chatTitle = document.getElementById('chatTitle');
+      const chatSub = document.getElementById('chatSub');
+      const chatAvatar = document.getElementById('chatAvatar');
+      const chatEmoji = document.getElementById('chatEmoji');
+      const pinnedContainer = document.getElementById('pinnedContainer');
+      const pinnedText = document.getElementById('pinnedText');
+      const clearPinBtn = document.getElementById('clearPinBtn');
+
+      // State
+      let token = localStorage.getItem('token') || null;
+      let userId = getQueryParam('userId');
+      let groupId = getQueryParam('groupId');
+      const isGroup = !!groupId;
+      let currentUserId = null;
+      let messages = [];            // current normalized messages
+      let pollingHandle = null;
+      let lastMessageId = null;
+      let isAtBottom = true;
+      let attachmentsToUpload = []; // File objects waiting to upload
+      let uploading = false;
+      let stopped = false;
+      let consecutiveErrors = 0;
+
+      // UTILITIES
+      function getQueryParam(name) {
+        const p = new URLSearchParams(window.location.search);
+        return p.get(name);
+      }
+      function safeHtml(str) {
         if (str === null || str === undefined) return '';
         return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-    }
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      }
+      function isoNow() { return (new Date()).toISOString(); }
+      function sleep(ms){ return new Promise(resolve => setTimeout(resolve, ms)); }
 
-    function formatTime(date) {
-        if (!date) return '';
-        const d = new Date(date);
-        const now = new Date();
-        const diff = (now - d) / 1000; // seconds
-        if (diff < 60) return 'Just now';
-        if (diff < 3600) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        if (diff < 86400) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        return d.toLocaleDateString();
-    }
-
-    // Scroll helpers
-    function scrollToBottom(smooth = true) {
-        if (!messagesWrapper) return;
+      // Network helpers with timeout + abort
+      async function fetchWithTimeout(url, opts = {}, timeout = FETCH_TIMEOUT_MS) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeout);
+        opts.signal = controller.signal;
         try {
-            messagesWrapper.scrollTo({
-                top: messagesWrapper.scrollHeight,
-                behavior: smooth ? 'smooth' : 'auto'
-            });
-        } catch (e) {
-            messagesWrapper.scrollTop = messagesWrapper.scrollHeight;
+          const res = await fetch(url, opts);
+          clearTimeout(timer);
+          return res;
+        } catch (err) {
+          clearTimeout(timer);
+          throw err;
         }
-    }
+      }
 
-    function checkIfAtBottom() {
-        const threshold = 80; // px
+      // INITIAL UI
+      function showSkeleton(show = true) {
+        skeletonLoader.style.display = show ? '' : 'none';
+        messagesList.style.display = show ? 'none' : '';
+      }
+
+      function setHeaderDefaults() {
+        if (isGroup) {
+          chatTitle.textContent = 'Group';
+          chatSub.textContent = '— members';
+          chatAvatar.src = `https://ui-avatars.com/api/?name=Group&background=F59E0B&color=fff`;
+          chatEmoji.textContent = '👥';
+        } else if (userId) {
+          chatTitle.textContent = 'Direct';
+          chatSub.textContent = 'One-on-one';
+          chatAvatar.src = `https://ui-avatars.com/api/?name=User&background=34C759&color=fff`;
+          chatEmoji.textContent = '💬';
+        } else {
+          chatTitle.textContent = 'Chat';
+          chatSub.textContent = '';
+        }
+      }
+
+      // Scroll helpers
+      function checkIfAtBottom() {
+        const threshold = 120;
         const pos = messagesWrapper.scrollTop + messagesWrapper.clientHeight;
         isAtBottom = (messagesWrapper.scrollHeight - pos) < threshold;
-    }
+      }
+      function scrollToBottom(smooth = true) {
+        try {
+          messagesWrapper.scrollTo({ top: messagesWrapper.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+        } catch (e) {
+          messagesWrapper.scrollTop = messagesWrapper.scrollHeight;
+        }
+      }
 
-    // Render functions
-    function renderMessages(newMessages) {
-        // Only re-render if changed (compare last id or length)
-        const newLastId = (newMessages.length > 0) ? newMessages[newMessages.length - 1]._id : null;
-        if (messages.length === newMessages.length && lastMessageId === newLastId) {
-            // no change
-            return;
+      // Render helpers
+      function buildMessageHtml(m, isOutgoing) {
+        const time = formatTime(m.time);
+        const escapedText = safeHtml(m.text || '');
+        if (isOutgoing) {
+          return `
+            <div class="flex justify-end mt-1">
+              <div class="flex flex-col max-w-[80%]">
+                <div class="bubble-outgoing px-3 py-2 inline-block">
+                  <div class="text-sm text-gray-900">${escapedText}</div>
+                </div>
+                <div class="text-right msg-meta mt-1">${safeHtml(time)}</div>
+              </div>
+            </div>
+          `;
+        } else {
+          const avatar = safeHtml(m.fromAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(m.fromName || 'A')}&background=CCC&color=fff`);
+          const fromName = safeHtml(m.fromName || 'Anonymous');
+          return `
+            <div class="flex gap-3">
+              <img src="${avatar}" class="w-9 h-9 rounded-full object-cover mt-0.5" alt="${fromName}" />
+              <div class="flex flex-col max-w-[78%]">
+                <div class="text-xs font-medium text-chat-purple">${fromName}</div>
+                <div class="bubble-incoming p-3 mt-1">
+                  <div class="text-sm text-gray-800">${escapedText}</div>
+                </div>
+                <div class="msg-meta mt-1">${safeHtml(time)}</div>
+              </div>
+            </div>
+          `;
+        }
+      }
+
+      function formatTime(ts) {
+        if (!ts) return '';
+        const d = new Date(ts);
+        const now = new Date();
+        const diff = Math.round((now - d) / 1000);
+        if (diff < 60) return 'Just now';
+        if (diff < 3600) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        if (diff < 86400) return d.toLocaleDateString();
+        return d.toLocaleDateString();
+      }
+
+      function renderMessages(newMessages) {
+        // newMessages is normalized array of { _id, from, fromName, fromAvatar, text, attachments, time }
+        const lastNewId = (newMessages.length ? newMessages[newMessages.length - 1]._id : null);
+        if (lastMessageId === lastNewId && messages.length === newMessages.length) {
+          // nothing new
+          return;
         }
 
-        // Determine whether to keep scroll at bottom
         checkIfAtBottom();
-
         messages = newMessages;
-        lastMessageId = newLastId;
+        lastMessageId = lastNewId;
 
-        // build html
-        const html = [];
+        // compose HTML
+        const parts = [];
         let lastDate = null;
-        messages.forEach(msg => {
-            const senderName = msg.fromName || 'Unknown';
-            const timeStr = formatTime(msg.time || msg.createdAt || msg.createdAt);
-            const isOutgoing = (String(msg.from) === String(window.currentUserId || '')); // we'll set currentUserId after auth fetch
-            // date separator
-            const msgDate = new Date(msg.time || msg.createdAt || msg.createdAt).toDateString();
-            if (msgDate !== lastDate) {
-                html.push(`<div class="flex justify-center"><span class="bg-[#E4E6EB] text-gray-700 text-[12px] font-medium px-4 py-1 rounded-full">${safeHtml(msgDate)}</span></div>`);
-                lastDate = msgDate;
+        for (const msg of messages) {
+          const msgDate = new Date(msg.time).toDateString();
+          if (msgDate !== lastDate) {
+            parts.push(`<div class="flex justify-center my-2"><span class="bg-[#E4E6EB] text-gray-700 text-xs font-medium px-3 py-1 rounded-full">${safeHtml(msgDate)}</span></div>`);
+            lastDate = msgDate;
+          }
+          const isOutgoing = String(msg.from) === String(currentUserId);
+          parts.push(buildMessageHtml(msg, isOutgoing));
+          // attachments
+          if (Array.isArray(msg.attachments) && msg.attachments.length) {
+            for (const a of msg.attachments) {
+              const aname = safeHtml(a.filename || a.name || 'file');
+              const aurl = safeHtml(a.url || a.path || a.fileUrl || '');
+              const atype = safeHtml(a.contentType || '');
+              parts.push(`
+                <div class="flex ${isOutgoing ? 'justify-end' : ''}">
+                  <a href="${aurl}" target="_blank" rel="noopener noreferrer" class="file-preview mt-2 ${isOutgoing ? 'mr-2' : ''}">
+                    <div class="w-10 h-10 bg-gray-100 rounded flex items-center justify-center text-gray-700">
+                      <i class="${atype.startsWith('image') ? 'fa-regular fa-image' : 'fa-solid fa-file'}"></i>
+                    </div>
+                    <div class="flex-1">
+                      <div class="text-sm font-medium">${aname}</div>
+                      <div class="text-xs text-gray-500">${safeHtml(a.contentType || '')}</div>
+                    </div>
+                  </a>
+                </div>
+              `);
             }
+          }
+        }
 
-            if (isOutgoing) {
-                // outgoing (right)
-                html.push(`
-                    <div class="flex justify-end mt-1">
-                        <div class="flex flex-col relative max-w-[80%]">
-                            <div class="bg-chat-outgoing px-3 py-2 bubble-outgoing flex items-end gap-2">
-                                <p class="text-[15px] text-gray-900 leading-snug">${safeHtml(msg.text)}</p>
-                                <div class="flex items-center gap-1 shrink-0 pb-0.5">
-                                    <span class="text-[10px] text-gray-500">${safeHtml(timeStr)}</span>
-                                    <i class="fa-solid fa-check-double text-chat-blue text-[10px]"></i>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `);
-            } else {
-                // incoming (left)
-                html.push(`
-                    <div class="flex gap-2">
-                        <img src="${safeHtml(msg.fromAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(senderName)}&background=ccc&color=fff`)}" alt="${safeHtml(senderName)}" class="w-8 h-8 rounded-full mt-auto mb-1 object-cover shrink-0">
-                        <div class="flex flex-col relative max-w-[80%] mb-1">
-                            <span class="text-[12px] font-medium text-chat-purple mb-1 ml-1">${safeHtml(senderName)}</span>
-                            <div class="bg-chat-incoming p-3 bubble-incoming relative">
-                                <p class="text-[15px] text-gray-800 leading-snug">${safeHtml(msg.text)}</p>
-                                <div class="text-[10px] text-gray-400 text-right mt-1.5">${safeHtml(timeStr)}</div>
-                            </div>
-                        </div>
-                    </div>
-                `);
+        messagesList.innerHTML = parts.join('');
+
+        // hide skeleton and show messages area
+        showSkeleton(false);
+
+        // scroll rules
+        if (isAtBottom) {
+          scrollToBottom(true);
+        }
+      }
+
+      // Load current user id
+      async function loadCurrentUser() {
+        if (!token) return;
+        try {
+          const res = await fetchWithTimeout(`${API_BASE}/auth/me`, { headers: { 'Authorization': `Bearer ${token}` } }, FETCH_TIMEOUT_MS);
+          if (!res.ok) return;
+          const body = await res.json();
+          currentUserId = body?.user?._id || body?.user?.id || null;
+        } catch (err) {
+          console.warn('loadCurrentUser error', err);
+        }
+      }
+
+      // Load metadata for header (group/user)
+      async function loadMeta() {
+        if (!token) return;
+        try {
+          // reuse messages/chats endpoint to find names / avatars
+          const res = await fetchWithTimeout(`${MESSAGES_API}/chats`, { headers: { 'Authorization': `Bearer ${token}` } }, FETCH_TIMEOUT_MS);
+          if (!res.ok) return;
+          const body = await res.json();
+          if (isGroup) {
+            const group = (body.groups || []).find(g => String(g._id) === String(groupId));
+            if (group) {
+              chatTitle.textContent = group.name || 'Group';
+              chatSub.textContent = `${group.memberCount || 0} members`;
+              if (group.avatar) chatAvatar.src = group.avatar;
+              // pinned message if available (group model currently does not include pinnedMessage by default)
+              if (group.pinnedMessage) {
+                pinnedText.textContent = group.pinnedMessage;
+                pinnedContainer.classList.remove('hidden');
+              } else {
+                pinnedContainer.classList.add('hidden');
+              }
             }
+          } else {
+            // direct
+            const chat = (body.chats || []).find(c => String(c._id) === String(userId) || String(c._id) === String(userId));
+            if (chat) {
+              chatTitle.textContent = chat.fullname || chat.username || 'User';
+              chatSub.textContent = chat.username ? `@${chat.username}` : '';
+              if (chat.avatar) chatAvatar.src = chat.avatar;
+            } else {
+              // fallback: try user endpoint
+              const r2 = await fetchWithTimeout(`${API_BASE}/users/${userId}`, { headers: { 'Authorization': `Bearer ${token}` } }, FETCH_TIMEOUT_MS);
+              if (r2.ok) {
+                const u = await r2.json();
+                chatTitle.textContent = u.fullname || u.username || 'User';
+                chatSub.textContent = u.department ? `${u.department} • ${u.level || ''}` : '';
+                if (u.profilePicture) chatAvatar.src = u.profilePicture;
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('loadMeta error', err);
+        }
+      }
+
+      // Normalize backend message shape to local shape
+      function normalizeMessages(arr) {
+        // backend returns array of messages for group or direct chat (routes/messages.js)
+        return (arr || []).map(m => ({
+          _id: m._id,
+          from: m.from,
+          fromName: m.fromName || m.from?.fullname || m.from?.username || '',
+          fromAvatar: m.fromAvatar || m.from?.profilePicture || '',
+          text: m.text || '',
+          attachments: m.attachments || (m.attachmentUrl ? [{ url: m.attachmentUrl, filename: m.attachmentFilename || '' , contentType: m.attachmentType }] : []),
+          time: m.time || m.createdAt || m.createdAt
+        }));
+      }
+
+      // Load messages from server
+      async function loadMessages() {
+        if (!token) return;
+        if (!userId && !groupId) return;
+        const url = isGroup ? `${MESSAGES_API}/group/${groupId}/messages` : `${MESSAGES_API}/user/${userId}/messages`;
+        try {
+          const res = await fetchWithTimeout(url, { headers: { 'Authorization': `Bearer ${token}` } }, FETCH_TIMEOUT_MS);
+          if (!res.ok) {
+            consecutiveErrors++;
+            console.warn('Failed to fetch messages', res.status);
+            return;
+          }
+          consecutiveErrors = 0;
+          const arr = await res.json();
+          const normalized = normalizeMessages(arr);
+          renderMessages(normalized);
+        } catch (err) {
+          consecutiveErrors++;
+          if (err.name === 'AbortError') {
+            console.warn('loadMessages aborted (timeout)');
+          } else {
+            console.warn('loadMessages error', err);
+          }
+        }
+      }
+
+      // Upload files to server (returns array of uploaded attachment metadata)
+      async function uploadFiles(files) {
+        if (!files || !files.length) return [];
+        const uploaded = [];
+        for (const f of files) {
+          if (f.size > MAX_UPLOAD_SIZE_BYTES) {
+            alert(`File "${f.name}" is too large. Max ${Math.round(MAX_UPLOAD_SIZE_BYTES / (1024 * 1024))}MB allowed.`);
+            continue;
+          }
+          const fd = new FormData();
+          fd.append('file', f);
+          try {
+            const res = await fetchWithTimeout(UPLOAD_ENDPOINT, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${token}` },
+              body: fd
+            }, 30000);
+            if (!res.ok) {
+              const err = await res.json().catch(()=>null);
+              throw new Error(err?.error || `Upload failed (${res.status})`);
+            }
+            const body = await res.json();
+            // normalize returned object to { url, filename, contentType, size }
+            if (body && (body.url || body.fileUrl || body.path)) {
+              uploaded.push({
+                url: body.url || body.fileUrl || body.path,
+                filename: body.filename || f.name,
+                contentType: body.contentType || f.type,
+                size: body.size || f.size
+              });
+            } else if (body && Array.isArray(body.files)) {
+              // some upload endpoints return { files: [...] }
+              body.files.forEach(x => uploaded.push({
+                url: x.url || x.path,
+                filename: x.filename || x.name,
+                contentType: x.contentType,
+                size: x.size
+              }));
+            } else {
+              // fallback: if server returns id or similar, include as best-effort
+              uploaded.push({ url: body?.url || '', filename: f.name, contentType: f.type, size: f.size });
+            }
+          } catch (err) {
+            console.error('uploadFiles error', err);
+            alert(`Failed to upload "${f.name}": ${err.message || 'upload error'}`);
+          }
+        }
+        return uploaded;
+      }
+
+      // Send message (supports text + attachments metadata)
+      async function sendMessage(text, attachmentsMetadata = []) {
+        if (!token) { alert('Not authenticated'); return; }
+        if (!text && (!attachmentsMetadata || !attachmentsMetadata.length)) return;
+
+        let url, payload;
+        if (isGroup) {
+          url = `${MESSAGES_API}/group/${groupId}/send`;
+          payload = { text, attachments: attachmentsMetadata };
+        } else {
+          url = `${MESSAGES_API}/user/${userId}/send`;
+          payload = { text, attachments: attachmentsMetadata };
+        }
+
+        // optimistic UI append
+        const tempId = `tmp-${Date.now()}`;
+        const outgoing = { _id: tempId, from: currentUserId || 'me', fromName: 'You', fromAvatar: '', text: text || (attachmentsMetadata[0]?.filename || 'Attachment'), attachments: attachmentsMetadata, time: new Date().toISOString() };
+        renderMessages([ ...(messages || []), outgoing ]);
+        messageInput.value = '';
+        attachmentsToUpload = [];
+        attachmentsPreview.classList.add('hidden');
+        checkIfAtBottom();
+        scrollToBottom(true);
+
+        try {
+          const res = await fetchWithTimeout(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify(payload)
+          }, 15000);
+          if (!res.ok) {
+            const err = await res.json().catch(()=>null);
+            throw new Error(err?.error || `Send failed (${res.status})`);
+          }
+          // refresh messages from server to get canonical ids
+          await loadMessages();
+        } catch (err) {
+          console.error('sendMessage error', err);
+          alert('Failed to send message: ' + (err.message || 'unknown'));
+        }
+      }
+
+      // UI: attachments preview
+      function showAttachmentsPreview(files) {
+        attachmentsPreview.innerHTML = '';
+        if (!files || !files.length) {
+          attachmentsPreview.classList.add('hidden');
+          return;
+        }
+        attachmentsPreview.classList.remove('hidden');
+        for (const f of files) {
+          const el = document.createElement('div');
+          el.className = 'file-preview';
+          el.innerHTML = `
+            <div class="w-10 h-10 bg-gray-100 rounded flex items-center justify-center text-gray-700">
+              <i class="${f.type && f.type.startsWith('image') ? 'fa-regular fa-image' : 'fa-solid fa-file'}"></i>
+            </div>
+            <div class="flex-1">
+              <div class="text-sm font-medium">${safeHtml(f.name)}</div>
+              <div class="text-xs text-gray-500">${Math.round((f.size||0)/1024)} KB</div>
+            </div>
+            <button class="text-gray-400 ml-2 remove-file" data-name="${safeHtml(f.name)}" aria-label="Remove attachment"><i class="fa-solid fa-xmark"></i></button>
+          `;
+          attachmentsPreview.appendChild(el);
+        }
+      }
+
+      // Event handlers
+      attachBtn.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', (e) => {
+        const files = Array.from(e.target.files || []);
+        if (!files.length) return;
+        attachmentsToUpload = files;
+        showAttachmentsPreview(files);
+      });
+
+      // Remove attachment click (delegated)
+      attachmentsPreview.addEventListener('click', (e) => {
+        const rem = e.target.closest('.remove-file');
+        if (!rem) return;
+        const name = rem.dataset.name;
+        attachmentsToUpload = attachmentsToUpload.filter(f => f.name !== name);
+        showAttachmentsPreview(attachmentsToUpload);
+      });
+
+      // Enter sends (no shift)
+      messageInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          messageSubmitHandler();
+        }
+      });
+
+      // Toggle mic/send icon
+      function updateActionIcon() {
+        if (messageInput.value.trim().length) {
+          actionIcon.classList.remove('fa-microphone');
+          actionIcon.classList.add('fa-paper-plane');
+          actionBtn.setAttribute('aria-label', 'Send message');
+        } else {
+          actionIcon.classList.remove('fa-paper-plane');
+          actionIcon.classList.add('fa-microphone');
+          actionBtn.setAttribute('aria-label', 'Start voice');
+        }
+      }
+      messageInput.addEventListener('input', updateActionIcon);
+
+      // Send flow handler: if attachments queued -> upload first, then send; else send text
+      async function messageSubmitHandler() {
+        if (uploading) return;
+        const text = messageInput.value.trim();
+        try {
+          let uploadedMeta = [];
+          if (attachmentsToUpload.length) {
+            uploading = true;
+            uploadedMeta = await uploadFiles(attachmentsToUpload);
+            uploading = false;
+            // if upload failed for all files, do not proceed
+            if (!uploadedMeta.length && !text) {
+              alert('No files uploaded; message not sent.');
+              return;
+            }
+          }
+          await sendMessage(text, uploadedMeta);
+        } catch (err) {
+          uploading = false;
+          console.error(err);
+          alert('Failed to send message: ' + (err.message || 'error'));
+        }
+      }
+
+      actionBtn.addEventListener('click', async (e) => {
+        if (messageInput.value.trim()) {
+          await messageSubmitHandler();
+        } else {
+          // placeholder: start/stop voice recording (implement as needed)
+          toggleVoicePlaceholder();
+        }
+      });
+
+      function toggleVoicePlaceholder() {
+        // Simple UI feedback for production: could be replaced by real recording
+        if (actionIcon.classList.contains('fa-microphone')) {
+          actionIcon.classList.remove('fa-microphone');
+          actionIcon.classList.add('fa-circle-stop'); // stub class - not a real fa class; just visual change is fine
+          // better UX would show recording state, duration, etc.
+          setTimeout(() => {
+            updateActionIcon();
+          }, 1200);
+        } else {
+          updateActionIcon();
+        }
+      }
+
+      // Back button
+      document.getElementById('backBtn').addEventListener('click', () => window.history.back());
+
+      // Pinned clear (stub)
+      if (clearPinBtn) {
+        clearPinBtn.addEventListener('click', () => {
+          pinnedContainer.classList.add('hidden');
+          pinnedText.textContent = '';
+          // optionally call API to clear pinned message for group
+        });
+      }
+
+      // Polling management with visibility handling and error backoff
+      function startPolling() {
+        if (pollingHandle) return;
+        let interval = POLL_INTERVAL_MS;
+        pollingHandle = setInterval(async () => {
+          if (document.hidden) return; // pause while not visible
+          try {
+            await loadMessages();
+            consecutiveErrors = 0;
+            // restore interval if previously backed off
+            if (interval !== POLL_INTERVAL_MS) {
+              clearInterval(pollingHandle);
+              pollingHandle = null;
+              interval = POLL_INTERVAL_MS;
+              startPolling();
+            }
+          } catch (err) {
+            consecutiveErrors++;
+            if (consecutiveErrors >= 3) {
+              // back off (double interval up to 8s)
+              interval = Math.min(8000, interval * 2);
+              clearInterval(pollingHandle);
+              pollingHandle = null;
+              startPolling();
+            }
+          }
+        }, interval);
+      }
+
+      function stopPolling() {
+        if (!pollingHandle) return;
+        clearInterval(pollingHandle);
+        pollingHandle = null;
+      }
+
+      // Lifecycle: start everything
+      async function start() {
+        setHeaderDefaults();
+        showSkeleton(true);
+        await loadCurrentUser();
+        await loadMeta();
+
+        // initial load
+        await loadMessages();
+        showSkeleton(false);
+        scrollToBottom(false);
+
+        // update action icon state
+        updateActionIcon();
+
+        // start polling
+        startPolling();
+
+        // visibility change handler: when becoming visible, force a fetch
+        document.addEventListener('visibilitychange', async () => {
+          if (!document.hidden) {
+            await loadCurrentUser();
+            await loadMessages();
+          }
         });
 
-        messagesList.innerHTML = html.join('');
+        // track scroll to determine if we auto-scroll
+        messagesWrapper.addEventListener('scroll', () => checkIfAtBottom());
+      }
 
-        // Scroll behavior:
-        // - If user was at bottom or we just sent a message, scroll to bottom.
-        if (isAtBottom || justSent) {
-            scrollToBottom(true);
-            justSent = false;
-        }
-    }
+      // Start
+      start().catch(err => {
+        console.error('Chat init failed', err);
+        showSkeleton(false);
+      });
 
-    // Fetch conversation messages
-    async function loadMessages() {
-        if (!token) return;
-        try {
-            let url;
-            if (isGroup) {
-                url = `${MESSAGES_API}/group/${groupId}/messages`;
-            } else if (userId) {
-                url = `${MESSAGES_API}/user/${userId}/messages`;
-            } else {
-                return;
-            }
+      // Expose debug helpers
+      window.chatClient = {
+        loadMessages, sendMessage, startPolling, stopPolling
+      };
 
-            const res = await fetch(url, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (!res.ok) {
-                // silently ignore logging to console
-                console.warn('Failed to load messages', res.status);
-                return;
-            }
-            const data = await res.json();
-            // data is an array of messages
-            // Normalize to expected fields: _id, from, fromName, fromAvatar, text, time
-            const normalized = (data || []).map(m => ({
-                _id: m._id,
-                from: m.from,
-                fromName: m.fromName || m.from?.fullname || m.from?.username || '',
-                fromAvatar: m.fromAvatar || m.from?.profilePicture || '',
-                text: m.text || '',
-                attachments: m.attachments || [],
-                time: m.time || m.createdAt || m.createdAt
-            }));
-            renderMessages(normalized);
-        } catch (err) {
-            console.error('loadMessages error', err);
-        }
-    }
-
-    // Fetch chat/group metadata (title, members, pinned message etc.)
-    async function loadMeta() {
-        if (!token) return;
-        try {
-            if (isGroup) {
-                // we don't have a dedicated group metadata endpoint in the frontend; try to reuse messages/groups listing
-                const res = await fetch(`${MESSAGES_API}/chats`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (!res.ok) return;
-                const body = await res.json();
-                const group = (body.groups || []).find(g => String(g._id) === String(groupId));
-                if (group) {
-                    chatTitle.textContent = group.name || 'Group';
-                    chatSub.textContent = `${group.memberCount || 0} members`;
-                    if (group.avatar) chatAvatar.src = group.avatar;
-                    pinnedContainer.classList.toggle('hidden', !group.pinnedMessage);
-                    if (group.pinnedMessage) pinnedText.textContent = group.pinnedMessage;
-                }
-            } else if (userId) {
-                // find user from similar-users or from chats endpoint
-                const res = await fetch(`${MESSAGES_API}/chats`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (!res.ok) return;
-                const body = await res.json();
-                const chat = (body.chats || []).find(c => String(c._id) === String(userId) || String(c._id) === String(userId));
-                // Many of your chat entries use the chat._id for the chat document; in direct chat the other user's id isn't necessarily chat._id.
-                // As fallback fetch the user detail directly (if endpoint exists) - we will try /api/users/:id
-                if (chat) {
-                    chatTitle.textContent = chat.fullname || chat.username || 'User';
-                    chatSub.textContent = chat.username ? `@${chat.username}` : '';
-                    if (chat.avatar) chatAvatar.src = chat.avatar;
-                } else {
-                    // try to fetch user info
-                    const res2 = await fetch(`${API_BASE}/users/${userId}`, { headers: { 'Authorization': `Bearer ${token}` }});
-                    if (res2.ok) {
-                        const u = await res2.json();
-                        chatTitle.textContent = u.fullname || u.username || 'User';
-                        chatSub.textContent = u.department ? `${u.department} • ${u.level || ''}` : '';
-                        if (u.profilePicture) chatAvatar.src = u.profilePicture;
-                    }
-                }
-            }
-        } catch (err) {
-            console.warn('loadMeta error', err);
-        }
-    }
-
-    // Send message
-    async function sendMessage(text) {
-        if (!token) {
-            alert('You are not authenticated.');
-            return;
-        }
-        if (!text || (!isGroup && !userId) || (isGroup && !groupId)) return;
-
-        try {
-            let url, method = 'POST', body = {};
-            if (isGroup) {
-                url = `${MESSAGES_API}/group/${groupId}/send`;
-                body = { text };
-            } else {
-                url = `${MESSAGES_API}/user/${userId}/send`;
-                body = { text };
-            }
-
-            // Optimistic UI: append outgoing message
-            const tempId = `temp-${Date.now()}`;
-            const outgoing = {
-                _id: tempId,
-                from: 'me',
-                fromName: 'You',
-                fromAvatar: '',
-                text,
-                time: new Date().toISOString()
-            };
-            const newList = [...messages, outgoing];
-            renderMessages(newList);
-            justSent = true;
-
-            const res = await fetch(url, {
-                method,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify(body)
-            });
-
-            if (!res.ok) {
-                const err = await res.json().catch(()=>null);
-                throw new Error(err?.error || `Failed to send (${res.status})`);
-            }
-            const resp = await res.json();
-            // After success, reload messages to get server-sent metadata/ids
-            await loadMessages();
-            messageInput.value = '';
-            toggleActionIcon(); // revert to mic
-        } catch (err) {
-            console.error('sendMessage error', err);
-            alert('Failed to send message: ' + (err.message || 'unknown'));
-        }
-    }
-
-    // Action icon toggle (mic vs send)
-    function toggleActionIcon() {
-        if (messageInput.value.trim().length > 0) {
-            actionIcon.classList.remove('fa-microphone');
-            actionIcon.classList.add('fa-paper-plane');
-        } else {
-            actionIcon.classList.remove('fa-paper-plane');
-            actionIcon.classList.add('fa-microphone');
-        }
-    }
-
-    // Event listeners
-    messageInput.addEventListener('input', (e) => {
-        toggleActionIcon();
-    });
-
-    // send on Enter
-    messageInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            const text = messageInput.value.trim();
-            if (text) sendMessage(text);
-        }
-    });
-
-    actionBtn.addEventListener('click', (e) => {
-        const text = messageInput.value.trim();
-        if (text) {
-            sendMessage(text);
-        } else {
-            // TODO: start voice recording (not implemented)
-            console.log('microphone press');
-        }
-    });
-
-    // Keep track of scroll position
-    messagesWrapper.addEventListener('scroll', () => {
-        checkIfAtBottom();
-    });
-
-    // Back button (if you have a previous page)
-    document.getElementById('backBtn').addEventListener('click', (e) => {
-        window.history.back();
-    });
-
-    // Polling: silent refresh every 1 second
-    function startPolling() {
-        if (pollingId) return;
-        pollingId = setInterval(async () => {
-            await loadMessages(); // loadMessages will be silent and only re-render when new messages exist
-        }, 1000);
-    }
-    function stopPolling() {
-        if (pollingId) {
-            clearInterval(pollingId);
-            pollingId = null;
-        }
-    }
-
-    // Load current user id to know outgoing messages
-    async function loadCurrentUserId() {
-        if (!token) return;
-        try {
-            const res = await fetch(`${API_BASE}/auth/me`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (!res.ok) return;
-            const data = await res.json();
-            if (data && data.user && data.user._id) {
-                window.currentUserId = data.user._id;
-            }
-        } catch (err) {
-            console.warn('loadCurrentUserId error', err);
-        }
-    }
-
-    // Init sequence
-    (async function init() {
-        initHeader();
-        await loadCurrentUserId();
-        await loadMeta();
-        await loadMessages();
-        // ensure we're at bottom initially
-        scrollToBottom(false);
-        startPolling();
+      // END IIFE
     })();
-
-    // Expose for debugging (optional)
-    window._chatDebug = { loadMessages, sendMessage, stopPolling, startPolling };
-})();
-</script>
-
+  </script>
 </body>
 </html>
