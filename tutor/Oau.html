@@ -1114,22 +1114,7 @@
         }
     }
 
-    // --- Initialize behaviors on DOMContentLoaded ---
-    document.addEventListener('DOMContentLoaded', () => {
-        initCarousel();
-        initSidebarSearch();
-
-        // If stored active tab is forums or user navigates there, ensure forums are loaded
-        const stored = localStorage.getItem('activeTab');
-        if (stored === 'forums' || currentActiveTab === 'forums') {
-            loadActiveForums();
-            loadSidebarActiveForums();
-        } else {
-            // load sidebar list so the right-rail shows forums even if user is elsewhere
-            loadSidebarActiveForums();
-        }
-    });
-
+    
     // --- PWA Detection & Configuration ---
     const isPWA = window.matchMedia("(display-mode: standalone)").matches ||
                   window.navigator.standalone === true;
@@ -1342,6 +1327,54 @@
                 .catch(error => console.error('Content refresh error:', error));
         }, 30000); // Increased to 30 seconds to avoid frequent refreshes
     }
+        // --- Smart Content Refresh (Only refreshes static content, preserves tab state) ---
+    function startContentRefresh() {
+        if (refreshInterval) clearInterval(refreshInterval);
+
+        refreshInterval = setInterval(() => {
+            fetch(window.location.href, { cache: 'no-store' })
+                .then(response => response.text())
+                .then(html => {
+                    const parser = new DOMParser();
+                    const newDoc = parser.parseFromString(html, 'text/html');
+                    
+                    // Only update specific sections, not the entire main
+                    const newCarousel = newDoc.querySelector('#carouselTrack');
+                    const oldCarousel = document.querySelector('#carouselTrack');
+                    if (newCarousel && oldCarousel) {
+                        oldCarousel.parentElement.replaceChild(newCarousel, oldCarousel);
+                        initCarousel(); // Reinit carousel
+                    }
+
+                    // Restore active tab state
+                    const storedTab = localStorage.getItem('activeTab') || 'feed';
+                    showTab(storedTab);
+                })
+                .catch(error => console.error('Content refresh error:', error));
+        }, 30000); // Increased to 30 seconds to avoid frequent refreshes
+    }
+
+    // --- Initialize on Page Load ---
+    document.addEventListener('DOMContentLoaded', function() {
+        fetchUserProfile();
+        checkLoggedInUser();
+        fetchRecentNews();
+        initCarousel();
+        initSidebarSearch();
+        
+        // Restore active tab from localStorage
+        const storedTab = localStorage.getItem('activeTab') || 'feed';
+        showTab(storedTab);
+        
+        // Start content refresh
+        startContentRefresh();
+    });
+
+    // --- Cleanup on page unload ---
+    window.addEventListener('beforeunload', function() {
+        if (refreshInterval) clearInterval(refreshInterval);
+        if (carouselInterval) clearInterval(carouselInterval);
+    });
 </script>
 
 </body>
