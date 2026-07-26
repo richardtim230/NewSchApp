@@ -50,6 +50,7 @@
         mangle: false,
         headerIds: false
       });
+      // optionally enable extensions (autolinks are handled via marked + pre-processing below)
     }
   </script>
 
@@ -94,6 +95,8 @@
         line-height:1.7;
         word-wrap:break-word;
         overflow-wrap:anywhere;
+        white-space:pre-wrap;            /* preserve newlines */
+        -webkit-font-smoothing:antialiased;
     }
 
     .bubble-incoming p,
@@ -208,15 +211,14 @@
         border-top:1px solid #ddd;
     }
 
-    /* table wrapper class for responsiveness */
     .md-table-wrap { overflow-x:auto; }
 
-    /* textarea styling */
+    /* textarea styling: allow internal scrolling once max height reached */
     #messageInput {
       resize: none;
-      overflow: hidden;
+      overflow-y: auto;
       min-height: 36px;
-      max-height: 160px;
+      max-height: 140px; /* maximum visible height; beyond this, the field will scroll internally */
       line-height: 1.25;
       padding-top: 6px;
       padding-bottom: 6px;
@@ -287,7 +289,7 @@
       <button id="addBtn" class="w-10 h-10 rounded-full bg-chat-blue text-white flex items-center justify-center shadow-sm" aria-label="More actions"><i class="fa-solid fa-plus"></i></button>
 
       <div class="flex-1 bg-[#F4F5F7] rounded-full border border-gray-200 px-3 py-2 flex items-center gap-3">
-        <!-- textarea to support multi-line messages -->
+        <!-- textarea to support multi-line messages; will scroll internally past max-height -->
         <textarea id="messageInput" rows="1" placeholder="Type a message…" class="bg-transparent flex-1 outline-none text-sm" autocomplete="off" aria-label="Message input"></textarea>
         <button id="emojiBtn" class="text-gray-500 p-2 rounded hover:bg-gray-100" aria-label="Add emoji"><i class="fa-regular fa-face-smile"></i></button>
         <button id="attachBtn" class="text-gray-500 p-2 rounded hover:bg-gray-100" aria-label="Attach file"><i class="fa-solid fa-paperclip"></i></button>
@@ -313,6 +315,7 @@
     const POLL_INTERVAL_FALLBACK = 2000;
     const FETCH_TIMEOUT_MS = 10000;
     const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
+    const INPUT_MAX_HEIGHT = 140; // matches CSS max-height
 
     const messagesWrapper = document.getElementById('messagesWrapper');
     const messagesList = document.getElementById('messagesList');
@@ -389,11 +392,11 @@
     function renderMessage(rawText) {
       let text = (rawText == null) ? '' : String(rawText);
 
-      // preserve consecutive blank lines (collapse 3+ -> 2) and trim
+      // preserve consecutive blank lines: collapse 3+ -> 2, trim edges
       text = text.replace(/\n{3,}/g, "\n\n").trim();
 
-      // auto-link bare URLs by wrapping in angle brackets so marked treats them as links
-      // skip if already enclosed in <> or part of markdown link [text](url)
+      // auto-link bare URLs by enclosing in angle brackets (helps marked auto-link)
+      // avoid converting inside existing markdown links: naive but practical
       text = text.replace(/(^|\s)(https?:\/\/[^\s<)]+)/g, '$1<$2>');
 
       try {
@@ -407,18 +410,19 @@
 
         return clean;
       } catch (e) {
-        // fallback: escaped text with line breaks
         const fallback = safeHtml(text).replace(/\n/g, '<br>');
         return (window.DOMPurify ? DOMPurify.sanitize(fallback) : fallback);
       }
     }
 
-    /* Auto-resize the textarea to fit its contents */
-    function autoResizeTextarea() {
+    /* Auto-resize textarea until max; after max, allow internal scroll */
+    function adjustInputHeight() {
       if (!messageInput) return;
       messageInput.style.height = 'auto';
-      // Add small extra padding to avoid scrollbar flicker
-      messageInput.style.height = Math.min(messageInput.scrollHeight + 2, 160) + 'px';
+      const scrollH = messageInput.scrollHeight;
+      const newHeight = Math.min(scrollH, INPUT_MAX_HEIGHT);
+      messageInput.style.height = newHeight + 'px';
+      // if content taller than max, keep internal scroll (CSS overflow-y:auto handles it)
     }
 
     function buildMessageHtml(m){
@@ -435,7 +439,6 @@
         return `<div class="${isOutgoing ? 'justify-end' : ''}"><a href="${url}" target="_blank" rel="noopener noreferrer" class="file-preview mt-2 ${isOutgoing ? 'mr-2' : ''}"><div class="w-10 h-10 bg-gray-50 rounded flex items-center justify-center text-gray-700"><i class="${type && type.startsWith('image') ? 'fa-regular fa-image' : 'fa-solid fa-file'}"></i></div><div class="flex-1 ml-2"><div class="text-sm font-medium">${name}</div><div class="text-xs text-gray-500">${Math.round((a.size||0)/1024)} KB</div></div></a></div>`;
       }).join('');
 
-      let reactionsHtml = '';
       const reactions = m.reactions || {};
       const reactMap = {};
       if (Array.isArray(reactions)) {
@@ -741,7 +744,7 @@
       const optimistic = { _id: tmpId, from: currentUserId||'me', fromName: 'You', fromAvatar: '', text: text|| (attachmentMeta[0]?.filename || ''), attachments: attachmentMeta, reactions: {}, time: new Date().toISOString() };
       renderMessages([ ...(messages||[]), optimistic ]);
       messageInput.value = '';
-      autoResizeTextarea(); // reset height after sending
+      adjustInputHeight(); // reset height after sending
       attachmentsToUpload = [];
       attachmentsPreview.classList.add('hidden');
       scrollToBottom(true);
@@ -907,7 +910,7 @@
       showAttachmentsPreview(attachmentsToUpload);
     });
 
-    // update icon and autosize on input
+    // update icon and autosize/scroll behavior when user types
     function updateActionIcon(){
       if (messageInput.value.trim().length) {
         actionIcon.classList.remove('fa-microphone');
@@ -918,18 +921,20 @@
       }
     }
 
-    // Enter sends, Shift+Enter newline
+    // Ctrl/Cmd+Enter sends; Enter inserts newline (default)
     messageInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         submitMessageFlow();
+        return;
       }
+      // otherwise allow default behavior (newline)
     });
 
-    // adjust icon and height when user types
+    // adjust icon and input height when user types
     messageInput.addEventListener('input', () => {
       updateActionIcon();
-      autoResizeTextarea();
+      adjustInputHeight();
     });
 
     actionBtn.addEventListener('click', async () => {
@@ -946,7 +951,7 @@
       showSkeleton(false);
       scrollToBottom(false);
       updateActionIcon();
-      autoResizeTextarea();
+      adjustInputHeight();
       initSocket();
       setTimeout(()=>{ if (!socket || !socket.connected) startFallbackPolling(); }, 3500);
       document.addEventListener('visibilitychange', async () => { if (!document.hidden) { await loadCurrentUser(); await loadMessages(); }});
