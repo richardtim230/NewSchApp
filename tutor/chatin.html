@@ -385,6 +385,7 @@
     let lastMessageId = null;
     let isAtBottom = true;
     let attachmentsToUpload = [];
+    let pendingUploads = {};
     let socket = null;
     let fallbackPollHandle = null;
     let consecutiveErrors = 0;
@@ -393,6 +394,90 @@
     function getQueryParam(name) { return new URLSearchParams(window.location.search).get(name); }
     function safeHtml(s){ if (s===null||s===undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
     function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+    // Generate a thumbnail from an image file
+function createThumbnail(file) {
+    return new Promise((resolve, reject) => {
+
+        if (!file.type.startsWith("image/")) {
+            resolve(null);
+            return;
+        }
+
+        const reader = new FileReader();
+
+        reader.onload = function(e){
+
+            const img = new Image();
+
+            img.onload = function(){
+
+                const canvas = document.createElement("canvas");
+                const ctx = canvas.getContext("2d");
+
+                const MAX = 300;
+
+                let w = img.width;
+                let h = img.height;
+
+                if (w > h) {
+                    if (w > MAX) {
+                        h *= MAX / w;
+                        w = MAX;
+                    }
+                } else {
+                    if (h > MAX) {
+                        w *= MAX / h;
+                        h = MAX;
+                    }
+                }
+
+                canvas.width = w;
+                canvas.height = h;
+
+                ctx.drawImage(img,0,0,w,h);
+
+                resolve(canvas.toDataURL("image/jpeg",0.7));
+
+            };
+
+            img.onerror = reject;
+            img.src = e.target.result;
+
+        };
+
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+
+    });
+            }
+    async function uploadImageToBackend(file){
+
+    const formData = new FormData();
+
+    formData.append("image", file, file.name);
+
+    const response = await fetch(
+        "https://examguide.onrender.com/api/images",
+        {
+            method:"POST",
+            body:formData
+        }
+    );
+
+    const result = await response.json();
+
+    if(!result.url){
+        throw new Error("Upload failed");
+    }
+
+    return result.url;
+
+}
+    function isImage(file){
+
+    return file.type.startsWith("image/");
+
+    }
 
     async function fetchWithTimeout(url, opts={}, timeout=FETCH_TIMEOUT_MS){
       const c = new AbortController(); opts.signal = c.signal;
@@ -474,9 +559,23 @@
         const url = safeHtml(a.url || a.path || '');
         const name = safeHtml(a.filename || a.name || '');
         const type = (a.contentType || '').toLowerCase();
-        if (type.startsWith('image') || /\.(png|jpe?g|gif|webp)$/i.test(name)){
-          return `<div class="${isOutgoing ? 'justify-end' : ''}"><a href="${url}" target="_blank" rel="noopener noreferrer"><img src="${url}" alt="${name}" class="rounded-md mt-2 max-w-xs object-cover"></a></div>`;
-        }
+        if (type.startsWith('image') || /\.(png|jpe?g|gif|webp)$/i.test(name)) {
+
+    const cachedImage = getCachedImage(url) || url;
+
+    return `
+        <div class="${isOutgoing ? 'justify-end' : ''}">
+            <a href="${url}" target="_blank" rel="noopener noreferrer">
+                <img
+                    src="${cachedImage}"
+                    data-cloud="${url}"
+                    class="chat-image rounded-md mt-2 max-w-xs object-cover cursor-pointer"
+                    loading="lazy"
+                >
+            </a>
+        </div>
+    `;
+}
         return `<div class="${isOutgoing ? 'justify-end' : ''}"><a href="${url}" target="_blank" rel="noopener noreferrer" class="file-preview mt-2 ${isOutgoing ? 'mr-2' : ''}"><div class="w-10 h-10 bg-gray-50 rounded flex items-center justify-center text-gray-700"><i class="${type && type.startsWith('image') ? 'fa-regular fa-image' : 'fa-solid fa-file'}"></i></div><div class="flex-1 ml-2"><div class="text-sm font-medium">${name}</div><div class="text-xs text-gray-500">${Math.round((a.size||0)/1024)} KB</div></div></a></div>`;
       }).join('');
 
@@ -535,6 +634,134 @@
       }
     }
 
+    function createPendingImageMessage(file) {
+
+    const id = "pending-" + Date.now() + "-" + Math.random();
+
+    const imageUrl = URL.createObjectURL(file);
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "msg-wrap flex justify-end mt-1";
+    wrapper.id = id;
+
+    wrapper.innerHTML = `
+        <div class="flex flex-col max-w-[80%]">
+
+            <div class="relative">
+
+                <img
+                    src="${imageUrl}"
+                    class="rounded-xl max-w-xs object-cover opacity-70"
+                >
+
+                <div class="absolute inset-0 bg-black/40 flex items-center justify-center rounded-xl">
+
+                    <div class="text-white text-xs font-semibold flex items-center gap-2">
+
+                        <i class="fa fa-spinner fa-spin"></i>
+
+                        Uploading...
+
+                    </div>
+
+                </div>
+
+            </div>
+
+            <div class="msg-meta text-right mt-1">
+                ${formatTime(new Date())}
+            </div>
+
+        </div>
+    `;
+
+    messagesList.appendChild(wrapper);
+
+    scrollToBottom();
+
+    return id;
+}
+
+function markPendingUploadFinished(id, cloudinaryUrl) {
+
+    const bubble = document.getElementById(id);
+
+    if (!bubble) return;
+
+    const img = bubble.querySelector("img");
+
+    img.src = cloudinaryUrl;
+
+    const overlay = bubble.querySelector(".absolute");
+
+    if (overlay) overlay.remove();
+}
+
+function markPendingUploadFailed(id) {
+
+    const bubble = document.getElementById(id);
+
+    if (!bubble) return;
+
+    const overlay = bubble.querySelector(".absolute");
+
+    if (!overlay) return;
+
+    overlay.innerHTML = `
+        <div class="text-red-300 text-sm font-semibold">
+
+            Upload Failed
+
+        </div>
+    `;
+}
+    async function cacheImage(url) {
+
+    try {
+
+        const key = "chat_image_" + btoa(url);
+
+        const cached = localStorage.getItem(key);
+
+        if (cached) return cached;
+
+        const response = await fetch(url);
+
+        const blob = await response.blob();
+
+        const reader = new FileReader();
+
+        return await new Promise(resolve => {
+
+            reader.onloadend = () => {
+
+                localStorage.setItem(key, reader.result);
+
+                resolve(reader.result);
+
+            };
+
+            reader.readAsDataURL(blob);
+
+        });
+
+    } catch (err) {
+
+        console.error(err);
+
+        return url;
+
+    }
+
+}
+
+function getCachedImage(url) {
+
+    const key = "chat_image_" + btoa(url);
+
+    return localStorage.getItem(key);
+
+}
     async function postRenderEnhancements() {
       // syntax highlight
       if (window.hljs) {
@@ -572,6 +799,25 @@
       // run highlighter and MathJax after DOM inserted
       await postRenderEnhancements();
       if (isAtBottom) scrollToBottom(true);
+      document.querySelectorAll(".chat-image").forEach(async img => {
+
+    const url = img.dataset.cloud;
+
+    if (!url) return;
+
+    if (getCachedImage(url)) {
+
+        img.src = getCachedImage(url);
+
+        return;
+
+    }
+
+    const local = await cacheImage(url);
+
+    img.src = local;
+
+});
     }
 
     function attachMessageControls(){
@@ -740,41 +986,60 @@
     }
 
     // single uploadFiles implementation (used by submit flow)
-    async function uploadFiles(files) {
-      if (!files || !files.length) return [];
-      const uploaded = [];
-      for (const f of files) {
-        if (f.size > MAX_UPLOAD_SIZE_BYTES) {
-          alert(`File "${f.name}" too large (max ${Math.round(MAX_UPLOAD_SIZE_BYTES/1024/1024)}MB).`);
-          continue;
+    async function uploadFiles(files, progressCallback = () => {}) {
+    const uploaded = [];
+
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+
+        if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+            alert(`${file.name} is larger than 10MB.`);
+            continue;
         }
-        const fd = new FormData();
-        fd.append('file', f);
+
         try {
-          const res = await fetchWithTimeout(UPLOAD_ENDPOINT, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` },
-            body: fd
-          }, 30000);
-          if (!res.ok) {
-            const err = await res.json().catch(()=>null);
-            throw new Error(err?.error || `Upload failed (${res.status})`);
-          }
-          const body = await res.json();
-          if (body && (body.url || body.fileUrl || body.path)) {
-            uploaded.push({ url: body.url || body.fileUrl || body.path, filename: body.filename || f.name, contentType: body.contentType || f.type, size: body.size || f.size });
-          } else if (body && Array.isArray(body.files)) {
-            body.files.forEach(x => uploaded.push({ url: x.url || x.path, filename: x.filename || x.name, contentType: x.contentType, size: x.size }));
-          } else {
-            uploaded.push({ url: body?.url || '', filename: f.name, contentType: f.type, size: f.size });
-          }
+            progressCallback(i, "uploading");
+
+            const formData = new FormData();
+
+            // Same field name used by your working Image Editor
+            formData.append("image", file, file.name);
+
+            const response = await fetch(
+                "https://examguide.onrender.com/api/images",
+                {
+                    method: "POST",
+                    body: formData
+                }
+            );
+
+            const result = await response.json();
+
+            if (!result.url) {
+                throw new Error("Upload failed");
+            }
+
+            uploaded.push({
+                url: result.url,
+                filename: file.name,
+                contentType: file.type,
+                size: file.size,
+                thumbnail: URL.createObjectURL(file)
+            });
+
+            progressCallback(i, "done", result.url);
+
         } catch (err) {
-          console.error('uploadFiles error', err);
-          alert(`Failed to upload "${f.name}": ${err.message || 'upload error'}`);
+
+            console.error(err);
+
+            progressCallback(i, "failed");
+
         }
-      }
-      return uploaded;
     }
+
+    return uploaded;
+}
 
     // single sendMessage implementation (used by submit flow)
     async function sendMessage(text, attachmentMeta=[]) {
@@ -907,49 +1172,157 @@
       if (!token) { alert('Not authenticated'); return; }
       const text = messageInput.value;
       let uploadedMeta = [];
-      if (attachmentsToUpload.length) {
-        uploadedMeta = await uploadFiles(attachmentsToUpload);
-      }
+
+if (attachmentsToUpload.length) {
+
+    const pendingIds = attachmentsToUpload.map(file =>
+        createPendingImageMessage(file)
+    );
+
+    uploadedMeta = await uploadFiles(
+        attachmentsToUpload,
+        (index, status, url) => {
+
+            if (status === "done") {
+
+                markPendingUploadFinished(
+                    pendingIds[index],
+                    url
+                );
+
+            }
+
+            if (status === "failed") {
+
+                markPendingUploadFailed(
+                    pendingIds[index]
+                );
+
+            }
+
+        }
+    );
+
+}
       if (!text.trim() && uploadedMeta.length === 0) return;
       await sendMessage(text, uploadedMeta);
     }
 
     attachBtn.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', (e) => {
-      const files = Array.from(e.target.files || []);
-      if (!files.length) return;
-      attachmentsToUpload = files;
-      showAttachmentsPreview(files);
-    });
+    fileInput.addEventListener("change", async (e) => {
 
-    function showAttachmentsPreview(files) {
-      attachmentsPreview.innerHTML = '';
-      if (!files || !files.length) { attachmentsPreview.classList.add('hidden'); return; }
-      attachmentsPreview.classList.remove('hidden');
-      files.forEach(f => {
-        const el = document.createElement('div');
-        el.className = 'file-preview';
-        el.innerHTML = `
-          <div class="w-10 h-10 bg-gray-100 rounded flex items-center justify-center text-gray-700">
-            <i class="${f.type && f.type.startsWith('image') ? 'fa-regular fa-image' : 'fa-solid fa-file'}"></i>
-          </div>
-          <div class="flex-1">
-            <div class="text-sm font-medium">${safeHtml(f.name)}</div>
-            <div class="text-xs text-gray-500">${Math.round(f.size/1024)} KB</div>
-          </div>
-          <button class="text-gray-400 remove-file" data-name="${safeHtml(f.name)}" aria-label="Remove attachment"><i class="fa-solid fa-xmark"></i></button>
-        `;
-        attachmentsPreview.appendChild(el);
-      });
+    const files = Array.from(e.target.files || []);
+
+    if (!files.length) return;
+
+    attachmentsToUpload = files;
+
+    await showAttachmentsPreview(files);
+
+});
+
+    async function showAttachmentsPreview(files) {
+
+    attachmentsPreview.innerHTML = "";
+
+    if (!files.length) {
+        attachmentsPreview.classList.add("hidden");
+        return;
     }
 
-    attachmentsPreview.addEventListener('click', (e) => {
-      const btn = e.target.closest('.remove-file');
-      if (!btn) return;
-      const name = btn.dataset.name;
-      attachmentsToUpload = attachmentsToUpload.filter(f => f.name !== name);
-      showAttachmentsPreview(attachmentsToUpload);
-    });
+    attachmentsPreview.classList.remove("hidden");
+
+    for (const file of files) {
+
+        const card = document.createElement("div");
+        card.className =
+            "relative inline-block mr-2 mb-2 rounded-xl overflow-hidden border bg-white shadow";
+
+        if (isImage(file)) {
+
+            const thumb = await createThumbnail(file);
+
+            card.innerHTML = `
+                <div class="relative">
+
+                    <img
+                        src="${thumb}"
+                        class="w-24 h-24 object-cover">
+
+                    <div
+                        class="absolute inset-0 bg-black/35 flex items-center justify-center upload-status">
+
+                        <span class="text-white text-xs font-medium">
+                            Ready
+                        </span>
+
+                    </div>
+
+                    <button
+                        class="absolute top-1 right-1 bg-white rounded-full w-6 h-6 remove-file shadow"
+                        data-name="${file.name}">
+
+                        <i class="fa fa-times text-xs"></i>
+
+                    </button>
+
+                </div>
+            `;
+
+        } else {
+
+            card.innerHTML = `
+
+                <div class="flex items-center gap-3 p-3">
+
+                    <i class="fa-solid fa-file text-2xl text-gray-500"></i>
+
+                    <div>
+
+                        <div class="text-sm font-medium">
+                            ${file.name}
+                        </div>
+
+                        <div class="text-xs text-gray-500">
+                            ${(file.size/1024).toFixed(1)} KB
+                        </div>
+
+                    </div>
+
+                    <button
+                        class="remove-file ml-3"
+                        data-name="${file.name}">
+
+                        <i class="fa fa-times"></i>
+
+                    </button>
+
+                </div>
+
+            `;
+
+        }
+
+        attachmentsPreview.appendChild(card);
+
+    }
+
+}
+
+    attachmentsPreview.addEventListener("click", e => {
+
+    const btn = e.target.closest(".remove-file");
+
+    if (!btn) return;
+
+    const name = btn.dataset.name;
+
+    attachmentsToUpload =
+        attachmentsToUpload.filter(f => f.name !== name);
+
+    showAttachmentsPreview(attachmentsToUpload);
+
+});
 
     // update icon and autosize/scroll behavior when user types
     function updateActionIcon(){
