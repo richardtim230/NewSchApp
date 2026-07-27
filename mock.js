@@ -334,7 +334,7 @@ forms.login.addEventListener('submit', async function(e) {
     await setLoginLoading(false);
 });
 
-// ====== REGISTRATION HANDLING ======
+// ====== REGISTRATION HANDLING (with confirmation modal) ======
 forms.register.addEventListener('submit', async function(e) {
     e.preventDefault();
 
@@ -347,23 +347,55 @@ forms.register.addEventListener('submit', async function(e) {
     const level = document.getElementById('reg-level').value;
     const phone = document.getElementById('reg-phone').value.trim();
 
+    // DEFAULT institution value (hidden input) — will be "OAU"
     const institutionId = document.getElementById('reg-institution') ? document.getElementById('reg-institution').value : "OAU";
     const userType = document.getElementById('reg-user-type') ? document.getElementById('reg-user-type').value : "student";
 
-    const manualReferral = document.getElementById('reg-referral')?.value.trim() || "";
-    const profilePic = document.getElementById('reg-profile-pic')?.files[0] || null;
+    const manualReferral =
+        document.getElementById('reg-referral')?.value.trim() || "";
 
-    const facultyText = facultyId ? document.querySelector(`#reg-faculty option[value="${facultyId}"]`).textContent : "";
-    const departmentText = departmentId ? document.querySelector(`#reg-department option[value="${departmentId}"]`).textContent : "";
+    const profilePic =
+        document.getElementById('reg-profile-pic')?.files[0] || null;
+
+    const facultyText = facultyId
+        ? document.querySelector(`#reg-faculty option[value="${facultyId}"]`).textContent
+        : "";
+
+    const departmentText = departmentId
+        ? document.querySelector(`#reg-department option[value="${departmentId}"]`).textContent
+        : "";
+
     const institutionText = institutionId || "OAU";
-    const userTypeText = userType ? (document.querySelector(`#reg-user-type option[value="${userType}"]`)?.textContent || userType) : "";
 
-    if (!fullName || !username || !password || !email || !institutionId || !facultyId || !departmentId || !level || !phone || !userType) {
-        showStatusModal("error", "Registration Error", "All required fields must be completed.");
+    const userTypeText = userType
+        ? (document.querySelector(`#reg-user-type option[value="${userType}"]`)?.textContent || userType)
+        : "";
+
+    if (
+        !fullName ||
+        !username ||
+        !password ||
+        !email ||
+        !institutionId || // required
+        !facultyId ||
+        !departmentId ||
+        !level ||
+        !phone ||
+        !userType
+    ) {
+        showStatusModal(
+            "error",
+            "Registration Error",
+            "All required fields must be completed."
+        );
         return;
     }
 
-    const referralCode = localStorage.getItem('pendingReferral') || manualReferral || "";
+    // URL referral takes priority
+    const referralCode =
+        localStorage.getItem('pendingReferral') ||
+        manualReferral ||
+        "";
 
     showConfirmationModal({
         "Full Name": fullName,
@@ -375,52 +407,138 @@ forms.register.addEventListener('submit', async function(e) {
         "Account Type": userTypeText,
         "Level": level,
         "Phone": phone,
-        ...(referralCode ? { "Referral ID": referralCode } : {}),
-        ...(profilePic ? { "Profile Picture": profilePic.name } : {})
+        ...(referralCode
+            ? { "Referral ID": referralCode }
+            : {}),
+        ...(profilePic
+            ? { "Profile Picture": profilePic.name }
+            : {})
     }, async function proceedReg() {
-        closeModal();
-        showLoadingModal("Saving Parameters", "Preparing standalone Face Registration environment...");
+
+        showLoadingModal(
+            "Registering...",
+            "Please wait while we create your account."
+        );
+
         await setRegLoading(true);
 
-        const pendingData = {
-            fullName, username, password, email, facultyId, departmentId,
-            level, phone, institutionId, userType, referralCode
-        };
+        try {
 
-        // If a custom local profile picture exists, convert to Base64 to safely pass across page redirect boundaries
-        if (profilePic) {
-            const reader = new FileReader();
-            reader.onload = function(event) {
-                pendingData.profilePicBase64 = event.target.result;
-                pendingData.profilePicName = profilePic.name;
-                localStorage.setItem('pendingRegistrationData', JSON.stringify(pendingData));
-                window.location.href = "face-registration.html";
-            };
-            reader.readAsDataURL(profilePic);
-        } else {
-            localStorage.setItem('pendingRegistrationData', JSON.stringify(pendingData));
-            window.location.href = "face-registration.html";
+            const formData = new FormData();
+
+            formData.append("fullname", fullName);
+            formData.append("username", username);
+            formData.append("password", password);
+            formData.append("email", email);
+            formData.append("faculty", facultyId);
+            formData.append("department", departmentId);
+            formData.append("level", level);
+            formData.append("phone", phone);
+
+            // send institution (string "OAU")
+            if (institutionId) {
+                formData.append("institution", institutionId);
+            }
+            if (userType) {
+                formData.append("userType", userType);
+            }
+
+            if (referralCode) {
+                formData.append("ref", referralCode);
+            }
+
+            if (profilePic) {
+                formData.append("profilePic", profilePic);
+            }
+
+            const registerResponse = await fetch(
+                "https://examguide.onrender.com/api/auth/register",
+                {
+                    method: "POST",
+                    body: formData
+                }
+            );
+
+            const result = await registerResponse.json();
+
+            await setRegLoading(false);
+
+            if (registerResponse.ok) {
+
+                localStorage.removeItem("pendingReferral");
+
+                showStatusModal(
+                    "success",
+                    "Registration Successful",
+                    result.message ||
+                    "Account created successfully.",
+                    false
+                );
+
+                setTimeout(() => {
+
+                    closeModal();
+
+                    forms.login.classList.add('active');
+                    forms.register.classList.remove('active');
+
+                    document
+                        .querySelector('[data-tab="login"]')
+                        .click();
+
+                }, 1800);
+
+            } else {
+
+                showStatusModal(
+                    "error",
+                    "Registration Failed",
+                    result.message ||
+                    "Could not register."
+                );
+
+            }
+
+        } catch (err) {
+
+            console.error(err);
+
+            await setRegLoading(false);
+
+            showStatusModal(
+                "error",
+                "Network Error",
+                "Could not connect to server."
+            );
+
         }
-    });
-});
 
-// ====== Guest Login ======
+    });
+
+});
+/* guest login, social buttons and other code remain unchanged */
+// ====== Guest login (no backend) ======
+// Appends a "Continue as Guest" button to the login form and simulates a login.
 (function setupGuestLogin() {
+  // Create button
   const guestBtn = document.createElement('button');
   guestBtn.type = 'button';
   guestBtn.id = 'guestLoginBtn';
   guestBtn.textContent = 'Continue as Guest';
+  // Use existing primary styles but make it visually distinct
   guestBtn.className = 'btn-primary';
   guestBtn.style.background = '#fff';
   guestBtn.style.color = 'var(--primary)';
   guestBtn.style.border = '1.5px solid rgba(39,110,241,0.12)';
   guestBtn.style.marginTop = '8px';
 
+  // Insert after the login button
   const loginBtn = document.getElementById('loginBtn');
   if (loginBtn && loginBtn.parentNode) {
     loginBtn.parentNode.insertBefore(guestBtn, loginBtn.nextSibling);
   }
 
+  // Handler: set a guest session in localStorage and redirect
   guestBtn.addEventListener('click', function () {
     const guestUser = {
       _id: 'guest_' + Date.now(),
@@ -434,22 +552,31 @@ forms.register.addEventListener('submit', async function(e) {
       createdAt: new Date().toISOString()
     };
 
+    // Save tokens/data locally (no backend)
     localStorage.setItem('student_jwt_token', 'guest_token');
     localStorage.setItem('token', 'guest_token');
     localStorage.setItem('studentData', JSON.stringify(guestUser));
 
-    showStatusModal('success', 'Guest Login', 'You are now signed in as a guest.', false);
+    // Inform the user and redirect to dashboard
+    showStatusModal('success', 'Guest Login', 'You are now signed in as a guest. Some features may be limited.', false);
 
+    // Short delay so user sees the modal, then navigate
     setTimeout(() => {
+      // close modal if present
       try { closeModal(); } catch (e) {}
+      // redirect to student dashboard or desired page
       window.location.href = 'loader';
     }, 1200);
   });
 })();
-
 document.querySelectorAll('.social-btn').forEach(btn => {
     btn.addEventListener('click', function() {
         const platform = btn.classList.contains('google') ? "Google" : "Facebook";
-        showStatusModal("success", `${platform} Login`, `Login with ${platform} is coming soon!`, true);
+        showStatusModal(
+            "success",
+            `${platform} Login`,
+            `Login with ${platform} is coming soon!`,
+            true
+        );
     });
 });
