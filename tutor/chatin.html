@@ -567,47 +567,52 @@ function createThumbnail(file) {
       const isOutgoing = String(m.from) === String(currentUserId);
       const time = formatTime(m.time);
       const messageHtml = renderMessage(m.text); // <-- markdown renderer used here
-      const attachmentsHtml = (m.attachments||[]).map(a => {
-        const url = safeHtml(a.url || a.path || '');
-        const name = safeHtml(a.filename || a.name || '');
-        const type = (a.contentType || '').toLowerCase();
-        if (type.startsWith('image') || /\.(png|jpe?g|gif|webp)$/i.test(name)) {
+      const attachmentsHtml = (m.attachments || []).map(a => {
 
-    const cachedImage = getCachedImage(url) || url;
+    const url = safeHtml(a.url || a.path || '');
+    const name = safeHtml(a.filename || a.name || '');
+    const type = (a.contentType || '').toLowerCase();
 
+    // IMAGE
+    if (type.startsWith('image') || /\.(png|jpe?g|gif|webp)$/i.test(name)) {
+
+        const cachedImage = getCachedImage(url) || url;
+
+        return `
+            <div class="${isOutgoing ? 'justify-end' : ''}">
+                <img
+                    src="${cachedImage}"
+                    data-cloud="${url}"
+                    alt="${name}"
+                    class="chat-image block w-full max-w-xs rounded-xl object-cover cursor-pointer">
+            </div>
+        `;
+    }
+
+    // OTHER FILES
     return `
         <div class="${isOutgoing ? 'justify-end' : ''}">
-            <img
-    src="${url}"
-    alt="${name}"
-    data-image="${url}"
-    class="chat-image block w-full max-w-xs rounded-xl object-cover cursor-pointer">
+            <a href="${url}"
+               target="_blank"
+               rel="noopener noreferrer"
+               class="file-preview mt-2 ${isOutgoing ? 'mr-2' : ''}">
+
+                <div class="w-10 h-10 bg-gray-50 rounded flex items-center justify-center text-gray-700">
+                    <i class="${type.startsWith('image') ? 'fa-regular fa-image' : 'fa-solid fa-file'}"></i>
+                </div>
+
+                <div class="flex-1 ml-2">
+                    <div class="text-sm font-medium">${name}</div>
+                    <div class="text-xs text-gray-500">
+                        ${Math.round((a.size || 0) / 1024)} KB
+                    </div>
+                </div>
+
+            </a>
         </div>
     `;
-}
-        return `<div class="${isOutgoing ? 'justify-end' : ''}"><a href="${url}" target="_blank" rel="noopener noreferrer" class="file-preview mt-2 ${isOutgoing ? 'mr-2' : ''}"><div class="w-10 h-10 bg-gray-50 rounded flex items-center justify-center text-gray-700"><i class="${type && type.startsWith('image') ? 'fa-regular fa-image' : 'fa-solid fa-file'}"></i></div><div class="flex-1 ml-2"><div class="text-sm font-medium">${name}</div><div class="text-xs text-gray-500">${Math.round((a.size||0)/1024)} KB</div></div></a></div>`;
-      }).join('');
 
-      const reactions = m.reactions || {};
-      const reactMap = {};
-      if (Array.isArray(reactions)) {
-        reactions.forEach(r => {
-          if (r.emoji) reactMap[r.emoji] = { count: (r.users?.length || 0), users: r.users || [] };
-        });
-      } else if (typeof reactions === 'object') {
-        for (const k of Object.keys(reactions)) {
-          const v = reactions[k];
-          if (Array.isArray(v)) reactMap[k] = { count: v.length, users: v };
-          else if (typeof v === 'number') reactMap[k] = { count: v, users: [] };
-          else reactMap[k] = { count: 0, users: [] };
-        }
-      }
-
-      const reactionItems = Object.keys(reactMap).map(emoji => {
-        const info = reactMap[emoji];
-        const you = info.users && info.users.includes(String(currentUserId));
-        return `<div class="reaction-pill ${you ? 'you' : ''}" data-msg="${safeHtml(m._id)}" data-emoji="${safeHtml(emoji)}"><span>${safeHtml(emoji)}</span><span class="text-xs text-gray-700 font-semibold">${safeHtml(info.count)}</span></div>`;
-      }).join('');
+}).join('');
 
       const menuHtml = isOutgoing ? `<div class="message-menu ml-2 relative"><button class="p-1 text-gray-400 message-menu-btn" data-id="${safeHtml(m._id)}" aria-label="Message options"><i class="fa-solid fa-ellipsis"></i></button></div>` : '';
 
