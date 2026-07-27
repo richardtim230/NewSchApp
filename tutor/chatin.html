@@ -563,91 +563,203 @@ function createThumbnail(file) {
       // if content taller than max, keep internal scroll (CSS overflow-y:auto handles it)
     }
 
-    function buildMessageHtml(m){
-      const isOutgoing = String(m.from) === String(currentUserId);
-      const time = formatTime(m.time);
-      const messageHtml = renderMessage(m.text); // <-- markdown renderer used here
-      const attachmentsHtml = (m.attachments || []).map(a => {
+    
+function buildMessageHtml(m){
 
-    const url = safeHtml(a.url || a.path || '');
-    const name = safeHtml(a.filename || a.name || '');
-    const type = (a.contentType || '').toLowerCase();
+    const isOutgoing = String(m.from) === String(currentUserId);
+    const time = formatTime(m.time);
+    const messageHtml = renderMessage(m.text);
 
-    // IMAGE
-    if (type.startsWith('image') || /\.(png|jpe?g|gif|webp)$/i.test(name)) {
+    const attachmentsHtml = (m.attachments || []).map(a => {
 
-        const cachedImage = getCachedImage(url) || url;
+        const url = safeHtml(a.url || a.path || '');
+        const name = safeHtml(a.filename || a.name || '');
+        const type = (a.contentType || '').toLowerCase();
 
+        // ==========================
+        // IMAGE ATTACHMENT
+        // ==========================
+        if (type.startsWith('image') || /\.(png|jpe?g|gif|webp)$/i.test(name)) {
+
+            const cachedImage = getCachedImage(url) || url;
+
+            return `
+                <div class="${isOutgoing ? 'justify-end' : ''}">
+                    <img
+                        src="${cachedImage}"
+                        data-cloud="${url}"
+                        alt="${name}"
+                        class="chat-image block w-full max-w-xs rounded-xl object-cover cursor-pointer">
+                </div>
+            `;
+        }
+
+        // ==========================
+        // OTHER FILES
+        // ==========================
         return `
             <div class="${isOutgoing ? 'justify-end' : ''}">
-                <img
-                    src="${cachedImage}"
-                    data-cloud="${url}"
-                    alt="${name}"
-                    class="chat-image block w-full max-w-xs rounded-xl object-cover cursor-pointer">
+                <a href="${url}"
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   class="file-preview mt-2 ${isOutgoing ? 'mr-2' : ''}">
+
+                    <div class="w-10 h-10 bg-gray-50 rounded flex items-center justify-center text-gray-700">
+                        <i class="${type.startsWith('image') ? 'fa-regular fa-image' : 'fa-solid fa-file'}"></i>
+                    </div>
+
+                    <div class="flex-1 ml-2">
+                        <div class="text-sm font-medium">${name}</div>
+                        <div class="text-xs text-gray-500">
+                            ${Math.round((a.size || 0) / 1024)} KB
+                        </div>
+                    </div>
+
+                </a>
+            </div>
+        `;
+
+    }).join('');
+
+    const reactions = m.reactions || {};
+    const reactMap = {};
+
+    if (Array.isArray(reactions)) {
+
+        reactions.forEach(r => {
+            if (r.emoji) {
+                reactMap[r.emoji] = {
+                    count: (r.users?.length || 0),
+                    users: r.users || []
+                };
+            }
+        });
+
+    } else if (typeof reactions === 'object') {
+
+        for (const k of Object.keys(reactions)) {
+
+            const v = reactions[k];
+
+            if (Array.isArray(v))
+                reactMap[k] = { count: v.length, users: v };
+
+            else if (typeof v === 'number')
+                reactMap[k] = { count: v, users: [] };
+
+            else
+                reactMap[k] = { count: 0, users: [] };
+        }
+    }
+
+    const reactionItems = Object.keys(reactMap).map(emoji => {
+
+        const info = reactMap[emoji];
+        const you = info.users && info.users.includes(String(currentUserId));
+
+        return `
+            <div class="reaction-pill ${you ? 'you' : ''}"
+                 data-msg="${safeHtml(m._id)}"
+                 data-emoji="${safeHtml(emoji)}">
+
+                <span>${safeHtml(emoji)}</span>
+                <span class="text-xs text-gray-700 font-semibold">
+                    ${safeHtml(info.count)}
+                </span>
+
+            </div>
+        `;
+
+    }).join('');
+
+    const menuHtml = isOutgoing
+        ? `
+            <div class="message-menu ml-2 relative">
+                <button class="p-1 text-gray-400 message-menu-btn"
+                        data-id="${safeHtml(m._id)}"
+                        aria-label="Message options">
+                    <i class="fa-solid fa-ellipsis"></i>
+                </button>
+            </div>
+        `
+        : '';
+
+    if (isOutgoing) {
+
+        return `
+            <div class="msg-wrap flex justify-end mt-1"
+                 data-id="${safeHtml(m._id)}">
+
+                <div class="flex flex-col max-w-[80%] relative">
+
+                    <div class="flex items-center justify-end gap-2">
+
+                        <div class="bubble-outgoing px-3 py-2 inline-block text-sm text-gray-900">
+                            ${messageHtml}
+                            ${attachmentsHtml}
+                        </div>
+
+                        ${menuHtml}
+
+                    </div>
+
+                    <div class="flex items-center justify-end gap-2 mt-1">
+                        <div class="msg-meta">${safeHtml(time)}</div>
+                    </div>
+
+                    ${
+                        reactionItems
+                            ? `<div class="reactions-row">${reactionItems}</div>`
+                            : `<div class="reactions-row"></div>`
+                    }
+
+                </div>
+
             </div>
         `;
     }
 
-    // OTHER FILES
+    const avatar = safeHtml(
+        m.fromAvatar ||
+        `https://ui-avatars.com/api/?name=${encodeURIComponent(m.fromName || 'A')}&background=CCC&color=fff`
+    );
+
+    const fromName = safeHtml(m.fromName || 'Anonymous');
+
     return `
-        <div class="${isOutgoing ? 'justify-end' : ''}">
-            <a href="${url}"
-               target="_blank"
-               rel="noopener noreferrer"
-               class="file-preview mt-2 ${isOutgoing ? 'mr-2' : ''}">
+        <div class="msg-wrap flex gap-3"
+             data-id="${safeHtml(m._id)}">
 
-                <div class="w-10 h-10 bg-gray-50 rounded flex items-center justify-center text-gray-700">
-                    <i class="${type.startsWith('image') ? 'fa-regular fa-image' : 'fa-solid fa-file'}"></i>
+            <img src="${avatar}"
+                 class="w-9 h-9 rounded-full object-cover mt-0.5"
+                 alt="${fromName}" />
+
+            <div class="flex flex-col max-w-[78%]">
+
+                <div class="text-xs font-medium text-chat-purple">
+                    ${fromName}
                 </div>
 
-                <div class="flex-1 ml-2">
-                    <div class="text-sm font-medium">${name}</div>
-                    <div class="text-xs text-gray-500">
-                        ${Math.round((a.size || 0) / 1024)} KB
-                    </div>
+                <div class="bubble-incoming p-3 mt-1 text-sm text-gray-800">
+                    ${messageHtml}
+                    ${attachmentsHtml}
                 </div>
 
-            </a>
+                <div class="msg-meta mt-1">
+                    ${safeHtml(time)}
+                </div>
+
+                ${
+                    reactionItems
+                        ? `<div class="reactions-row">${reactionItems}</div>`
+                        : `<div class="reactions-row"></div>`
+                }
+
+            </div>
+
         </div>
     `;
-
-}).join('');
-
-      const menuHtml = isOutgoing ? `<div class="message-menu ml-2 relative"><button class="p-1 text-gray-400 message-menu-btn" data-id="${safeHtml(m._id)}" aria-label="Message options"><i class="fa-solid fa-ellipsis"></i></button></div>` : '';
-
-      if (isOutgoing) {
-        return `
-          <div class="msg-wrap flex justify-end mt-1" data-id="${safeHtml(m._id)}">
-            <div class="flex flex-col max-w-[80%] relative">
-              <div class="flex items-center justify-end gap-2">
-                <div class="bubble-outgoing px-3 py-2 inline-block text-sm text-gray-900">${messageHtml}${attachmentsHtml}</div>
-                ${menuHtml}
-              </div>
-              <div class="flex items-center justify-end gap-2 mt-1">
-                <div class="msg-meta">${safeHtml(time)}</div>
-              </div>
-              ${reactionItems ? `<div class="reactions-row">${reactionItems}</div>` : `<div class="reactions-row"></div>`}
-            </div>
-          </div>
-        `;
-      } else {
-        const avatar = safeHtml(m.fromAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(m.fromName||'A')}&background=CCC&color=fff`);
-        const fromName = safeHtml(m.fromName || 'Anonymous');
-        return `
-          <div class="msg-wrap flex gap-3" data-id="${safeHtml(m._id)}">
-            <img src="${avatar}" class="w-9 h-9 rounded-full object-cover mt-0.5" alt="${fromName}" />
-            <div class="flex flex-col max-w-[78%]">
-              <div class="text-xs font-medium text-chat-purple">${fromName}</div>
-              <div class="bubble-incoming p-3 mt-1 text-sm text-gray-800">${messageHtml}${attachmentsHtml}</div>
-              <div class="msg-meta mt-1">${safeHtml(time)}</div>
-              ${reactionItems ? `<div class="reactions-row">${reactionItems}</div>` : `<div class="reactions-row"></div>`}
-            </div>
-          </div>
-        `;
-      }
-    }
-
+        }
     function createPendingImageMessage(file) {
 
     const id = "pending-" + Date.now() + "-" + Math.random();
