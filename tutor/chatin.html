@@ -904,85 +904,30 @@ function getCachedImage(url) {
     }
 
     async function renderMessages(newMessages) {
-
-    const lastNewId = (newMessages.length ? newMessages[newMessages.length - 1]._id : null);
-    checkIfAtBottom();
-
-    messages = newMessages;
-    lastMessageId = lastNewId;
-
-    const parts = [];
-    let lastDate = null;
-
-    for (const m of messages) {
-
+      const lastNewId = (newMessages.length ? newMessages[newMessages.length - 1]._id : null);
+      if (lastMessageId === lastNewId && messages.length === newMessages.length) return;
+      checkIfAtBottom();
+      messages = newMessages;
+      lastMessageId = lastNewId;
+      const parts = [];
+      let lastDate = null;
+      for (const m of messages) {
         const dateStr = new Date(m.time).toDateString();
-
         if (dateStr !== lastDate) {
-            parts.push(`
-                <div class="flex justify-center my-2">
-                    <span class="bg-[#E4E6EB] text-gray-700 text-xs font-medium px-3 py-1 rounded-full">
-                        ${safeHtml(dateStr)}
-                    </span>
-                </div>
-            `);
-
-            lastDate = dateStr;
+          parts.push(`<div class="flex justify-center my-2"><span class="bg-[#E4E6EB] text-gray-700 text-xs font-medium px-3 py-1 rounded-full">${safeHtml(dateStr)}</span></div>`);
+          lastDate = dateStr;
         }
-
         parts.push(buildMessageHtml(m));
+      }
+      messagesList.innerHTML = parts.join('');
+      showSkeleton(false);
+      attachMessageControls();
+      // run highlighter and MathJax after DOM inserted
+      await postRenderEnhancements();
+      if (isAtBottom) scrollToBottom(true);
     }
 
-    messagesList.innerHTML = parts.join('');
-
-    showSkeleton(false);
-
-    attachMessageControls();
-
-    await postRenderEnhancements();
-
-    // Load cached images
-    const images = document.querySelectorAll(".chat-image");
-
-    for (const img of images) {
-
-        const url = img.dataset.cloud;
-
-        if (!url) continue;
-
-        const cached = getCachedImage(url);
-
-        if (cached) {
-            img.src = cached;
-            continue;
-        }
-
-        try {
-
-            img.classList.add("opacity-60");
-
-            const local = await cacheImage(url);
-
-            if (local) {
-                img.src = local;
-            }
-
-        } catch (err) {
-
-            console.error("Image cache failed:", err);
-
-        } finally {
-
-            img.classList.remove("opacity-60");
-
-        }
-    }
-
-    if (isAtBottom) {
-        scrollToBottom(true);
-    }
-}
-
+    
     function attachMessageControls(){
       document.querySelectorAll('.reaction-pill').forEach(el=>{
         el.onclick = async (e) => {
