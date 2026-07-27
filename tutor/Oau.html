@@ -682,6 +682,67 @@
     let currentActiveTab = 'feed'; // Track active tab
     let refreshInterval; // Store interval ID for cleanup
 
+    // --- Authentication & Protected Actions Logic ---
+    function showAuthModal() {
+        let authModal = document.getElementById('authRequiredModal');
+        
+        // Dynamically create the modal if it doesn't exist in the DOM
+        if (!authModal) {
+            const modalHtml = `
+                <div id="authRequiredModal" class="fixed inset-0 z-[9999] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm transition-opacity hidden">
+                    <div class="bg-white rounded-2xl p-8 w-[90%] max-w-sm shadow-2xl transform transition-all text-center">
+                        <div class="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i class="ph ph-lock-key text-3xl"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-gray-900 mb-2">Login Required</h3>
+                        <p class="text-sm text-gray-500 mb-6">You need to be logged in to participate in discussions, view groups, or start a new topic.</p>
+                        <div class="flex flex-col gap-3">
+                            <a href="../login" class="w-full block text-center px-5 py-3 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors">
+                                Login / Register
+                            </a>
+                            <button onclick="closeAuthModal()" class="w-full px-5 py-3 rounded-xl border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 transition-colors">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            authModal = document.getElementById('authRequiredModal');
+            
+            // Close modal when clicking on the overlay outside the content box
+            authModal.addEventListener('click', (e) => {
+                if (e.target === authModal) closeAuthModal();
+            });
+        }
+        
+        // Reveal modal
+        authModal.classList.remove('hidden');
+    }
+
+    function closeAuthModal() {
+        const authModal = document.getElementById('authRequiredModal');
+        if (authModal) {
+            authModal.classList.add('hidden');
+        }
+    }
+
+    // Wrap links with this function to restrict access
+    function handleProtectedAction(event, targetUrl) {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        
+        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+        
+        if (!token) {
+            showAuthModal();
+        } else if (targetUrl) {
+            window.location.href = targetUrl;
+        }
+    }
+
     // --- Sidebar Logic ---
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebar-overlay');
@@ -743,7 +804,7 @@
             activeItem.classList.add('active');
         }
     }
-    
+
     function escapeHtml(text = "") {
         return text
             .replace(/&/g, "&amp;")
@@ -778,290 +839,36 @@
         }
     }
 
-    // --- Authentication & Protected Actions Logic ---
-    function showAuthModal() {
-        let authModal = document.getElementById('authRequiredModal');
-        
-        // Dynamically create the modal if it doesn't exist in the DOM
-        if (!authModal) {
-            authModal = document.createElement('div');
-            authModal.id = 'authRequiredModal';
-            authModal.className = 'fixed inset-0 z-[100] flex items-center justify-center hidden';
-            authModal.innerHTML = `
-                <div class="absolute inset-0 bg-gray-900/50 backdrop-blur-sm transition-opacity" onclick="closeAuthModal()"></div>
-                <div class="bg-white rounded-2xl shadow-2xl w-[90%] max-w-md p-6 md:p-8 relative z-10 transform scale-95 opacity-0 transition-all duration-300" id="authModalContent">
-                    <button onclick="closeAuthModal()" class="absolute top-4 right-4 text-gray-400 hover:text-gray-700 transition">
-                        <i class="ph ph-x text-2xl"></i>
-                    </button>
-                    <div class="w-16 h-16 bg-brand-light text-brand-active rounded-full flex items-center justify-center mx-auto mb-4">
-                        <i class="ph-duotone ph-lock-key text-3xl"></i>
-                    </div>
-                    <h3 class="text-2xl font-bold text-center text-gray-900 mb-2">Authentication Required</h3>
-                    <p class="text-sm text-gray-500 text-center mb-8">
-                        You need to be logged in to join discussions, participate in groups, and interact with the campus community.
-                    </p>
-                    <div class="flex flex-col gap-3">
-                        <a href="../login" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl text-center transition-colors shadow-sm">
-                            Login / Register
-                        </a>
-                        <button onclick="closeAuthModal()" class="w-full bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium py-3 rounded-xl text-center transition-colors">
-                            Cancel
-                        </button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(authModal);
-        }
-
-        // Reveal the modal
-        authModal.classList.remove('hidden');
-        setTimeout(() => {
-            const content = document.getElementById('authModalContent');
-            content.classList.remove('scale-95', 'opacity-0');
-            content.classList.add('scale-100', 'opacity-100');
-        }, 10);
-    }
-
-    function closeAuthModal() {
-        const authModal = document.getElementById('authRequiredModal');
-        const content = document.getElementById('authModalContent');
-        if (content) {
-            content.classList.remove('scale-100', 'opacity-100');
-            content.classList.add('scale-95', 'opacity-0');
-        }
-        setTimeout(() => {
-            if (authModal) authModal.classList.add('hidden');
-        }, 300);
-    }
-
-    // Use this function to guard any URL navigation that requires an active session
-    function handleProtectedAction(url) {
-        const token = localStorage.getItem("token") || sessionStorage.getItem("token");
-        if (!token) {
-            showAuthModal();
-        } else {
-            window.location.href = url;
-        }
-    }
-
-    // --- Standard Modal Logic ---
-    const modal = document.getElementById('joinModal');
-    const modalContent = document.getElementById('modalContent');
-    const header = document.getElementById('modalHeader');
-    
-    function openModal(title, desc, members, iconClass, colorClassesHere is the fully updated script. I have added a robust authentication check mechanism that dynamically creates and displays a sleek, Tailwind-styled "Login Required" modal whenever an unauthenticated user tries to open a group, read a discussion, or perform a protected action.
-
-I replaced the direct `window.location.href` calls inside the fetch functions with a new `handleProtectedNavigation(url)` function. I also exposed a global click listener for any elements with the ID `startDiscussionBtn` or the class `requires-auth` so you can easily protect other buttons in your HTML.
-
-```html
-<script>
-    // --- API Configuration ---
-    const API_BASE = "[https://examguide.onrender.com/api](https://examguide.onrender.com/api)";
-    const POSTS_API = API_BASE + "/posts";
-    const GROUPS_API = API_BASE + "/messages/groups";
-    const DISCUSSIONS_API = API_BASE + "/discussions";
-    let currentUser = null;
-    let currentActiveTab = 'feed'; // Track active tab
-    let refreshInterval; // Store interval ID for cleanup
-
-    // --- Authentication & Protected Actions Logic ---
-    function isLoggedIn() {
-        return !!(localStorage.getItem('token') || sessionStorage.getItem('token'));
-    }
-
-    function showAuthModal() {
-        let authModal = document.getElementById('authModal');
-        // Create modal dynamically if it doesn't exist
-        if (!authModal) {
-            authModal = document.createElement('div');
-            authModal.id = 'authModal';
-            authModal.className = 'fixed inset-0 z-[100] flex items-center justify-center hidden bg-gray-900/60 backdrop-blur-sm transition-opacity duration-300 opacity-0';
-            authModal.innerHTML = `
-                <div class="bg-white rounded-2xl p-8 w-[90%] max-w-md shadow-2xl transform scale-95 transition-transform duration-300">
-                    <div class="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-5 border border-blue-100 shadow-inner">
-                        <i class="ph-duotone ph-lock-key text-3xl"></i>
-                    </div>
-                    <h3 class="text-2xl font-bold text-center text-gray-900 mb-2">Authentication Required</h3>
-                    <p class="text-gray-500 text-center mb-8 text-sm">
-                        You need to be logged in to join groups, read discussions, or create new posts. Join our community to participate!
-                    </p>
-                    <div class="flex flex-col gap-3">
-                        <a href="../login" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-xl text-center transition-colors flex justify-center items-center gap-2">
-                            <i class="ph ph-sign-in"></i> Login / Register
-                        </a>
-                        <button onclick="closeAuthModal()" class="w-full bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 font-medium py-3 px-4 rounded-xl transition-colors">
-                            Cancel
-                        </button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(authModal);
-        }
-        
-        // Reveal the modal
-        authModal.classList.remove('hidden');
-        // Small delay to allow display:block to apply before animating opacity
-        setTimeout(() => {
-            authModal.classList.remove('opacity-0');
-            authModal.querySelector('div').classList.remove('scale-95');
-        }, 10);
-    }
-
-    function closeAuthModal() {
-        const authModal = document.getElementById('authModal');
-        if (authModal) {
-            authModal.classList.add('opacity-0');
-            authModal.querySelector('div').classList.add('scale-95');
-            setTimeout(() => {
-                authModal.classList.add('hidden');
-            }, 300);
-        }
-    }
-
-    // Handles URL navigation with auth check
-    function handleProtectedNavigation(url) {
-        if (!isLoggedIn()) {
-            showAuthModal();
-        } else {
-            window.location.href = url;
-        }
-    }
-
-    // Global listener to protect UI buttons (e.g., "Start Discussion")
-    // Just add id="startDiscussionBtn" or class="requires-auth" to your HTML buttons
-    document.addEventListener('click', function(e) {
-        const protectedBtn = e.target.closest('#startDiscussionBtn, .requires-auth');
-        if (protectedBtn) {
-            if (!isLoggedIn()) {
-                e.preventDefault();
-                e.stopPropagation();
-                showAuthModal();
-            }
-        }
-    });
-
-    // --- Sidebar Logic ---
-    const sidebar = document.getElementById('sidebar');
-    const overlay = document.getElementById('sidebar-overlay');
-    const openBtn = document.getElementById('mobile-menu-btn');
-    const closeBtn = document.getElementById('sidebar-close-btn');
-
-    function openSidebar() {
-        sidebar.classList.remove('-translate-x-full');
-        overlay.classList.remove('hidden');
-        document.body.classList.add('overflow-hidden');
-    }
-
-    function closeSidebar() {
-        sidebar.classList.add('-translate-x-full');
-        overlay.classList.add('hidden');
-        document.body.classList.remove('overflow-hidden');
-    }
-
-    openBtn.addEventListener('click', openSidebar);
-    closeBtn.addEventListener('click', closeSidebar);
-    overlay.addEventListener('click', closeSidebar);
-
-    // --- Tab Navigation Logic ---
-    function showTab(tabName) {
-        // Store the active tab
-        currentActiveTab = tabName;
-        localStorage.setItem('activeTab', tabName);
-
-        // Hide all tab content
-        const tabs = document.querySelectorAll('.tab-content');
-        tabs.forEach(tab => tab.classList.remove('active'));
-        
-        // Show the selected tab
-        const selectedTab = document.getElementById(tabName);
-        if (selectedTab) {
-            selectedTab.classList.add('active');
-        }
-
-        // Update sidebar menu active state
-        updateSidebarMenuActive(tabName);
-
-        // Update bottom nav
-        updateBottomNav(tabName);
-
-        // Fetch campus news when news tab is opened
-        if (tabName === 'news') {
-            fetchCampusNews();
-        }
-    }
-
-    function updateSidebarMenuActive(tabName) {
-        // Remove active class from all menu items
-        const menuItems = document.querySelectorAll('.sidebar-menu-item');
-        menuItems.forEach(item => item.classList.remove('active'));
-        
-        // Add active class to the selected menu item
-        const activeItem = document.querySelector(`.sidebar-menu-item[data-tab="${tabName}"]`);
-        if (activeItem) {
-            activeItem.classList.add('active');
-        }
-    }
-    
-    function escapeHtml(text = "") {
-        return text
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
-    }
-
-    function discussionBadge(category = "general") {
-        const styles = {
-            academic: "bg-blue-100 text-blue-700",
-            social: "bg-green-100 text-green-700",
-            general: "bg-gray-100 text-gray-700",
-            tech: "bg-purple-100 text-purple-700",
-            business: "bg-orange-100 text-orange-700",
-            announcement: "bg-red-100 text-red-700"
-        };
-
-        return styles[category.toLowerCase()] || styles.general;
-    }
-
-    function updateBottomNav(navName) {
-        // Remove active class from all bottom nav items
-        const navItems = document.querySelectorAll('.bottom-nav-item');
-        navItems.forEach(item => item.classList.remove('active'));
-        
-        // Add active class to the selected nav item
-        const activeNavItem = document.querySelector(`.bottom-nav-item[data-nav="${navName}"]`);
-        if (activeNavItem) {
-            activeNavItem.classList.add('active');
-        }
-    }
-
-    // --- Modal Logic ---
+    // --- Modal Logic (Generic) ---
     const modal = document.getElementById('joinModal');
     const modalContent = document.getElementById('modalContent');
     const header = document.getElementById('modalHeader');
     
     function openModal(title, desc, members, iconClass, colorClasses) {
         // Map data
-        document.getElementById('modalTitle').innerText = title;
-        document.getElementById('modalDesc').innerText = desc;
-        document.querySelector('.data-members').innerText = members;
+        if(document.getElementById('modalTitle')) document.getElementById('modalTitle').innerText = title;
+        if(document.getElementById('modalDesc')) document.getElementById('modalDesc').innerText = desc;
+        if(document.querySelector('.data-members')) document.querySelector('.data-members').innerText = members;
         
         // Set dynamic icon and colors
-        document.getElementById('modalIcon').className = `ph-duotone ${iconClass} text-3xl`;
+        if(document.getElementById('modalIcon')) document.getElementById('modalIcon').className = `ph-duotone ${iconClass} text-3xl`;
         
         // Extract text color from colorClasses to apply to header icon box
         const textColorClass = colorClasses.split(' ').find(c => c.startsWith('text-'));
         const bgColorClass = colorClasses.split(' ').find(c => c.startsWith('bg-'));
-        document.getElementById('modalIconBox').className = `w-14 h-14 rounded-xl flex items-center justify-center shrink-0 ${bgColorClass} ${textColorClass} shadow-inner`;
+        if(document.getElementById('modalIconBox')) document.getElementById('modalIconBox').className = `w-14 h-14 rounded-xl flex items-center justify-center shrink-0 ${bgColorClass} ${textColorClass} shadow-inner`;
 
         // Reveal
-        modal.classList.remove('hidden');
-        // Timeout to allow DOM update before animating
-        setTimeout(() => {
-            modalContent.classList.remove('scale-95', 'opacity-0');
-            modalContent.classList.add('scale-100', 'opacity-100');
-        }, 10);
+        if(modal) {
+            modal.classList.remove('hidden');
+            // Timeout to allow DOM update before animating
+            setTimeout(() => {
+                if(modalContent) {
+                    modalContent.classList.remove('scale-95', 'opacity-0');
+                    modalContent.classList.add('scale-100', 'opacity-100');
+                }
+            }, 10);
+        }
     }
 
     // --- Carousel Logic ---
@@ -1104,11 +911,10 @@ I replaced the direct `window.location.href` calls inside the fetch functions wi
         try {
             const token = localStorage.getItem("token");
 
-            const res = await fetch(`${DISCUSSIONS_API}?limit=5&sort=newest`, {
-                headers: {
-                    ...(token ? { Authorization: `Bearer ${token}` } : {})
-                }
-            });
+            // We still fetch anonymously if we must, but pass token if exists.
+            const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+            const res = await fetch(`${DISCUSSIONS_API}?limit=5&sort=newest`, { headers });
 
             if (!res.ok) throw new Error();
 
@@ -1128,27 +934,32 @@ I replaced the direct `window.location.href` calls inside the fetch functions wi
             container.innerHTML = discussions.map(discussion => {
                 const avatar =
                     discussion.author?.profilePicture ||
-                    `[https://ui-avatars.com/api/?name=$](https://ui-avatars.com/api/?name=$){encodeURIComponent(
+                    `https://ui-avatars.com/api/?name=${encodeURIComponent(
                         discussion.author?.fullname ||
                         discussion.author?.username ||
                         "User"
                     )}&background=2563eb&color=fff`;
 
+                // Replaced window.location.href with handleProtectedAction to trigger modal if not logged in
                 return `
-                    <div onclick="handleProtectedNavigation('discussion.html?id=${discussion._id}')"
+                    <div onclick="handleProtectedAction(event, 'discussion.html?id=${discussion._id}')"
                         class="bg-white p-4 rounded-xl border border-gray-100 hover-lift cursor-pointer transition">
 
                         <div class="flex items-start gap-3">
+
                             <img
                                 src="${avatar}"
                                 class="w-11 h-11 rounded-full object-cover border border-gray-200">
 
                             <div class="flex-1 min-w-0">
+
                                 <div class="flex items-start justify-between gap-2">
+
                                     <div>
                                         <h4 class="font-semibold text-gray-900 line-clamp-1">
                                             ${escapeHtml(discussion.title)}
                                         </h4>
+
                                         <p class="text-xs text-gray-400 mt-0.5">
                                             ${escapeHtml(
                                                 discussion.author?.fullname ||
@@ -1157,9 +968,11 @@ I replaced the direct `window.location.href` calls inside the fetch functions wi
                                             )}
                                         </p>
                                     </div>
+
                                     <span class="text-xs px-2 py-1 rounded-full whitespace-nowrap ${discussionBadge(discussion.category)}">
                                         ${discussion.category}
                                     </span>
+
                                 </div>
 
                                 <p class="text-sm text-gray-600 mt-2 line-clamp-2">
@@ -1167,24 +980,32 @@ I replaced the direct `window.location.href` calls inside the fetch functions wi
                                 </p>
 
                                 <div class="flex items-center gap-5 text-xs text-gray-400 mt-3">
+
                                     <span class="flex items-center gap-1">
                                         <i class="ph ph-heart"></i>
                                         ${discussion.likeCount || 0}
                                     </span>
+
                                     <span class="flex items-center gap-1">
                                         <i class="ph ph-chat-circle"></i>
                                         ${discussion.replyCount || 0}
                                     </span>
+
                                     <span class="flex items-center gap-1">
                                         <i class="ph ph-eye"></i>
                                         ${discussion.views || 0}
                                     </span>
+
                                     <span class="ml-auto">
                                         ${formatTimeAgo(new Date(discussion.createdAt))}
                                     </span>
+
                                 </div>
+
                             </div>
+
                         </div>
+
                     </div>
                 `;
             }).join("");
@@ -1235,18 +1056,20 @@ I replaced the direct `window.location.href` calls inside the fetch functions wi
     }
 
     function closeModal() {
-        modalContent.classList.remove('scale-100', 'opacity-100');
-        modalContent.classList.add('scale-95', 'opacity-0');
+        if(modalContent) {
+            modalContent.classList.remove('scale-100', 'opacity-100');
+            modalContent.classList.add('scale-95', 'opacity-0');
+        }
         setTimeout(() => {
-            modal.classList.add('hidden');
+            if(modal) modal.classList.add('hidden');
         }, 300);
     }
 
-    // Close on Esc key for all modals
+    // Close on Esc key
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             if (modal && !modal.classList.contains('hidden')) closeModal();
-            closeAuthModal(); // Close auth modal if open
+            closeAuthModal(); // ensure auth modal is also closed on esc
         }
     });
 
@@ -1318,7 +1141,7 @@ I replaced the direct `window.location.href` calls inside the fetch functions wi
             
             // Update avatar
             if (userAvatarEl) {
-                const avatarUrl = currentUser.avatar || `[https://ui-avatars.com/api/?name=$](https://ui-avatars.com/api/?name=$){encodeURIComponent(currentUser.fullname || currentUser.username)}&background=2563eb&color=fff`;
+                const avatarUrl = currentUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.fullname || currentUser.username)}&background=2563eb&color=fff`;
                 userAvatarEl.src = avatarUrl;
                 userAvatarEl.alt = currentUser.fullname || currentUser.username;
             }
@@ -1327,7 +1150,7 @@ I replaced the direct `window.location.href` calls inside the fetch functions wi
             console.error("User profile fetch error:", error);
             const userNameEl = document.getElementById('userName');
             const userDeptEl = document.getElementById('userDepartment');
-            if (userNameEl) userNameEl.textContent = "Guest User";
+            if (userNameEl) userNameEl.textContent = "User";
             if (userDeptEl) userDeptEl.textContent = "Not logged in";
         }
     }
@@ -1362,12 +1185,16 @@ I replaced the direct `window.location.href` calls inside the fetch functions wi
                 .slice(0, 2);
             
             const avatar = user.profilePicture ||
-                `[https://ui-avatars.com/api/?name=$](https://ui-avatars.com/api/?name=$){initials}&background=2563eb&color=ffffff`;
+                `https://ui-avatars.com/api/?name=${initials}&background=2563eb&color=ffffff`;
 
             // Update sidebar user profile
-            document.getElementById('userName').textContent = userName;
-            document.getElementById('userDepartment').textContent = user.department || 'Student';
-            document.getElementById('userAvatar').src = avatar;
+            const userNameEl = document.getElementById('userName');
+            const userDeptEl = document.getElementById('userDepartment');
+            const userAvatarEl = document.getElementById('userAvatar');
+
+            if(userNameEl) userNameEl.textContent = userName;
+            if(userDeptEl) userDeptEl.textContent = user.department || 'Student';
+            if(userAvatarEl) userAvatarEl.src = avatar;
 
         } catch (error) {
             console.error("Error fetching user:", error);
@@ -1411,10 +1238,10 @@ I replaced the direct `window.location.href` calls inside the fetch functions wi
 
     function getDefaultNewsImage(index) {
         const images = [
-            '[https://images.unsplash.com/photo-1541339907198-e08756dedf3f?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80](https://images.unsplash.com/photo-1541339907198-e08756dedf3f?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80)',
-            '[https://images.unsplash.com/photo-1523580494863-6f3031224c94?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80](https://images.unsplash.com/photo-1523580494863-6f3031224c94?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80)',
-            '[https://images.unsplash.com/photo-1552664730-d307ca884978?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80](https://images.unsplash.com/photo-1552664730-d307ca884978?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80)',
-            '[https://images.unsplash.com/photo-1517694712202-14dd9538aa97?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80](https://images.unsplash.com/photo-1517694712202-14dd9538aa97?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80)'
+            'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80',
+            'https://images.unsplash.com/photo-1523580494863-6f3031224c94?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80',
+            'https://images.unsplash.com/photo-1552664730-d307ca884978?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80',
+            'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80'
         ];
         return images[index % images.length];
     }
@@ -1512,12 +1339,9 @@ I replaced the direct `window.location.href` calls inside the fetch functions wi
 
         try {
             const token = localStorage.getItem("token");
+            const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
-            const response = await fetch(GROUPS_API, {
-                headers: {
-                    ...(token ? { Authorization: `Bearer ${token}` } : {})
-                }
-            });
+            const response = await fetch(GROUPS_API, { headers });
 
             if (!response.ok) throw new Error("Unable to load forums.");
 
@@ -1550,9 +1374,10 @@ I replaced the direct `window.location.href` calls inside the fetch functions wi
                     ? "text-purple-600"
                     : "text-brand-active";
 
+                // Replaced window.location.href with handleProtectedAction
                 return `
                     <button
-                        onclick="handleProtectedNavigation('groupchat.html?groupId=${group._id}')"
+                        onclick="handleProtectedAction(event, 'groupchat.html?groupId=${group._id}')"
                         class="w-full text-left flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 transition group">
 
                         <div class="relative flex-shrink-0">
@@ -1561,10 +1386,12 @@ I replaced the direct `window.location.href` calls inside the fetch functions wi
                         </div>
 
                         <div class="flex-1 min-w-0">
+
                             <div class="flex justify-between items-start gap-2">
                                 <h4 class="font-bold text-gray-900 group-hover:text-brand-active text-sm line-clamp-1">
                                     ${escapeHtml(group.name)}
                                 </h4>
+
                                 ${
                                     group.unreadCount > 0
                                     ? `<span class="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">${group.unreadCount}</span>`
@@ -1586,19 +1413,23 @@ I replaced the direct `window.location.href` calls inside the fetch functions wi
 
                             <div class="flex items-center justify-between mt-2 text-xs text-gray-400">
                                 <span>${group.memberCount} Members</span>
+
                                 ${
                                     group.lastMessageTime
                                     ? `<span>${formatTimeAgo(new Date(group.lastMessageTime))}</span>`
                                     : ""
                                 }
                             </div>
+
                         </div>
+
                     </button>
                 `;
             }).join("");
 
         } catch (error) {
             console.error(error);
+
             container.innerHTML = `
                 <div class="text-center py-8">
                     <i class="ph ph-warning-circle text-4xl text-red-500"></i>
@@ -1741,6 +1572,15 @@ I replaced the direct `window.location.href` calls inside the fetch functions wi
         initCarousel();
         initSidebarSearch();
         
+        // Target any existing "Start Discussion" button if they have relevant IDs/Classes to auto-bind intercept
+        const startDiscussionButtons = document.querySelectorAll('.start-discussion-btn, #startDiscussionBtn');
+        startDiscussionButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const targetUrl = btn.getAttribute('href') || 'create-discussion.html';
+                handleProtectedAction(e, targetUrl);
+            });
+        });
+
         // Restore active tab from localStorage
         const storedTab = localStorage.getItem('activeTab') || 'feed';
         showTab(storedTab);
@@ -1755,6 +1595,7 @@ I replaced the direct `window.location.href` calls inside the fetch functions wi
         if (carouselInterval) clearInterval(carouselInterval);
     });
 </script>
+
 
 </body>
 </html>
