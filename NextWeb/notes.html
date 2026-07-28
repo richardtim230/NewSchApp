@@ -28,11 +28,16 @@
             }
         }
     </script>
+
     <style>
-        body {
+        /* Base sizing and scroll behavior:
+           - html/body provide full height and hide page-level scrolling
+           - internal scrolling is handled by #noteContainer only */
+        html, body {
+            height: 100%;
             margin: 0;
             padding: 0;
-            overflow: hidden;
+            overflow: hidden; /* avoid double scrollbars - only #noteContainer scrolls */
         }
 
         .hatched-surface {
@@ -53,42 +58,65 @@
             scrollbar-width: none;
         }
 
-        #leftSidebar {
-            transition: transform 0.3s ease-in-out;
-            transform: translateX(-100%);
-        }
-
-        #leftSidebar.open {
-            transform: translateX(0);
-        }
-
-        #rightSidebar {
-            transition: transform 0.3s ease-in-out;
-            transform: translateX(100%);
-        }
-
-        #rightSidebar.open {
-            transform: translateX(0);
-        }
-
+        /* Overlay: dims content on mobile and sits below sidebars */
         #sidebarOverlay {
-            transition: opacity 0.3s ease-in-out;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            z-index: 900; /* below sidebars (1000) */
             opacity: 0;
+            visibility: hidden;
+            transition: opacity .25s ease, visibility .25s;
             pointer-events: none;
         }
-
         #sidebarOverlay.open {
             opacity: 1;
+            visibility: visible;
             pointer-events: auto;
         }
 
+        /* Sidebars: fixed on mobile (slide), become layout children on desktop */
+        #leftSidebar,
+        #rightSidebar {
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            z-index: 1000; /* above overlay */
+            transition: transform 0.28s cubic-bezier(.2,.8,.2,1);
+            background: white;
+            overflow-y: auto;
+        }
+
+        /* widths match Tailwind spacing:
+           w-56 = 14rem = 224px
+           w-72 = 18rem = 288px */
+        #leftSidebar { left: 0; width: 224px; transform: translateX(-100%); }
+        #leftSidebar.open { transform: translateX(0); }
+
+        #rightSidebar { right: 0; width: 288px; transform: translateX(100%); }
+        #rightSidebar.open { transform: translateX(0); }
+
+        /* Desktop: place sidebars into the lg:flex wrapper (relative) */
+        @media (min-width: 1024px) {
+            #leftSidebar, #rightSidebar {
+                position: relative;
+                transform: none !important;
+                z-index: 50;
+                top: auto;
+                bottom: auto;
+            }
+            /* hide overlay on desktop because sidebars appear in layout */
+            #sidebarOverlay { display: none; }
+        }
+
+        /* Toolbar/footer/fullscreen layering */
         #noteContainer.is-fullscreen {
             position: fixed;
             top: 3.5rem;
             bottom: 0;
             left: 0;
             right: 0;
-            z-index: 40;
+            z-index: 1100; /* above sidebars */
             border-radius: 0;
             box-shadow: none;
             max-width: none;
@@ -103,7 +131,7 @@
             top: 0;
             left: 0;
             right: 0;
-            z-index: 50;
+            z-index: 1100;
             border-radius: 0 !important;
             border-bottom: 1px solid rgba(229,231,235,1);
             background: #fff;
@@ -111,22 +139,116 @@
 
         @media (min-width: 1024px) {
             .controls-fixed {
-                left: 14rem;
+                left: 224px; /* align with left sidebar width on desktop */
                 right: 0;
-                width: calc(100% - 14rem);
+                width: calc(100% - 224px);
             }
             #noteContainer.is-fullscreen {
-                left: 14rem;
-                width: calc(100% - 14rem);
+                left: 224px;
+                width: calc(100% - 224px);
+            }
+        }
+
+        /* bottomNav: should remain above content but below overlay/sidebars on mobile */
+        #bottomNav.fixed-mobile {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 50;
+        }
+
+        /* Layout helpers so #noteContainer can scroll and top areas remain fixed */
+        .layout-wrapper {
+            min-height: 100vh;
+        }
+
+        /* Keep the desktop wrapper as flex for layout; on mobile the sidebars behave as drawers */
+        .layout-inner {
+            display: flex;
+            flex-direction: column;
+            flex: 1 1 auto;
+            min-height: 0;
+        }
+
+        /* app area: column layout, allow internal scrolling */
+        #app {
+            display: flex;
+            flex-direction: column;
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: visible;
+        }
+
+        .app-content {
+            display: flex;
+            flex-direction: column;
+            flex: 1 1 auto;
+            min-height: 0; /* critical for internal scroll to work */
+        }
+
+        /* Main reading area: fixed-height behavior on mobile so only note scrolls */
+        main.site-main {
+            display: flex;
+            flex-direction: column;
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: hidden; /* wrapper does not scroll */
+        }
+
+        /* topSection should never scroll */
+        #topSection {
+            flex-shrink: 0;
+        }
+
+        /* Note wrapper should not scroll itself; only #noteContainer scrolls */
+        .note-wrapper {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: hidden; /* prevents page scroll, only noteContainer scrolls */
+        }
+
+        /* The only scrollable element */
+        #noteContainer {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            overflow-x: hidden;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* Mobile adjustments:
+           - reserve space for fixed header/bottom nav so main has exact height
+           - add bottom padding to note so content doesn't hide under bottom nav */
+        @media (max-width: 1023px) {
+            /* header: assume 64px height on mobile (user-specified) */
+            /* bottom nav: assume 72px height on mobile */
+            main.site-main {
+                height: calc(100vh - 64px - 72px); /* header + bottom nav */
+            }
+
+            #controlsBar {
+                position: sticky;
+                top: 0;
+                z-index: 20;
+            }
+
+            #noteContainer {
+                padding-bottom: 90px; /* prevent content being hidden under bottom nav */
             }
         }
     </style>
 </head>
 <body class="bg-[#F8F9FA] font-sans text-gray-900">
 
-    <div class="fixed inset-0 flex flex-col w-full h-full overflow-visible bg-[#F8F9FA] lg:flex-row">
+    <!-- Overlay is sibling of layout so it cannot paint above sidebars -->
+    <div id="sidebarOverlay" class="lg:hidden" aria-hidden="true"></div>
 
-        <aside id="leftSidebar" class="fixed lg:relative inset-y-0 left-0 w-56 bg-white border-r border-gray-200 overflow-y-auto shrink-0 z-50">
+    <!-- Layout wrapper: preserves desktop flex layout while allowing sidebars to be drawers on mobile -->
+    <div class="layout-wrapper lg:flex min-h-screen">
+
+        <!-- left sidebar -->
+        <aside id="leftSidebar" class="bg-white border-r border-gray-200">
             <div class="p-4 border-b border-gray-200 shrink-0">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-2">
@@ -216,7 +338,255 @@
             </div>
         </aside>
 
-        <aside id="rightSidebar" class="fixed lg:relative inset-y-0 right-0 w-72 bg-white border-l border-gray-200 overflow-y-auto shrink-0 z-50">
+        <!-- APP column (flex-1) -->
+        <div id="app" class="flex-1 flex flex-col">
+            <div class="app-content flex-1 flex flex-col min-h-0 w-full">
+
+                <!-- Header (fixed height assumed in mobile calc) -->
+                <header class="bg-white px-4 py-3 flex items-center justify-between border-b border-gray-100 z-30 shrink-0">
+                    <button id="openSidebarBtn" class="text-gray-700 hover:text-black lg:hidden">
+                        <i class="fa-solid fa-bars text-[20px]"></i>
+                    </button>
+                    
+                    <div class="flex items-center gap-2 cursor-pointer lg:hidden -ml-2">
+                        <i class="fa-solid fa-graduation-cap text-brand-blue text-2xl"></i>
+                        <h1 class="text-xl font-bold tracking-tight">
+                            <span class="text-brand-blue">Class</span><span class="text-gray-900">Notes</span>
+                        </h1>
+                    </div>
+
+                    <div class="hidden lg:flex flex-1 mx-8">
+                        <div class="relative w-full max-w-md">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                            <input type="text" placeholder="Search for notes, subjects, topics..." class="w-full bg-gray-50 border border-gray-200 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-0">
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center gap-4 text-gray-700">
+                        <button class="hidden md:flex items-center gap-2 bg-brand-blue text-white px-4 py-2 rounded-lg font-medium text-sm hover:bg-blue-700">
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                            <span>Upload</span>
+                        </button>
+                        <button class="hover:text-brand-blue transition-colors">
+                            <i class="fa-solid fa-magnifying-glass text-[20px] lg:hidden"></i>
+                        </button>
+                        <button class="relative hover:text-brand-blue transition-colors">
+                            <i class="fa-regular fa-bell text-[20px]"></i>
+                            <span class="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full">3</span>
+                        </button>
+                        <button id="openRightSidebarBtn" class="hover:text-brand-blue transition-colors lg:hidden">
+                            <i class="fa-solid fa-ellipsis-vertical text-[20px]"></i>
+                        </button>
+                        <button class="hidden lg:flex items-center hover:text-brand-blue transition-colors bg-blue-50 text-brand-blue rounded-full w-8 h-8 flex-col items-center justify-center">
+                            <i class="fa-solid fa-user text-[16px]"></i>
+                        </button>
+                    </div>
+                </header>
+
+                <!-- Main reading area: topSection and toolbar fixed; only noteContainer scrolls -->
+                <main class="site-main flex-1 flex flex-col min-h-0 w-full relative">
+
+                    <div class="shrink-0 flex flex-col" id="topSection">
+                        <div class="hidden lg:flex items-center text-sm text-gray-600 bg-white px-8 py-3 border-b border-gray-200">
+                            <a href="#" class="text-gray-600 hover:text-brand-blue">Home</a>
+                            <i class="fa-solid fa-angle-right text-xs mx-2"></i>
+                            <a href="#" class="text-gray-600 hover:text-brand-blue">Physics</a>
+                            <i class="fa-solid fa-angle-right text-xs mx-2"></i>
+                            <a href="#" class="text-gray-600 hover:text-brand-blue">PHY101</a>
+                            <i class="fa-solid fa-angle-right text-xs mx-2"></i>
+                            <a href="#" class="text-gray-600 hover:text-brand-blue">Mechanics Notes</a>
+                            <i class="fa-solid fa-angle-right text-xs mx-2"></i>
+                            <span class="text-gray-900 font-medium">Mechanics – Lecture 3 Notes</span>
+                        </div>
+
+                        <div class="px-4 py-3 flex items-center text-[13px] text-gray-500 bg-white lg:hidden">
+                            <i class="fa-solid fa-house-chimney text-gray-400"></i>
+                            <span class="mx-2 text-gray-300">/</span>
+                            <a href="#" class="text-brand-blue hover:underline">Physics</a>
+                            <span class="mx-2 text-gray-300">/</span>
+                            <a href="#" class="text-brand-blue hover:underline">PHY101</a>
+                            <span class="mx-2 text-gray-300">/</span>
+                            <span class="text-gray-600 truncate">Mechanics Notes</span>
+                        </div>
+
+                        <div class="bg-white px-4 lg:px-8 pt-2 pb-4 border-b border-gray-200">
+                            <div class="flex items-start justify-between">
+                                <div class="flex items-start gap-4">
+                                    <div class="relative w-[46px] h-[58px] bg-[#0066FF] rounded-lg shadow-sm flex flex-col items-center shrink-0">
+                                        <div class="absolute top-0 right-0 w-3.5 h-3.5 bg-white rounded-bl-lg border-l border-b border-[#0066FF]/20"></div>
+                                        <div class="flex flex-col gap-1 w-full px-2.5 mt-3">
+                                            <div class="w-full h-0.5 bg-white/70 rounded-full"></div>
+                                            <div class="w-2/3 h-0.5 bg-white/70 rounded-full"></div>
+                                        </div>
+                                        <span class="text-white font-bold text-[11px] mt-auto mb-1.5 tracking-wide">PDF</span>
+                                    </div>
+                                    
+                                    <div class="flex-1 min-w-0">
+                                        <h2 class="text-lg lg:text-2xl font-bold text-gray-900 leading-tight mb-1">Mechanics – Lecture 3 Notes</h2>
+                                        <p class="text-sm lg:text-base text-gray-500 mb-3">PHY101 – General Physics I</p>
+                                        
+                                        <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs lg:text-sm text-gray-500">
+                                            <div class="flex items-center gap-1.5">
+                                                <i class="fa-regular fa-user"></i>
+                                                <span>By John Doe</span>
+                                            </div>
+                                            <div class="flex items-center gap-1.5">
+                                                <i class="fa-regular fa-calendar"></i>
+                                                <span>May 10, 2025</span>
+                                            </div>
+                                            <div class="flex items-center gap-1.5">
+                                                <i class="fa-solid fa-download"></i>
+                                                <span>1.2K downloads</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="hidden lg:flex gap-2 ml-4 shrink-0">
+                                    <button class="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium">
+                                        <i class="fa-regular fa-bookmark"></i>
+                                        <span>Save</span>
+                                    </button>
+                                    <button class="flex items-center gap-2 px-4 py-2 bg-brand-blue text-white rounded-lg hover:bg-blue-700 text-sm font-medium">
+                                        <i class="fa-solid fa-download"></i>
+                                        <span>Download</span>
+                                    </button>
+                                </div>
+
+                                <button class="text-gray-400 hover:text-gray-600 px-2 py-1 lg:hidden">
+                                    <i class="fa-regular fa-bookmark text-xl"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="bg-white flex w-full border-b border-gray-200" id="tabsBar">
+                            <button class="flex-1 py-3 text-sm font-bold text-gray-900 border-b-[3px] border-brand-blue relative">
+                                View
+                            </button>
+                            <button class="flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700">
+                                Details
+                            </button>
+                            <button class="flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700">
+                                Comments (18)
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Note wrapper: not scrollable itself -->
+                    <div class="note-wrapper flex-1 flex flex-col min-h-0 px-4 lg:px-8 py-4 w-full mx-auto lg:max-w-5xl">
+                        
+                        <div id="controlsBar" class="shrink-0 bg-white border border-gray-200 rounded-t-xl px-4 py-2.5 flex items-center justify-between text-gray-700 shadow-sm z-10 relative">
+                            <div class="flex items-center gap-2">
+                                <input type="text" value="1" class="w-10 h-7 text-center border border-gray-200 rounded text-sm focus:outline-none focus:ring-0">
+                                <span class="text-sm text-gray-500">/ 12</span>
+                            </div>
+                            
+                            <div class="flex items-center gap-4">
+                                <button class="hover:text-brand-blue"><i class="fa-solid fa-minus text-[15px]"></i></button>
+                                <div class="text-sm font-medium border border-gray-100 bg-gray-50 px-3 py-1 rounded">100%</div>
+                                <button class="hover:text-brand-blue"><i class="fa-solid fa-plus text-[15px]"></i></button>
+                            </div>
+                            
+                            <div class="flex items-center gap-4">
+                                <button id="fullscreenBtn" class="hover:text-brand-blue" onclick="toggleFullscreen()"><i class="fa-solid fa-expand text-[15px]"></i></button>
+                                <button class="hover:text-brand-blue"><i class="fa-solid fa-ellipsis-vertical text-[15px] px-1"></i></button>
+                            </div>
+                        </div>
+
+                        <!-- The only scrollable region -->
+                        <div id="noteContainer" class="flex-1 overflow-y-auto no-scrollbar bg-white border-x border-b border-gray-200 rounded-b-xl shadow-sm p-4 lg:p-6 text-[15px] leading-relaxed text-gray-700">
+                            
+                            <h3 class="text-brand-blue font-bold text-lg uppercase tracking-wide border-b-[2px] border-brand-blue pb-2 mb-6 font-sans mt-2">
+                                3. Newton's Laws of Motion
+                            </h3>
+                            
+                            <h4 class="text-brand-blue font-semibold text-base mb-3 font-sans">
+                                3.1 First Law (Law of Inertia)
+                            </h4>
+                            
+                            <p class="mb-4">
+                                An object at rest stays at rest, and an object in motion stays in motion with the same speed and in the same direction unless acted upon by a net external force.
+                            </p>
+                            
+                            <p class="mb-3">Mathematically:</p>
+                            
+                            <div class="bg-brand-light border border-[#D3E3FD] rounded-lg py-5 px-4 flex justify-center items-center mb-8 text-lg">
+                                $$ \sum \vec{F} = 0 \quad \Rightarrow \quad \vec{v} = \text{constant} $$
+                            </div>
+                            
+                            <h4 class="text-brand-blue font-semibold text-base mb-3 font-sans">
+                                3.2 Second Law (Law of Acceleration)
+                            </h4>
+                            
+                            <p class="mb-4">
+                                The net force acting on an object equals the product of its mass and acceleration.
+                            </p>
+                            
+                            <div class="bg-brand-light border border-[#D3E3FD] rounded-lg py-4 px-4 flex justify-center items-center mb-4 text-lg">
+                                $$ \sum \vec{F} = m\vec{a} $$
+                            </div>
+                            
+                            <p class="mb-2">Where:</p>
+                            
+                            <ul class="list-disc pl-6 space-y-1.5 mb-10">
+                                <li>\( \sum \vec{F} \) = Net force (N)</li>
+                                <li>\( m \) = Mass (kg)</li>
+                                <li>\( \vec{a} \) = Acceleration (m/s\(^2\))</li>
+                            </ul>
+
+                            <div class="flex flex-col items-center w-full mt-4 mb-4">
+                                <div class="relative flex items-end">
+                                    <div class="w-24 h-[50px] bg-[#7BA9FF] border-[1.5px] border-black rounded-sm flex items-center justify-center relative z-10">
+                                        <span class="font-sans text-lg font-medium text-black">m</span>
+                                        
+                                        <div class="absolute top-1/2 left-[100%] -translate-y-1/2 flex items-center">
+                                            <div class="w-[50px] h-[1.5px] bg-black"></div>
+                                            <div class="w-0 h-0 border-t-[4px] border-t-transparent border-l-[6px] border-l-black border-b-[4px] border-b-transparent"></div>
+                                            <span class="absolute -top-7 right-[-5px] text-lg font-serif">\( \vec{F} \)</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="w-[280px] h-3 border-t-[1.5px] border-black hatched-surface mt-[-1px] z-0"></div>
+                            </div>
+                            
+                        </div> <!-- noteContainer -->
+                        
+                    </div> <!-- note-wrapper -->
+                </main>
+
+                <!-- Bottom navigation: fixed on mobile and always visible -->
+                <nav id="bottomNav" class="fixed-mobile bg-white border-t border-gray-100 flex justify-between items-center px-6 pt-3 pb-8 shrink-0 lg:hidden">
+                    <a href="#" class="flex flex-col items-center gap-1.5 text-gray-400 hover:text-gray-600">
+                        <i class="fa-solid fa-house text-[20px]"></i>
+                        <span class="text-[10px] font-medium">Home</span>
+                    </a>
+                    
+                    <a href="#" class="flex flex-col items-center gap-1.5 text-brand-blue">
+                        <i class="fa-solid fa-book-open text-[20px]"></i>
+                        <span class="text-[10px] font-bold">Notes</span>
+                    </a>
+                    
+                    <a href="#" class="flex flex-col items-center gap-1.5 text-gray-400 hover:text-gray-600">
+                        <i class="fa-solid fa-border-all text-[20px]"></i>
+                        <span class="text-[10px] font-medium">Subjects</span>
+                    </a>
+                    
+                    <a href="#" class="flex flex-col items-center gap-1.5 text-gray-400 hover:text-gray-600">
+                        <i class="fa-solid fa-cloud-arrow-up text-[20px]"></i>
+                        <span class="text-[10px] font-medium">Uploads</span>
+                    </a>
+                    
+                    <a href="#" class="flex flex-col items-center gap-1.5 text-gray-400 hover:text-gray-600" id="moreBtn">
+                        <i class="fa-solid fa-bars text-[20px]"></i>
+                        <span class="text-[10px] font-medium">More</span>
+                    </a>
+                </nav>
+            </div>
+        </div>
+
+        <!-- right sidebar (desktop layout sibling) -->
+        <aside id="rightSidebar" class="bg-white border-l border-gray-200">
             <div class="p-6 border-b border-gray-200 shrink-0">
                 <div class="flex items-center justify-between mb-4">
                     <h3 class="font-bold text-lg">About this note</h3>
@@ -325,253 +695,10 @@
                 </div>
             </div>
         </aside>
-
-        <div class="flex-1 flex flex-col min-h-0 w-full overflow-hidden">
-
-            <header class="bg-white px-4 py-3 flex items-center justify-between border-b border-gray-100 z-30 shrink-0">
-                <button id="openSidebarBtn" class="text-gray-700 hover:text-black lg:hidden">
-                    <i class="fa-solid fa-bars text-[20px]"></i>
-                </button>
-                
-                <div class="flex items-center gap-2 cursor-pointer lg:hidden -ml-2">
-                    <i class="fa-solid fa-graduation-cap text-brand-blue text-2xl"></i>
-                    <h1 class="text-xl font-bold tracking-tight">
-                        <span class="text-brand-blue">Class</span><span class="text-gray-900">Notes</span>
-                    </h1>
-                </div>
-
-                <div class="hidden lg:flex flex-1 mx-8">
-                    <div class="relative w-full max-w-md">
-                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                        <input type="text" placeholder="Search for notes, subjects, topics..." class="w-full bg-gray-50 border border-gray-200 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-0">
-                    </div>
-                </div>
-                
-                <div class="flex items-center gap-4 text-gray-700">
-                    <button class="hidden md:flex items-center gap-2 bg-brand-blue text-white px-4 py-2 rounded-lg font-medium text-sm hover:bg-blue-700">
-                        <i class="fa-solid fa-cloud-arrow-up"></i>
-                        <span>Upload</span>
-                    </button>
-                    <button class="hover:text-brand-blue transition-colors">
-                        <i class="fa-solid fa-magnifying-glass text-[20px] lg:hidden"></i>
-                    </button>
-                    <button class="relative hover:text-brand-blue transition-colors">
-                        <i class="fa-regular fa-bell text-[20px]"></i>
-                        <span class="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full">3</span>
-                    </button>
-                    <button id="openRightSidebarBtn" class="hover:text-brand-blue transition-colors lg:hidden">
-                        <i class="fa-solid fa-ellipsis-vertical text-[20px]"></i>
-                    </button>
-                    <button class="hidden lg:flex items-center hover:text-brand-blue transition-colors bg-blue-50 text-brand-blue rounded-full w-8 h-8 flex-col items-center justify-center">
-                        <i class="fa-solid fa-user text-[16px]"></i>
-                    </button>
-                </div>
-            </header>
-
-            <main class="flex-1 flex flex-col min-h-0 w-full relative overflow-hidden">
-                
-                <div class="shrink-0 flex flex-col" id="topSection">
-                    <div class="hidden lg:flex items-center text-sm text-gray-600 bg-white px-8 py-3 border-b border-gray-200">
-                        <a href="#" class="text-gray-600 hover:text-brand-blue">Home</a>
-                        <i class="fa-solid fa-angle-right text-xs mx-2"></i>
-                        <a href="#" class="text-gray-600 hover:text-brand-blue">Physics</a>
-                        <i class="fa-solid fa-angle-right text-xs mx-2"></i>
-                        <a href="#" class="text-gray-600 hover:text-brand-blue">PHY101</a>
-                        <i class="fa-solid fa-angle-right text-xs mx-2"></i>
-                        <a href="#" class="text-gray-600 hover:text-brand-blue">Mechanics Notes</a>
-                        <i class="fa-solid fa-angle-right text-xs mx-2"></i>
-                        <span class="text-gray-900 font-medium">Mechanics – Lecture 3 Notes</span>
-                    </div>
-
-                    <div class="px-4 py-3 flex items-center text-[13px] text-gray-500 bg-white lg:hidden">
-                        <i class="fa-solid fa-house-chimney text-gray-400"></i>
-                        <span class="mx-2 text-gray-300">/</span>
-                        <a href="#" class="text-brand-blue hover:underline">Physics</a>
-                        <span class="mx-2 text-gray-300">/</span>
-                        <a href="#" class="text-brand-blue hover:underline">PHY101</a>
-                        <span class="mx-2 text-gray-300">/</span>
-                        <span class="text-gray-600 truncate">Mechanics Notes</span>
-                    </div>
-
-                    <div class="bg-white px-4 lg:px-8 pt-2 pb-4 border-b border-gray-200">
-                        <div class="flex items-start justify-between">
-                            <div class="flex items-start gap-4">
-                                <div class="relative w-[46px] h-[58px] bg-[#0066FF] rounded-lg shadow-sm flex flex-col items-center shrink-0">
-                                    <div class="absolute top-0 right-0 w-3.5 h-3.5 bg-white rounded-bl-lg border-l border-b border-[#0066FF]/20"></div>
-                                    <div class="flex flex-col gap-1 w-full px-2.5 mt-3">
-                                        <div class="w-full h-0.5 bg-white/70 rounded-full"></div>
-                                        <div class="w-2/3 h-0.5 bg-white/70 rounded-full"></div>
-                                    </div>
-                                    <span class="text-white font-bold text-[11px] mt-auto mb-1.5 tracking-wide">PDF</span>
-                                </div>
-                                
-                                <div class="flex-1 min-w-0">
-                                    <h2 class="text-lg lg:text-2xl font-bold text-gray-900 leading-tight mb-1">Mechanics – Lecture 3 Notes</h2>
-                                    <p class="text-sm lg:text-base text-gray-500 mb-3">PHY101 – General Physics I</p>
-                                    
-                                    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs lg:text-sm text-gray-500">
-                                        <div class="flex items-center gap-1.5">
-                                            <i class="fa-regular fa-user"></i>
-                                            <span>By John Doe</span>
-                                        </div>
-                                        <div class="flex items-center gap-1.5">
-                                            <i class="fa-regular fa-calendar"></i>
-                                            <span>May 10, 2025</span>
-                                        </div>
-                                        <div class="flex items-center gap-1.5">
-                                            <i class="fa-solid fa-download"></i>
-                                            <span>1.2K downloads</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="hidden lg:flex gap-2 ml-4 shrink-0">
-                                <button class="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium">
-                                    <i class="fa-regular fa-bookmark"></i>
-                                    <span>Save</span>
-                                </button>
-                                <button class="flex items-center gap-2 px-4 py-2 bg-brand-blue text-white rounded-lg hover:bg-blue-700 text-sm font-medium">
-                                    <i class="fa-solid fa-download"></i>
-                                    <span>Download</span>
-                                </button>
-                            </div>
-
-                            <button class="text-gray-400 hover:text-gray-600 px-2 py-1 lg:hidden">
-                                <i class="fa-regular fa-bookmark text-xl"></i>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="bg-white flex w-full border-b border-gray-200" id="tabsBar">
-                        <button class="flex-1 py-3 text-sm font-bold text-gray-900 border-b-[3px] border-brand-blue relative">
-                            View
-                        </button>
-                        <button class="flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700">
-                            Details
-                        </button>
-                        <button class="flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700">
-                            Comments (18)
-                        </button>
-                    </div>
-                </div>
-
-                <div class="flex-1 flex flex-col min-h-0 px-4 lg:px-8 py-4 w-full mx-auto lg:max-w-5xl">
-                    
-                    <div id="controlsBar" class="shrink-0 bg-white border border-gray-200 rounded-t-xl px-4 py-2.5 flex items-center justify-between text-gray-700 shadow-sm z-10 relative">
-                        <div class="flex items-center gap-2">
-                            <input type="text" value="1" class="w-10 h-7 text-center border border-gray-200 rounded text-sm focus:outline-none focus:ring-0">
-                            <span class="text-sm text-gray-500">/ 12</span>
-                        </div>
-                        
-                        <div class="flex items-center gap-4">
-                            <button class="hover:text-brand-blue"><i class="fa-solid fa-minus text-[15px]"></i></button>
-                            <div class="text-sm font-medium border border-gray-100 bg-gray-50 px-3 py-1 rounded">100%</div>
-                            <button class="hover:text-brand-blue"><i class="fa-solid fa-plus text-[15px]"></i></button>
-                        </div>
-                        
-                        <div class="flex items-center gap-4">
-                            <button id="fullscreenBtn" class="hover:text-brand-blue" onclick="toggleFullscreen()"><i class="fa-solid fa-expand text-[15px]"></i></button>
-                            <button class="hover:text-brand-blue"><i class="fa-solid fa-ellipsis-vertical text-[15px] px-1"></i></button>
-                        </div>
-                    </div>
-
-                    <div id="noteContainer" class="flex-1 overflow-y-auto no-scrollbar bg-white border-x border-b border-gray-200 rounded-b-xl shadow-sm p-4 lg:p-6 text-[15px] leading-relaxed text-gray-700">
-                        
-                        <h3 class="text-brand-blue font-bold text-lg uppercase tracking-wide border-b-[2px] border-brand-blue pb-2 mb-6 font-sans mt-2">
-                            3. Newton's Laws of Motion
-                        </h3>
-                        
-                        <h4 class="text-brand-blue font-semibold text-base mb-3 font-sans">
-                            3.1 First Law (Law of Inertia)
-                        </h4>
-                        
-                        <p class="mb-4">
-                            An object at rest stays at rest, and an object in motion stays in motion with the same speed and in the same direction unless acted upon by a net external force.
-                        </p>
-                        
-                        <p class="mb-3">Mathematically:</p>
-                        
-                        <div class="bg-brand-light border border-[#D3E3FD] rounded-lg py-5 px-4 flex justify-center items-center mb-8 text-lg">
-                            $$ \sum \vec{F} = 0 \quad \Rightarrow \quad \vec{v} = \text{constant} $$
-                        </div>
-                        
-                        <h4 class="text-brand-blue font-semibold text-base mb-3 font-sans">
-                            3.2 Second Law (Law of Acceleration)
-                        </h4>
-                        
-                        <p class="mb-4">
-                            The net force acting on an object equals the product of its mass and acceleration.
-                        </p>
-                        
-                        <div class="bg-brand-light border border-[#D3E3FD] rounded-lg py-4 px-4 flex justify-center items-center mb-4 text-lg">
-                            $$ \sum \vec{F} = m\vec{a} $$
-                        </div>
-                        
-                        <p class="mb-2">Where:</p>
-                        
-                        <ul class="list-disc pl-6 space-y-1.5 mb-10">
-                            <li>\( \sum \vec{F} \) = Net force (N)</li>
-                            <li>\( m \) = Mass (kg)</li>
-                            <li>\( \vec{a} \) = Acceleration (m/s\(^2\))</li>
-                        </ul>
-
-                        <div class="flex flex-col items-center w-full mt-4 mb-4">
-                            <div class="relative flex items-end">
-                                <div class="w-24 h-[50px] bg-[#7BA9FF] border-[1.5px] border-black rounded-sm flex items-center justify-center relative z-10">
-                                    <span class="font-sans text-lg font-medium text-black">m</span>
-                                    
-                                    <div class="absolute top-1/2 left-[100%] -translate-y-1/2 flex items-center">
-                                        <div class="w-[50px] h-[1.5px] bg-black"></div>
-                                        <div class="w-0 h-0 border-t-[4px] border-t-transparent border-l-[6px] border-l-black border-b-[4px] border-b-transparent"></div>
-                                        <span class="absolute -top-7 right-[-5px] text-lg font-serif">\( \vec{F} \)</span>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="w-[280px] h-3 border-t-[1.5px] border-black hatched-surface mt-[-1px] z-0"></div>
-                        </div>
-                        
-                    </div>
-                    
-                </div>
-            </main>
-
-            <nav class="bg-white border-t border-gray-100 flex justify-between items-center px-6 pt-3 pb-8 shrink-0 relative z-20 lg:hidden" id="bottomNav">
-                <a href="#" class="flex flex-col items-center gap-1.5 text-gray-400 hover:text-gray-600">
-                    <i class="fa-solid fa-house text-[20px]"></i>
-                    <span class="text-[10px] font-medium">Home</span>
-                </a>
-                
-                <a href="#" class="flex flex-col items-center gap-1.5 text-brand-blue">
-                    <i class="fa-solid fa-book-open text-[20px]"></i>
-                    <span class="text-[10px] font-bold">Notes</span>
-                </a>
-                
-                <a href="#" class="flex flex-col items-center gap-1.5 text-gray-400 hover:text-gray-600">
-                    <i class="fa-solid fa-border-all text-[20px]"></i>
-                    <span class="text-[10px] font-medium">Subjects</span>
-                </a>
-                
-                <a href="#" class="flex flex-col items-center gap-1.5 text-gray-400 hover:text-gray-600">
-                    <i class="fa-solid fa-cloud-arrow-up text-[20px]"></i>
-                    <span class="text-[10px] font-medium">Uploads</span>
-                </a>
-                
-                <a href="#" class="flex flex-col items-center gap-1.5 text-gray-400 hover:text-gray-600" id="moreBtn">
-                    <i class="fa-solid fa-bars text-[20px]"></i>
-                    <span class="text-[10px] font-medium">More</span>
-                </a>
-            </nav>
-        </div>
-
     </div>
 
-    <!-- Overlay used to detect clicks outside the sidebars on small screens -->
-    <div id="sidebarOverlay" class="fixed inset-0 bg-black bg-opacity-40 opacity-0 pointer-events-none transition-opacity lg:hidden" aria-hidden="true"></div>
-
     <script>
-    // Try to render KaTeX content if the auto-render script is loaded
+    // KaTeX rendering if auto-render available
     document.addEventListener('DOMContentLoaded', function () {
         if (typeof renderMathInElement === 'function') {
             renderMathInElement(document.body, {
@@ -603,30 +730,41 @@
     const moreBtn = document.getElementById('moreBtn');
 
     function openSidebar(sidebar) {
+        if (!sidebar) return;
         if (leftSidebar) leftSidebar.classList.remove('open');
         if (rightSidebar) rightSidebar.classList.remove('open');
-        if (sidebar) sidebar.classList.add('open');
-        if (sidebarOverlay) {
-            sidebarOverlay.classList.add('open');
-            sidebarOverlay.style.pointerEvents = 'auto';
-        }
+
+        sidebar.classList.add('open');
+        if (sidebarOverlay) sidebarOverlay.classList.add('open');
     }
 
     function closeSidebars() {
         if (leftSidebar) leftSidebar.classList.remove('open');
         if (rightSidebar) rightSidebar.classList.remove('open');
-        if (sidebarOverlay) {
-            sidebarOverlay.classList.remove('open');
-            sidebarOverlay.style.pointerEvents = 'none';
-        }
+        if (sidebarOverlay) sidebarOverlay.classList.remove('open');
     }
 
-    if (openSidebarBtn) openSidebarBtn.addEventListener('click', () => openSidebar(leftSidebar));
-    if (openRightSidebarBtn) openRightSidebarBtn.addEventListener('click', () => openSidebar(rightSidebar));
-    if (moreBtn) moreBtn.addEventListener('click', () => openSidebar(rightSidebar));
-    if (closeSidebarBtn) closeSidebarBtn.addEventListener('click', closeSidebars);
-    if (closeRightSidebarBtn) closeRightSidebarBtn.addEventListener('click', closeSidebars);
-    if (sidebarOverlay) sidebarOverlay.addEventListener('click', closeSidebars);
+    // open/close handlers with stopPropagation to avoid accidental closes
+    if (openSidebarBtn) openSidebarBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openSidebar(leftSidebar);
+    });
+    if (openRightSidebarBtn) openRightSidebarBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openSidebar(rightSidebar);
+    });
+    if (moreBtn) moreBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openSidebar(rightSidebar);
+    });
+
+    if (closeSidebarBtn) closeSidebarBtn.addEventListener('click', (e) => { e.stopPropagation(); closeSidebars(); });
+    if (closeRightSidebarBtn) closeRightSidebarBtn.addEventListener('click', (e) => { e.stopPropagation(); closeSidebars(); });
+
+    // clicking overlay closes sidebars (mobile)
+    if (sidebarOverlay) sidebarOverlay.addEventListener('click', function (e) {
+        closeSidebars();
+    });
 
     // Close sidebars when clicking on any menu item/link inside either sidebar
     function attachMenuCloseHandlers() {
@@ -634,10 +772,10 @@
         if (leftSidebar) {
             leftSidebar.querySelectorAll(menuSelectors).forEach(el => {
                 el.addEventListener('click', function (e) {
-                    // allow anchor navigation where intended but close sidebar on click
                     closeSidebars();
                 });
             });
+            leftSidebar.addEventListener('click', function (e) { e.stopPropagation(); });
         }
         if (rightSidebar) {
             rightSidebar.querySelectorAll(menuSelectors).forEach(el => {
@@ -645,27 +783,10 @@
                     closeSidebars();
                 });
             });
+            rightSidebar.addEventListener('click', function (e) { e.stopPropagation(); });
         }
     }
     attachMenuCloseHandlers();
-
-    // Close sidebars when clicking anywhere outside them (covers desktop + mobile)
-    document.addEventListener('click', function (e) {
-        const leftOpen = leftSidebar && leftSidebar.classList.contains('open');
-        const rightOpen = rightSidebar && rightSidebar.classList.contains('open');
-        if (!leftOpen && !rightOpen) return;
-
-        const clickedInsideLeft = leftSidebar && leftSidebar.contains(e.target);
-        const clickedInsideRight = rightSidebar && rightSidebar.contains(e.target);
-        const clickedOpenButtons = (openSidebarBtn && openSidebarBtn.contains(e.target))
-                                  || (openRightSidebarBtn && openRightSidebarBtn.contains(e.target))
-                                  || (moreBtn && moreBtn.contains(e.target));
-
-        // If the click is outside both sidebars and not on the buttons that open them -> close
-        if (!clickedInsideLeft && !clickedInsideRight && !clickedOpenButtons) {
-            closeSidebars();
-        }
-    });
 
     function toggleFullscreen() {
         if (!noteContainer || !controlsBar) return;
