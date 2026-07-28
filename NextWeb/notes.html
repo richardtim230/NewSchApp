@@ -9,7 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, { delimiters: [{left: '$$', right: '$$', display: true}, {left: '\\(', right: '\\)', display: false}] });"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
 
     <script>
         tailwind.config = {
@@ -73,6 +73,8 @@
 
         #sidebarOverlay {
             transition: opacity 0.3s ease-in-out;
+            opacity: 0;
+            pointer-events: none;
         }
 
         #sidebarOverlay.open {
@@ -121,7 +123,6 @@
     </style>
 </head>
 <body class="bg-[#F8F9FA] font-sans text-gray-900">
-
 
     <div class="fixed inset-0 flex flex-col w-full h-full overflow-visible bg-[#F8F9FA] lg:flex-row">
 
@@ -332,7 +333,7 @@
                     <i class="fa-solid fa-bars text-[20px]"></i>
                 </button>
                 
-                <div class="flex items-center gap-2 cursor-pointer lg:hidden">
+                <div class="flex items-center gap-2 cursor-pointer lg:hidden -ml-2">
                     <i class="fa-solid fa-graduation-cap text-brand-blue text-2xl"></i>
                     <h1 class="text-xl font-bold tracking-tight">
                         <span class="text-brand-blue">Class</span><span class="text-gray-900">Notes</span>
@@ -566,7 +567,23 @@
 
     </div>
 
+    <!-- Overlay used to detect clicks outside the sidebars on small screens -->
+    <div id="sidebarOverlay" class="fixed inset-0 bg-black bg-opacity-40 opacity-0 pointer-events-none transition-opacity lg:hidden" aria-hidden="true"></div>
+
     <script>
+    // Try to render KaTeX content if the auto-render script is loaded
+    document.addEventListener('DOMContentLoaded', function () {
+        if (typeof renderMathInElement === 'function') {
+            renderMathInElement(document.body, {
+                delimiters: [
+                    {left: "$$", right: "$$", display: true},
+                    {left: "\\(", right: "\\)", display: false},
+                    {left: "\\[", right: "\\]", display: true}
+                ]
+            });
+        }
+    });
+
     let isFullscreen = false;
     const noteContainer = document.getElementById('noteContainer');
     const fullscreenBtn = document.getElementById('fullscreenBtn');
@@ -611,6 +628,45 @@
     if (closeRightSidebarBtn) closeRightSidebarBtn.addEventListener('click', closeSidebars);
     if (sidebarOverlay) sidebarOverlay.addEventListener('click', closeSidebars);
 
+    // Close sidebars when clicking on any menu item/link inside either sidebar
+    function attachMenuCloseHandlers() {
+        const menuSelectors = 'a, button';
+        if (leftSidebar) {
+            leftSidebar.querySelectorAll(menuSelectors).forEach(el => {
+                el.addEventListener('click', function (e) {
+                    // allow anchor navigation where intended but close sidebar on click
+                    closeSidebars();
+                });
+            });
+        }
+        if (rightSidebar) {
+            rightSidebar.querySelectorAll(menuSelectors).forEach(el => {
+                el.addEventListener('click', function (e) {
+                    closeSidebars();
+                });
+            });
+        }
+    }
+    attachMenuCloseHandlers();
+
+    // Close sidebars when clicking anywhere outside them (covers desktop + mobile)
+    document.addEventListener('click', function (e) {
+        const leftOpen = leftSidebar && leftSidebar.classList.contains('open');
+        const rightOpen = rightSidebar && rightSidebar.classList.contains('open');
+        if (!leftOpen && !rightOpen) return;
+
+        const clickedInsideLeft = leftSidebar && leftSidebar.contains(e.target);
+        const clickedInsideRight = rightSidebar && rightSidebar.contains(e.target);
+        const clickedOpenButtons = (openSidebarBtn && openSidebarBtn.contains(e.target))
+                                  || (openRightSidebarBtn && openRightSidebarBtn.contains(e.target))
+                                  || (moreBtn && moreBtn.contains(e.target));
+
+        // If the click is outside both sidebars and not on the buttons that open them -> close
+        if (!clickedInsideLeft && !clickedInsideRight && !clickedOpenButtons) {
+            closeSidebars();
+        }
+    });
+
     function toggleFullscreen() {
         if (!noteContainer || !controlsBar) return;
         isFullscreen = !isFullscreen;
@@ -624,7 +680,7 @@
             controlsBar.classList.add('controls-fixed');
             controlsBar.classList.remove('rounded-t-xl');
             noteContainer.classList.add('overflow-y-auto');
-            fullscreenBtn.innerHTML = '<i class="fa-solid fa-compress text-[15px]"></i>';
+            if (fullscreenBtn) fullscreenBtn.innerHTML = '<i class="fa-solid fa-compress text-[15px]"></i>';
         } else {
             if (header) header.classList.remove('hidden');
             if (topSection) topSection.classList.remove('hidden');
@@ -636,7 +692,7 @@
             noteContainer.classList.remove('is-fullscreen');
             noteContainer.classList.add('overflow-y-auto');
             noteContainer.scrollTop = 0;
-            fullscreenBtn.innerHTML = '<i class="fa-solid fa-expand text-[15px]"></i>';
+            if (fullscreenBtn) fullscreenBtn.innerHTML = '<i class="fa-solid fa-expand text-[15px]"></i>';
         }
     }
 
