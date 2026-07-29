@@ -3,18 +3,67 @@ const CACHE_NAME = 'oau-community-hub-v3';
 const OFFLINE_CACHE = 'oau-offline-reader-v1';
 
 const urlsToCache = [
-  '/tutor/splash.html',
-  '/tutor/Oau.html',
-  '/NextWeb/reader.html',
-  '/NextWeb/passages.json',
-  '/NextWeb/offline.html',
-  '/manifest.json',
   '/',
   '/loader',
+
+  // Tutor pages
+  '/tutor/splash.html',
+  '/tutor/Oau.html',
+  '/tutor/article.html',
+  '/tutor/assignments.html',
+  '/tutor/category.html',
+  '/tutor/chatbot.html',
+  '/tutor/chatin.html',
+  '/tutor/contributor-hub.html',
+  '/tutor/course.html',
+  '/tutor/dashboard.html',
+  '/tutor/discussion.html',
+  '/tutor/grpchat.html',
+  '/tutor/landing-dash.html',
+  '/tutor/mock-exams.html',
+  '/tutor/mock.html',
+  '/tutor/offline.html',
+  '/tutor/pending.html',
+  '/tutor/read-articles.html',
+  '/tutor/report.html',
+  '/tutor/resource.html',
+  '/tutor/splash.html',
+  '/tutor/student-profile.html',
+  '/tutor/studentDash.html',
+  '/tutor/students.html',
+  '/tutor/tasks.html',
+  '/tutor/theory.html',
+
+  // NextWeb pages
+  '/NextWeb/book.html',
+  '/NextWeb/comp.html',
+  '/NextWeb/course.html',
+  '/NextWeb/course-item.html',
+  '/NextWeb/course-pq.html',
+  '/NextWeb/my-lib.html',
+  '/NextWeb/notes.html',
+  '/NextWeb/offline.html',
+  '/NextWeb/passages.json',
+  '/NextWeb/reader.html',
+  '/NextWeb/reer.html',
+  '/NextWeb/restaurant.html',
+  '/NextWeb/tp.html',
+  '/NextWeb/unimart.html',
+  '/NextWeb/user-lib.html',
+
+  // CSS & JS
+  '/tutor/style.css',
+  '/tutor/resource.css',
+  '/tutor/main.js',
+  '/tutor/pwa-register.js',
+
+  // Manifest
+  '/manifest.json',
+
+  // External resources
   'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Lora:wght@400;500;600;700&display=swap',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
-  'https://unpkg.com/@phosphor-icons/web',
-  'https://cdn.tailwindcss.com'
+  'https://unpkg.com/@phosphor-icons/web'
 ];
 
 const offlineCriticalResources = [
