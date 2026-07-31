@@ -4,12 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=0.85">
     <title>Reader</title>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
-    
+
+    <!-- pdf.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+
     <script>
         tailwind.config = {
             theme: {
@@ -30,6 +34,7 @@
             }
         }
     </script>
+
     <style>
         body {
             background-color: #FBF8F3;
@@ -37,72 +42,40 @@
             font-family: 'Source Serif 4', Georgia, serif;
             margin: 0;
             padding: 0;
-            user-select: none;
         }
 
-        input[type=range] {
-            -webkit-appearance: none;
-            width: 100%;
-            background: transparent;
-        }
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 3px; cursor: pointer; background: #E5E0D8; border-radius: 2px; }
+        input[type=range]::-webkit-slider-thumb { height: 16px; width: 16px; border-radius: 50%; background: #2563EB; cursor: pointer; -webkit-appearance: none; margin-top: -6.5px; box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
 
-        input[type=range]:focus {
-            outline: none;
-        }
+        .decorative-line { display:flex; align-items:center; justify-content:center; gap:12px; }
+        .decorative-line::before, .decorative-line::after { content:""; height:1px; width:60px; background:#E2DACD; }
 
-        input[type=range]::-webkit-slider-runnable-track {
-            width: 100%;
-            height: 3px;
-            cursor: pointer;
-            background: #E5E0D8;
-            border-radius: 2px;
-        }
+        .notes-modal { display:flex; align-items:center; justify-content:center; }
+        .appearance-modal { display:flex; align-items:center; justify-content:center; }
 
-        input[type=range]::-webkit-slider-thumb {
-            height: 16px;
-            width: 16px;
-            border-radius: 50%;
-            background: #2563EB;
-            cursor: pointer;
-            -webkit-appearance: none;
-            margin-top: -6.5px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.15);
-        }
+        /* When viewing PDFs we show canvas viewer; hide iframe/embed controls if any */
+        .pdf-mode .reader-embed-placeholder { display:none; }
 
-        .decorative-line {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 12px;
-        }
-
-        .decorative-line::before,
-        .decorative-line::after {
-            content: "";
-            height: 1px;
-            width: 60px;
-            background-color: #E2DACD;
-        }
-
-        .notes-modal { display: flex; align-items: center; justify-content: center; }
-        .appearance-modal { display: flex; align-items: center; justify-content: center; }
-
-        /* When viewing PDFs we hide page slider controls */
-        .pdf-mode .reader-controls { display: none; }
+        /* Canvas viewer styling */
+        #pdfCanvasWrapper { width:100%; display:flex; justify-content:center; align-items:flex-start; }
+        #pdfCanvas { background: #fff; border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); }
+        #topFlash { min-height: 18px; }
     </style>
 </head>
 <body class="w-full min-h-screen flex flex-col justify-between bg-readerBg">
 
-    <div class="sticky top-0 w-full bg-readerBg/90 backdrop-blur-sm z-20">
+    <div class="sticky top-0 w-full bg-readerBg/90 backdrop-blur-sm z-30">
         <div class="flex justify-between items-center px-6 pt-3 pb-1 text-xs font-semibold text-readerText">
             <div id="topFlash" class="text-sm"></div>
+            <div id="downloadProgress" class="text-xs text-gray-500"></div>
         </div>
 
         <header class="flex items-center justify-between px-5 py-3 w-full">
             <button id="backBtn" class="text-readerText hover:opacity-70 transition-opacity p-1">
                 <i class="fa-solid fa-arrow-left text-[18px]"></i>
             </button>
-            
+
             <div class="text-center flex flex-col items-center">
                 <h1 class="font-sans font-bold text-[15px] text-readerText leading-tight" id="bookTitle">Loading…</h1>
                 <p class="font-sans text-[12px] text-readerMuted font-medium" id="bookAuthor">—</p>
@@ -125,41 +98,49 @@
     <main id="readerContainer" class="flex-1 max-w-xl w-full mx-auto px-6 pt-6 pb-12 flex flex-col">
         <div class="text-center mb-6">
             <span id="chapterLabel" class="font-sans text-[11px] uppercase tracking-[0.2em] font-semibold text-readerBlue hidden">CHAPTER</span>
-            <h2 id="chapterTitle" class="font-titleSerif text-[34px] font-bold text-readerText mt-1 mb-4 tracking-tight hidden">
-                <!-- title filled dynamically -->
-            </h2>
-            
-            <div class="decorative-line my-5 hidden" id="decorativeLine">
-                <svg width="24" height="12" viewBox="0 0 24 12" fill="none" xmlns="http://www.w3.org/2000/svg" class="text-[#D3C7B5]">
-                    <path d="M2 6C5 2 7 2 10 6C13 10 15 10 18 6C20 3.33 21.5 3.33 22 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                    <path d="M2 6C2.5 8.67 4 8.67 6 6C9 2 11 2 14 6C17 10 19 10 22 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
-                </svg>
-            </div>
+            <h2 id="chapterTitle" class="font-titleSerif text-[34px] font-bold text-readerText mt-1 mb-4 tracking-tight hidden"></h2>
+            <div class="decorative-line my-5 hidden" id="decorativeLine">...svg...</div>
         </div>
 
-        <!-- The article element is the primary content area for text/html content.
-             If the resource is a PDF we'll swap-in an iframe inside #pdfEmbed. -->
+        <!-- Text content area (used for HTML or description resources) -->
         <article id="readerArticle" class="space-y-6 text-[18px] leading-[1.65] text-[#22201D]">
             <p id="loadingText" class="text-center text-gray-500">Loading book content…</p>
         </article>
 
-        <div id="pdfEmbed" class="w-full h-[60vh] hidden rounded-lg overflow-hidden border border-gray-200 shadow-sm bg-white"></div>
+        <!-- PDF canvas viewer (single-page renderer with navigation) -->
+        <div id="pdfViewer" class="hidden mt-4">
+            <div id="pdfCanvasWrapper" class="mb-4 p-2 bg-white rounded-lg border border-gray-100">
+                <canvas id="pdfCanvas"></canvas>
+            </div>
+            <div class="flex items-center gap-3 mb-2">
+                <div class="flex-1">
+                    <input id="pageSlider" type="range" min="1" max="1" value="1" class="w-full">
+                </div>
+                <div class="min-w-[56px] text-right">
+                    <div class="font-sans text-[12px] font-semibold text-readerText">
+                        <span id="currentPage">1</span> / <span id="totalPages">1</span>
+                    </div>
+                    <div class="text-xs text-gray-500" id="percentageDisplay">0%</div>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <button id="pdfZoomOut" class="px-3 py-2 rounded-md bg-slate-100 hover:bg-slate-200 text-sm">-</button>
+                <button id="pdfZoomIn" class="px-3 py-2 rounded-md bg-slate-100 hover:bg-slate-200 text-sm">+</button>
+                <div class="flex-1"></div>
+                <button id="downloadBtn" class="px-3 py-2 rounded-md bg-readerBlue text-white text-sm">Save for offline</button>
+                <button id="removeSavedBtn" class="px-3 py-2 rounded-md border border-gray-300 text-sm">Remove saved</button>
+            </div>
+        </div>
+
+        <!-- Fallback embed area used for non-PDF file previews -->
+        <div id="embedArea" class="reader-embed-placeholder w-full h-[60vh] hidden rounded-lg overflow-hidden border border-gray-200 shadow-sm bg-white"></div>
     </main>
 
     <footer id="readerFooter" class="sticky bottom-0 w-full bg-readerBg/95 backdrop-blur-md border-t border-[#EAE3D9] pt-2 pb-5 z-20">
         <div class="max-w-xl mx-auto px-6 mb-3">
-            <div class="text-center font-sans text-[12px] font-medium text-readerMuted mb-2 reader-controls">
-                <span id="currentPage">1</span> of <span id="totalPages">1</span>
-            </div>
-            
-            <div class="flex items-center gap-3 reader-controls">
-                <div class="relative flex-1 flex items-center">
-                    <div id="progressBar" class="absolute left-0 h-[3px] bg-readerBlue rounded-l-full z-10" style="width: 0%;"></div>
-                    <input id="pageSlider" type="range" min="1" max="1" value="1" class="w-full relative z-20">
-                </div>
-                <span id="percentageDisplay" class="font-sans text-[12px] font-semibold text-readerText min-w-[32px] text-right">
-                    0%
-                </span>
+            <div class="text-center font-sans text-[12px] font-medium text-readerMuted mb-2 reader-controls hidden" id="readerControls">
+                <span id="footerCurrentPage">1</span> of <span id="footerTotalPages">1</span>
             </div>
         </div>
 
@@ -189,7 +170,6 @@
                 <span class="font-sans text-[11px] font-medium text-readerMuted">Settings</span>
             </button>
         </nav>
-
     </footer>
 
     <!-- Notes Modal -->
@@ -201,7 +181,6 @@
                     <i class="fa-solid fa-xmark text-xl"></i>
                 </button>
             </div>
-
             <div id="notesList" class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
                 <div class="text-center py-8">
                     <i class="fa-regular fa-note-sticky text-4xl text-gray-300 mb-3 block"></i>
@@ -209,14 +188,9 @@
                     <p class="text-xs text-gray-400 font-sans mt-1">Highlight text and add notes while reading</p>
                 </div>
             </div>
-
             <div class="px-6 py-3 border-t border-gray-200 flex gap-2 justify-end">
-                <button id="notesExport" class="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors font-sans">
-                    Export
-                </button>
-                <button id="notesClear" class="px-4 py-2 rounded-lg bg-red-50 text-red-600 text-sm font-medium hover:bg-red-100 transition-colors font-sans">
-                    Clear All
-                </button>
+                <button id="notesExport" class="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors font-sans">Export</button>
+                <button id="notesClear" class="px-4 py-2 rounded-lg bg-red-50 text-red-600 text-sm font-medium hover:bg-red-100 transition-colors font-sans">Clear All</button>
             </div>
         </div>
     </div>
@@ -226,13 +200,9 @@
         <div class="relative bg-white rounded-2xl w-full max-w-md" style="box-shadow: 0 20px 50px rgba(0,0,0,0.35);">
             <div class="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-200">
                 <h2 class="font-sans font-bold text-lg text-readerText">Appearance</h2>
-                <button id="appearanceClose" class="text-gray-500 hover:text-gray-700 transition-colors p-1">
-                    <i class="fa-solid fa-xmark text-xl"></i>
-                </button>
+                <button id="appearanceClose" class="text-gray-500 hover:text-gray-700 transition-colors p-1"><i class="fa-solid fa-xmark text-xl"></i></button>
             </div>
-
             <div class="px-6 py-5 space-y-5">
-                <!-- Font Size -->
                 <div>
                     <label class="block font-sans text-sm font-semibold text-readerText mb-3">Font Size</label>
                     <div class="flex items-center gap-3">
@@ -242,492 +212,486 @@
                     </div>
                     <p class="font-sans text-xs text-gray-500 mt-2">Current: <span id="fontSizeValue">18</span>px</p>
                 </div>
-
-                <!-- Line Height -->
                 <div>
                     <label class="block font-sans text-sm font-semibold text-readerText mb-3">Line Height</label>
                     <div class="space-y-2">
-                        <button id="lineCompact" class="w-full text-left px-3 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 font-serif text-sm leading-[1.5] transition-colors">
-                            Compact
-                        </button>
-                        <button id="lineDefault" class="w-full text-left px-3 py-2 rounded-lg border border-brand-blue bg-blue-50 font-serif text-sm leading-[1.65] font-semibold transition-colors">
-                            Default
-                        </button>
-                        <button id="lineComfort" class="w-full text-left px-3 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 font-serif text-sm leading-[1.85] transition-colors">
-                            Comfortable
-                        </button>
+                        <button id="lineCompact" class="w-full text-left px-3 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 font-serif text-sm leading-[1.5] transition-colors">Compact</button>
+                        <button id="lineDefault" class="w-full text-left px-3 py-2 rounded-lg border border-brand-blue bg-blue-50 font-serif text-sm leading-[1.65] font-semibold transition-colors">Default</button>
+                        <button id="lineComfort" class="w-full text-left px-3 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 font-serif text-sm leading-[1.85] transition-colors">Comfortable</button>
                     </div>
                 </div>
-
-                <!-- Theme -->
                 <div>
                     <label class="block font-sans text-sm font-semibold text-readerText mb-3">Reading Theme</label>
                     <div class="grid grid-cols-2 gap-3">
-                        <button id="themeLight" class="h-20 rounded-lg border-2 border-gray-300 hover:border-gray-400 bg-[#FBF8F3] flex items-center justify-center gap-2 transition-all group">
-                            <i class="fa-solid fa-sun text-amber-500 text-lg group-hover:scale-110 transition-transform"></i>
-                            <span class="font-sans text-xs font-medium text-gray-700">Light</span>
-                        </button>
-                        <button id="themeDark" class="h-20 rounded-lg border-2 border-gray-300 hover:border-gray-400 bg-gray-900 flex items-center justify-center gap-2 transition-all group">
-                            <i class="fa-solid fa-moon text-blue-300 text-lg group-hover:scale-110 transition-transform"></i>
-                            <span class="font-sans text-xs font-medium text-gray-200">Dark</span>
-                        </button>
+                        <button id="themeLight" class="h-20 rounded-lg border-2 border-gray-300 bg-[#FBF8F3] flex items-center justify-center gap-2 transition-all group"><i class="fa-solid fa-sun text-amber-500 text-lg"></i><span class="font-sans text-xs font-medium text-gray-700">Light</span></button>
+                        <button id="themeDark" class="h-20 rounded-lg border-2 border-gray-300 bg-gray-900 flex items-center justify-center gap-2 transition-all group"><i class="fa-solid fa-moon text-blue-300 text-lg"></i><span class="font-sans text-xs font-medium text-gray-200">Dark</span></button>
                     </div>
                 </div>
             </div>
-
             <div class="px-6 py-3 border-t border-gray-200 flex gap-2 justify-end">
-                <button id="appearanceReset" class="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors font-sans">
-                    Reset
-                </button>
-                <button id="appearanceApply" class="px-4 py-2 rounded-lg bg-readerBlue text-white text-sm font-medium hover:bg-blue-600 transition-colors font-sans">
-                    Apply
-                </button>
+                <button id="appearanceReset" class="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors font-sans">Reset</button>
+                <button id="appearanceApply" class="px-4 py-2 rounded-lg bg-readerBlue text-white text-sm font-medium hover:bg-blue-600 transition-colors font-sans">Apply</button>
             </div>
         </div>
     </div>
 
-    <script>
-        // API helper (same base used by book.html)
-        const API_BASE = "https://examguide.onrender.com";
+<script>
+/* --------------- Config & helpers --------------- */
+const API_BASE = "https://examguide.onrender.com";
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
-        function normalizeUrl(u){
-            if(!u) return null;
-            if(u.startsWith("http://")||u.startsWith("https://")) return u;
-            if(u.startsWith("/")) return API_BASE + u;
-            return API_BASE + (u.startsWith("uploads/") ? "/" + u : "/" + u);
-        }
+function normalizeUrl(u){
+    if(!u) return null;
+    if(u.startsWith("http://")||u.startsWith("https://")) return u;
+    if(u.startsWith("/")) return API_BASE + u;
+    return API_BASE + (u.startsWith("uploads/") ? "/" + u : "/" + u);
+}
 
-        async function tryFetch(url, opts){
-            try { const res = await fetch(url, opts); if(!res.ok) throw res; const ct = res.headers.get('content-type') || ''; if(ct.includes('application/json')) return await res.json(); return res; } catch (e) { return null; }
-        }
+async function tryFetch(url, opts){
+    try { const res = await fetch(url, opts); if(!res.ok) throw res; const ct = res.headers.get('content-type') || ''; if(ct.includes('application/json')) return await res.json(); return res; } catch (e) { return null; }
+}
+function qsParam(name){ const params = new URLSearchParams(window.location.search); return params.get(name); }
+async function fetchResourceById(id){
+  if(!id) return null;
+  const candidates = [`${API_BASE}/api/resource/${id}`, `${API_BASE}/api/resources/${id}`];
+  for(const url of candidates){
+    const j = await tryFetch(url, { credentials: 'include' });
+    if(!j) continue;
+    if(j.resource) return j.resource;
+    if(j.data) return j.data;
+    if(j._id || j.id) return j;
+    if(j.item) return j.item;
+  }
+  return null;
+}
 
-        function qsParam(name){ const params = new URLSearchParams(window.location.search); return params.get(name); }
+/* --------------- IndexedDB small helper --------------- */
+function openFilesDB(){
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open('reader-files', 1);
+        req.onupgradeneeded = () => {
+            const db = req.result;
+            if(!db.objectStoreNames.contains('files')) db.createObjectStore('files', { keyPath: 'id' });
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+async function saveBlobToIDB(id, blob){
+    const db = await openFilesDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction('files', 'readwrite');
+        const store = tx.objectStore('files');
+        store.put({ id, blob, updatedAt: Date.now() });
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => reject(tx.error);
+    });
+}
+async function getBlobFromIDB(id){
+    const db = await openFilesDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction('files', 'readonly');
+        const store = tx.objectStore('files');
+        const getReq = store.get(id);
+        getReq.onsuccess = () => resolve(getReq.result ? getReq.result.blob : null);
+        getReq.onerror = () => reject(getReq.error);
+    });
+}
+async function deleteBlobFromIDB(id){
+    const db = await openFilesDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction('files', 'readwrite');
+        const store = tx.objectStore('files');
+        const del = store.delete(id);
+        del.onsuccess = () => resolve(true);
+        del.onerror = () => reject(del.error);
+    });
+}
 
-        async function fetchResourceById(id){
-          if(!id) return null;
-          const candidates = [`${API_BASE}/api/resource/${id}`, `${API_BASE}/api/resources/${id}`];
-          for(const url of candidates){
-            const j = await tryFetch(url, { credentials: 'include' });
-            if(!j) continue;
-            if(j.resource) return j.resource;
-            if(j.data) return j.data;
-            if(j._id || j.id) return j;
-            if(j.item) return j.item;
-          }
-          return null;
-        }
+/* --------------- PDF download with progress --------------- */
+async function fetchWithProgress(url, onProgress){
+    const resp = await fetch(url, { credentials: 'include' });
+    if(!resp.ok) throw new Error('Fetch failed: ' + resp.status);
+    const contentLength = resp.headers.get('Content-Length') || resp.headers.get('content-length');
+    const total = contentLength ? parseInt(contentLength, 10) : null;
+    if(!resp.body) {
+        // not streaming; fallback to arrayBuffer
+        const ab = await resp.arrayBuffer();
+        if(onProgress) onProgress(ab.byteLength, total || ab.byteLength);
+        return ab;
+    }
+    const reader = resp.body.getReader();
+    const chunks = [];
+    let received = 0;
+    while(true){
+        const { done, value } = await reader.read();
+        if(done) break;
+        chunks.push(value);
+        received += value.length;
+        if(onProgress) onProgress(received, total);
+    }
+    // concatenate chunks
+    const arr = new Uint8Array(received);
+    let position = 0;
+    for(const chunk of chunks){ arr.set(chunk, position); position += chunk.length; }
+    return arr.buffer;
+}
 
-        // sanitize basic HTML - remove scripts and on* attributes
-        function sanitizeHtml(htmlString){
-            if(!htmlString) return '';
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(htmlString, 'text/html');
-            // Remove script and style tags
-            doc.querySelectorAll('script, style').forEach(n => n.remove());
-            // Remove inline event attributes
-            const elements = doc.querySelectorAll('*');
-            elements.forEach(el => {
-                [...el.attributes].forEach(attr => {
-                    if(attr.name.startsWith('on')) el.removeAttribute(attr.name);
-                    // disallow javascript: URLs
-                    if(attr.name === 'href' || attr.name === 'src'){
-                        if(attr.value && attr.value.trim().toLowerCase().startsWith('javascript:')) el.removeAttribute(attr.name);
-                    }
-                });
-            });
-            return doc.body.innerHTML;
-        }
+/* --------------- UI elements --------------- */
+const resourceId = qsParam('id');
+const bookTitleEl = document.getElementById('bookTitle');
+const bookAuthorEl = document.getElementById('bookAuthor');
+const readerArticle = document.getElementById('readerArticle');
+const embedArea = document.getElementById('embedArea');
+const pdfViewer = document.getElementById('pdfViewer');
+const pdfCanvas = document.getElementById('pdfCanvas');
+const pdfCanvasWrapper = document.getElementById('pdfCanvasWrapper');
+const pageSlider = document.getElementById('pageSlider');
+const currentPageEl = document.getElementById('currentPage');
+const totalPagesEl = document.getElementById('totalPages');
+const percentageDisplay = document.getElementById('percentageDisplay');
+const downloadProgressEl = document.getElementById('downloadProgress');
+const topFlash = document.getElementById('topFlash');
+const downloadBtn = document.getElementById('downloadBtn');
+const removeSavedBtn = document.getElementById('removeSavedBtn');
+const pdfZoomIn = document.getElementById('pdfZoomIn');
+const pdfZoomOut = document.getElementById('pdfZoomOut');
 
-        // Reader state
-        let resource = null;
-        let isPdfMode = false;
-        let resourceId = qsParam('id');
+let pdfDoc = null;
+let pdfScale = 1.0;
+let currentPdfPage = 1;
+let isPdfMode = false;
+let resource = null;
 
-        // Elements
-        const bookTitleEl = document.getElementById('bookTitle');
-        const bookAuthorEl = document.getElementById('bookAuthor');
-        const readerArticle = document.getElementById('readerArticle');
-        const pdfEmbed = document.getElementById('pdfEmbed');
-        const readerContainer = document.getElementById('readerContainer');
+/* --------------- PDF rendering helpers (reuseable) --------------- */
+async function renderPdfPage(pdfDocument, pageNumber, canvasEl, scale = 1.0){
+    try {
+        const page = await pdfDocument.getPage(pageNumber);
+        const viewport = page.getViewport({ scale });
+        // fit width to wrapper
+        const wrapperWidth = Math.min(pdfCanvasWrapper.clientWidth - 24, 1100);
+        const fitScale = (wrapperWidth / viewport.width) * scale;
+        const scaledViewport = page.getViewport({ scale: fitScale });
+        canvasEl.width = Math.floor(scaledViewport.width);
+        canvasEl.height = Math.floor(scaledViewport.height);
+        canvasEl.style.width = canvasEl.width + 'px';
+        canvasEl.style.height = canvasEl.height + 'px';
+        const ctx = canvasEl.getContext('2d');
+        const renderContext = { canvasContext: ctx, viewport: scaledViewport };
+        const renderTask = page.render(renderContext);
+        await renderTask.promise;
+    } catch (err) {
+        console.error('Error rendering PDF page', err);
+    }
+}
 
-        const pageSlider = document.getElementById('pageSlider');
-        const currentPage = document.getElementById('currentPage');
-        const totalPages = document.getElementById('totalPages');
-        const percentageDisplay = document.getElementById('percentageDisplay');
-        const progressBar = document.getElementById('progressBar');
+/* --------------- Top flash / progress --------------- */
+function showTopFlash(msg, t = 2500){
+    topFlash.textContent = msg;
+    if(t) setTimeout(()=> { if(topFlash.textContent === msg) topFlash.textContent = ''; }, t);
+}
+function setDownloadProgress(loaded, total){
+    if(total){
+        const pct = Math.round((loaded/total)*100);
+        downloadProgressEl.textContent = `Downloading: ${pct}%`;
+    } else {
+        downloadProgressEl.textContent = `Downloading: ${Math.round(loaded/1024)} KB`;
+    }
+}
 
-        const notesBtn = document.getElementById('notesBtn');
-        const notesModal = document.getElementById('notesModal');
-        const notesClose = document.getElementById('notesClose');
-        const notesList = document.getElementById('notesList');
-        const notesExport = document.getElementById('notesExport');
-        const notesClear = document.getElementById('notesClear');
+/* --------------- Load & display PDF (from IDB or network) --------------- */
+async function loadPdfFromBlob(blob){
+    if(!blob) throw new Error('No blob provided');
+    const arrayBuffer = await blob.arrayBuffer();
+    return await openPdfDocumentFromArrayBuffer(arrayBuffer);
+}
 
-        const appearanceBtn = document.getElementById('appearanceBtn');
-        const appearanceModal = document.getElementById('appearanceModal');
-        const appearanceClose = document.getElementById('appearanceClose');
-        const fontSizeSlider = document.getElementById('fontSizeSlider');
-        const fontSizeValue = document.getElementById('fontSizeValue');
-        const appearanceApply = document.getElementById('appearanceApply');
-        const appearanceReset = document.getElementById('appearanceReset');
+async function openPdfDocumentFromArrayBuffer(arrayBuffer){
+    if(pdfDoc && pdfDoc.destroy) { try{ await pdfDoc.destroy(); } catch(_){} pdfDoc = null; }
+    pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const total = pdfDoc.numPages || 1;
+    totalPagesEl.textContent = total;
+    pageSlider.max = total;
+    pageSlider.value = 1;
+    currentPageEl.textContent = 1;
+    percentageDisplay.textContent = '0%';
+    pdfViewer.classList.remove('hidden');
+    document.getElementById('readerArticle').classList.add('hidden');
+    isPdfMode = true;
+    currentPdfPage = 1;
+    pdfScale = 1.0;
+    await renderPdfPage(pdfDoc, currentPdfPage, pdfCanvas, pdfScale);
+    updatePageUI();
+}
 
-        const bookmarkBtn = document.getElementById('bookmarkBtn');
-        const bookmarkIcon = document.getElementById('bookmarkIcon');
+/* --------------- Primary init: fetch resource and decide path --------------- */
+async function initReader(){
+    if(!resourceId){
+        bookTitleEl.textContent = 'Resource not found';
+        readerArticle.innerHTML = '<p class="text-center text-gray-500">No resource id provided in the URL.</p>';
+        return;
+    }
 
-        // Notes storage per resource
-        let notes = [];
-        function notesKey(){ return `readerNotes:${resourceId || 'unknown'}`; }
-        function loadNotes(){ notes = JSON.parse(localStorage.getItem(notesKey()) || '[]'); }
-        function saveNotes(){ localStorage.setItem(notesKey(), JSON.stringify(notes)); }
+    document.title = 'Loading…';
+    const res = await fetchResourceById(resourceId);
+    if(!res){
+        bookTitleEl.textContent = 'Resource not found';
+        readerArticle.innerHTML = '<p class="text-center text-gray-500">Could not load the selected resource.</p>';
+        return;
+    }
+    resource = res;
+    document.title = `${res.title || res.name || 'Resource'} — Reader`;
+    bookTitleEl.textContent = res.title || res.name || 'Untitled';
+    const authors = Array.isArray(res.authors) ? res.authors.join(', ') : (res.authors || res.author || '');
+    bookAuthorEl.textContent = authors || (res.uploader && (res.uploader.fullname || res.uploader.username)) || '';
 
-        function renderNotes() {
-            if (!notes || notes.length === 0) {
-                notesList.innerHTML = `
-                    <div class="text-center py-8">
-                        <i class="fa-regular fa-note-sticky text-4xl text-gray-300 mb-3 block"></i>
-                        <p class="text-sm text-gray-500 font-sans">No notes yet</p>
-                        <p class="text-xs text-gray-400 font-sans mt-1">Highlight text and add notes while reading</p>
-                    </div>
-                `;
-            } else {
-                notesList.innerHTML = notes.map((note, idx) => `
-                    <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                        <div class="flex items-start justify-between gap-3 mb-2">
-                            <p class="font-sans text-xs font-semibold text-gray-500">Page ${note.page}</p>
-                            <button onclick="deleteNote(${idx})" class="text-gray-400 hover:text-red-600 transition-colors">
-                                <i class="fa-solid fa-trash text-sm"></i>
-                            </button>
-                        </div>
-                        <p class="font-serif text-sm leading-relaxed text-gray-700 mb-2 italic">"${note.highlight}"</p>
-                        <p class="font-sans text-sm text-gray-600">${note.text}</p>
-                        <p class="font-sans text-xs text-gray-400 mt-2">${new Date(note.timestamp).toLocaleString()}</p>
-                    </div>
-                `).join('');
-            }
-        }
+    // page count fallback
+    const pagesCount = Number(res.pages) || (res.files && res.files[0] && res.files[0].pages) || 1;
+    totalPagesEl.textContent = Math.max(1, Math.floor(pagesCount));
+    document.getElementById('footerTotalPages').textContent = totalPagesEl.textContent;
 
-        window.deleteNote = function(idx){
-            notes.splice(idx, 1);
-            saveNotes();
-            renderNotes();
-        }
+    // determine main file
+    const mainFile = (res.files && res.files[0]) || res.file || null;
+    const fileUrl = mainFile && (mainFile.url || mainFile.path) ? normalizeUrl(mainFile.url || mainFile.path) : null;
+    const previewUrl = res.previewUrl ? normalizeUrl(res.previewUrl) : (res.readOnlineUrl ? normalizeUrl(res.readOnlineUrl) : null);
+    const chosenUrl = previewUrl || fileUrl;
 
-        function addNote(highlightedText, noteText) {
-            notes.push({
-                page: currentPage.textContent || 1,
-                highlight: highlightedText,
-                text: noteText,
-                timestamp: new Date().toISOString()
-            });
-            saveNotes();
-            renderNotes();
-        }
+    // If resource has contentHtml or description, render text
+    if(res.contentHtml){
+        const sanitized = sanitizeHtml(res.contentHtml);
+        readerArticle.innerHTML = sanitized || '<p class="text-gray-600">No readable content available.</p>';
+        embedArea.classList.add('hidden');
+        pdfViewer.classList.add('hidden');
+        return;
+    }
+    if((res.description || res.summary) && !chosenUrl){
+        const text = res.description || res.summary || '';
+        const paragraphs = text.split(/\n{2,}/).filter(Boolean).map(p => `<p>${sanitizeHtml(p)}</p>`).join('\n');
+        readerArticle.innerHTML = paragraphs || '<p class="text-gray-600">No readable content available.</p>';
+        embedArea.classList.add('hidden');
+        pdfViewer.classList.add('hidden');
+        return;
+    }
 
-        // UI wiring
-        document.getElementById('backBtn').addEventListener('click', () => history.back());
-
-        // Bookmark per resource
-        function bookmarkKey(){ return `readerBookmarked:${resourceId || 'unknown'}`; }
-        function updateBookmarkUI(){
-            const isBookmarked = localStorage.getItem(bookmarkKey());
-            if (isBookmarked) bookmarkIcon.className = 'fa-solid fa-bookmark text-[18px]';
-            else bookmarkIcon.className = 'fa-regular fa-bookmark text-[18px]';
-        }
-        bookmarkBtn.addEventListener('click', () => {
-            const key = bookmarkKey();
-            if (localStorage.getItem(key)){
-                localStorage.removeItem(key);
-            } else {
-                localStorage.setItem(key, '1');
-            }
-            updateBookmarkUI();
-        });
-
-        // Appearance modal
-        appearanceBtn.addEventListener('click', () => {
-            appearanceModal.classList.remove('hidden');
-            document.body.style.overflow = 'hidden';
-        });
-        appearanceClose.addEventListener('click', () => {
-            appearanceModal.classList.add('hidden');
-            document.body.style.overflow = '';
-        });
-        fontSizeSlider.addEventListener('input', (e) => fontSizeValue.textContent = e.target.value);
-        appearanceApply.addEventListener('click', () => {
-            const fontSize = fontSizeSlider.value;
-            const art = document.getElementById('readerArticle');
-            if (art) art.style.fontSize = fontSize + 'px';
-            localStorage.setItem(`readerFontSize:${resourceId || 'global'}`, fontSize);
-            appearanceModal.classList.add('hidden');
-            document.body.style.overflow = '';
-        });
-        appearanceReset.addEventListener('click', () => {
-            fontSizeSlider.value = 18;
-            fontSizeValue.textContent = '18';
-            const art = document.getElementById('readerArticle');
-            if (art) art.style.fontSize = '18px';
-            localStorage.removeItem(`readerFontSize:${resourceId || 'global'}`);
-        });
-
-        // line height shortcuts
-        document.getElementById('lineCompact').addEventListener('click', () => { if (readerArticle) readerArticle.style.lineHeight = '1.5'; });
-        document.getElementById('lineDefault').addEventListener('click', () => { if (readerArticle) readerArticle.style.lineHeight = '1.65'; });
-        document.getElementById('lineComfort').addEventListener('click', () => { if (readerArticle) readerArticle.style.lineHeight = '1.85'; });
-
-        // theme buttons
-        document.getElementById('themeLight').addEventListener('click', () => {
-            document.body.classList.remove('dark-mode');
-            document.body.style.background = '#FBF8F3';
-            document.body.style.color = '#1A1816';
-        });
-        document.getElementById('themeDark').addEventListener('click', () => {
-            document.body.classList.add('dark-mode');
-            document.body.style.background = '#0B1220';
-            document.body.style.color = '#E6EEF8';
-        });
-
-        // Page navigation and persistence
-        pageSlider.addEventListener('input', (e) => {
-            const page = Number(e.target.value);
-            const total = Number(e.target.max) || 1;
-            const percent = Math.round((page / total) * 100);
-            currentPage.textContent = page;
-            percentageDisplay.textContent = percent + '%';
-            progressBar.style.width = percent + '%';
-            localStorage.setItem(`readerCurrentPage:${resourceId || 'unknown'}`, page);
-        });
-
-        // Notes modal wiring
-        notesBtn.addEventListener('click', () => {
-            loadNotes();
-            renderNotes();
-            notesModal.classList.remove('hidden');
-            document.body.style.overflow = 'hidden';
-        });
-        notesClose.addEventListener('click', () => {
-            notesModal.classList.add('hidden');
-            document.body.style.overflow = '';
-        });
-        notesExport.addEventListener('click', () => {
-            if (!notes || notes.length === 0) { alert('No notes to export'); return; }
-            const text = notes.map(n => `Page ${n.page}\n"${n.highlight}"\n${n.text}\n---`).join('\n\n');
-            const blob = new Blob([text], { type: 'text/plain' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = (resource && (resource.title || resource.name) ? (resource.title.replace(/\s+/g,'_')) : 'notes') + '.txt';
-            a.click();
-            URL.revokeObjectURL(url);
-        });
-        notesClear.addEventListener('click', () => {
-            if (confirm('Delete all notes? This cannot be undone.')) {
-                notes = [];
-                saveNotes();
-                renderNotes();
-            }
-        });
-
-        // Allow adding a note from a text selection inside article
-        document.addEventListener('selectionchange', () => {
-            // only enable when not in PDF mode
-            if (isPdfMode) return;
-            const sel = window.getSelection();
-            if (!sel || sel.isCollapsed) return;
-            const text = sel.toString().trim();
-            if (!text || text.length < 2) return;
-            // small non-intrusive prompt: ask user if they'd like to add a note
-            // We use a short timeout to avoid spamming prompts on continued selection
-            // and only prompt on user mouseup
-        });
-        // Add note via right-click context or simple double click + prompt
-        readerArticle.addEventListener('dblclick', (e) => {
-            if (isPdfMode) return;
-            const sel = window.getSelection();
-            if (!sel || sel.isCollapsed) return;
-            const text = sel.toString().trim();
-            if (!text) return;
-            const noteText = prompt('Add a note for the selected text:', '');
-            if (noteText !== null) {
-                addNote(text, noteText || '');
-                showToast('Note saved');
-                window.getSelection().removeAllRanges();
-            }
-        });
-
-        // Small toast function
-        function showToast(msg, ok=true, t=2500){
-            const el = document.createElement('div');
-            el.className = `fixed top-5 right-5 z-50 px-4 py-2 rounded-xl text-white ${ok ? 'bg-emerald-600' : 'bg-amber-500'} shadow-lg`;
-            el.textContent = msg;
-            document.body.appendChild(el);
-            setTimeout(()=> el.remove(), t);
-        }
-
-        // Initialize the reader with resource data
-        async function initReader(){
-            if(!resourceId){
-                bookTitleEl.textContent = 'Resource not found';
-                readerArticle.innerHTML = '<p class="text-center text-gray-500">No resource id provided in the URL.</p>';
-                return;
-            }
-
-            document.title = 'Loading…';
-            const res = await fetchResourceById(resourceId);
-            if(!res){
-                bookTitleEl.textContent = 'Resource not found';
-                readerArticle.innerHTML = '<p class="text-center text-gray-500">Could not load the selected resource.</p>';
-                return;
-            }
-
-            resource = res;
-            document.title = `${res.title || res.name || 'Resource'} — Reader`;
-            bookTitleEl.textContent = res.title || res.name || 'Untitled';
-            // authors can be array or single string
-            const authors = Array.isArray(res.authors) ? res.authors.join(', ') : (res.authors || res.author || '');
-            bookAuthorEl.textContent = authors || (res.uploader && (res.uploader.fullname || res.uploader.username)) || '';
-
-            // apply font size if previously saved for this resource
-            const savedFont = localStorage.getItem(`readerFontSize:${resourceId}`) || localStorage.getItem(`readerFontSize:global`);
-            if (savedFont && document.getElementById('readerArticle')) {
-                document.getElementById('readerArticle').style.fontSize = savedFont + 'px';
-                fontSizeSlider.value = savedFont;
-                fontSizeValue.textContent = savedFont;
-            }
-
-            // prepare paging values
-            const pagesCount = Number(res.pages) || (res.files && res.files[0] && res.files[0].pages) || 1;
-            const total = Math.max(1, Math.floor(pagesCount));
-            totalPages.textContent = total;
-            pageSlider.max = total;
-
-            // restore current page for this resource
-            const savedPage = Number(localStorage.getItem(`readerCurrentPage:${resourceId}`) || 1);
-            const startPage = Math.min(Math.max(1, savedPage), total);
-            pageSlider.value = startPage;
-            currentPage.textContent = startPage;
-            const startPercent = Math.round((startPage / total) * 100);
-            percentageDisplay.textContent = startPercent + '%';
-            progressBar.style.width = startPercent + '%';
-
-            updateBookmarkUI();
-
-            // determine main file
-            const mainFile = (res.files && res.files[0]) || res.file || null;
-            const fileUrl = mainFile && (mainFile.url || mainFile.path) ? normalizeUrl(mainFile.url || mainFile.path) : null;
-            const previewUrl = res.previewUrl ? normalizeUrl(res.previewUrl) : (res.readOnlineUrl ? normalizeUrl(res.readOnlineUrl) : null);
-
-            // If there's HTML content, render it in the article (sanitized)
-            if (res.contentHtml) {
-                const sanitized = sanitizeHtml(res.contentHtml);
-                readerArticle.innerHTML = sanitized || '<p class="text-gray-600">No readable content available.</p>';
-                isPdfMode = false;
-                pdfEmbed.classList.add('hidden');
-                document.body.classList.remove('pdf-mode');
-            } else if (res.description || res.summary) {
-                // render description as paragraphs
-                const text = res.description || res.summary || '';
-                const paragraphs = text.split(/\n{2,}/).filter(Boolean).map(p => `<p>${sanitizeHtml(p)}</p>`).join('\n');
-                readerArticle.innerHTML = paragraphs || '<p class="text-gray-600">No readable content available.</p>';
-                isPdfMode = false;
-                pdfEmbed.classList.add('hidden');
-                document.body.classList.remove('pdf-mode');
-            } else if (previewUrl || fileUrl) {
-                // If it's a PDF, embed it; editor/viewer will be in pdf mode (hide slider)
-                const isPdf = /\.pdf($|\?)/i.test(previewUrl || fileUrl) || (mainFile && (mainFile.mimeType || mainFile.mimetype) && /pdf/i.test(mainFile.mimeType || mainFile.mimetype));
-                if (isPdf) {
-                    // show PDF inside an iframe
-                    const src = previewUrl || fileUrl;
-                    pdfEmbed.innerHTML = '';
-                    const iframe = document.createElement('iframe');
-                    iframe.src = src;
-                    iframe.style.width = '100%';
-                    iframe.style.height = '100%';
-                    iframe.frameBorder = '0';
-                    iframe.loading = 'lazy';
-                    pdfEmbed.appendChild(iframe);
-                    pdfEmbed.classList.remove('hidden');
-                    // hide the text article
-                    readerArticle.innerHTML = '<p class="text-center text-gray-500">PDF embedded below.</p>';
-                    isPdfMode = true;
-                    document.body.classList.add('pdf-mode');
+    // If file is present and appears to be PDF -> try to load from IDB first; else fetch and store
+    if(chosenUrl){
+        const isPdf = /\.pdf($|\?)/i.test(chosenUrl) || (mainFile && (mainFile.mimeType || mainFile.mimetype) && /pdf/i.test(mainFile.mimeType || mainFile.mimetype));
+        if(isPdf){
+            // Try load saved Blob from IndexedDB
+            try {
+                const saved = await getBlobFromIDB(resourceId);
+                if(saved){
+                    showTopFlash('Loaded saved copy');
+                    await loadPdfFromBlob(saved);
                 } else {
-                    // non-PDF file (e.g., plain text or online reader URL) - open in embedded iframe
-                    const src = previewUrl || fileUrl;
-                    pdfEmbed.innerHTML = '';
-                    const iframe = document.createElement('iframe');
-                    iframe.src = src;
-                    iframe.style.width = '100%';
-                    iframe.style.height = '100%';
-                    iframe.frameBorder = '0';
-                    iframe.loading = 'lazy';
-                    pdfEmbed.appendChild(iframe);
-                    pdfEmbed.classList.remove('hidden');
-                    readerArticle.innerHTML = '<p class="text-center text-gray-500">Document embedded below.</p>';
-                    isPdfMode = true;
-                    document.body.classList.add('pdf-mode');
+                    // Not saved — download in background with progress, save then open
+                    showTopFlash('Downloading preview…');
+                    try {
+                        const arrayBuffer = await fetchWithProgress(chosenUrl, (loaded, total) => setDownloadProgress(loaded, total));
+                        // create blob (try to preserve mime)
+                        const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
+                        // save to IDB asynchronously (do not block render)
+                        saveBlobToIDB(resourceId, blob).then(()=> showTopFlash('Saved for offline', 2000)).catch(()=>{/*ignore*/});
+                        // open PDF from arrayBuffer
+                        await openPdfDocumentFromArrayBuffer(arrayBuffer);
+                    } catch (err) {
+                        console.error('Download/render error', err);
+                        showTopFlash('Could not download PDF', 3000);
+                        readerArticle.innerHTML = '<p class="text-center text-gray-500">Could not load PDF preview.</p>';
+                        embedArea.classList.remove('hidden');
+                        embedArea.innerHTML = `<iframe src="${chosenUrl}" style="width:100%;height:100%;border:0;" loading="lazy"></iframe>`;
+                    } finally {
+                        downloadProgressEl.textContent = '';
+                    }
                 }
-            } else {
-                readerArticle.innerHTML = '<p class="text-center text-gray-500">No content available for this resource.</p>';
-                pdfEmbed.classList.add('hidden');
-                isPdfMode = false;
-                document.body.classList.remove('pdf-mode');
+            } catch(err){
+                console.error('IDB or PDF open error', err);
+                showTopFlash('Error opening saved file', 3000);
             }
-
-            // Notes load
-            loadNotes();
-            renderNotes();
-        } // end initReader
-
-        // initialize UI state and then load resource
-        (function bootstrap(){
-            // attach misc handlers that don't depend on resource
-            document.getElementById('contentsBtn').addEventListener('click', () => alert('Contents feature coming soon'));
-            document.getElementById('brightnessBtn').addEventListener('click', () => alert('Brightness control coming soon'));
-            document.getElementById('settingsBtn').addEventListener('click', () => alert('Settings coming soon'));
-            document.getElementById('searchBtn').addEventListener('click', () => alert('Search feature coming soon'));
-            document.getElementById('menuBtn').addEventListener('click', () => alert('Menu options coming soon'));
-
-            // load resource now
-            initReader();
-        })();
-
-        // Close modals on outside click
-        notesModal.addEventListener('click', (e) => {
-            if (e.target.id === 'notesModal') {
-                notesModal.classList.add('hidden');
-                document.body.style.overflow = '';
-            }
-        });
-        appearanceModal.addEventListener('click', (e) => {
-            if (e.target.id === 'appearanceModal') {
-                appearanceModal.classList.add('hidden');
-                document.body.style.overflow = '';
-            }
-        });
-
-        // Escape key to close modals
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                if (!notesModal.classList.contains('hidden')) {
-                    notesModal.classList.add('hidden');
-                    document.body.style.overflow = '';
-                }
-                if (!appearanceModal.classList.contains('hidden')) {
-                    appearanceModal.classList.add('hidden');
-                    document.body.style.overflow = '';
-                }
-            }
-        });
-
-        // simple utility to show temporary top flash (e.g., write status)
-        function showTopFlash(msg, timeout = 2500){
-            const el = document.getElementById('topFlash');
-            if(!el) return;
-            el.textContent = msg;
-            setTimeout(()=> { if(el.textContent === msg) el.textContent = ''; }, timeout);
+            return;
+        } else {
+            // non-pdf file -> embed in iframe
+            readerArticle.classList.add('hidden');
+            embedArea.classList.remove('hidden');
+            embedArea.innerHTML = `<iframe src="${chosenUrl}" style="width:100%;height:100%;border:0;" loading="lazy"></iframe>`;
+            return;
         }
+    }
 
-    </script>
+    // fallback: no content or file
+    readerArticle.innerHTML = '<p class="text-center text-gray-500">No content available for this resource.</p>';
+}
 
+/* --------------- Event wiring for PDF controls --------------- */
+async function updatePageUI(){
+    const total = pdfDoc ? pdfDoc.numPages : Number(totalPagesEl.textContent) || 1;
+    totalPagesEl.textContent = total;
+    currentPageEl.textContent = currentPdfPage;
+    pageSlider.max = total;
+    pageSlider.value = currentPdfPage;
+    const pct = Math.round((currentPdfPage / total) * 100);
+    percentageDisplay.textContent = pct + '%';
+    document.getElementById('footerCurrentPage').textContent = currentPdfPage;
+    document.getElementById('footerTotalPages').textContent = total;
+}
+
+pageSlider.addEventListener('input', async (e) => {
+    if(!isPdfMode || !pdfDoc) return;
+    const p = Math.max(1, Math.min(pdfDoc.numPages, Number(e.target.value)));
+    currentPdfPage = p;
+    await renderPdfPage(pdfDoc, currentPdfPage, pdfCanvas, pdfScale);
+    updatePageUI();
+    localStorage.setItem(`readerCurrentPage:${resourceId}`, currentPdfPage);
+});
+
+pdfZoomIn.addEventListener('click', async () => {
+    if(!pdfDoc) return;
+    pdfScale = Math.min(3.0, pdfScale + 0.25);
+    await renderPdfPage(pdfDoc, currentPdfPage, pdfCanvas, pdfScale);
+});
+pdfZoomOut.addEventListener('click', async () => {
+    if(!pdfDoc) return;
+    pdfScale = Math.max(0.4, pdfScale - 0.25);
+    await renderPdfPage(pdfDoc, currentPdfPage, pdfCanvas, pdfScale);
+});
+
+// Save current downloaded PDF to IDB (explicit user trigger — useful if it wasn't saved automatically)
+downloadBtn.addEventListener('click', async () => {
+    try {
+        // if already saved, inform user
+        const existing = await getBlobFromIDB(resourceId);
+        if(existing){
+            showTopFlash('Already saved for offline', 1600);
+            return;
+        }
+        // attempt network fetch + save
+        const mainFile = (resource.files && resource.files[0]) || resource.file || null;
+        const fileUrl = mainFile && (mainFile.url || mainFile.path) ? normalizeUrl(mainFile.url || mainFile.path) : null;
+        const previewUrl = resource.previewUrl ? normalizeUrl(resource.previewUrl) : (resource.readOnlineUrl ? normalizeUrl(resource.readOnlineUrl) : null);
+        const chosenUrl = previewUrl || fileUrl;
+        if(!chosenUrl) { showTopFlash('No file to download', 1800); return; }
+        showTopFlash('Downloading for offline…');
+        const arrayBuffer = await fetchWithProgress(chosenUrl, (loaded, total) => setDownloadProgress(loaded, total));
+        const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
+        await saveBlobToIDB(resourceId, blob);
+        showTopFlash('Saved for offline', 2000);
+    } catch (err) {
+        console.error(err);
+        showTopFlash('Could not save file', 2500);
+    } finally {
+        downloadProgressEl.textContent = '';
+    }
+});
+
+// Remove saved copy
+removeSavedBtn.addEventListener('click', async () => {
+    const confirmed = confirm('Remove saved offline copy for this book?');
+    if(!confirmed) return;
+    try {
+        await deleteBlobFromIDB(resourceId);
+        showTopFlash('Saved copy removed', 1800);
+    } catch(err){
+        console.error(err);
+        showTopFlash('Could not remove saved copy', 1800);
+    }
+});
+
+/* --------------- Notes, appearance, and misc wiring (kept from previous implementation) --------------- */
+// Notes (per-resource)
+let notes = JSON.parse(localStorage.getItem(`readerNotes:${resourceId || 'unknown'}`) || '[]');
+function saveNotes(){ localStorage.setItem(`readerNotes:${resourceId || 'unknown'}`, JSON.stringify(notes)); }
+function renderNotes(){
+    const notesList = document.getElementById('notesList');
+    if(!notes || notes.length === 0){
+        notesList.innerHTML = `<div class="text-center py-8"><i class="fa-regular fa-note-sticky text-4xl text-gray-300 mb-3 block"></i><p class="text-sm text-gray-500 font-sans">No notes yet</p><p class="text-xs text-gray-400 font-sans mt-1">Highlight text and add notes while reading</p></div>`;
+        return;
+    }
+    notesList.innerHTML = notes.map((note, idx) => `
+        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+            <div class="flex items-start justify-between gap-3 mb-2">
+                <p class="font-sans text-xs font-semibold text-gray-500">Page ${note.page}</p>
+                <button onclick="deleteNote(${idx})" class="text-gray-400 hover:text-red-600 transition-colors"><i class="fa-solid fa-trash text-sm"></i></button>
+            </div>
+            <p class="font-serif text-sm leading-relaxed text-gray-700 mb-2 italic">"${note.highlight}"</p>
+            <p class="font-sans text-sm text-gray-600">${note.text}</p>
+            <p class="font-sans text-xs text-gray-400 mt-2">${new Date(note.timestamp).toLocaleString()}</p>
+        </div>
+    `).join('');
+}
+window.deleteNote = function(i){ notes.splice(i,1); saveNotes(); renderNotes(); };
+function addNote(highlight, text){ notes.push({ page: currentPdfPage || 1, highlight, text, timestamp: new Date().toISOString() }); saveNotes(); renderNotes(); }
+
+document.getElementById('notesBtn').addEventListener('click', () => { renderNotes(); document.getElementById('notesModal').classList.remove('hidden'); document.body.style.overflow = 'hidden'; });
+document.getElementById('notesClose').addEventListener('click', () => { document.getElementById('notesModal').classList.add('hidden'); document.body.style.overflow = ''; });
+document.getElementById('notesExport').addEventListener('click', () => {
+    if(!notes || notes.length === 0){ alert('No notes to export'); return; }
+    const text = notes.map(n => `Page ${n.page}\n"${n.highlight}"\n${n.text}\n---`).join('\n\n');
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = (resource && (resource.title || resource.name) ? (resource.title.replace(/\s+/g,'_')) : 'notes') + '.txt'; a.click(); URL.revokeObjectURL(url);
+});
+document.getElementById('notesClear').addEventListener('click', () => { if(confirm('Delete all notes?')){ notes = []; saveNotes(); renderNotes(); } });
+
+// Appearance modal
+document.getElementById('appearanceBtn').addEventListener('click', () => { document.getElementById('appearanceModal').classList.remove('hidden'); document.body.style.overflow = 'hidden'; });
+document.getElementById('appearanceClose').addEventListener('click', () => { document.getElementById('appearanceModal').classList.add('hidden'); document.body.style.overflow = ''; });
+const fontSizeSlider = document.getElementById('fontSizeSlider');
+const fontSizeValue = document.getElementById('fontSizeValue');
+fontSizeSlider.addEventListener('input', (e) => fontSizeValue.textContent = e.target.value);
+document.getElementById('appearanceApply').addEventListener('click', () => {
+    const fontSize = fontSizeSlider.value;
+    if(document.getElementById('readerArticle')) document.getElementById('readerArticle').style.fontSize = fontSize + 'px';
+    localStorage.setItem(`readerFontSize:${resourceId || 'global'}`, fontSize);
+    document.getElementById('appearanceModal').classList.add('hidden');
+    document.body.style.overflow = '';
+});
+document.getElementById('appearanceReset').addEventListener('click', () => {
+    fontSizeSlider.value = 18; fontSizeValue.textContent = '18';
+    if(document.getElementById('readerArticle')) document.getElementById('readerArticle').style.fontSize = '18px';
+    localStorage.removeItem(`readerFontSize:${resourceId || 'global'}`);
+});
+document.getElementById('lineCompact').addEventListener('click', () => { if(document.getElementById('readerArticle')) document.getElementById('readerArticle').style.lineHeight = '1.5'; });
+document.getElementById('lineDefault').addEventListener('click', () => { if(document.getElementById('readerArticle')) document.getElementById('readerArticle').style.lineHeight = '1.65'; });
+document.getElementById('lineComfort').addEventListener('click', () => { if(document.getElementById('readerArticle')) document.getElementById('readerArticle').style.lineHeight = '1.85'; });
+document.getElementById('themeLight').addEventListener('click', () => { document.body.style.background = '#FBF8F3'; document.body.style.color = '#1A1816'; });
+document.getElementById('themeDark').addEventListener('click', () => { document.body.style.background = '#0B1220'; document.body.style.color = '#E6EEF8'; });
+
+// Bookmark
+const bookmarkIcon = document.getElementById('bookmarkIcon');
+function bookmarkKey(){ return `readerBookmarked:${resourceId || 'unknown'}`; }
+function updateBookmarkUI(){ if(localStorage.getItem(bookmarkKey())) bookmarkIcon.className = 'fa-solid fa-bookmark text-[18px]'; else bookmarkIcon.className = 'fa-regular fa-bookmark text-[18px]'; }
+document.getElementById('bookmarkBtn').addEventListener('click', () => {
+    const k = bookmarkKey();
+    if(localStorage.getItem(k)) localStorage.removeItem(k); else localStorage.setItem(k,'1');
+    updateBookmarkUI();
+});
+
+/* --------------- Utility: sanitize HTML --------------- */
+function sanitizeHtml(htmlString){
+    if(!htmlString) return '';
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(htmlString, 'text/html');
+    doc.querySelectorAll('script, style').forEach(n => n.remove());
+    const elements = doc.querySelectorAll('*');
+    elements.forEach(el => {
+        [...el.attributes].forEach(attr => {
+            if(attr.name.startsWith('on')) el.removeAttribute(attr.name);
+            if((attr.name === 'href' || attr.name === 'src') && attr.value && attr.value.trim().toLowerCase().startsWith('javascript:')) el.removeAttribute(attr.name);
+        });
+    });
+    return doc.body.innerHTML;
+}
+
+/* --------------- Boot --------------- */
+document.getElementById('backBtn').addEventListener('click', () => history.back());
+document.getElementById('contentsBtn').addEventListener('click', () => alert('Contents feature coming soon'));
+document.getElementById('brightnessBtn').addEventListener('click', () => alert('Brightness control coming soon'));
+document.getElementById('settingsBtn').addEventListener('click', () => alert('Settings coming soon'));
+document.getElementById('searchBtn').addEventListener('click', () => alert('Search feature coming soon'));
+document.getElementById('menuBtn').addEventListener('click', () => alert('Menu options coming soon'));
+
+updateBookmarkUI();
+initReader();
+</script>
 </body>
 </html>
