@@ -74,8 +74,7 @@
 
         .decorative-line { display: flex; align-items: center; justify-content: center; gap: 12px; }
         .decorative-line::before, .decorative-line::after { content: ""; height: 1px; width: 60px; background-color: #E2DACD; }
-        .notes-modal { display: flex; align-items: center; justify-content: center; }
-        .appearance-modal { display: flex; align-items: center; justify-content: center; }
+        .notes-modal, .appearance-modal, .contents-modal { display: flex; align-items: center; justify-content: center; }
 
         /* PDF viewer area styling */
         #pdfViewerArea { background: #f7f7f7; padding: 18px; overflow:auto; height:60vh; border-radius:8px; border:1px solid #e6e6e6; }
@@ -134,12 +133,12 @@
             </div>
         </div>
 
-        <!-- Text article (for HTML/text content) -->
+        <!-- Text article (for HTML/text/chapter content) -->
         <article id="readerArticle" class="space-y-6 text-[18px] leading-[1.65] text-[#22201D]">
             <p id="loadingText" class="text-center text-gray-500">Loading book content…</p>
         </article>
 
-        <!-- PDF viewer area (we will render canvases here) -->
+        <!-- PDF viewer area (rendered canvases) -->
         <div id="pdfViewerArea" class="hidden mt-4">
             <div id="pdfPageStack" class="flex flex-col items-center gap-6"></div>
         </div>
@@ -198,6 +197,22 @@
             </button>
         </nav>
     </footer>
+
+    <!-- Contents Modal -->
+    <div id="contentsModal" class="fixed inset-0 z-[999999] hidden contents-modal p-4 bg-black/40">
+        <div class="relative bg-white rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col" style="box-shadow: 0 20px 50px rgba(0,0,0,0.35);">
+            <div class="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-200">
+                <h2 class="font-sans font-bold text-lg text-readerText">Table of Contents</h2>
+                <button id="contentsClose" class="text-gray-500 hover:text-gray-700 transition-colors p-1">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+
+            <div id="contentsList" class="flex-1 overflow-y-auto p-4 space-y-2">
+                <!-- Chapters render here dynamically -->
+            </div>
+        </div>
+    </div>
 
     <!-- Notes Modal -->
     <div id="notesModal" class="fixed inset-0 z-[999999] hidden notes-modal p-4 bg-black/40">
@@ -344,16 +359,6 @@ async function idbGet(key){
     req.onerror = (e) => reject(e.target.error);
   });
 }
-async function idbDelete(key){
-  const db = await openIdb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction('files', 'readwrite');
-    const store = tx.objectStore('files');
-    const req = store.delete(key);
-    req.onsuccess = () => resolve(true);
-    req.onerror = (e) => reject(e.target.error);
-  });
-}
 
 /* ---------------------------
    pdf.js setup & rendering
@@ -404,10 +409,6 @@ function clearPdfViewer(){
   pdfViewerArea.classList.add('hidden');
 }
 
-/* Render the pdfDoc into the viewer area.
-   Strategy: create page containers for every page, render the first few immediately,
-   and render others lazily when they come into view.
-*/
 function setupPdfViewer(pdfDocument){
   pdfDoc = pdfDocument;
   const total = pdfDoc.numPages || 1;
@@ -429,7 +430,6 @@ function setupPdfViewer(pdfDocument){
     canvas.style.display = 'block';
     canvas.style.width = '100%';
     canvas.style.height = 'auto';
-    // place a small placeholder until rendered
     const placeholder = document.createElement('div');
     placeholder.className = 'pdf-placeholder';
     placeholder.textContent = `Page ${p}`;
@@ -438,16 +438,13 @@ function setupPdfViewer(pdfDocument){
     pdfPageStack.appendChild(wrapper);
   }
 
-  // show controls
   pdfControlsRow.classList.remove('hidden');
   pdfViewerArea.classList.remove('hidden');
 
-  // render the first 2 pages immediately
   for(let p=1;p<=Math.min(2, total);p++){
     renderPageIfNeeded(p);
   }
 
-  // on scroll, render pages that come into view
   let scrollTimer = null;
   pdfViewerArea.addEventListener('scroll', () => {
     if (scrollTimer) clearTimeout(scrollTimer);
@@ -456,7 +453,6 @@ function setupPdfViewer(pdfDocument){
       const rect = pdfViewerArea.getBoundingClientRect();
       wrappers.forEach(w => {
         const r = w.getBoundingClientRect();
-        // if at least partially visible
         if (r.top < rect.bottom + 200 && r.bottom > rect.top - 200) {
           const p = Number(w.dataset.page);
           renderPageIfNeeded(p);
@@ -465,7 +461,6 @@ function setupPdfViewer(pdfDocument){
     }, 120);
   });
 
-  // wire prev/next and zoom
   pdfPrev.onclick = () => {
     const cur = Number(document.getElementById('pageSlider').value || 1);
     const prev = Math.max(1, cur - 1);
@@ -488,7 +483,6 @@ function setupPdfViewer(pdfDocument){
     await rerenderVisiblePages();
   };
 
-  // initial visible re-render in case start page not 1
   setTimeout(() => {
     jumpToPage(startPage);
   }, 80);
@@ -511,11 +505,9 @@ async function renderPageIfNeeded(pageNumber){
 }
 
 async function rerenderVisiblePages(){
-  // re-render all canvases that currently have size (we'll render at new scale)
   const canvases = Array.from(pdfPageStack.querySelectorAll('canvas'));
   for(const c of canvases){
     const pageNum = Number(c.dataset.page);
-    // re-render only when the wrapper is visible-ish
     const r = c.parentElement.getBoundingClientRect();
     const rect = pdfViewerArea.getBoundingClientRect();
     if (r.top < rect.bottom + 300 && r.bottom > rect.top - 300) {
@@ -533,10 +525,8 @@ function jumpToPage(n){
   document.getElementById('percentageDisplay').textContent = percent + '%';
   document.getElementById('progressBar').style.width = percent + '%';
   localStorage.setItem(`readerCurrentPage:${resourceId}`, page);
-  // scroll to wrapper
   const wrapper = pdfPageStack.querySelector(`[data-page="${page}"]`);
   if (wrapper) wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  // ensure it is rendered
   renderPageIfNeeded(page);
 }
 
@@ -545,16 +535,12 @@ function jumpToPage(n){
    --------------------------- */
 async function fetchWithProgressToBlob(url, onProgress) {
     const options = {};
-
     if (!url.includes("supabase.co")) {
         options.credentials = "include";
     }
 
     const res = await fetch(url, options);
-
-    if (!res.ok) {
-        throw new Error(`Fetch failed: ${res.status}`);
-    }
+    if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
 
     const contentLength = res.headers.get("Content-Length");
     const total = contentLength ? Number(contentLength) : null;
@@ -565,12 +551,9 @@ async function fetchWithProgressToBlob(url, onProgress) {
 
     while (true) {
         const { done, value } = await reader.read();
-
         if (done) break;
-
         chunks.push(value);
         received += value.length;
-
         if (onProgress && total) {
             onProgress(received, total);
         }
@@ -601,13 +584,13 @@ function sanitizeHtml(htmlString){
    Reader state and UI wiring
    --------------------------- */
 let resource = null;
-let isPdfMode = false;
+let publishedChapters = [];
+let currentChapter = null;
 const resourceId = qsParam('id');
 
 const bookTitleEl = document.getElementById('bookTitle');
 const bookAuthorEl = document.getElementById('bookAuthor');
 const readerArticle = document.getElementById('readerArticle');
-const pdfViewer = document.getElementById('pdfViewerArea');
 const pageSlider = document.getElementById('pageSlider');
 const currentPage = document.getElementById('currentPage');
 const totalPages = document.getElementById('totalPages');
@@ -622,7 +605,7 @@ function showTopFlash(msg, timeout=2500){
     setTimeout(()=> { if(topFlash.textContent === msg) topFlash.textContent = ''; }, timeout);
 }
 
-/* Notes, bookmarks and appearance code (similar to earlier file) */
+/* Notes & Bookmarks */
 let notes = [];
 function notesKey(){ return `readerNotes:${resourceId || 'unknown'}`; }
 function loadNotes(){ notes = JSON.parse(localStorage.getItem(notesKey()) || '[]'); }
@@ -641,7 +624,7 @@ function renderNotes() {
         notesList.innerHTML = notes.map((note, idx) => `
             <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
                 <div class="flex items-start justify-between gap-3 mb-2">
-                    <p class="font-sans text-xs font-semibold text-gray-500">Page ${note.page}</p>
+                    <p class="font-sans text-xs font-semibold text-gray-500">Page/Chapter ${note.page}</p>
                     <button onclick="deleteNote(${idx})" class="text-gray-400 hover:text-red-600 transition-colors">
                         <i class="fa-solid fa-trash text-sm"></i>
                     </button>
@@ -659,7 +642,6 @@ function addNote(highlightedText, noteText){
     saveNotes(); renderNotes();
 }
 
-/* Bookmark UI */
 const bookmarkBtn = document.getElementById('bookmarkBtn');
 const bookmarkIcon = document.getElementById('bookmarkIcon');
 function bookmarkKey(){ return `readerBookmarked:${resourceId || 'unknown'}`; }
@@ -709,7 +691,7 @@ notesBtn.addEventListener('click', ()=>{ loadNotes(); renderNotes(); notesModal.
 notesClose.addEventListener('click', ()=>{ notesModal.classList.add('hidden'); document.body.style.overflow=''; });
 notesExport.addEventListener('click', ()=> {
     if(!notes || notes.length === 0) { alert('No notes to export'); return; }
-    const text = notes.map(n=> `Page ${n.page}\n"${n.highlight}"\n${n.text}\n---`).join('\n\n');
+    const text = notes.map(n=> `Page/Chapter ${n.page}\n"${n.highlight}"\n${n.text}\n---`).join('\n\n');
     const blob = new Blob([text], { type:'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url;
@@ -718,37 +700,90 @@ notesExport.addEventListener('click', ()=> {
 });
 notesClear.addEventListener('click', ()=> { if(confirm('Delete all notes? This cannot be undone.')){ notes=[]; saveNotes(); renderNotes(); } });
 
-/* double click to add note from selection */
-readerArticle.addEventListener('dblclick', (e) => {
+/* Double click to add note from selection */
+readerArticle.addEventListener('dblclick', () => {
     const sel = window.getSelection(); if(!sel || sel.isCollapsed) return;
     const text = sel.toString().trim(); if(!text) return;
     const noteText = prompt('Add a note for the selected text:', '');
     if(noteText !== null){ addNote(text, noteText || ''); showTopFlash('Note saved'); window.getSelection().removeAllRanges(); }
 });
 
-/* slider wiring (page navigation) */
-pageSlider.addEventListener('input', (e) => {
-    const page = Number(e.target.value);
-    const total = Number(e.target.max) || 1;
-    const percent = Math.round((page/total)*100);
-    currentPage.textContent = page;
-    percentageDisplay.textContent = percent + '%';
-    progressBar.style.width = percent + '%';
-    localStorage.setItem(`readerCurrentPage:${resourceId}`, page);
-    // for PDF viewer, jump
-    if(pdfDoc) jumpToPage(page);
+/* Contents Modal Wiring */
+const contentsBtn = document.getElementById('contentsBtn');
+const contentsModal = document.getElementById('contentsModal');
+const contentsClose = document.getElementById('contentsClose');
+const contentsList = document.getElementById('contentsList');
+
+contentsBtn.addEventListener('click', () => {
+    renderContentsList();
+    contentsModal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
 });
 
-/* ---------------------------
-   Background download & open flow
-   --------------------------- */
+contentsClose.addEventListener('click', () => {
+    contentsModal.classList.add('hidden');
+    document.body.style.overflow = '';
+});
+
+contentsModal.addEventListener('click', (e) => {
+    if (e.target.id === 'contentsModal') {
+        contentsModal.classList.add('hidden');
+        document.body.style.overflow = '';
+    }
+});
+
+function renderContentsList() {
+    if (!publishedChapters || publishedChapters.length === 0) {
+        contentsList.innerHTML = `<div class="text-center py-8 text-gray-500 font-sans">No chapters available for this resource.</div>`;
+        return;
+    }
+
+    contentsList.innerHTML = '';
+    publishedChapters.forEach((chapter) => {
+        const item = document.createElement("button");
+        const isCurrent = currentChapter && ((currentChapter._id && currentChapter._id === chapter._id) || currentChapter.chapterNumber === chapter.chapterNumber);
+        item.className = `w-full text-left p-4 hover:bg-gray-100 rounded-lg transition-colors border-b border-gray-100 last:border-none flex items-center justify-between ${isCurrent ? 'bg-blue-50/60 border-l-4 border-l-readerBlue' : ''}`;
+
+        item.innerHTML = `
+            <div>
+                <div class="font-semibold text-readerText font-sans">
+                    Chapter ${chapter.chapterNumber}
+                </div>
+                <div class="text-sm text-gray-600 font-serif">
+                    ${chapter.title || 'Untitled Chapter'}
+                </div>
+            </div>
+            ${chapter.locked ? '<i class="fa-solid fa-lock text-gray-400 text-sm"></i>' : ''}
+        `;
+
+        item.onclick = () => {
+            loadChapter(chapter);
+            contentsModal.classList.add('hidden');
+            document.body.style.overflow = '';
+        };
+
+        contentsList.appendChild(item);
+    });
+}
+
+/* Slider (page & chapter navigation) */
+pageSlider.addEventListener('input', (e) => {
+    const val = Number(e.target.value);
+    if (publishedChapters.length > 0) {
+        const idx = val - 1;
+        if (publishedChapters[idx]) {
+            loadChapter(publishedChapters[idx]);
+        }
+    } else if (pdfDoc) {
+        jumpToPage(val);
+    }
+});
+
+/* Background download */
 async function downloadAndStoreResourceFile(fileUrl, idbKey){
-    // if file already in IDB, return it
     const existing = await idbGet(idbKey);
     if (existing) return existing;
-    // start background fetch with progress
     try {
-        // show status
         if (liveDownloadStatus) {
             liveDownloadStatus.innerHTML = `<div class="text-xs text-gray-600">Downloading… <span id="dlPct">0%</span></div>`;
         }
@@ -758,7 +793,6 @@ async function downloadAndStoreResourceFile(fileUrl, idbKey){
             const el = document.getElementById('dlPct');
             if(el) el.textContent = pct + '%';
         });
-        // store in IDB
         await idbPut(idbKey, blob);
         if (liveDownloadStatus) liveDownloadStatus.innerHTML = `<div class="text-xs text-emerald-600">Downloaded</div>`;
         return blob;
@@ -770,45 +804,86 @@ async function downloadAndStoreResourceFile(fileUrl, idbKey){
 }
 
 /* ---------------------------
-   Main init: load resource, start background download,
-   open pdf viewer from stored blob when available
+   Chapter Loader Function
    --------------------------- */
-async function initReader(){
-    if(!resourceId){
-        document.title = 'Resource not found';
-        bookTitleEl.textContent = 'Resource not found';
-        readerArticle.innerHTML = '<p class="text-center text-gray-500">No resource id provided in the URL.</p>';
-        return;
+function loadChapter(chapter) {
+    currentChapter = chapter;
+
+    const chapterLabel = document.getElementById("chapterLabel");
+    const chapterTitle = document.getElementById("chapterTitle");
+    const decorativeLine = document.getElementById("decorativeLine");
+
+    if (chapterLabel) {
+        chapterLabel.classList.remove("hidden");
+        chapterLabel.textContent = `CHAPTER ${chapter.chapterNumber}`;
+    }
+    if (chapterTitle) {
+        chapterTitle.classList.remove("hidden");
+        chapterTitle.textContent = chapter.title || "";
+    }
+    if (decorativeLine) {
+        decorativeLine.classList.remove("hidden");
     }
 
-    document.title = 'Loading…';
-    const res = await fetchResourceById(resourceId);
-    if(!res){
-        document.title = 'Resource not found';
-        bookTitleEl.textContent = 'Resource not found';
-        readerArticle.innerHTML = '<p class="text-center text-gray-500">Could not load the selected resource.</p>';
-        return;
-    }
-    resource = res;
-    document.title = `${res.title || res.name || 'Resource'} — Reader`;
-    bookTitleEl.textContent = res.title || res.name || 'Untitled';
-    const authors = Array.isArray(res.authors) ? res.authors.join(', ') : (res.authors || res.author || '');
-    bookAuthorEl.textContent = authors || (res.uploader && (res.uploader.fullname || res.uploader.username)) || '';
-
-    // apply stored font size
-    const savedFont = localStorage.getItem(`readerFontSize:${resourceId}`) || localStorage.getItem(`readerFontSize:global`);
-    if(savedFont && readerArticle){
-        readerArticle.style.fontSize = savedFont + 'px';
-        fontSizeSlider.value = savedFont; fontSizeValue.textContent = savedFont;
+    if (publishedChapters.length > 0) {
+        const idx = publishedChapters.findIndex(c => (c._id && c._id === chapter._id) || c.chapterNumber === chapter.chapterNumber);
+        if (idx !== -1) {
+            const pageNum = idx + 1;
+            const total = publishedChapters.length;
+            pageSlider.value = pageNum;
+            currentPage.textContent = pageNum;
+            const percent = Math.round((pageNum / total) * 100);
+            percentageDisplay.textContent = percent + '%';
+            progressBar.style.width = percent + '%';
+            localStorage.setItem(`readerCurrentChapterIdx:${resourceId}`, idx);
+        }
     }
 
-    // paging
+    if (chapter.locked) {
+        readerArticle.innerHTML = `
+            <div class="text-center py-20">
+                <i class="fa-solid fa-lock text-5xl text-gray-400 mb-4"></i>
+                <h3 class="text-xl font-semibold text-readerText font-sans">
+                    Chapter Locked
+                </h3>
+                <p class="text-gray-500 mt-2 font-sans">
+                    Unlock this chapter to continue reading.
+                </p>
+            </div>
+        `;
+    } else {
+        readerArticle.innerHTML = sanitizeHtml(chapter.content || "");
+    }
+
+    window.scrollTo({
+        top: 0,
+        behavior: "smooth"
+    });
+}
+
+/* ---------------------------
+   Mode Setup Handlers
+   --------------------------- */
+function setupBookMode(chapters) {
+    clearPdfViewer();
+    const total = chapters.length;
+    totalPages.textContent = total;
+    pageSlider.max = total;
+
+    const savedIdx = Math.max(0, Math.min(total - 1, Number(localStorage.getItem(`readerCurrentChapterIdx:${resourceId}`) || 0)));
+    loadChapter(chapters[savedIdx]);
+}
+
+async function setupDocumentMode(res) {
+    document.getElementById("chapterLabel").classList.add("hidden");
+    document.getElementById("chapterTitle").classList.add("hidden");
+    document.getElementById("decorativeLine").classList.add("hidden");
+
     const pagesCount = Number(res.pages) || (res.files && res.files[0] && res.files[0].pages) || 1;
     const total = Math.max(1, Math.floor(pagesCount));
     totalPages.textContent = total;
     pageSlider.max = total;
 
-    // restore saved page
     const savedPage = Number(localStorage.getItem(`readerCurrentPage:${resourceId}`) || 1);
     const startPage = Math.min(Math.max(1, savedPage), total);
     pageSlider.value = startPage;
@@ -817,16 +892,10 @@ async function initReader(){
     percentageDisplay.textContent = startPercent + '%';
     progressBar.style.width = startPercent + '%';
 
-    updateBookmarkUI();
-    loadNotes();
-    renderNotes();
-
-    // determine file urls
     const mainFile = (res.files && res.files[0]) || res.file || null;
     const fileUrl = mainFile && (mainFile.url || mainFile.path) ? normalizeUrl(mainFile.url || mainFile.path) : null;
     const previewUrl = res.previewUrl ? normalizeUrl(res.previewUrl) : (res.readOnlineUrl ? normalizeUrl(res.readOnlineUrl) : null);
 
-    // If HTML content is present, render that first
     if (res.contentHtml) {
         const sanitized = sanitizeHtml(res.contentHtml);
         readerArticle.innerHTML = sanitized || '<p class="text-gray-600">No readable content available.</p>';
@@ -836,36 +905,29 @@ async function initReader(){
         readerArticle.innerHTML = paragraphs || '<p class="text-gray-600">No readable content available.</p>';
     }
 
-    // If there is a PDF or preview, attempt to get it from IDB or download in background then open
     const candidateUrl = previewUrl || fileUrl;
     const isPdf = candidateUrl ? (/\.pdf($|\?)/i.test(candidateUrl) || (mainFile && (mainFile.mimeType||mainFile.mimetype) && /pdf/i.test(mainFile.mimeType||mainFile.mimetype))) : false;
 
     if (candidateUrl && isPdf) {
-        // show viewer area and controls
         document.getElementById('pdfViewerArea').classList.remove('hidden');
         document.getElementById('pdfControlsRow').classList.remove('hidden');
 
         const idbKey = `pdfblob:${resourceId}`;
         try {
-            // If blob exists in IDB, open immediately while we may still refresh in background
             const existingBlob = await idbGet(idbKey);
             if (existingBlob) {
                 const arrayBuffer = await existingBlob.arrayBuffer();
                 const pdfDocObj = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
                 setupPdfViewer(pdfDocObj);
             } else {
-                // show placeholder text until downloaded
                 readerArticle.innerHTML = '<p class="text-center text-gray-500">Preparing document for reading…</p>';
             }
 
-            // Start background download (or a refresh) - always attempt to download to ensure we have a local copy
             (async () => {
                 try {
                     const blob = await downloadAndStoreResourceFile(candidateUrl, idbKey);
-                    // open from blob
                     if (blob) {
                         const arrayBuffer = await blob.arrayBuffer();
-                        // if a pdfDoc already exists, destroy and reopen to avoid leaks
                         if (pdfDoc && pdfDoc.destroy) { try { await pdfDoc.destroy(); } catch(_){} pdfDoc = null; }
                         const pdfDocObj = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
                         setupPdfViewer(pdfDocObj);
@@ -881,11 +943,9 @@ async function initReader(){
             readerArticle.innerHTML = '<p class="text-center text-gray-500">Could not open PDF document.</p>';
         }
     } else if (candidateUrl && !isPdf) {
-        // non-PDF resource (e.g., plain text or online reader). We'll try to fetch and embed in iframe if possible.
         try {
             const resFetch = await fetch(candidateUrl, { credentials: 'include' });
             if (resFetch && resFetch.ok) {
-                // attempt to embed via blob URL
                 const blob = await resFetch.blob();
                 const url = URL.createObjectURL(blob);
                 const iframe = document.createElement('iframe');
@@ -901,27 +961,81 @@ async function initReader(){
             console.error('Embed fetch failed', err);
             readerArticle.innerHTML = '<p class="text-center text-gray-500">Cannot embed the selected document.</p>';
         }
-    } else {
-        // no file available; keep article content displayed
     }
-} // end initReader
+}
 
 /* ---------------------------
-   Bootstrap
+   Main initialization flow
+   --------------------------- */
+async function initReader(){
+    if(!resourceId){
+        document.title = 'Resource not found';
+        bookTitleEl.textContent = 'Resource not found';
+        readerArticle.innerHTML = '<p class="text-center text-gray-500 font-sans">No resource id provided in the URL.</p>';
+        return;
+    }
+
+    document.title = 'Loading…';
+    const res = await fetchResourceById(resourceId);
+    if(!res){
+        document.title = 'Resource not found';
+        bookTitleEl.textContent = 'Resource not found';
+        readerArticle.innerHTML = '<p class="text-center text-gray-500 font-sans">Could not load the selected resource.</p>';
+        return;
+    }
+    resource = res;
+    document.title = `${res.title || res.name || 'Resource'} — Reader`;
+    bookTitleEl.textContent = res.title || res.name || 'Untitled';
+    const authors = Array.isArray(res.authors) ? res.authors.join(', ') : (res.authors || res.author || '');
+    bookAuthorEl.textContent = authors || (res.uploader && (res.uploader.fullname || res.uploader.username)) || '';
+
+    const savedFont = localStorage.getItem(`readerFontSize:${resourceId}`) || localStorage.getItem(`readerFontSize:global`);
+    if(savedFont && readerArticle){
+        readerArticle.style.fontSize = savedFont + 'px';
+        fontSizeSlider.value = savedFont; fontSizeValue.textContent = savedFont;
+    }
+
+    updateBookmarkUI();
+    loadNotes();
+    renderNotes();
+
+    // Fetch chapter system resources
+    const chaptersData = await tryFetch(`${API_BASE}/api/resources/${resourceId}/chapters`, { credentials: "include" });
+    if (chaptersData) {
+        const rawChapters = chaptersData.chapters || (Array.isArray(chaptersData) ? chaptersData : []);
+        publishedChapters = rawChapters
+            .filter(chapter => chapter.status === "published")
+            .sort((a, b) => a.chapterNumber - b.chapterNumber);
+    }
+
+    // Direct mode routing: Book mode if published chapters exist, otherwise Document mode
+    if (publishedChapters.length > 0) {
+        setupBookMode(publishedChapters);
+    } else {
+        await setupDocumentMode(res);
+    }
+}
+
+/* ---------------------------
+   Bootstrap & Controls
    --------------------------- */
 document.getElementById('backBtn').addEventListener('click', ()=> history.back());
-document.getElementById('contentsBtn').addEventListener('click', ()=> alert('Contents feature coming soon'));
 document.getElementById('brightnessBtn').addEventListener('click', ()=> alert('Brightness control coming soon'));
 document.getElementById('settingsBtn').addEventListener('click', ()=> alert('Settings coming soon'));
 document.getElementById('searchBtn').addEventListener('click', ()=> alert('Search feature coming soon'));
 document.getElementById('menuBtn').addEventListener('click', ()=> alert('Menu options coming soon'));
 
-// close modals and escape handling
-document.addEventListener('keydown', (e) => { if(e.key === 'Escape'){ if(!notesModal.classList.contains('hidden')){ notesModal.classList.add('hidden'); document.body.style.overflow=''; } if(!appearanceModal.classList.contains('hidden')){ appearanceModal.classList.add('hidden'); document.body.style.overflow=''; } } });
+document.addEventListener('keydown', (e) => {
+    if(e.key === 'Escape'){
+        if(!notesModal.classList.contains('hidden')){ notesModal.classList.add('hidden'); document.body.style.overflow=''; }
+        if(!appearanceModal.classList.contains('hidden')){ appearanceModal.classList.add('hidden'); document.body.style.overflow=''; }
+        if(!contentsModal.classList.contains('hidden')){ contentsModal.classList.add('hidden'); document.body.style.overflow=''; }
+    }
+});
 notesModal.addEventListener('click', (e) => { if(e.target.id === 'notesModal'){ notesModal.classList.add('hidden'); document.body.style.overflow=''; } });
 appearanceModal.addEventListener('click', (e) => { if(e.target.id === 'appearanceModal'){ appearanceModal.classList.add('hidden'); document.body.style.overflow=''; } });
 
-// Initialize
+// Initialize reader
 initReader();
 
 </script>
