@@ -543,25 +543,40 @@ function jumpToPage(n){
 /* ---------------------------
    Download with progress
    --------------------------- */
-async function fetchWithProgressToBlob(url, onProgress){
-  // Uses stream reader to collect chunks and report progress; returns a Blob when done.
-  const res = await fetch(url, { credentials: 'include' });
-  if (!res.ok) throw new Error('Fetch failed: ' + res.status);
-  const contentLength = res.headers.get('Content-Length');
-  const total = contentLength ? Number(contentLength) : null;
-  const reader = res.body.getReader();
-  const chunks = [];
-  let received = 0;
-  while(true){
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    received += (value ? value.length : 0);
-    if (onProgress && total) onProgress(received, total);
-  }
-  // merge chunks into a blob
-  const blob = new Blob(chunks);
-  return blob;
+async function fetchWithProgressToBlob(url, onProgress) {
+    const options = {};
+
+    if (!url.includes("supabase.co")) {
+        options.credentials = "include";
+    }
+
+    const res = await fetch(url, options);
+
+    if (!res.ok) {
+        throw new Error(`Fetch failed: ${res.status}`);
+    }
+
+    const contentLength = res.headers.get("Content-Length");
+    const total = contentLength ? Number(contentLength) : null;
+
+    const reader = res.body.getReader();
+    const chunks = [];
+    let received = 0;
+
+    while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) break;
+
+        chunks.push(value);
+        received += value.length;
+
+        if (onProgress && total) {
+            onProgress(received, total);
+        }
+    }
+
+    return new Blob(chunks);
 }
 
 /* ---------------------------
