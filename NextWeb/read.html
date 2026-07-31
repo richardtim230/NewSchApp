@@ -83,6 +83,10 @@
         .pdf-controls { display:flex; gap:8px; align-items:center; }
         .zoom-btn { padding:6px 8px; background:#fff; border:1px solid #e5e7eb; border-radius:6px; cursor:pointer; }
         .top-right-controls { position:relative; }
+
+        /* Clean HTML content rendering without unintended extra margins */
+        .chapter-body p { margin-bottom: 1em; }
+        .chapter-body p:last-child { margin-bottom: 0; }
     </style>
 </head>
 <body class="w-full min-h-screen flex flex-col justify-between bg-readerBg">
@@ -122,20 +126,9 @@
     </div>
 
     <main id="readerContainer" class="flex-1 max-w-xl w-full mx-auto px-6 pt-6 pb-12 flex flex-col">
-        <div class="text-center mb-6">
-            <span id="chapterLabel" class="font-sans text-[11px] uppercase tracking-[0.2em] font-semibold text-readerBlue hidden">CHAPTER</span>
-            <h2 id="chapterTitle" class="font-titleSerif text-[34px] font-bold text-readerText mt-1 mb-4 tracking-tight hidden"></h2>
-            <div class="decorative-line my-5 hidden" id="decorativeLine">
-                <svg width="24" height="12" viewBox="0 0 24 12" fill="none" xmlns="http://www.w3.org/2000/svg" class="text-[#D3C7B5]">
-                    <path d="M2 6C5 2 7 2 10 6C13 10 15 10 18 6C20 3.33 21.5 3.33 22 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                    <path d="M2 6C2.5 8.67 4 8.67 6 6C9 2 11 2 14 6C17 10 19 10 22 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
-                </svg>
-            </div>
-        </div>
-
-        <!-- Text article (for HTML/text/chapter content) -->
-        <article id="readerArticle" class="space-y-6 text-[18px] leading-[1.65] text-[#22201D]">
-            <p id="loadingText" class="text-center text-gray-500">Loading book content…</p>
+        <!-- Text article (for HTML/text/chapter content rendered cleanly without forced space-y margins) -->
+        <article id="readerArticle" class="text-[18px] leading-[1.65] text-[#22201D]">
+            <p id="loadingText" class="text-center text-gray-500 font-sans">Loading book content…</p>
         </article>
 
         <!-- PDF viewer area (rendered canvases) -->
@@ -160,7 +153,7 @@
     <footer id="readerFooter" class="sticky bottom-0 w-full bg-readerBg/95 backdrop-blur-md border-t border-[#EAE3D9] pt-2 pb-5 z-20">
         <div class="max-w-xl mx-auto px-6 mb-3">
             <div class="text-center font-sans text-[12px] font-medium text-readerMuted mb-2 reader-controls">
-                <span id="currentPage">1</span> of <span id="totalPages">1</span>
+                Chapter <span id="currentPage">1</span> of <span id="totalPages">1</span>
             </div>
 
             <div class="flex items-center gap-3 reader-controls">
@@ -355,7 +348,7 @@ async function idbGet(key){
     const tx = db.transaction('files', 'readonly');
     const store = tx.objectStore('files');
     const req = store.get(key);
-    req.onsuccess = (e) => resolve(e.target.result);
+    req.onsuccess = () => resolve(e.target.result);
     req.onerror = (e) => reject(e.target.error);
   });
 }
@@ -563,7 +556,7 @@ async function fetchWithProgressToBlob(url, onProgress) {
 }
 
 /* ---------------------------
-   Basic HTML sanitizer
+   Basic HTML sanitizer (preserves formatting and clean content)
    --------------------------- */
 function sanitizeHtml(htmlString){
     if(!htmlString) return '';
@@ -586,6 +579,7 @@ function sanitizeHtml(htmlString){
 let resource = null;
 let publishedChapters = [];
 let currentChapter = null;
+let chapterObserver = null;
 const resourceId = qsParam('id');
 
 const bookTitleEl = document.getElementById('bookTitle');
@@ -624,7 +618,7 @@ function renderNotes() {
         notesList.innerHTML = notes.map((note, idx) => `
             <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
                 <div class="flex items-start justify-between gap-3 mb-2">
-                    <p class="font-sans text-xs font-semibold text-gray-500">Page/Chapter ${note.page}</p>
+                    <p class="font-sans text-xs font-semibold text-gray-500">Chapter ${note.page}</p>
                     <button onclick="deleteNote(${idx})" class="text-gray-400 hover:text-red-600 transition-colors">
                         <i class="fa-solid fa-trash text-sm"></i>
                     </button>
@@ -691,7 +685,7 @@ notesBtn.addEventListener('click', ()=>{ loadNotes(); renderNotes(); notesModal.
 notesClose.addEventListener('click', ()=>{ notesModal.classList.add('hidden'); document.body.style.overflow=''; });
 notesExport.addEventListener('click', ()=> {
     if(!notes || notes.length === 0) { alert('No notes to export'); return; }
-    const text = notes.map(n=> `Page/Chapter ${n.page}\n"${n.highlight}"\n${n.text}\n---`).join('\n\n');
+    const text = notes.map(n=> `Chapter ${n.page}\n"${n.highlight}"\n${n.text}\n---`).join('\n\n');
     const blob = new Blob([text], { type:'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url;
@@ -739,7 +733,7 @@ function renderContentsList() {
     }
 
     contentsList.innerHTML = '';
-    publishedChapters.forEach((chapter) => {
+    publishedChapters.forEach((chapter, idx) => {
         const item = document.createElement("button");
         const isCurrent = currentChapter && ((currentChapter._id && currentChapter._id === chapter._id) || currentChapter.chapterNumber === chapter.chapterNumber);
         item.className = `w-full text-left p-4 hover:bg-gray-100 rounded-lg transition-colors border-b border-gray-100 last:border-none flex items-center justify-between ${isCurrent ? 'bg-blue-50/60 border-l-4 border-l-readerBlue' : ''}`;
@@ -757,7 +751,7 @@ function renderContentsList() {
         `;
 
         item.onclick = () => {
-            loadChapter(chapter);
+            scrollToChapter(idx);
             contentsModal.classList.add('hidden');
             document.body.style.overflow = '';
         };
@@ -766,14 +760,11 @@ function renderContentsList() {
     });
 }
 
-/* Slider (page & chapter navigation) */
+/* Slider navigation */
 pageSlider.addEventListener('input', (e) => {
     const val = Number(e.target.value);
     if (publishedChapters.length > 0) {
-        const idx = val - 1;
-        if (publishedChapters[idx]) {
-            loadChapter(publishedChapters[idx]);
-        }
+        scrollToChapter(val - 1);
     } else if (pdfDoc) {
         jumpToPage(val);
     }
@@ -804,63 +795,55 @@ async function downloadAndStoreResourceFile(fileUrl, idbKey){
 }
 
 /* ---------------------------
-   Chapter Loader Function
+   Continuous Chapter Scroll & Observer
    --------------------------- */
-function loadChapter(chapter) {
-    currentChapter = chapter;
+function updateActiveChapterUI(idx) {
+    if (idx < 0 || idx >= publishedChapters.length) return;
+    currentChapter = publishedChapters[idx];
+    const pageNum = idx + 1;
+    const total = publishedChapters.length;
 
-    const chapterLabel = document.getElementById("chapterLabel");
-    const chapterTitle = document.getElementById("chapterTitle");
-    const decorativeLine = document.getElementById("decorativeLine");
+    pageSlider.value = pageNum;
+    currentPage.textContent = pageNum;
+    const percent = Math.round((pageNum / total) * 100);
+    percentageDisplay.textContent = percent + '%';
+    progressBar.style.width = percent + '%';
 
-    if (chapterLabel) {
-        chapterLabel.classList.remove("hidden");
-        chapterLabel.textContent = `CHAPTER ${chapter.chapterNumber}`;
-    }
-    if (chapterTitle) {
-        chapterTitle.classList.remove("hidden");
-        chapterTitle.textContent = chapter.title || "";
-    }
-    if (decorativeLine) {
-        decorativeLine.classList.remove("hidden");
-    }
+    localStorage.setItem(`readerCurrentChapterIdx:${resourceId}`, idx);
+}
 
-    if (publishedChapters.length > 0) {
-        const idx = publishedChapters.findIndex(c => (c._id && c._id === chapter._id) || c.chapterNumber === chapter.chapterNumber);
-        if (idx !== -1) {
-            const pageNum = idx + 1;
-            const total = publishedChapters.length;
-            pageSlider.value = pageNum;
-            currentPage.textContent = pageNum;
-            const percent = Math.round((pageNum / total) * 100);
-            percentageDisplay.textContent = percent + '%';
-            progressBar.style.width = percent + '%';
-            localStorage.setItem(`readerCurrentChapterIdx:${resourceId}`, idx);
-        }
-    }
+function initChapterObserver() {
+    if (chapterObserver) chapterObserver.disconnect();
 
-    if (chapter.locked) {
-        readerArticle.innerHTML = `
-            <div class="text-center py-20">
-                <i class="fa-solid fa-lock text-5xl text-gray-400 mb-4"></i>
-                <h3 class="text-xl font-semibold text-readerText font-sans">
-                    Chapter Locked
-                </h3>
-                <p class="text-gray-500 mt-2 font-sans">
-                    Unlock this chapter to continue reading.
-                </p>
-            </div>
-        `;
-    } else {
-        readerArticle.innerHTML = sanitizeHtml(
-    chapter.contentHtml || chapter.content || ""
-);
-    }
+    const options = {
+        root: null,
+        rootMargin: '-15% 0px -65% 0px',
+        threshold: 0
+    };
 
-    window.scrollTo({
-        top: 0,
-        behavior: "smooth"
+    chapterObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const idx = Number(entry.target.dataset.chapterIdx);
+                if (!isNaN(idx) && publishedChapters[idx]) {
+                    updateActiveChapterUI(idx);
+                }
+            }
+        });
+    }, options);
+
+    document.querySelectorAll('.chapter-section').forEach(sec => {
+        chapterObserver.observe(sec);
     });
+}
+
+function scrollToChapter(idx, smooth = true) {
+    if (idx < 0 || idx >= publishedChapters.length) return;
+    const target = document.getElementById(`chapter-section-${idx}`);
+    if (target) {
+        target.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
+        updateActiveChapterUI(idx);
+    }
 }
 
 /* ---------------------------
@@ -872,15 +855,55 @@ function setupBookMode(chapters) {
     totalPages.textContent = total;
     pageSlider.max = total;
 
+    // Render all chapters continuously
+    readerArticle.innerHTML = chapters.map((chapter, idx) => {
+        const isLocked = chapter.locked;
+        const rawContent = chapter.contentHtml || chapter.content || "";
+        const contentHtml = isLocked ? `
+            <div class="text-center py-12 bg-gray-50/50 rounded-xl border border-gray-200/60 my-6">
+                <i class="fa-solid fa-lock text-4xl text-gray-400 mb-3 block"></i>
+                <h3 class="text-lg font-semibold text-readerText font-sans">Chapter Locked</h3>
+                <p class="text-sm text-gray-500 mt-1 font-sans">Unlock this chapter to continue reading.</p>
+            </div>
+        ` : sanitizeHtml(rawContent);
+
+        const divider = idx < total - 1 ? `
+            <div class="my-16 flex items-center justify-center gap-4 opacity-70">
+                <div class="h-[1px] w-20 bg-[#E2DACD]"></div>
+                <span class="text-[#A89F91] text-[11px] font-sans font-semibold tracking-widest uppercase">End of Chapter ${chapter.chapterNumber}</span>
+                <div class="h-[1px] w-20 bg-[#E2DACD]"></div>
+            </div>
+        ` : '';
+
+        return `
+            <section id="chapter-section-${idx}" data-chapter-idx="${idx}" class="chapter-section pb-4">
+                <div class="text-center mb-8 pt-4">
+                    <span class="font-sans text-[11px] uppercase tracking-[0.2em] font-semibold text-readerBlue">CHAPTER ${chapter.chapterNumber}</span>
+                    <h2 class="font-titleSerif text-[32px] font-bold text-readerText mt-1 mb-3 tracking-tight">${chapter.title || ''}</h2>
+                    <div class="decorative-line my-4">
+                        <svg width="24" height="12" viewBox="0 0 24 12" fill="none" xmlns="http://www.w3.org/2000/svg" class="text-[#D3C7B5]">
+                            <path d="M2 6C5 2 7 2 10 6C13 10 15 10 18 6C20 3.33 21.5 3.33 22 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            <path d="M2 6C2.5 8.67 4 8.67 6 6C9 2 11 2 14 6C17 10 19 10 22 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="chapter-body font-serif text-[18px] leading-[1.65] text-[#22201D]">
+                    ${contentHtml}
+                </div>
+                ${divider}
+            </section>
+        `;
+    }).join('');
+
+    initChapterObserver();
+
     const savedIdx = Math.max(0, Math.min(total - 1, Number(localStorage.getItem(`readerCurrentChapterIdx:${resourceId}`) || 0)));
-    loadChapter(chapters[savedIdx]);
+    setTimeout(() => {
+        scrollToChapter(savedIdx, false);
+    }, 100);
 }
 
 async function setupDocumentMode(res) {
-    document.getElementById("chapterLabel").classList.add("hidden");
-    document.getElementById("chapterTitle").classList.add("hidden");
-    document.getElementById("decorativeLine").classList.add("hidden");
-
     const pagesCount = Number(res.pages) || (res.files && res.files[0] && res.files[0].pages) || 1;
     const total = Math.max(1, Math.floor(pagesCount));
     totalPages.textContent = total;
@@ -900,11 +923,11 @@ async function setupDocumentMode(res) {
 
     if (res.contentHtml) {
         const sanitized = sanitizeHtml(res.contentHtml);
-        readerArticle.innerHTML = sanitized || '<p class="text-gray-600">No readable content available.</p>';
+        readerArticle.innerHTML = sanitized || '<p class="text-gray-600 font-sans">No readable content available.</p>';
     } else if (res.description || res.summary) {
         const text = res.description || res.summary || '';
-        const paragraphs = text.split(/\n{2,}/).filter(Boolean).map(p => `<p>${sanitizeHtml(p)}</p>`).join('\n');
-        readerArticle.innerHTML = paragraphs || '<p class="text-gray-600">No readable content available.</p>';
+        const paragraphs = text.split(/\n{2,}/).filter(Boolean).map(p => `<p class="mb-4">${sanitizeHtml(p)}</p>`).join('\n');
+        readerArticle.innerHTML = paragraphs || '<p class="text-gray-600 font-sans">No readable content available.</p>';
     }
 
     const candidateUrl = previewUrl || fileUrl;
@@ -922,7 +945,7 @@ async function setupDocumentMode(res) {
                 const pdfDocObj = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
                 setupPdfViewer(pdfDocObj);
             } else {
-                readerArticle.innerHTML = '<p class="text-center text-gray-500">Preparing document for reading…</p>';
+                readerArticle.innerHTML = '<p class="text-center text-gray-500 font-sans">Preparing document for reading…</p>';
             }
 
             (async () => {
@@ -942,7 +965,7 @@ async function setupDocumentMode(res) {
 
         } catch (err) {
             console.error('Error opening PDF from storage or download', err);
-            readerArticle.innerHTML = '<p class="text-center text-gray-500">Could not open PDF document.</p>';
+            readerArticle.innerHTML = '<p class="text-center text-gray-500 font-sans">Could not open PDF document.</p>';
         }
     } else if (candidateUrl && !isPdf) {
         try {
@@ -955,13 +978,13 @@ async function setupDocumentMode(res) {
                 document.getElementById('pdfViewerArea').innerHTML = '';
                 document.getElementById('pdfViewerArea').appendChild(iframe);
                 document.getElementById('pdfViewerArea').classList.remove('hidden');
-                readerArticle.innerHTML = '<p class="text-center text-gray-500">Document embedded below.</p>';
+                readerArticle.innerHTML = '<p class="text-center text-gray-500 font-sans">Document embedded below.</p>';
             } else {
-                readerArticle.innerHTML = '<p class="text-center text-gray-500">Cannot embed the selected document.</p>';
+                readerArticle.innerHTML = '<p class="text-center text-gray-500 font-sans">Cannot embed the selected document.</p>';
             }
         } catch (err) {
             console.error('Embed fetch failed', err);
-            readerArticle.innerHTML = '<p class="text-center text-gray-500">Cannot embed the selected document.</p>';
+            readerArticle.innerHTML = '<p class="text-center text-gray-500 font-sans">Cannot embed the selected document.</p>';
         }
     }
 }
