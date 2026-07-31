@@ -1272,71 +1272,81 @@
       notebookChoiceContainer.classList.remove('hidden');
     });
 
-    // TASK 6: BUILD "CREATE BOOK" SUBMISSION & REDIRECT TO /books/:id
-    createBookForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
+    // CREATE BOOK
+createBookForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
 
-      const btnSubmit = document.getElementById('btnSubmitCreateBook');
-      btnSubmit.disabled = true;
-      btnSubmit.classList.add('opacity-60', 'cursor-not-allowed');
+    const btnSubmit = document.getElementById("btnSubmitCreateBook");
 
-      const formData = new FormData();
-      formData.append('title', document.getElementById('createBookTitle').value.trim());
-      formData.append('description', document.getElementById('createBookDescription').value.trim());
-      formData.append('introduction', document.getElementById('createBookIntroduction').value.trim());
-      formData.append('faculty', document.getElementById('createBookFaculty').value);
-      formData.append('department', document.getElementById('createBookDept').value);
-      formData.append('course', document.getElementById('createBookCourse').value);
-      formData.append('lecturer', document.getElementById('createBookLecturer').value.trim());
-      formData.append('visibility', document.querySelector('input[name="createBookVisibility"]:checked').value);
+    btnSubmit.disabled = true;
+    btnSubmit.classList.add("opacity-60", "cursor-not-allowed");
 
-      if (selectedNBCover) {
-        formData.append('cover', selectedNBCover);
-      }
+    const formData = new FormData();
 
-      const tags = Array.from(document.getElementById('nbTagsList').children).map(n => n.dataset.tag);
-      if (tags.length) {
-        formData.append('tags', JSON.stringify(tags));
-      }
+    formData.append("resourceType", "notebook");
 
-      const token = localStorage.getItem("token");
+    formData.append("title", document.getElementById("createBookTitle").value.trim());
+    formData.append("description", document.getElementById("createBookDescription").value.trim());
+    formData.append("introduction", document.getElementById("createBookIntroduction").value.trim());
 
-      try {
-        const resp = await fetch(API_BASE + '/api/books', {
-          method: 'POST',
-          credentials: 'include',
-          body: formData,
-          headers: token ? { 'Authorization': 'Bearer ' + token } : undefined
+    formData.append("faculty", document.getElementById("createBookFaculty").value);
+    formData.append("department", document.getElementById("createBookDept").value);
+    formData.append("courseCode", document.getElementById("createBookCourse").value);
+    formData.append("courseTitle", document.getElementById("createBookCourse").selectedOptions[0]?.text || "");
+    formData.append("lecturer", document.getElementById("createBookLecturer").value.trim());
+
+    formData.append(
+        "visibility",
+        document.querySelector('input[name="createBookVisibility"]:checked').value
+    );
+
+    if (selectedNBCover) {
+        formData.append("coverFile", selectedNBCover);
+    }
+
+    const tags = Array.from(document.getElementById("nbTagsList").children)
+        .map((tag) => tag.dataset.tag);
+
+    if (tags.length) {
+        formData.append("tags", JSON.stringify(tags));
+    }
+
+    const token = localStorage.getItem("token");
+
+    try {
+        const response = await fetch(API_BASE + "/api/resource", {
+            method: "POST",
+            credentials: "include",
+            body: formData,
+            headers: token
+                ? {
+                      Authorization: `Bearer ${token}`
+                  }
+                : undefined
         });
 
-        let bookId;
-        if (resp.ok) {
-          const body = await resp.json();
-          bookId = body.id || (body.data && body.data.id) || Date.now();
-        } else {
-          // Fallback ID generation if API route is mocked or offline
-          bookId = Date.now();
+        const body = await response.json();
+
+        if (!response.ok) {
+            throw new Error(body.error || "Failed to create book");
         }
 
-        showToast('Book created successfully! Redirecting...', true);
-        
-        setTimeout(() => {
-          window.location.href = `/books/${bookId}`;
-        }, 1000);
+        const resource = body.resource || body.data;
 
-      } catch (err) {
-        console.error("Error creating book:", err);
-        // Fallback redirection for local simulation
-        const fallbackId = Date.now();
-        showToast('Book created! Redirecting...', true);
+        showToast("Book created successfully!", true);
+
         setTimeout(() => {
-          window.location.href = `/books/${fallbackId}`;
-        }, 1000);
-      } finally {
+            window.location.href = `/books/${resource._id}`;
+        }, 800);
+
+    } catch (err) {
+        console.error(err);
+        showToast(err.message || "Failed to create book", false);
+    } finally {
         btnSubmit.disabled = false;
-        btnSubmit.classList.remove('opacity-60', 'cursor-not-allowed');
-      }
-    });
+        btnSubmit.classList.remove("opacity-60", "cursor-not-allowed");
+    }
+});
 
     // Append note submission to existing book
     document.getElementById('btnPublishExistingNote').addEventListener('click', async () => {
