@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=0.85">
-    <title>Clean Code Reader</title>
+    <title>Reader</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -86,13 +86,16 @@
 
         .notes-modal { display: flex; align-items: center; justify-content: center; }
         .appearance-modal { display: flex; align-items: center; justify-content: center; }
+
+        /* When viewing PDFs we hide page slider controls */
+        .pdf-mode .reader-controls { display: none; }
     </style>
 </head>
 <body class="w-full min-h-screen flex flex-col justify-between bg-readerBg">
 
     <div class="sticky top-0 w-full bg-readerBg/90 backdrop-blur-sm z-20">
         <div class="flex justify-between items-center px-6 pt-3 pb-1 text-xs font-semibold text-readerText">
-            
+            <div id="topFlash" class="text-sm"></div>
         </div>
 
         <header class="flex items-center justify-between px-5 py-3 w-full">
@@ -101,34 +104,32 @@
             </button>
             
             <div class="text-center flex flex-col items-center">
-                <h1 class="font-sans font-bold text-[15px] text-readerText leading-tight" id="bookTitle">Clean Code</h1>
-                <p class="font-sans text-[12px] text-readerMuted font-medium" id="bookAuthor">Robert C. Martin</p>
+                <h1 class="font-sans font-bold text-[15px] text-readerText leading-tight" id="bookTitle">Loading…</h1>
+                <p class="font-sans text-[12px] text-readerMuted font-medium" id="bookAuthor">—</p>
             </div>
 
             <div class="flex items-center gap-4 text-readerText">
-                <button id="searchBtn" class="hover:opacity-70 transition-opacity p-1">
+                <button id="searchBtn" class="hover:opacity-70 transition-opacity p-1" title="Search (coming soon)">
                     <i class="fa-solid fa-magnifying-glass text-[17px]"></i>
                 </button>
-                <button id="bookmarkBtn" class="hover:opacity-70 transition-opacity p-1">
-                    <i class="fa-regular fa-bookmark text-[18px]"></i>
+                <button id="bookmarkBtn" class="hover:opacity-70 transition-opacity p-1" title="Bookmark">
+                    <i id="bookmarkIcon" class="fa-regular fa-bookmark text-[18px]"></i>
                 </button>
-                <button id="menuBtn" class="hover:opacity-70 transition-opacity p-1">
+                <button id="menuBtn" class="hover:opacity-70 transition-opacity p-1" title="Menu">
                     <i class="fa-solid fa-ellipsis-vertical text-[18px]"></i>
                 </button>
             </div>
         </header>
     </div>
 
-    <main class="flex-1 max-w-xl w-full mx-auto px-6 pt-6 pb-12 flex flex-col">
+    <main id="readerContainer" class="flex-1 max-w-xl w-full mx-auto px-6 pt-6 pb-12 flex flex-col">
         <div class="text-center mb-6">
-            <span class="font-sans text-[11px] uppercase tracking-[0.2em] font-semibold text-readerBlue">
-                CHAPTER 3
-            </span>
-            <h2 class="font-titleSerif text-[34px] font-bold text-readerText mt-1 mb-4 tracking-tight">
-                Functions
+            <span id="chapterLabel" class="font-sans text-[11px] uppercase tracking-[0.2em] font-semibold text-readerBlue hidden">CHAPTER</span>
+            <h2 id="chapterTitle" class="font-titleSerif text-[34px] font-bold text-readerText mt-1 mb-4 tracking-tight hidden">
+                <!-- title filled dynamically -->
             </h2>
             
-            <div class="decorative-line my-5">
+            <div class="decorative-line my-5 hidden" id="decorativeLine">
                 <svg width="24" height="12" viewBox="0 0 24 12" fill="none" xmlns="http://www.w3.org/2000/svg" class="text-[#D3C7B5]">
                     <path d="M2 6C5 2 7 2 10 6C13 10 15 10 18 6C20 3.33 21.5 3.33 22 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
                     <path d="M2 6C2.5 8.67 4 8.67 6 6C9 2 11 2 14 6C17 10 19 10 22 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
@@ -136,43 +137,33 @@
             </div>
         </div>
 
-        <article class="space-y-6 text-[18px] leading-[1.65] text-[#22201D]">
-            <p>
-                Small functions are easier to understand, test, and reuse. The first rule of functions is that they should be small. The second rule of functions is that they should be smaller than that.
-            </p>
-
-            <p>
-                Functions should do <mark class="bg-[#FEF08A] text-readerText px-1 py-0.5 rounded-sm">one thing</mark>. They should do it well. They should do it only. When a function does more than one thing, it becomes harder to understand, test, and reuse.
-            </p>
-
-            <p>
-                A good function name tells you what the function does. A great function name tells you why the function does it.
-            </p>
-
-            <p>
-                Keep your functions short, your names descriptive, and your purpose clear.
-            </p>
+        <!-- The article element is the primary content area for text/html content.
+             If the resource is a PDF we'll swap-in an iframe inside #pdfEmbed. -->
+        <article id="readerArticle" class="space-y-6 text-[18px] leading-[1.65] text-[#22201D]">
+            <p id="loadingText" class="text-center text-gray-500">Loading book content…</p>
         </article>
+
+        <div id="pdfEmbed" class="w-full h-[60vh] hidden rounded-lg overflow-hidden border border-gray-200 shadow-sm bg-white"></div>
     </main>
 
-    <footer class="sticky bottom-0 w-full bg-readerBg/95 backdrop-blur-md border-t border-[#EAE3D9] pt-2 pb-5 z-20">
+    <footer id="readerFooter" class="sticky bottom-0 w-full bg-readerBg/95 backdrop-blur-md border-t border-[#EAE3D9] pt-2 pb-5 z-20">
         <div class="max-w-xl mx-auto px-6 mb-3">
-            <div class="text-center font-sans text-[12px] font-medium text-readerMuted mb-2">
-                <span id="currentPage">45</span> of <span id="totalPages">210</span>
+            <div class="text-center font-sans text-[12px] font-medium text-readerMuted mb-2 reader-controls">
+                <span id="currentPage">1</span> of <span id="totalPages">1</span>
             </div>
             
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-3 reader-controls">
                 <div class="relative flex-1 flex items-center">
-                    <div id="progressBar" class="absolute left-0 h-[3px] bg-readerBlue rounded-l-full z-10" style="width: 32%;"></div>
-                    <input id="pageSlider" type="range" min="1" max="210" value="45" class="w-full relative z-20">
+                    <div id="progressBar" class="absolute left-0 h-[3px] bg-readerBlue rounded-l-full z-10" style="width: 0%;"></div>
+                    <input id="pageSlider" type="range" min="1" max="1" value="1" class="w-full relative z-20">
                 </div>
                 <span id="percentageDisplay" class="font-sans text-[12px] font-semibold text-readerText min-w-[32px] text-right">
-                    32%
+                    0%
                 </span>
             </div>
         </div>
 
-        <nav class="max-w-xl mx-auto px-4 flex justify-around items-center pt-2">
+        <nav class="max-w-xl mx-auto px-4 flex justify-around items-center pt-2 pb-2">
             <button id="contentsBtn" class="flex flex-col items-center gap-1 text-readerText hover:text-readerBlue transition-colors px-3 py-1">
                 <i class="fa-solid fa-list-ul text-[18px]"></i>
                 <span class="font-sans text-[11px] font-medium text-readerMuted">Contents</span>
@@ -246,7 +237,7 @@
                     <label class="block font-sans text-sm font-semibold text-readerText mb-3">Font Size</label>
                     <div class="flex items-center gap-3">
                         <i class="fa-solid fa-a text-lg text-gray-400"></i>
-                        <input id="fontSizeSlider" type="range" min="14" max="24" value="18" class="flex-1">
+                        <input id="fontSizeSlider" type="range" min="14" max="30" value="18" class="flex-1">
                         <i class="fa-solid fa-a text-2xl text-gray-400"></i>
                     </div>
                     <p class="font-sans text-xs text-gray-500 mt-2">Current: <span id="fontSizeValue">18</span>px</p>
@@ -256,13 +247,13 @@
                 <div>
                     <label class="block font-sans text-sm font-semibold text-readerText mb-3">Line Height</label>
                     <div class="space-y-2">
-                        <button class="w-full text-left px-3 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 font-serif text-sm leading-[1.5] transition-colors">
+                        <button id="lineCompact" class="w-full text-left px-3 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 font-serif text-sm leading-[1.5] transition-colors">
                             Compact
                         </button>
-                        <button class="w-full text-left px-3 py-2 rounded-lg border border-brand-blue bg-blue-50 font-serif text-sm leading-[1.65] font-semibold transition-colors">
+                        <button id="lineDefault" class="w-full text-left px-3 py-2 rounded-lg border border-brand-blue bg-blue-50 font-serif text-sm leading-[1.65] font-semibold transition-colors">
                             Default
                         </button>
-                        <button class="w-full text-left px-3 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 font-serif text-sm leading-[1.85] transition-colors">
+                        <button id="lineComfort" class="w-full text-left px-3 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 font-serif text-sm leading-[1.85] transition-colors">
                             Comfortable
                         </button>
                     </div>
@@ -272,11 +263,11 @@
                 <div>
                     <label class="block font-sans text-sm font-semibold text-readerText mb-3">Reading Theme</label>
                     <div class="grid grid-cols-2 gap-3">
-                        <button class="h-20 rounded-lg border-2 border-gray-300 hover:border-gray-400 bg-[#FBF8F3] flex items-center justify-center gap-2 transition-all group">
+                        <button id="themeLight" class="h-20 rounded-lg border-2 border-gray-300 hover:border-gray-400 bg-[#FBF8F3] flex items-center justify-center gap-2 transition-all group">
                             <i class="fa-solid fa-sun text-amber-500 text-lg group-hover:scale-110 transition-transform"></i>
                             <span class="font-sans text-xs font-medium text-gray-700">Light</span>
                         </button>
-                        <button class="h-20 rounded-lg border-2 border-gray-300 hover:border-gray-400 bg-gray-900 flex items-center justify-center gap-2 transition-all group">
+                        <button id="themeDark" class="h-20 rounded-lg border-2 border-gray-300 hover:border-gray-400 bg-gray-900 flex items-center justify-center gap-2 transition-all group">
                             <i class="fa-solid fa-moon text-blue-300 text-lg group-hover:scale-110 transition-transform"></i>
                             <span class="font-sans text-xs font-medium text-gray-200">Dark</span>
                         </button>
@@ -296,7 +287,75 @@
     </div>
 
     <script>
-        // Notes Management
+        // API helper (same base used by book.html)
+        const API_BASE = "https://examguide.onrender.com";
+
+        function normalizeUrl(u){
+            if(!u) return null;
+            if(u.startsWith("http://")||u.startsWith("https://")) return u;
+            if(u.startsWith("/")) return API_BASE + u;
+            return API_BASE + (u.startsWith("uploads/") ? "/" + u : "/" + u);
+        }
+
+        async function tryFetch(url, opts){
+            try { const res = await fetch(url, opts); if(!res.ok) throw res; const ct = res.headers.get('content-type') || ''; if(ct.includes('application/json')) return await res.json(); return res; } catch (e) { return null; }
+        }
+
+        function qsParam(name){ const params = new URLSearchParams(window.location.search); return params.get(name); }
+
+        async function fetchResourceById(id){
+          if(!id) return null;
+          const candidates = [`${API_BASE}/api/resource/${id}`, `${API_BASE}/api/resources/${id}`];
+          for(const url of candidates){
+            const j = await tryFetch(url, { credentials: 'include' });
+            if(!j) continue;
+            if(j.resource) return j.resource;
+            if(j.data) return j.data;
+            if(j._id || j.id) return j;
+            if(j.item) return j.item;
+          }
+          return null;
+        }
+
+        // sanitize basic HTML - remove scripts and on* attributes
+        function sanitizeHtml(htmlString){
+            if(!htmlString) return '';
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(htmlString, 'text/html');
+            // Remove script and style tags
+            doc.querySelectorAll('script, style').forEach(n => n.remove());
+            // Remove inline event attributes
+            const elements = doc.querySelectorAll('*');
+            elements.forEach(el => {
+                [...el.attributes].forEach(attr => {
+                    if(attr.name.startsWith('on')) el.removeAttribute(attr.name);
+                    // disallow javascript: URLs
+                    if(attr.name === 'href' || attr.name === 'src'){
+                        if(attr.value && attr.value.trim().toLowerCase().startsWith('javascript:')) el.removeAttribute(attr.name);
+                    }
+                });
+            });
+            return doc.body.innerHTML;
+        }
+
+        // Reader state
+        let resource = null;
+        let isPdfMode = false;
+        let resourceId = qsParam('id');
+
+        // Elements
+        const bookTitleEl = document.getElementById('bookTitle');
+        const bookAuthorEl = document.getElementById('bookAuthor');
+        const readerArticle = document.getElementById('readerArticle');
+        const pdfEmbed = document.getElementById('pdfEmbed');
+        const readerContainer = document.getElementById('readerContainer');
+
+        const pageSlider = document.getElementById('pageSlider');
+        const currentPage = document.getElementById('currentPage');
+        const totalPages = document.getElementById('totalPages');
+        const percentageDisplay = document.getElementById('percentageDisplay');
+        const progressBar = document.getElementById('progressBar');
+
         const notesBtn = document.getElementById('notesBtn');
         const notesModal = document.getElementById('notesModal');
         const notesClose = document.getElementById('notesClose');
@@ -304,10 +363,25 @@
         const notesExport = document.getElementById('notesExport');
         const notesClear = document.getElementById('notesClear');
 
-        let notes = JSON.parse(localStorage.getItem('readerNotes')) || [];
+        const appearanceBtn = document.getElementById('appearanceBtn');
+        const appearanceModal = document.getElementById('appearanceModal');
+        const appearanceClose = document.getElementById('appearanceClose');
+        const fontSizeSlider = document.getElementById('fontSizeSlider');
+        const fontSizeValue = document.getElementById('fontSizeValue');
+        const appearanceApply = document.getElementById('appearanceApply');
+        const appearanceReset = document.getElementById('appearanceReset');
+
+        const bookmarkBtn = document.getElementById('bookmarkBtn');
+        const bookmarkIcon = document.getElementById('bookmarkIcon');
+
+        // Notes storage per resource
+        let notes = [];
+        function notesKey(){ return `readerNotes:${resourceId || 'unknown'}`; }
+        function loadNotes(){ notes = JSON.parse(localStorage.getItem(notesKey()) || '[]'); }
+        function saveNotes(){ localStorage.setItem(notesKey(), JSON.stringify(notes)); }
 
         function renderNotes() {
-            if (notes.length === 0) {
+            if (!notes || notes.length === 0) {
                 notesList.innerHTML = `
                     <div class="text-center py-8">
                         <i class="fa-regular fa-note-sticky text-4xl text-gray-300 mb-3 block"></i>
@@ -326,150 +400,296 @@
                         </div>
                         <p class="font-serif text-sm leading-relaxed text-gray-700 mb-2 italic">"${note.highlight}"</p>
                         <p class="font-sans text-sm text-gray-600">${note.text}</p>
-                        <p class="font-sans text-xs text-gray-400 mt-2">${new Date(note.timestamp).toLocaleDateString()}</p>
+                        <p class="font-sans text-xs text-gray-400 mt-2">${new Date(note.timestamp).toLocaleString()}</p>
                     </div>
                 `).join('');
             }
         }
 
-        function deleteNote(idx) {
+        window.deleteNote = function(idx){
             notes.splice(idx, 1);
-            localStorage.setItem('readerNotes', JSON.stringify(notes));
+            saveNotes();
             renderNotes();
         }
 
         function addNote(highlightedText, noteText) {
             notes.push({
-                page: document.getElementById('currentPage').textContent,
+                page: currentPage.textContent || 1,
                 highlight: highlightedText,
                 text: noteText,
                 timestamp: new Date().toISOString()
             });
-            localStorage.setItem('readerNotes', JSON.stringify(notes));
+            saveNotes();
             renderNotes();
         }
 
+        // UI wiring
+        document.getElementById('backBtn').addEventListener('click', () => history.back());
+
+        // Bookmark per resource
+        function bookmarkKey(){ return `readerBookmarked:${resourceId || 'unknown'}`; }
+        function updateBookmarkUI(){
+            const isBookmarked = localStorage.getItem(bookmarkKey());
+            if (isBookmarked) bookmarkIcon.className = 'fa-solid fa-bookmark text-[18px]';
+            else bookmarkIcon.className = 'fa-regular fa-bookmark text-[18px]';
+        }
+        bookmarkBtn.addEventListener('click', () => {
+            const key = bookmarkKey();
+            if (localStorage.getItem(key)){
+                localStorage.removeItem(key);
+            } else {
+                localStorage.setItem(key, '1');
+            }
+            updateBookmarkUI();
+        });
+
+        // Appearance modal
+        appearanceBtn.addEventListener('click', () => {
+            appearanceModal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        });
+        appearanceClose.addEventListener('click', () => {
+            appearanceModal.classList.add('hidden');
+            document.body.style.overflow = '';
+        });
+        fontSizeSlider.addEventListener('input', (e) => fontSizeValue.textContent = e.target.value);
+        appearanceApply.addEventListener('click', () => {
+            const fontSize = fontSizeSlider.value;
+            const art = document.getElementById('readerArticle');
+            if (art) art.style.fontSize = fontSize + 'px';
+            localStorage.setItem(`readerFontSize:${resourceId || 'global'}`, fontSize);
+            appearanceModal.classList.add('hidden');
+            document.body.style.overflow = '';
+        });
+        appearanceReset.addEventListener('click', () => {
+            fontSizeSlider.value = 18;
+            fontSizeValue.textContent = '18';
+            const art = document.getElementById('readerArticle');
+            if (art) art.style.fontSize = '18px';
+            localStorage.removeItem(`readerFontSize:${resourceId || 'global'}`);
+        });
+
+        // line height shortcuts
+        document.getElementById('lineCompact').addEventListener('click', () => { if (readerArticle) readerArticle.style.lineHeight = '1.5'; });
+        document.getElementById('lineDefault').addEventListener('click', () => { if (readerArticle) readerArticle.style.lineHeight = '1.65'; });
+        document.getElementById('lineComfort').addEventListener('click', () => { if (readerArticle) readerArticle.style.lineHeight = '1.85'; });
+
+        // theme buttons
+        document.getElementById('themeLight').addEventListener('click', () => {
+            document.body.classList.remove('dark-mode');
+            document.body.style.background = '#FBF8F3';
+            document.body.style.color = '#1A1816';
+        });
+        document.getElementById('themeDark').addEventListener('click', () => {
+            document.body.classList.add('dark-mode');
+            document.body.style.background = '#0B1220';
+            document.body.style.color = '#E6EEF8';
+        });
+
+        // Page navigation and persistence
+        pageSlider.addEventListener('input', (e) => {
+            const page = Number(e.target.value);
+            const total = Number(e.target.max) || 1;
+            const percent = Math.round((page / total) * 100);
+            currentPage.textContent = page;
+            percentageDisplay.textContent = percent + '%';
+            progressBar.style.width = percent + '%';
+            localStorage.setItem(`readerCurrentPage:${resourceId || 'unknown'}`, page);
+        });
+
+        // Notes modal wiring
         notesBtn.addEventListener('click', () => {
+            loadNotes();
             renderNotes();
             notesModal.classList.remove('hidden');
             document.body.style.overflow = 'hidden';
         });
-
         notesClose.addEventListener('click', () => {
             notesModal.classList.add('hidden');
             document.body.style.overflow = '';
         });
-
         notesExport.addEventListener('click', () => {
-            if (notes.length === 0) {
-                alert('No notes to export');
-                return;
-            }
+            if (!notes || notes.length === 0) { alert('No notes to export'); return; }
             const text = notes.map(n => `Page ${n.page}\n"${n.highlight}"\n${n.text}\n---`).join('\n\n');
             const blob = new Blob([text], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'notes.txt';
+            a.download = (resource && (resource.title || resource.name) ? (resource.title.replace(/\s+/g,'_')) : 'notes') + '.txt';
             a.click();
             URL.revokeObjectURL(url);
         });
-
         notesClear.addEventListener('click', () => {
             if (confirm('Delete all notes? This cannot be undone.')) {
                 notes = [];
-                localStorage.setItem('readerNotes', JSON.stringify(notes));
+                saveNotes();
                 renderNotes();
             }
         });
 
-        // Appearance Settings
-        const appearanceBtn = document.getElementById('appearanceBtn');
-        const appearanceModal = document.getElementById('appearanceModal');
-        const appearanceClose = document.getElementById('appearanceClose');
-        const fontSizeSlider = document.getElementById('fontSizeSlider');
-        const fontSizeValue = document.getElementById('fontSizeValue');
-        const appearanceApply = document.getElementById('appearanceApply');
-        const appearanceReset = document.getElementById('appearanceReset');
-
-        appearanceBtn.addEventListener('click', () => {
-            appearanceModal.classList.remove('hidden');
-            document.body.style.overflow = 'hidden';
+        // Allow adding a note from a text selection inside article
+        document.addEventListener('selectionchange', () => {
+            // only enable when not in PDF mode
+            if (isPdfMode) return;
+            const sel = window.getSelection();
+            if (!sel || sel.isCollapsed) return;
+            const text = sel.toString().trim();
+            if (!text || text.length < 2) return;
+            // small non-intrusive prompt: ask user if they'd like to add a note
+            // We use a short timeout to avoid spamming prompts on continued selection
+            // and only prompt on user mouseup
         });
-
-        appearanceClose.addEventListener('click', () => {
-            appearanceModal.classList.add('hidden');
-            document.body.style.overflow = '';
-        });
-
-        fontSizeSlider.addEventListener('input', (e) => {
-            fontSizeValue.textContent = e.target.value;
-        });
-
-        appearanceApply.addEventListener('click', () => {
-            const fontSize = fontSizeSlider.value;
-            document.querySelector('article').style.fontSize = fontSize + 'px';
-            localStorage.setItem('readerFontSize', fontSize);
-            appearanceModal.classList.add('hidden');
-            document.body.style.overflow = '';
-        });
-
-        appearanceReset.addEventListener('click', () => {
-            fontSizeSlider.value = 18;
-            fontSizeValue.textContent = '18';
-            document.querySelector('article').style.fontSize = '18px';
-            localStorage.removeItem('readerFontSize');
-        });
-
-        // Page Navigation
-        const pageSlider = document.getElementById('pageSlider');
-        const currentPage = document.getElementById('currentPage');
-        const percentageDisplay = document.getElementById('percentageDisplay');
-        const progressBar = document.getElementById('progressBar');
-
-        pageSlider.addEventListener('input', (e) => {
-            const page = e.target.value;
-            const total = e.target.max;
-            const percent = Math.round((page / total) * 100);
-            currentPage.textContent = page;
-            percentageDisplay.textContent = percent + '%';
-            progressBar.style.width = percent + '%';
-            localStorage.setItem('readerCurrentPage', page);
-        });
-
-        // Back Button
-        document.getElementById('backBtn').addEventListener('click', () => history.back());
-
-        // Bookmark Button
-        document.getElementById('bookmarkBtn').addEventListener('click', () => {
-            const isBookmarked = localStorage.getItem('readerBookmarked');
-            if (isBookmarked) {
-                localStorage.removeItem('readerBookmarked');
-                document.getElementById('bookmarkBtn').innerHTML = '<i class="fa-regular fa-bookmark text-[18px]"></i>';
-            } else {
-                localStorage.setItem('readerBookmarked', 'true');
-                document.getElementById('bookmarkBtn').innerHTML = '<i class="fa-solid fa-bookmark text-[18px]"></i>';
+        // Add note via right-click context or simple double click + prompt
+        readerArticle.addEventListener('dblclick', (e) => {
+            if (isPdfMode) return;
+            const sel = window.getSelection();
+            if (!sel || sel.isCollapsed) return;
+            const text = sel.toString().trim();
+            if (!text) return;
+            const noteText = prompt('Add a note for the selected text:', '');
+            if (noteText !== null) {
+                addNote(text, noteText || '');
+                showToast('Note saved');
+                window.getSelection().removeAllRanges();
             }
         });
 
-        // Initialize
-        const savedPage = localStorage.getItem('readerCurrentPage') || 45;
-        pageSlider.value = savedPage;
-        currentPage.textContent = savedPage;
-        const percent = Math.round((savedPage / 210) * 100);
-        percentageDisplay.textContent = percent + '%';
-        progressBar.style.width = percent + '%';
-
-        const savedFontSize = localStorage.getItem('readerFontSize');
-        if (savedFontSize) {
-            document.querySelector('article').style.fontSize = savedFontSize + 'px';
-            fontSizeSlider.value = savedFontSize;
-            fontSizeValue.textContent = savedFontSize;
+        // Small toast function
+        function showToast(msg, ok=true, t=2500){
+            const el = document.createElement('div');
+            el.className = `fixed top-5 right-5 z-50 px-4 py-2 rounded-xl text-white ${ok ? 'bg-emerald-600' : 'bg-amber-500'} shadow-lg`;
+            el.textContent = msg;
+            document.body.appendChild(el);
+            setTimeout(()=> el.remove(), t);
         }
 
-        if (localStorage.getItem('readerBookmarked')) {
-            document.getElementById('bookmarkBtn').innerHTML = '<i class="fa-solid fa-bookmark text-[18px]"></i>';
-        }
+        // Initialize the reader with resource data
+        async function initReader(){
+            if(!resourceId){
+                bookTitleEl.textContent = 'Resource not found';
+                readerArticle.innerHTML = '<p class="text-center text-gray-500">No resource id provided in the URL.</p>';
+                return;
+            }
+
+            document.title = 'Loading…';
+            const res = await fetchResourceById(resourceId);
+            if(!res){
+                bookTitleEl.textContent = 'Resource not found';
+                readerArticle.innerHTML = '<p class="text-center text-gray-500">Could not load the selected resource.</p>';
+                return;
+            }
+
+            resource = res;
+            document.title = `${res.title || res.name || 'Resource'} — Reader`;
+            bookTitleEl.textContent = res.title || res.name || 'Untitled';
+            // authors can be array or single string
+            const authors = Array.isArray(res.authors) ? res.authors.join(', ') : (res.authors || res.author || '');
+            bookAuthorEl.textContent = authors || (res.uploader && (res.uploader.fullname || res.uploader.username)) || '';
+
+            // apply font size if previously saved for this resource
+            const savedFont = localStorage.getItem(`readerFontSize:${resourceId}`) || localStorage.getItem(`readerFontSize:global`);
+            if (savedFont && document.getElementById('readerArticle')) {
+                document.getElementById('readerArticle').style.fontSize = savedFont + 'px';
+                fontSizeSlider.value = savedFont;
+                fontSizeValue.textContent = savedFont;
+            }
+
+            // prepare paging values
+            const pagesCount = Number(res.pages) || (res.files && res.files[0] && res.files[0].pages) || 1;
+            const total = Math.max(1, Math.floor(pagesCount));
+            totalPages.textContent = total;
+            pageSlider.max = total;
+
+            // restore current page for this resource
+            const savedPage = Number(localStorage.getItem(`readerCurrentPage:${resourceId}`) || 1);
+            const startPage = Math.min(Math.max(1, savedPage), total);
+            pageSlider.value = startPage;
+            currentPage.textContent = startPage;
+            const startPercent = Math.round((startPage / total) * 100);
+            percentageDisplay.textContent = startPercent + '%';
+            progressBar.style.width = startPercent + '%';
+
+            updateBookmarkUI();
+
+            // determine main file
+            const mainFile = (res.files && res.files[0]) || res.file || null;
+            const fileUrl = mainFile && (mainFile.url || mainFile.path) ? normalizeUrl(mainFile.url || mainFile.path) : null;
+            const previewUrl = res.previewUrl ? normalizeUrl(res.previewUrl) : (res.readOnlineUrl ? normalizeUrl(res.readOnlineUrl) : null);
+
+            // If there's HTML content, render it in the article (sanitized)
+            if (res.contentHtml) {
+                const sanitized = sanitizeHtml(res.contentHtml);
+                readerArticle.innerHTML = sanitized || '<p class="text-gray-600">No readable content available.</p>';
+                isPdfMode = false;
+                pdfEmbed.classList.add('hidden');
+                document.body.classList.remove('pdf-mode');
+            } else if (res.description || res.summary) {
+                // render description as paragraphs
+                const text = res.description || res.summary || '';
+                const paragraphs = text.split(/\n{2,}/).filter(Boolean).map(p => `<p>${sanitizeHtml(p)}</p>`).join('\n');
+                readerArticle.innerHTML = paragraphs || '<p class="text-gray-600">No readable content available.</p>';
+                isPdfMode = false;
+                pdfEmbed.classList.add('hidden');
+                document.body.classList.remove('pdf-mode');
+            } else if (previewUrl || fileUrl) {
+                // If it's a PDF, embed it; editor/viewer will be in pdf mode (hide slider)
+                const isPdf = /\.pdf($|\?)/i.test(previewUrl || fileUrl) || (mainFile && (mainFile.mimeType || mainFile.mimetype) && /pdf/i.test(mainFile.mimeType || mainFile.mimetype));
+                if (isPdf) {
+                    // show PDF inside an iframe
+                    const src = previewUrl || fileUrl;
+                    pdfEmbed.innerHTML = '';
+                    const iframe = document.createElement('iframe');
+                    iframe.src = src;
+                    iframe.style.width = '100%';
+                    iframe.style.height = '100%';
+                    iframe.frameBorder = '0';
+                    iframe.loading = 'lazy';
+                    pdfEmbed.appendChild(iframe);
+                    pdfEmbed.classList.remove('hidden');
+                    // hide the text article
+                    readerArticle.innerHTML = '<p class="text-center text-gray-500">PDF embedded below.</p>';
+                    isPdfMode = true;
+                    document.body.classList.add('pdf-mode');
+                } else {
+                    // non-PDF file (e.g., plain text or online reader URL) - open in embedded iframe
+                    const src = previewUrl || fileUrl;
+                    pdfEmbed.innerHTML = '';
+                    const iframe = document.createElement('iframe');
+                    iframe.src = src;
+                    iframe.style.width = '100%';
+                    iframe.style.height = '100%';
+                    iframe.frameBorder = '0';
+                    iframe.loading = 'lazy';
+                    pdfEmbed.appendChild(iframe);
+                    pdfEmbed.classList.remove('hidden');
+                    readerArticle.innerHTML = '<p class="text-center text-gray-500">Document embedded below.</p>';
+                    isPdfMode = true;
+                    document.body.classList.add('pdf-mode');
+                }
+            } else {
+                readerArticle.innerHTML = '<p class="text-center text-gray-500">No content available for this resource.</p>';
+                pdfEmbed.classList.add('hidden');
+                isPdfMode = false;
+                document.body.classList.remove('pdf-mode');
+            }
+
+            // Notes load
+            loadNotes();
+            renderNotes();
+        } // end initReader
+
+        // initialize UI state and then load resource
+        (function bootstrap(){
+            // attach misc handlers that don't depend on resource
+            document.getElementById('contentsBtn').addEventListener('click', () => alert('Contents feature coming soon'));
+            document.getElementById('brightnessBtn').addEventListener('click', () => alert('Brightness control coming soon'));
+            document.getElementById('settingsBtn').addEventListener('click', () => alert('Settings coming soon'));
+            document.getElementById('searchBtn').addEventListener('click', () => alert('Search feature coming soon'));
+            document.getElementById('menuBtn').addEventListener('click', () => alert('Menu options coming soon'));
+
+            // load resource now
+            initReader();
+        })();
 
         // Close modals on outside click
         notesModal.addEventListener('click', (e) => {
@@ -478,7 +698,6 @@
                 document.body.style.overflow = '';
             }
         });
-
         appearanceModal.addEventListener('click', (e) => {
             if (e.target.id === 'appearanceModal') {
                 appearanceModal.classList.add('hidden');
@@ -500,12 +719,14 @@
             }
         });
 
-        // Placeholder for other buttons
-        document.getElementById('contentsBtn').addEventListener('click', () => alert('Contents feature coming soon'));
-        document.getElementById('brightnessBtn').addEventListener('click', () => alert('Brightness control coming soon'));
-        document.getElementById('settingsBtn').addEventListener('click', () => alert('Settings coming soon'));
-        document.getElementById('searchBtn').addEventListener('click', () => alert('Search feature coming soon'));
-        document.getElementById('menuBtn').addEventListener('click', () => alert('Menu options coming soon'));
+        // simple utility to show temporary top flash (e.g., write status)
+        function showTopFlash(msg, timeout = 2500){
+            const el = document.getElementById('topFlash');
+            if(!el) return;
+            el.textContent = msg;
+            setTimeout(()=> { if(el.textContent === msg) el.textContent = ''; }, timeout);
+        }
+
     </script>
 
 </body>
