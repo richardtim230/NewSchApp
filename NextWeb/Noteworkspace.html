@@ -336,25 +336,48 @@ async function imageHandler() {
     const file = input.files[0];
     if (!file) return;
 
-    const formData = new FormData();
-    formData.append('image', file);
+    const form = new FormData();
+    form.append('image', file);
 
     try {
-      const res = await fetch(`${API_BASE}/upload`, {
+      const token = localStorage.getItem("token");
+
+      const resp = await fetch(`${API_BASE}/resource/uploads/editor`, {
         method: 'POST',
+        body: form,
         credentials: 'include',
-        body: formData
+        headers: token
+          ? { Authorization: `Bearer ${token}` }
+          : {}
       });
 
-      if (!res.ok) throw new Error('Upload failed');
+      if (!resp.ok) {
+        showToast('Image upload failed', true);
+        return;
+      }
 
-      const data = await res.json();
+      const data = await resp.json();
 
-      const imageUrl = data.url || data.imageUrl || data.secure_url;
+      const imageUrl =
+        data.url ||
+        data.imageUrl ||
+        data.secure_url ||
+        data.image?.url;
 
-      const range = quill.getSelection(true);
-      quill.insertEmbed(range.index, 'image', imageUrl);
-      quill.setSelection(range.index + 1);
+      if (!imageUrl) {
+        showToast('No image URL returned', true);
+        return;
+      }
+
+      const range = quill.getSelection(true) || {
+        index: quill.getLength(),
+        length: 0
+      };
+
+      quill.insertEmbed(range.index, 'image', imageUrl, 'user');
+      quill.setSelection(range.index + 1, 0);
+
+      showToast('Image uploaded');
     } catch (err) {
       console.error(err);
       showToast('Image upload failed', true);
