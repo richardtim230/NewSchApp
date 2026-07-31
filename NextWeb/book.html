@@ -258,37 +258,42 @@
     </section>
   </main>
 
-  <!-- PDF Viewer Modal -->
-  <div id="pdfModal" class="fixed inset-0 z-1000000 hidden items-center justify-center p-4">
-    <div class="absolute inset-0 bg-black/60"></div>
-    <div class="relative bg-white rounded-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
-      <div class="flex items-center justify-between gap-3 px-4 py-3 border-b">
-        <div class="flex items-center gap-3">
-          <button id="pdfClose" class="w-9 h-9 rounded-md bg-slate-100 flex items-center justify-center">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-          <div id="pdfTitle" class="font-semibold text-sm">Preview</div>
-        </div>
-        <div class="flex items-center gap-2">
-          <button id="pdfPrev" class="px-3 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-sm">Prev</button>
-          <div class="text-sm" id="pdfPageInfo">0 / 0</div>
-          <button id="pdfNext" class="px-3 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-sm">Next</button>
-          <button id="pdfZoomOut" class="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-sm">-</button>
-          <button id="pdfZoomIn" class="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-sm">+</button>
-        </div>
+  <!-- replace existing pdfModal block with this -->
+<!-- PDF Viewer Modal -->
+<div id="pdfModal" style="z-index:99999;" class="fixed inset-0 hidden items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/60"></div>
+  <div class="relative bg-white rounded-xl w-full max-w-5xl" style="max-height:calc(100vh - 3rem); overflow:hidden; box-shadow:0 20px 50px rgba(0,0,0,0.45);">
+    <div class="flex items-center justify-between gap-3 px-4 py-3 border-b">
+      <div class="flex items-center gap-3">
+        <button id="pdfClose" class="w-9 h-9 rounded-md bg-slate-100 flex items-center justify-center">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+        <div id="pdfTitle" class="font-semibold text-sm">Preview</div>
       </div>
+      <div class="flex items-center gap-2">
+        <button id="pdfPrev" class="px-3 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-sm">Prev</button>
+        <div class="text-sm" id="pdfPageInfo">0 / 0</div>
+        <button id="pdfNext" class="px-3 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-sm">Next</button>
+        <button id="pdfZoomOut" class="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-sm">-</button>
+        <button id="pdfZoomIn" class="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-sm">+</button>
+      </div>
+    </div>
 
-      <div class="flex-1 overflow-auto pdf-modal-scroll p-4" id="pdfContainer" style="display:flex;align-items:center;justify-content:center;">
-        <canvas id="pdfCanvas" class="mx-auto"></canvas>
-        <div id="pdfLoading" class="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 text-white hidden">
-          <div class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-black/60">
-            <svg class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
-            <span>Loading preview…</span>
-          </div>
+    <!-- make the viewer container take the remaining modal height and scroll if needed -->
+    <div class="flex-1 overflow-auto pdf-modal-scroll p-4" id="pdfContainer" style="display:flex;align-items:center;justify-content:center; height: calc(100vh - 7.5rem);">
+      <canvas id="pdfCanvas" class="mx-auto"></canvas>
+      <div id="pdfLoading" class="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 text-white hidden">
+        <div class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-black/60">
+          <svg class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+          </svg>
+          <span>Loading preview…</span>
         </div>
       </div>
     </div>
   </div>
+</div>
 
   <nav class="fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-md border-t border-gray-200/80 z-50 px-4 py-2.5 shadow-lg">
     <div class="max-w-md mx-auto flex justify-between items-center text-center">
@@ -346,32 +351,43 @@
     }
 
     async function renderPdfPage(pageNum){
-      if(!pdfDoc || !pdfCanvas) return;
-      showPdfLoading(true);
-      try {
-        const page = await pdfDoc.getPage(pageNum);
-        const viewport = page.getViewport({ scale: 1 });
-        // fit width to container:
-        const container = document.getElementById('pdfContainer');
-        const maxWidth = Math.min(container.clientWidth - 48, 1000); // padding
-        pdfScale = Math.min(Math.max(pdfScale, 0.4), 3.0);
-        const scale = (maxWidth / viewport.width) * pdfScale;
-        const scaledViewport = page.getViewport({ scale });
-        pdfCanvas.width = Math.floor(scaledViewport.width);
-        pdfCanvas.height = Math.floor(scaledViewport.height);
-        pdfCanvas.style.width = pdfCanvas.width + 'px';
-        pdfCanvas.style.height = pdfCanvas.height + 'px';
-        const renderContext = { canvasContext: pdfCtx, viewport: scaledViewport };
-        if (pdfRendering && pdfRendering.cancel) pdfRendering.cancel();
-        pdfRendering = page.render(renderContext);
-        await pdfRendering.promise;
-        document.getElementById('pdfPageInfo').textContent = `${pageNum} / ${totalPages}`;
-      } catch (err) {
-        console.error('Render error', err);
-      } finally {
-        showPdfLoading(false);
-      }
-    }
+  if(!pdfDoc || !pdfCanvas) return;
+  showPdfLoading(true);
+  try {
+    const page = await pdfDoc.getPage(pageNum);
+
+    // base viewport for the page at scale = 1
+    const viewport = page.getViewport({ scale: 1 });
+
+    // container available size (account for modal paddings/controls)
+    const container = document.getElementById('pdfContainer');
+    const controlsHeight = 72; // approximate header/controls height inside modal (px)
+    const availableWidth = Math.min(container.clientWidth - 48, 1400); // keep some padding
+    const availableHeight = Math.max(200, container.clientHeight - controlsHeight);
+
+    // compute scale so the PDF fits within both width and height
+    const scaleX = availableWidth / viewport.width;
+    const scaleY = availableHeight / viewport.height;
+    const finalScale = Math.min(scaleX, scaleY) * pdfScale;
+
+    const scaledViewport = page.getViewport({ scale: finalScale });
+    pdfCanvas.width = Math.floor(scaledViewport.width);
+    pdfCanvas.height = Math.floor(scaledViewport.height);
+    pdfCanvas.style.width = pdfCanvas.width + 'px';
+    pdfCanvas.style.height = pdfCanvas.height + 'px';
+
+    const renderContext = { canvasContext: pdfCtx, viewport: scaledViewport };
+    if (pdfRendering && pdfRendering.cancel) pdfRendering.cancel();
+    pdfRendering = page.render(renderContext);
+    await pdfRendering.promise;
+
+    document.getElementById('pdfPageInfo').textContent = `${pageNum} / ${totalPages}`;
+  } catch (err) {
+    console.error('Render error', err);
+  } finally {
+    showPdfLoading(false);
+  }
+}
 
     async function openPdfModal(url, title){
       if(!url) { showToast('No PDF available', false); return; }
