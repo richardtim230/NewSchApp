@@ -305,24 +305,64 @@
   const editorEst = document.getElementById('editorEst');
 
   const quill = new Quill('#chapterEditor', {
-    theme: 'snow',
-    placeholder: 'Write chapter content here...',
-    modules: {
-      toolbar: [
-        [{ 'header': [1, 2, 3, 4, false] }],
+  theme: 'snow',
+  placeholder: 'Write chapter content here...',
+  modules: {
+    toolbar: {
+      container: [
+        [{ header: [1, 2, 3, 4, false] }],
         ['bold', 'italic', 'underline', 'strike'],
-        [{ 'color': [] }, { 'background': [] }],
-        [{ 'script': 'sub'}, { 'script': 'super' }],
-        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-        [{ 'indent': '-1'}, { 'indent': '+1' }],
-        [{ 'align': [] }],
+        [{ color: [] }, { background: [] }],
+        [{ script: 'sub' }, { script: 'super' }],
+        [{ list: 'ordered' }, { list: 'bullet' }],
+        [{ indent: '-1' }, { indent: '+1' }],
+        [{ align: [] }],
         ['blockquote', 'code-block'],
         ['link', 'image'],
         ['clean']
-      ]
+      ],
+      handlers: {
+        image: imageHandler
+      }
     }
-  });
+  }
+});
+async function imageHandler() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
 
+  input.onchange = async () => {
+    const file = input.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('image', file);
+
+    try {
+      const res = await fetch(`${API_BASE}/upload`, {
+        method: 'POST',
+        credentials: 'include',
+        body: formData
+      });
+
+      if (!res.ok) throw new Error('Upload failed');
+
+      const data = await res.json();
+
+      const imageUrl = data.url || data.imageUrl || data.secure_url;
+
+      const range = quill.getSelection(true);
+      quill.insertEmbed(range.index, 'image', imageUrl);
+      quill.setSelection(range.index + 1);
+    } catch (err) {
+      console.error(err);
+      showToast('Image upload failed', true);
+    }
+  };
+
+  input.click();
+}
   let chapters = [];
   let currentEditing = null;
   let previewsCollapsed = false;
@@ -681,9 +721,24 @@
   function clientSanitizeHtml(html) {
     const d = document.createElement('div');
     d.innerHTML = html;
+
     d.querySelectorAll('script').forEach(n => n.remove());
-    return d.innerHTML;
-  }
+
+    d.querySelectorAll('p, div').forEach(el => {
+        const text = el.textContent.replace(/\u00A0/g, '').trim();
+        const hasMedia = el.querySelector('img, video, iframe, table');
+        if (!text && !hasMedia) {
+            el.remove();
+        }
+    });
+
+    d.querySelectorAll('br').forEach(br => br.remove());
+
+    return d.innerHTML
+        .replace(/>\s+</g, '><')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+}
 
   const backNavHandler = () => {
     if (document.referrer) window.location.href = document.referrer;
