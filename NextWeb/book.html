@@ -4,6 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=0.85" />
   <title id="pageTitle">Book Details</title>
+
+  <!-- Performance Preconnections & Resource Hints -->
+  <link rel="preconnect" href="https://examguide.onrender.com">
+  <link rel="dns-prefetch" href="//examguide.onrender.com">
+  <link rel="preload" href="/js/read.js" as="script">
+  <link rel="preload" href="/css/read.css" as="style">
+
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -291,6 +298,16 @@
   <script>
     const API_BASE = "https://examguide.onrender.com";
     const CREDIT_COST = 10;
+    let cachedSimilarBooks = null;
+
+    // Prefetch Helper
+    function prefetchPage(url) {
+      if (!url) return;
+      const link = document.createElement("link");
+      link.rel = "prefetch";
+      link.href = url;
+      document.head.appendChild(link);
+    }
 
     function normalizeUrl(u){
       if(!u) return null;
@@ -489,16 +506,21 @@
         return;
       }
 
-      // 2. Detect notebook vs resource
+      const resourceId = res._id || res.id || id;
+
+      // 1. Prefetch the reader page HTML
+      prefetchPage(`/read.html?id=${encodeURIComponent(resourceId)}`);
+
+      // Detect notebook vs resource
       const isNotebook = res.type === "notebook" || res.resourceType === "notebook" || Boolean(res.pages || res.notes || res.subject);
 
-      // 3. Fallbacks for Title & Subtitle
+      // Fallbacks for Title & Subtitle
       const titleText = res.title || res.name || res.notebookTitle || "Untitled";
       document.getElementById('pageTitle').textContent = titleText + ' — StudySphere';
       document.getElementById('title').textContent = titleText;
       document.getElementById('subtitle').textContent = res.subtitle || '';
 
-      // 4. Get the cover correctly
+      // Get the cover correctly
       const coverImg = document.getElementById('coverImg');
       const coverPlaceholder = document.getElementById('coverPlaceholder');
       const cover = res.cover?.url || res.coverImage || res.thumbnail || res.image || (typeof res.cover === 'string' ? res.cover : null);
@@ -541,7 +563,7 @@
       document.getElementById('pubYear').textContent = res.publicationYear || res.year || (res.createdAt ? new Date(res.createdAt).getFullYear() : '—');
       document.getElementById('language').textContent = res.language || 'English';
 
-      // 5. Get the PDF/file correctly
+      // Get the PDF/file correctly
       const mainFile = res.files?.[0] || res.file || res.document || res.pdf || null;
       const fileUrl = normalizeUrl(
         mainFile?.url || mainFile?.path || mainFile?.file || (typeof mainFile === 'string' ? mainFile : null) || res.fileUrl || res.pdfUrl
@@ -552,12 +574,19 @@
       document.getElementById('fileSize').textContent = (mainFile && mainFile.size) ? formatBytes(mainFile.size) : '—';
       document.getElementById('addedDate').textContent = res.createdAt ? isoDateToLocal(res.createdAt) : (res.uploadedAt ? isoDateToLocal(res.uploadedAt) : '—');
 
-      // Fallback for About Text / Description
+      // Description
       const descText = res.description || res.summary || res.abstract || res.content || (res.contentHtml ? res.contentHtml.replace(/<\/?[^>]+(>|$)/g, "") : "");
       document.getElementById('aboutText').textContent = descText || 'No description available.';
 
-      // Owner / Uploader Fallbacks
+      // Owner / Uploader
       const ownerObj = res.uploader || res.owner || res.authorObj || null;
+      const ownerId = (ownerObj && typeof ownerObj === 'object' && (ownerObj._id || ownerObj.id)) || (typeof ownerObj === 'string' ? ownerObj : null);
+      
+      // 3. Prefetch the owner's profile
+      if (ownerId) {
+        prefetchPage(`/profile.html?id=${encodeURIComponent(ownerId)}`);
+      }
+
       const ownerName = (typeof ownerObj === 'object' && ownerObj) 
         ? (ownerObj.fullname || ownerObj.username || ownerObj.name) 
         : (typeof ownerObj === 'string' ? ownerObj : (res.author || '—'));
@@ -575,10 +604,45 @@
         document.getElementById('ratingBlock').classList.remove('hidden');
       }
 
-      const previewUrl = res.previewUrl ? normalizeUrl(res.previewUrl) : (res.readOnlineUrl ? normalizeUrl(res.readOnlineUrl) : null);
+      // 4. Prefetch similar books API immediately
+      fetch(`${API_BASE}/api/resource/similar/${encodeURIComponent(resourceId)}`, { credentials: "include" })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { cachedSimilarBooks = data; })
+        .catch(() => {});
+
+      // 7. Prefetch PDF when user demonstrates intent (Hover or Touch)
+      let pdfPrefetched = false;
+      const prefetchPdfOnIntent = () => {
+        if (pdfPrefetched || !fileUrl) return;
+        pdfPrefetched = true;
+
+        fetch(fileUrl, { mode: "cors", credentials: "include" }).catch(() => {});
+        prefetchPage(fileUrl);
+      };
 
       const previewBtn = document.getElementById('previewBtn');
       const readBtn = document.getElementById('readBtn');
+
+      readBtn.addEventListener("mouseenter", prefetchPdfOnIntent);
+      readBtn.addEventListener("touchstart", prefetchPdfOnIntent, { passive: true });
+      previewBtn.addEventListener("mouseenter", prefetchPdfOnIntent);
+      previewBtn.addEventListener("touchstart", prefetchPdfOnIntent, { passive: true });
+
+      // 8. Service Worker prefetch coordination
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then(registration => {
+          registration.active?.postMessage({
+            type: "PREFETCH",
+            urls: [
+              `/read.html?id=${encodeURIComponent(resourceId)}`,
+              fileUrl,
+              ownerId ? `/profile.html?id=${encodeURIComponent(ownerId)}` : null
+            ].filter(Boolean)
+          });
+        }).catch(() => {});
+      }
+
+      const previewUrl = res.previewUrl ? normalizeUrl(res.previewUrl) : (res.readOnlineUrl ? normalizeUrl(res.readOnlineUrl) : null);
 
       previewBtn.addEventListener('click', (e) => {
         const pdfToPreview = previewUrl || fileUrl;
@@ -607,8 +671,7 @@
 
       document.getElementById('requestBorrowBtn').addEventListener('click', () => showToast('Request feature not configured', false));
       document.getElementById('viewProfileBtn').addEventListener('click', () => {
-        const uid = (ownerObj && typeof ownerObj === 'object' && (ownerObj._id || ownerObj.id)) || null;
-        if(uid) window.location.href = `/profile.html?id=${encodeURIComponent(uid)}`; else showToast('No profile available', false);
+        if(ownerId) window.location.href = `/profile.html?id=${encodeURIComponent(ownerId)}`; else showToast('No profile available', false);
       });
     }
 
