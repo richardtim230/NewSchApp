@@ -294,6 +294,7 @@
 
     function normalizeUrl(u){
       if(!u) return null;
+      if(typeof u !== 'string') return null;
       if(u.startsWith("http://")||u.startsWith("https://")) return u;
       if(u.startsWith("/")) return API_BASE + u;
       return API_BASE + (u.startsWith("uploads/") ? "/" + u : "/" + u);
@@ -307,16 +308,23 @@
 
     function qsParam(name){ const params = new URLSearchParams(window.location.search); return params.get(name); }
 
-    async function fetchResourceById(id){
-      if(!id) return null;
-      const candidates = [`${API_BASE}/api/resource/${id}`, `${API_BASE}/api/resources/${id}`];
-      for(const url of candidates){
-        const j = await tryFetch(url, { credentials: 'include' });
-        if(!j) continue;
-        if(j.resource) return j.resource;
-        if(j.data) return j.data;
-        if(j._id || j.id) return j;
-        if(j.item) return j.item;
+    async function fetchItemById(id) {
+      if (!id) return null;
+      const endpoints = [
+        `${API_BASE}/api/notebooks/${id}`,
+        `${API_BASE}/api/notebook/${id}`,
+        `${API_BASE}/api/resource/${id}`,
+        `${API_BASE}/api/resources/${id}`
+      ];
+      for (const endpoint of endpoints) {
+        try {
+          const response = await fetch(endpoint, { credentials: "include" });
+          if (!response.ok) continue;
+          const data = await response.json();
+          return (
+            data.notebook || data.resource || data.data || data.item || data
+          );
+        } catch (_) {}
       }
       return null;
     }
@@ -469,61 +477,96 @@
     async function init(){
       const id = qsParam('id');
       if(!id){
-        document.getElementById('pageTitle').textContent = 'Resource not found';
-        document.getElementById('aboutText') && (document.getElementById('aboutText').textContent = 'No resource id provided.');
+        document.getElementById('pageTitle').textContent = 'Item not found';
+        document.getElementById('aboutText') && (document.getElementById('aboutText').textContent = 'No item id provided.');
         return;
       }
 
-      const res = await fetchResourceById(id);
+      const res = await fetchItemById(id);
       if(!res){
-        document.getElementById('pageTitle').textContent = 'Resource not found';
-        document.getElementById('aboutText') && (document.getElementById('aboutText').textContent = 'Resource could not be loaded.');
+        document.getElementById('pageTitle').textContent = 'Item not found';
+        document.getElementById('aboutText') && (document.getElementById('aboutText').textContent = 'Item could not be loaded.');
         return;
       }
 
-      document.getElementById('pageTitle').textContent = (res.title || res.name || 'Resource') + ' — StudySphere';
+      // 2. Detect notebook vs resource
+      const isNotebook = res.type === "notebook" || res.resourceType === "notebook" || Boolean(res.pages || res.notes || res.subject);
 
+      // 3. Fallbacks for Title & Subtitle
+      const titleText = res.title || res.name || res.notebookTitle || "Untitled";
+      document.getElementById('pageTitle').textContent = titleText + ' — StudySphere';
+      document.getElementById('title').textContent = titleText;
+      document.getElementById('subtitle').textContent = res.subtitle || '';
+
+      // 4. Get the cover correctly
       const coverImg = document.getElementById('coverImg');
       const coverPlaceholder = document.getElementById('coverPlaceholder');
-      if(res.cover && res.cover.url){
-        const url = normalizeUrl(res.cover.url);
-        coverImg.src = url; coverImg.classList.remove('hidden'); coverPlaceholder.classList.add('hidden');
-      } else if(res.thumbnail){
-        const url = normalizeUrl(res.thumbnail);
-        coverImg.src = url; coverImg.classList.remove('hidden'); coverPlaceholder.classList.add('hidden');
+      const cover = res.cover?.url || res.coverImage || res.thumbnail || res.image || (typeof res.cover === 'string' ? res.cover : null);
+      if (cover) {
+        coverImg.src = normalizeUrl(cover);
+        coverImg.classList.remove("hidden");
+        coverPlaceholder.classList.add("hidden");
       } else {
-        coverImg.classList.add('hidden'); coverPlaceholder.classList.remove('hidden');
+        coverImg.classList.add("hidden");
+        coverPlaceholder.classList.remove("hidden");
       }
 
-      document.getElementById('title').textContent = res.title || res.name || 'Untitled';
-      document.getElementById('subtitle').textContent = res.subtitle || '';
-      document.getElementById('authors').textContent = Array.isArray(res.authors) ? res.authors.join(', ') : (res.authors || res.author || '');
+      // Fallbacks for Authors
+      const authorText = Array.isArray(res.authors) 
+        ? res.authors.join(", ") 
+        : (res.author || res.authors || res.owner?.fullname || res.uploader?.fullname || res.uploader?.username || res.uploader || res.owner || "");
+      document.getElementById('authors').textContent = authorText;
+
       if(res.published === false || res.published === 'false') document.getElementById('availabilityBadge').classList.add('hidden'); else document.getElementById('availabilityBadge').classList.remove('hidden');
 
+      // Tag Chips
       const tagsWrap = document.getElementById('tagChips');
       tagsWrap.innerHTML = '';
-      if(Array.isArray(res.tags) && res.tags.length){
-        res.tags.forEach(t => { const sp = document.createElement('span'); sp.className='inline-flex items-center px-3 py-1 rounded-lg bg-blue-50 text-brand-blue text-[11px] font-semibold'; sp.textContent=escapeHtml(t); tagsWrap.appendChild(sp); });
+      const tagsList = Array.isArray(res.tags) ? res.tags : (typeof res.tags === 'string' ? res.tags.split(',') : []);
+      if(tagsList.length){
+        tagsList.forEach(t => { 
+          if(!t) return;
+          const sp = document.createElement('span'); 
+          sp.className='inline-flex items-center px-3 py-1 rounded-lg bg-blue-50 text-brand-blue text-[11px] font-semibold'; 
+          sp.textContent=escapeHtml(t.trim()); 
+          tagsWrap.appendChild(sp); 
+        });
       }
 
-      document.getElementById('category').textContent = res.department || res.category || res.faculty || '—';
-      document.getElementById('publisher').textContent = res.publisher || '—';
+      // Metadata Fallbacks
+      document.getElementById('category').textContent = res.department || res.category || res.faculty || res.subject || '—';
+      document.getElementById('publisher').textContent = res.publisher || res.school || res.university || '—';
       document.getElementById('edition').textContent = res.edition || '—';
-      document.getElementById('pages').textContent = res.pages || '—';
-      document.getElementById('pubYear').textContent = res.publicationYear || res.year || '—';
-      document.getElementById('language').textContent = res.language || '—';
-      document.getElementById('format').textContent = res.format || (res.files && res.files[0] && (res.files[0].mimeType||res.files[0].mimetype) ) || '—';
-      document.getElementById('isbn').textContent = res.isbn13 || res.isbn10 || '—';
-      document.getElementById('fileSize').textContent = (res.files && res.files[0] && res.files[0].size) ? formatBytes(res.files[0].size) : '—';
-      document.getElementById('addedDate').textContent = res.createdAt ? isoDateToLocal(res.createdAt) : (res.uploadedAt ? isoDateToLocal(res.uploadedAt) : '—');
-      document.getElementById('aboutText').textContent = res.contentHtml ? (res.contentHtml.replace(/<\/?[^>]+(>|$)/g, "").slice(0,2000)) : (res.description || res.summary || '');
+      document.getElementById('pages').textContent = res.pages || res.pageCount || res.notesCount || '—';
+      document.getElementById('pubYear').textContent = res.publicationYear || res.year || (res.createdAt ? new Date(res.createdAt).getFullYear() : '—');
+      document.getElementById('language').textContent = res.language || 'English';
 
-      const ownerName = res.uploader && (res.uploader.fullname || res.uploader.username) ? (res.uploader.fullname || res.uploader.username) : (res.uploader || res.owner || res.uploadedBy || '—');
+      // 5. Get the PDF/file correctly
+      const mainFile = res.files?.[0] || res.file || res.document || res.pdf || null;
+      const fileUrl = normalizeUrl(
+        mainFile?.url || mainFile?.path || mainFile?.file || (typeof mainFile === 'string' ? mainFile : null) || res.fileUrl || res.pdfUrl
+      );
+
+      document.getElementById('format').textContent = res.format || (mainFile && (mainFile.mimeType || mainFile.mimetype)) || (fileUrl ? 'PDF' : '—');
+      document.getElementById('isbn').textContent = res.isbn13 || res.isbn10 || '—';
+      document.getElementById('fileSize').textContent = (mainFile && mainFile.size) ? formatBytes(mainFile.size) : '—';
+      document.getElementById('addedDate').textContent = res.createdAt ? isoDateToLocal(res.createdAt) : (res.uploadedAt ? isoDateToLocal(res.uploadedAt) : '—');
+
+      // Fallback for About Text / Description
+      const descText = res.description || res.summary || res.abstract || res.content || (res.contentHtml ? res.contentHtml.replace(/<\/?[^>]+(>|$)/g, "") : "");
+      document.getElementById('aboutText').textContent = descText || 'No description available.';
+
+      // Owner / Uploader Fallbacks
+      const ownerObj = res.uploader || res.owner || res.authorObj || null;
+      const ownerName = (typeof ownerObj === 'object' && ownerObj) 
+        ? (ownerObj.fullname || ownerObj.username || ownerObj.name) 
+        : (typeof ownerObj === 'string' ? ownerObj : (res.author || '—'));
       document.getElementById('ownerName').textContent = ownerName;
-      document.getElementById('ownerMeta').textContent = (res.faculty ? res.faculty + ' • ' : '') + (res.level || '');
-      if(res.uploader && (res.uploader.profilePic || res.uploader.avatar)){
-        document.getElementById('ownerAvatar').src = normalizeUrl(res.uploader.profilePic || res.uploader.avatar);
-        document.getElementById('ownerVerified').classList.toggle('hidden', !res.uploader.verified);
+      document.getElementById('ownerMeta').textContent = (res.faculty || res.department ? (res.faculty || res.department) + ' • ' : '') + (res.level || res.semester || '');
+      
+      if(ownerObj && typeof ownerObj === 'object' && (ownerObj.profilePic || ownerObj.avatar)){
+        document.getElementById('ownerAvatar').src = normalizeUrl(ownerObj.profilePic || ownerObj.avatar);
+        document.getElementById('ownerVerified').classList.toggle('hidden', !ownerObj.verified);
       }
 
       if(res.rating || res.ratingsCount){
@@ -532,8 +575,6 @@
         document.getElementById('ratingBlock').classList.remove('hidden');
       }
 
-      const mainFile = (res.files && res.files[0]) || res.file || null;
-      const fileUrl = mainFile && (mainFile.url || mainFile.path) ? normalizeUrl(mainFile.url || mainFile.path) : null;
       const previewUrl = res.previewUrl ? normalizeUrl(res.previewUrl) : (res.readOnlineUrl ? normalizeUrl(res.readOnlineUrl) : null);
 
       const previewBtn = document.getElementById('previewBtn');
@@ -544,7 +585,7 @@
         if(!pdfToPreview) { showToast('No preview available', false); return; }
         const isPdf = /\.pdf($|\?)/i.test(pdfToPreview) || (mainFile && (mainFile.mimeType||mainFile.mimetype) && /pdf/i.test(mainFile.mimeType||mainFile.mimetype));
         if(isPdf) {
-          openPdfModal(pdfToPreview, res.title || 'Preview', CREDIT_COST);
+          openPdfModal(pdfToPreview, titleText || 'Preview', CREDIT_COST);
         } else {
           window.open(pdfToPreview, '_blank');
         }
@@ -559,14 +600,14 @@
       document.getElementById('bookmarkBtn').addEventListener('click', async () => { showToast('Bookmark feature not configured', false);});
       document.getElementById('shareBtn').addEventListener('click', () => {
         const shareTarget = fileUrl || (window.location.href);
-        if(navigator.share){ navigator.share({ title: res.title || 'Resource', url: shareTarget }).catch(()=>{}); } else { navigator.clipboard?.writeText(shareTarget).then(()=> showToast('Link copied!')).catch(()=>showToast('Copy failed', false)); }
+        if(navigator.share){ navigator.share({ title: titleText || 'Resource', url: shareTarget }).catch(()=>{}); } else { navigator.clipboard?.writeText(shareTarget).then(()=> showToast('Link copied!')).catch(()=>showToast('Copy failed', false)); }
       });
 
       document.getElementById('backBtn').addEventListener('click', () => history.back());
 
       document.getElementById('requestBorrowBtn').addEventListener('click', () => showToast('Request feature not configured', false));
       document.getElementById('viewProfileBtn').addEventListener('click', () => {
-        const uid = (res.uploader && (res.uploader._id || res.uploader.id)) || null;
+        const uid = (ownerObj && typeof ownerObj === 'object' && (ownerObj._id || ownerObj.id)) || null;
         if(uid) window.location.href = `/profile.html?id=${encodeURIComponent(uid)}`; else showToast('No profile available', false);
       });
     }
