@@ -233,11 +233,12 @@
       </button>
     </section>
 
+    <!-- UPLOADER / OWNER SECTION -->
     <section class="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm flex items-center justify-between gap-3">
       <div class="flex items-center gap-3 min-w-0">
-        <img id="ownerAvatar" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80" alt="Owner" class="w-12 h-12 rounded-full object-cover shrink-0">
+        <img id="ownerAvatar" src="https://ui-avatars.com/api/?name=User&background=1664FF&color=fff" alt="Uploader" class="w-12 h-12 rounded-full object-cover shrink-0 border border-gray-100">
         <div class="min-w-0">
-          <span class="text-[10px] font-medium text-gray-400 block">Owned by</span>
+          <span class="text-[10px] font-medium text-gray-400 block">Uploaded by</span>
           <div class="flex items-center gap-1">
             <h3 id="ownerName" class="font-bold text-xs text-gray-900 truncate">—</h3>
             <i id="ownerVerified" class="fa-solid fa-circle-check text-brand-blue text-[11px] hidden"></i>
@@ -508,8 +509,8 @@
 
       const resourceId = res._id || res.id || id;
 
-      // 1. Prefetch the reader page HTML
-      prefetchPage(`/read.html?id=${encodeURIComponent(resourceId)}`);
+      // 1. Prefetch reader page
+      prefetchPage(`read.html?id=${encodeURIComponent(resourceId)}`);
 
       // Detect notebook vs resource
       const isNotebook = res.type === "notebook" || res.resourceType === "notebook" || Boolean(res.pages || res.notes || res.subject);
@@ -520,7 +521,7 @@
       document.getElementById('title').textContent = titleText;
       document.getElementById('subtitle').textContent = res.subtitle || '';
 
-      // Get the cover correctly
+      // Get cover image
       const coverImg = document.getElementById('coverImg');
       const coverPlaceholder = document.getElementById('coverPlaceholder');
       const cover = res.cover?.url || res.coverImage || res.thumbnail || res.image || (typeof res.cover === 'string' ? res.cover : null);
@@ -563,7 +564,7 @@
       document.getElementById('pubYear').textContent = res.publicationYear || res.year || (res.createdAt ? new Date(res.createdAt).getFullYear() : '—');
       document.getElementById('language').textContent = res.language || 'English';
 
-      // Get the PDF/file correctly
+      // Get PDF/file correctly
       const mainFile = res.files?.[0] || res.file || res.document || res.pdf || null;
       const fileUrl = normalizeUrl(
         mainFile?.url || mainFile?.path || mainFile?.file || (typeof mainFile === 'string' ? mainFile : null) || res.fileUrl || res.pdfUrl
@@ -578,44 +579,89 @@
       const descText = res.description || res.summary || res.abstract || res.content || (res.contentHtml ? res.contentHtml.replace(/<\/?[^>]+(>|$)/g, "") : "");
       document.getElementById('aboutText').textContent = descText || 'No description available.';
 
-      // Owner / Uploader
-      const ownerObj = res.uploader || res.owner || res.authorObj || null;
-      const ownerId = (ownerObj && typeof ownerObj === 'object' && (ownerObj._id || ownerObj.id)) || (typeof ownerObj === 'string' ? ownerObj : null);
+      // ==========================================
+      // UPLOADER / OWNER DATA EXTRACTION (UPDATED)
+      // ==========================================
+      const uploaderObj = res.uploader || res.owner || res.uploadedBy || res.authorObj || res.user || res.creator || null;
       
-      // 3. Prefetch the owner's profile
+      const ownerId = (uploaderObj && typeof uploaderObj === 'object') 
+        ? (uploaderObj._id || uploaderObj.id) 
+        : (typeof uploaderObj === 'string' ? uploaderObj : null);
+      
+      // Prefetch profile page
       if (ownerId) {
-        prefetchPage(`/profile.html?id=${encodeURIComponent(ownerId)}`);
+        prefetchPage(`profile.html?id=${encodeURIComponent(ownerId)}`);
       }
 
-      const ownerName = (typeof ownerObj === 'object' && ownerObj) 
-        ? (ownerObj.fullname || ownerObj.username || ownerObj.name) 
-        : (typeof ownerObj === 'string' ? ownerObj : (res.author || '—'));
-      document.getElementById('ownerName').textContent = ownerName;
-      document.getElementById('ownerMeta').textContent = (res.faculty || res.department ? (res.faculty || res.department) + ' • ' : '') + (res.level || res.semester || '');
-      
-      if(ownerObj && typeof ownerObj === 'object' && (ownerObj.profilePic || ownerObj.avatar)){
-        document.getElementById('ownerAvatar').src = normalizeUrl(ownerObj.profilePic || ownerObj.avatar);
-        document.getElementById('ownerVerified').classList.toggle('hidden', !ownerObj.verified);
+      // Extract Uploader Name
+      let uploaderName = '—';
+      if (typeof uploaderObj === 'object' && uploaderObj !== null) {
+        uploaderName = uploaderObj.fullname || uploaderObj.fullName || uploaderObj.name || uploaderObj.username || uploaderObj.userName || '—';
+      } else if (typeof uploaderObj === 'string') {
+        uploaderName = uploaderObj;
+      } else if (res.author) {
+        uploaderName = res.author;
+      }
+      document.getElementById('ownerName').textContent = uploaderName;
+
+      // Extract Department & Meta
+      let uploaderDept = '';
+      if (typeof uploaderObj === 'object' && uploaderObj !== null) {
+        uploaderDept = uploaderObj.department || uploaderObj.dept || uploaderObj.faculty || '';
+      }
+      if (!uploaderDept) {
+        uploaderDept = res.department || res.faculty || '';
       }
 
+      const levelOrMeta = (typeof uploaderObj === 'object' && uploaderObj?.level) 
+        ? uploaderObj.level 
+        : (res.level || res.semester || '');
+
+      let metaText = uploaderDept;
+      if (metaText && levelOrMeta) {
+        metaText += ` • ${levelOrMeta}`;
+      } else if (!metaText) {
+        metaText = levelOrMeta || 'Contributor';
+      }
+      document.getElementById('ownerMeta').textContent = metaText;
+
+      // Extract Profile Picture & Fallback Avatar
+      let picUrl = null;
+      if (typeof uploaderObj === 'object' && uploaderObj !== null) {
+        picUrl = uploaderObj.profilePic || uploaderObj.profilePicture || uploaderObj.avatar || uploaderObj.photo || uploaderObj.image || uploaderObj.picture;
+      }
+
+      const fallbackAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(uploaderName)}&background=1664FF&color=fff`;
+      const avatarImg = document.getElementById('ownerAvatar');
+      avatarImg.src = picUrl ? normalizeUrl(picUrl) : fallbackAvatar;
+      avatarImg.onerror = () => { avatarImg.src = fallbackAvatar; };
+
+      // Verification Badge
+      if (typeof uploaderObj === 'object' && uploaderObj !== null) {
+        const isVerified = Boolean(uploaderObj.verified || uploaderObj.isVerified);
+        document.getElementById('ownerVerified').classList.toggle('hidden', !isVerified);
+      } else {
+        document.getElementById('ownerVerified').classList.add('hidden');
+      }
+
+      // Rating block
       if(res.rating || res.ratingsCount){
         document.getElementById('ratingValue').textContent = res.rating || '—';
         document.getElementById('ratingCount').textContent = res.ratingsCount ? `(${res.ratingsCount})` : '';
         document.getElementById('ratingBlock').classList.remove('hidden');
       }
 
-      // 4. Prefetch similar books API immediately
+      // Prefetch similar books API immediately
       fetch(`${API_BASE}/api/resource/similar/${encodeURIComponent(resourceId)}`, { credentials: "include" })
         .then(r => r.ok ? r.json() : null)
         .then(data => { cachedSimilarBooks = data; })
         .catch(() => {});
 
-      // 7. Prefetch PDF when user demonstrates intent (Hover or Touch)
+      // Prefetch PDF on Intent
       let pdfPrefetched = false;
       const prefetchPdfOnIntent = () => {
         if (pdfPrefetched || !fileUrl) return;
         pdfPrefetched = true;
-
         fetch(fileUrl, { mode: "cors", credentials: "include" }).catch(() => {});
         prefetchPage(fileUrl);
       };
@@ -628,7 +674,7 @@
       previewBtn.addEventListener("mouseenter", prefetchPdfOnIntent);
       previewBtn.addEventListener("touchstart", prefetchPdfOnIntent, { passive: true });
 
-      // 8. Service Worker prefetch coordination
+      // Service Worker prefetch
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.ready.then(registration => {
           registration.active?.postMessage({
@@ -636,7 +682,7 @@
             urls: [
               `/read.html?id=${encodeURIComponent(resourceId)}`,
               fileUrl,
-              ownerId ? `/profile.html?id=${encodeURIComponent(ownerId)}` : null
+              ownerId ? `profile.html?id=${encodeURIComponent(ownerId)}` : null
             ].filter(Boolean)
           });
         }).catch(() => {});
@@ -671,7 +717,7 @@
 
       document.getElementById('requestBorrowBtn').addEventListener('click', () => showToast('Request feature not configured', false));
       document.getElementById('viewProfileBtn').addEventListener('click', () => {
-        if(ownerId) window.location.href = `/profile.html?id=${encodeURIComponent(ownerId)}`; else showToast('No profile available', false);
+        if(ownerId) window.location.href = `profile.html?id=${encodeURIComponent(ownerId)}`; else showToast('No profile available', false);
       });
     }
 
