@@ -7,15 +7,18 @@
 })();
 
 // ====== REDIRECT HELPER ======
-function handleAuthSuccess(defaultUrl = 'loader') {
+function handleAuthSuccess(defaultUrl = "loader") {
     const urlParams = new URLSearchParams(window.location.search);
-    const redirectTo = urlParams.get('redirect');
+
+    const redirectTo =
+        urlParams.get("redirect") ||
+        sessionStorage.getItem("authRedirect");
+
+    sessionStorage.removeItem("authRedirect");
 
     if (redirectTo) {
-        // Redirect back to the intended page
         window.location.href = decodeURIComponent(redirectTo);
     } else {
-        // Fallback to default page if no redirect URL was specified
         window.location.href = defaultUrl;
     }
 }
