@@ -480,42 +480,43 @@
       });
 
       document.getElementById("confirmProceed").addEventListener("click", async () => {
+        const proceedBtn = document.getElementById("confirmProceed");
+        proceedBtn.disabled = true;
+        proceedBtn.textContent = "Processing...";
 
-    const id = qsParam("id");
+        const id = qsParam("id");
+        const token = localStorage.getItem("token");
 
-    const token = localStorage.getItem("token");
-
-    try {
-
-        const response = await fetch(
+        try {
+          const response = await fetch(
             `${API_BASE}/api/resource/${id}/read`,
             {
-                method: "POST",
-                headers: {
-                    Authorization: `Bearer ${token}`
-                },
-                credentials: "include"
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`
+              },
+              credentials: "include"
             }
-        );
+          );
 
-        const data = await response.json();
+          const data = await response.json();
 
-        if (!response.ok) {
+          if (!response.ok) {
             showToast(data.error || "Unable to continue", false);
+            proceedBtn.disabled = false;
+            proceedBtn.textContent = "Proceed";
             return;
+          }
+
+          showToast("10 credits deducted successfully.");
+          window.location.href = `read.html?id=${id}`;
+
+        } catch (err) {
+          showToast("Network error", false);
+          proceedBtn.disabled = false;
+          proceedBtn.textContent = "Proceed";
         }
-
-        showToast("10 credits deducted successfully.");
-
-        window.location.href = `read.html?id=${id}`;
-
-    } catch (err) {
-
-        showToast("Network error", false);
-
-    }
-
-});
+      });
 
       window.addEventListener('keydown', (e) => { if (e.key === 'Escape'){ const pm = document.getElementById('pdfModal'); const cm = document.getElementById('confirmModal'); if (!pm.classList.contains('hidden')) closePdfModal(); if (!cm.classList.contains('hidden')) { cm.classList.add('hidden'); document.body.style.overflow = ''; } } });
       document.getElementById('pdfModal').addEventListener('click', (e) => { if (e.target.id === 'pdfModal') closePdfModal(); });
@@ -745,10 +746,34 @@
         }
       });
 
-      readBtn.addEventListener('click', (e) => {
-        document.getElementById('confirmText').textContent = `Continuing will deduct ${CREDIT_COST} credit points from your balance. Do you want to continue?`;
-        document.getElementById('confirmModal').classList.remove('hidden');
-        document.body.style.overflow = 'hidden';
+      readBtn.addEventListener("click", async () => {
+        const token = localStorage.getItem("token");
+
+        try {
+          const resAccess = await fetch(
+            `${API_BASE}/api/resource/${resourceId}/read-access`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`
+              }
+            }
+          );
+
+          const data = await resAccess.json();
+
+          if (data.hasAccess) {
+            window.location.href = `read.html?id=${resourceId}`;
+            return;
+          }
+        } catch (e) {
+          console.error(e);
+        }
+
+        document.getElementById("confirmText").textContent =
+          `Continuing will deduct ${CREDIT_COST} credit points from your balance. Do you want to continue?`;
+
+        document.getElementById("confirmModal").classList.remove("hidden");
+        document.body.style.overflow = "hidden";
       });
 
       document.getElementById('bookmarkBtn').addEventListener('click', async () => { showToast('Bookmark feature not configured', false);});
