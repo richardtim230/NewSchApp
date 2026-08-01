@@ -1317,7 +1317,7 @@
       const preview = document.getElementById(previewId);
       const defaultContent = document.getElementById(defaultId);
 
-      if (!input || !box || !preview || !defaultContent) return;
+      if (!input || !box) return;
 
       box.addEventListener('click', () => input.click());
       input.addEventListener('change', () => {
@@ -1327,7 +1327,7 @@
         const url = URL.createObjectURL(f);
         preview.src = url;
         preview.classList.remove('hidden');
-        defaultContent.classList.add('sample-hidden');
+        if (defaultContent) defaultContent.classList.add('sample-hidden');
       });
     }
 
@@ -1345,19 +1345,23 @@
       unselectedBtn.className = "flex items-center justify-center gap-2.5 px-4 py-3 rounded-xl border-2 border-slate-200 bg-white text-slate-600 hover:border-slate-300 transition-all";
     }
 
-    btnTextbookType.addEventListener('click', () => {
-      activeResourceType = 'textbook';
-      textbookFlowContainer.classList.remove('hidden');
-      notebookFields.classList.add('hidden');
-      setTypeActive(btnTextbookType, btnNotebookType);
-    });
+    if (btnTextbookType) {
+      btnTextbookType.addEventListener('click', () => {
+        activeResourceType = 'textbook';
+        textbookFlowContainer.classList.remove('hidden');
+        notebookFields.classList.add('hidden');
+        setTypeActive(btnTextbookType, btnNotebookType);
+      });
+    }
 
-    btnNotebookType.addEventListener('click', () => {
-      activeResourceType = 'notebook';
-      textbookFlowContainer.classList.add('hidden');
-      notebookFields.classList.remove('hidden');
-      setTypeActive(btnNotebookType, btnTextbookType);
-    });
+    if (btnNotebookType) {
+      btnNotebookType.addEventListener('click', () => {
+        activeResourceType = 'notebook';
+        textbookFlowContainer.classList.add('hidden');
+        notebookFields.classList.remove('hidden');
+        setTypeActive(btnNotebookType, btnTextbookType);
+      });
+    }
 
     // NOTEBOOK SUB-NAVIGATION (Create New Book vs Continue Existing Book)
     const notebookChoiceContainer = document.getElementById('notebookChoiceContainer');
@@ -1411,66 +1415,70 @@
         const formData = new FormData();
 
         formData.append("resourceType", "notebook");
-        formData.append("title", (document.getElementById("createBookTitle").value || "").trim());
-        formData.append("description", (document.getElementById("createBookDescription").value || "").trim());
-        formData.append("introduction", (document.getElementById("createBookIntroduction").value || "").trim());
+        formData.append("title", document.getElementById("createBookTitle").value.trim());
+        formData.append("description", document.getElementById("createBookDescription").value.trim());
+        formData.append("introduction", document.getElementById("createBookIntroduction").value.trim());
 
-        formData.append("faculty", document.getElementById("createBookFaculty").value || "");
-        formData.append("department", document.getElementById("createBookDept").value || "");
-        formData.append("courseCode", document.getElementById("createBookCourse").value || "");
+        formData.append("faculty", document.getElementById("createBookFaculty").value);
+        formData.append("department", document.getElementById("createBookDept").value);
+        formData.append("courseCode", document.getElementById("createBookCourse").value);
+        formData.append("courseTitle", document.getElementById("createBookCourse").selectedOptions[0]?.text || "");
+        formData.append("lecturer", document.getElementById("createBookLecturer").value.trim());
 
-        const courseSelect = document.getElementById("createBookCourse");
-        const courseTitle = courseSelect && courseSelect.selectedOptions[0] ? courseSelect.selectedOptions[0].text : "";
-        formData.append("courseTitle", courseTitle);
+        formData.append(
+            "visibility",
+            document.querySelector('input[name="createBookVisibility"]:checked').value
+        );
 
-        formData.append("lecturer", (document.getElementById("createBookLecturer").value || "").trim());
-
-        const visibilityRadio = document.querySelector('input[name="createBookVisibility"]:checked');
-        formData.append("visibility", visibilityRadio ? visibilityRadio.value : "public");
+        formData.append("allowPreview", "true");
+        formData.append("allowComments", "true");
+        formData.append("enableDownload", "true");
 
         if (selectedNBCover) {
-          formData.append("coverFile", selectedNBCover);
+            formData.append("coverFile", selectedNBCover);
         }
 
-        const tags = Array.from(document.getElementById("nbTagsList").children || [])
-          .map((tag) => tag.dataset.tag)
-          .filter(Boolean);
+        const nbTags = Array.from(document.getElementById("nbTagsList").children)
+            .map((tag) => tag.dataset.tag);
 
-        if (tags.length) {
-          formData.append("tags", JSON.stringify(tags));
+        if (nbTags.length) {
+            formData.append("tags", JSON.stringify(nbTags));
         }
 
         const token = localStorage.getItem("token");
 
         try {
-          const response = await fetch(API_BASE + "/api/resource", {
-            method: "POST",
-            credentials: "include",
-            body: formData,
-            headers: token
-              ? { Authorization: `Bearer ${token}` }
-              : undefined
-          });
+            const response = await fetch(API_BASE + "/api/resource", {
+                method: "POST",
+                credentials: "include",
+                body: formData,
+                headers: token
+                    ? {
+                          Authorization: `Bearer ${token}`
+                      }
+                    : undefined
+            });
 
-          const body = await response.json();
+            const body = await response.json();
 
-          if (!response.ok) {
-            throw new Error(body.error || "Failed to create book");
-          }
+            if (!response.ok) {
+                throw new Error(body.error || "Failed to create book");
+            }
 
-          const resource = body.resource || body.data;
-          showToast("Notebook created successfully!", true);
+            const resource = body.resource || body.data;
 
-          setTimeout(() => {
-            window.location.href = `/NextWeb/Noteworkspace.html?id=${resource._id}`;
-          }, 800);
+            showToast("Notebook created successfully!", true);
+
+            setTimeout(() => {
+                window.location.href = `/Noteworkspace.html?id=${resource._id}`;
+            }, 800);
 
         } catch (err) {
-          console.error(err);
-          showToast(err.message || "Failed to create notebook", false);
+            console.error(err);
+            showToast(err.message || "Failed to create book", false);
         } finally {
-          btnSubmit.disabled = false;
-          btnSubmit.classList.remove("opacity-60", "cursor-not-allowed");
+            btnSubmit.disabled = false;
+            btnSubmit.classList.remove("opacity-60", "cursor-not-allowed");
         }
       });
     }
@@ -1481,7 +1489,7 @@
       btnPublishExistingNote.addEventListener('click', async () => {
         const bookId = document.getElementById('existingBookSelect').value;
         if (!bookId) {
-          showToast('Please select a notebook first', false);
+          showToast('Please select a book first', false);
           return;
         }
 
@@ -1491,8 +1499,9 @@
           return;
         }
 
-        showToast('Note added to notebook successfully!', true);
+        showToast('Note added to existing book successfully!', true);
         setTimeout(() => {
+          // Redirect to the note workspace page with the resource id in the query string
           const qs = new URLSearchParams({ id: bookId });
           window.location.href = `Noteworkspace.html?${qs.toString()}`;
         }, 1000);
@@ -1513,47 +1522,35 @@
         if (selectedCover) formData.append('coverFile', selectedCover);
 
         formData.append('resourceType', activeResourceType);
-        formData.append('title', (document.getElementById('bookTitle').value || "").trim());
-        formData.append('subtitle', (document.getElementById('bookSubtitle').value || "").trim());
-        formData.append('authors', (document.getElementById('bookAuthor').value || "").trim());
-        formData.append('coauthors', (document.getElementById('bookCoAuthor').value || "").trim());
-        formData.append('publisher', (document.getElementById('bookPublisher').value || "").trim());
-        formData.append('edition', (document.getElementById('bookEdition').value || "").trim());
-        formData.append('isbn10', (document.getElementById('isbn10').value || "").trim());
-        formData.append('isbn13', (document.getElementById('isbn13').value || "").trim());
-        formData.append('language', document.getElementById('languageSelect').value || "English");
-        formData.append('publicationYear', document.getElementById('pubYearSelect').value || "");
-        formData.append('pages', document.getElementById('bookPages').value || "");
-        formData.append('format', document.getElementById('formatSelect').value || "");
-        formData.append('faculty', document.getElementById('textbookFaculty').value || "");
-        formData.append('department', document.getElementById('textbookDept').value || "");
-        formData.append('level', document.getElementById('textbookLevel').value || "");
-        formData.append('semester', document.getElementById('textbookSemester').value || "");
-        formData.append('courseCode', (document.getElementById('textbookCourseCode').value || "").trim());
-        formData.append('courseTitle', (document.getElementById('textbookCourseTitle').value || "").trim());
+        formData.append('title', document.getElementById('bookTitle').value.trim());
+        formData.append('subtitle', document.getElementById('bookSubtitle').value.trim());
+        formData.append('authors', document.getElementById('bookAuthor').value.trim());
+        formData.append('coauthors', document.getElementById('bookCoAuthor').value.trim());
+        formData.append('publisher', document.getElementById('bookPublisher').value.trim());
+        formData.append('edition', document.getElementById('bookEdition').value.trim());
+        formData.append('isbn10', document.getElementById('isbn10').value.trim());
+        formData.append('isbn13', document.getElementById('isbn13').value.trim());
+        formData.append('language', document.getElementById('languageSelect').value);
+        formData.append('publicationYear', document.getElementById('pubYearSelect').value);
+        formData.append('pages', document.getElementById('bookPages').value);
+        formData.append('format', document.getElementById('formatSelect').value);
+        formData.append('faculty', document.getElementById('textbookFaculty').value);
+        formData.append('department', document.getElementById('textbookDept').value);
+        formData.append('level', document.getElementById('textbookLevel').value);
+        formData.append('semester', document.getElementById('textbookSemester').value);
+        formData.append('courseCode', document.getElementById('textbookCourseCode').value.trim());
+        formData.append('courseTitle', document.getElementById('textbookCourseTitle').value.trim());
 
-        const tagValues = Array.from(document.getElementById('tagsList').children || [])
-          .map(n => n.dataset.tag)
-          .filter(Boolean);
+        const tagValues = Array.from(document.getElementById('tagsList').children).map(n => n.dataset.tag);
         if (tagValues.length) formData.append('tags', JSON.stringify(tagValues));
 
-        formData.append('copyrightHolder', (document.getElementById('copyrightHolder').value || "").trim());
-        formData.append('licenseType', document.getElementById('copyrightLicense').value || "All Rights Reserved");
-        
-        const allowPreview = document.querySelector('input[name="allowPreview"]');
-        formData.append('allowPreview', allowPreview && allowPreview.checked ? "true" : "false");
-        
-        const allowComments = document.querySelector('input[name="allowComments"]');
-        formData.append('allowComments', allowComments && allowComments.checked ? "true" : "false");
-        
-        const enableDownload = document.querySelector('input[name="enableDownload"]');
-        formData.append('enableDownload', enableDownload && enableDownload.checked ? "true" : "false");
-        
-        const visibilityRadio = document.querySelector('input[name="visibility"]:checked');
-        formData.append('visibility', visibilityRadio ? visibilityRadio.value : "public");
-        
-        const publishCheckbox = document.getElementById('publishNowCheck');
-        formData.append('publishNow', publishCheckbox && publishCheckbox.checked ? "true" : "false");
+        formData.append('copyrightHolder', document.getElementById('copyrightHolder').value.trim());
+        formData.append('licenseType', document.getElementById('copyrightLicense').value);
+        formData.append('allowPreview', document.querySelector('input[name="allowPreview"]').checked ? "true" : "false");
+        formData.append('allowComments', document.querySelector('input[name="allowComments"]').checked ? "true" : "false");
+        formData.append('enableDownload', document.querySelector('input[name="enableDownload"]').checked ? "true" : "false");
+        formData.append('visibility', document.querySelector('input[name="visibility"]:checked').value);
+        formData.append('publishNow', document.getElementById('publishNowCheck').checked ? "true" : "false");
 
         const token = localStorage.getItem("token");
 
