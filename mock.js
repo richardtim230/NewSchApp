@@ -8,10 +8,11 @@
 
 // ====== REDIRECT HELPER ======
 function handleAuthSuccess(defaultUrl = "loader") {
-    const urlParams = new URLSearchParams(window.location.search);
+
+    const params = new URLSearchParams(window.location.search);
 
     const redirectTo =
-        urlParams.get("redirect") ||
+        params.get("redirect") ||
         sessionStorage.getItem("authRedirect");
 
     sessionStorage.removeItem("authRedirect");
