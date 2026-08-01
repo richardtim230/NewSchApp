@@ -445,50 +445,25 @@
     async function fetchInitialData() {
       const userEndpoints = ['/users/me', '/auth/me', '/me', '/users/profile', '/wallet/balance'];
       const userData = await tryEndpoints(userEndpoints);
-      
+
       let creditPoints = 0;
-      let userId = null;
+      let rewardPoints = 0;
+      let totalPoints = 0;
 
       if (userData) {
         const user = userData.user || userData.data || userData;
-        const totalPoints =
-    asNumber(user.creditPoints) +
-    asNumber(user.points);
-
-currentBalance = totalPoints * 0.5;
-        creditPoints = asNumber(user.creditPoints ?? user.credit_points ?? user.points ?? 0);
-        userId = user._id || user.id || user.userId || null;
+        creditPoints = asNumber(user.creditPoints);
+        rewardPoints = asNumber(user.points);
+        totalPoints = creditPoints + rewardPoints;
+        currentBalance = totalPoints * POINTS_TO_NAIRA_RATE;
       }
 
       renderBalance();
 
-      const taskEndpoints = [
-        '/users/me/tasks',
-        userId ? `/users/${userId}/tasks` : null,
-        '/tasks/my',
-        '/tasks?mine=true',
-        userId ? `/tasks?userId=${userId}` : null,
-        '/tasks'
-      ].filter(Boolean);
-
-      let taskPoints = 0;
-      const tasksData = await tryEndpoints(taskEndpoints);
-
-      if (tasksData) {
-        const list = Array.isArray(tasksData) ? tasksData : (tasksData.tasks || tasksData.data || []);
-        if (Array.isArray(list)) {
-          taskPoints = list.reduce((acc, t) => acc + asNumber(t.points ?? t.point ?? t.rewardPoints ?? t.credit ?? t.earnedPoints ?? t.pointsAwarded ?? 0), 0);
-        } else {
-          taskPoints = asNumber(list.points ?? list.totalPoints ?? 0);
-        }
-      }
-
-    
-    
       const nairaEquivalent = Math.round((totalPoints * POINTS_TO_NAIRA_RATE) * 100) / 100;
 
       latestCreditPoints = creditPoints;
-      latestTaskPoints = taskPoints;
+      latestTaskPoints = rewardPoints; // maps reward points to UI variable
       latestTotalPoints = totalPoints;
       latestNairaEquivalent = nairaEquivalent;
 
@@ -500,7 +475,7 @@ currentBalance = totalPoints * 0.5;
       const useInline = document.getElementById('usePointsInlineBtn');
 
       if (creditEl) creditEl.innerText = creditPoints.toLocaleString();
-      if (taskEl) taskEl.innerText = taskPoints.toLocaleString();
+      if (taskEl) taskEl.innerText = rewardPoints.toLocaleString();
       if (totalEl) totalEl.innerText = totalPoints.toLocaleString();
       if (eqEl) eqEl.innerText = `₦${nairaEquivalent.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
 
