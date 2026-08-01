@@ -179,7 +179,7 @@
             <div class="space-y-1">
               <label class="block text-xs font-bold text-slate-800">Bank Name</label>
               <div class="relative bg-white border border-slate-200/90 rounded-2xl p-3.5 flex items-center justify-between focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-600/20 transition shadow-sm">
-                <select id="bankSelect" class="w-full text-xs font-semibold text-slate-800 bg-transparent focus:outline-none appearance-none pr-6 cursor-pointer">
+                <select id="bankSelect" onchange="handleBankSelectChange(this.value)" class="w-full text-xs font-semibold text-slate-800 bg-transparent focus:outline-none appearance-none pr-6 cursor-pointer">
                   <option value="" disabled selected>Select your bank</option>
                   <option value="Guaranty Trust Bank">Guaranty Trust Bank (GTBank)</option>
                   <option value="First Bank of Nigeria">First Bank of Nigeria</option>
@@ -404,7 +404,7 @@
 
     </nav>
 
-    <!-- Review Confirmation Modal (Covering 80% device width, centered horizontally, fixed at bottom) -->
+    <!-- Review Confirmation Modal -->
     <div id="reviewModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-end justify-center pb-6 sm:pb-8 opacity-0 pointer-events-none transition-all duration-300">
       
       <div id="reviewModalBox" class="w-[80%] max-w-[360px] mx-auto bg-white rounded-3xl p-6 shadow-2xl space-y-5 border border-slate-100 transform translate-y-full transition-all duration-300 flex flex-col justify-between min-h-[360px]">
@@ -526,8 +526,8 @@
       showToast("Maximum balance selected");
     }
 
-    // Withdrawal Method Selection
-    function selectMethod(method) {
+    // Withdrawal Method Selection & Sync with Bank Dropdown
+    function selectMethod(method, skipBankUpdate = false) {
       selectedMethod = method;
       const methods = ['bank', 'opay', 'mobile'];
 
@@ -542,6 +542,33 @@
           radio.checked = false;
         }
       });
+
+      // Synchronize with Bank Select Dropdown
+      if (!skipBankUpdate) {
+        const bankSelect = document.getElementById('bankSelect');
+        if (method === 'opay') {
+          if (bankSelect.value !== 'OPay' && bankSelect.value !== 'PalmPay') {
+            bankSelect.value = 'OPay';
+          }
+        } else if (method === 'mobile') {
+          bankSelect.value = 'Kuda Microfinance Bank';
+        } else if (method === 'bank') {
+          if (bankSelect.value === 'OPay' || bankSelect.value === 'PalmPay' || bankSelect.value === 'Kuda Microfinance Bank') {
+            bankSelect.value = 'Guaranty Trust Bank';
+          }
+        }
+      }
+    }
+
+    // Handle Dropdown Change and Sync back to Withdrawal Method Radio
+    function handleBankSelectChange(val) {
+      if (val === 'OPay' || val === 'PalmPay') {
+        selectMethod('opay', true);
+      } else if (val === 'Kuda Microfinance Bank') {
+        selectMethod('mobile', true);
+      } else {
+        selectMethod('bank', true);
+      }
     }
 
     // Account Number Dynamic Resolution
@@ -601,16 +628,28 @@
 
     // Tab Navigation Switcher
     function setActiveTab(tab) {
+      // Direct Redirections requested
+      if (tab === 'home') {
+        window.location.href = '/tutor/Oau.html';
+        return;
+      }
+      if (tab === 'profile') {
+        window.location.href = 'view-pro.html';
+        return;
+      }
+
       currentTab = tab;
       const tabs = ['home', 'earnings', 'tasks', 'history', 'profile'];
       
       // Update Tab Bar Highlights
       tabs.forEach(t => {
         const btn = document.getElementById(`tab-${t}`);
-        if (t === tab) {
-          btn.className = "flex flex-col items-center gap-1 text-blue-600 font-bold transition py-1 px-2.5";
-        } else {
-          btn.className = "flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 transition py-1 px-2.5";
+        if (btn) {
+          if (t === tab) {
+            btn.className = "flex flex-col items-center gap-1 text-blue-600 font-bold transition py-1 px-2.5";
+          } else {
+            btn.className = "flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 transition py-1 px-2.5";
+          }
         }
       });
 
@@ -691,12 +730,9 @@
       }
     }
 
+    // Return to the last item on the web browser history
     function handleBack() {
-      if (currentTab !== 'earnings') {
-        setActiveTab('earnings');
-      } else {
-        showToast("Returned to previous screen");
-      }
+      window.history.back();
     }
 
     function showToast(msg) {
