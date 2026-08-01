@@ -146,7 +146,7 @@
 
   <main class="max-w-xl mx-auto px-4 mt-5 space-y-5">
     <section id="aboutSection" class="space-y-3">
-      <h2 class="text-sm font-bold text-gray-900">About this book</h2>
+      <h2 id="aboutHeading" class="text-sm font-bold text-gray-900">About this book</h2>
       <p id="aboutText" class="text-xs text-gray-600 leading-relaxed font-normal">Loading description…</p>
       <div id="tagChips" class="flex flex-wrap gap-2 pt-1"></div>
       <button id="showMore" class="w-full text-center text-brand-blue text-xs font-semibold pt-1 flex items-center justify-center gap-1">
@@ -510,18 +510,67 @@
       const resourceId = res._id || res.id || id;
 
       // 1. Prefetch reader page
-      prefetchPage(`read.html?id=${encodeURIComponent(resourceId)}`);
+      prefetchPage(`/read.html?id=${encodeURIComponent(resourceId)}`);
 
       // Detect notebook vs resource
-      const isNotebook = res.type === "notebook" || res.resourceType === "notebook" || Boolean(res.pages || res.notes || res.subject);
+      const isNotebook = res.type === "notebook" || res.resourceType === "notebook" || Boolean(res.introduction || res.notebookTitle || res.pages || res.notes);
 
-      // Fallbacks for Title & Subtitle
-      const titleText = res.title || res.name || res.notebookTitle || "Untitled";
+      // Extract Uploader / Owner Object
+      const uploaderObj = res.uploader || res.owner || res.uploadedBy || res.authorObj || res.user || res.creator || null;
+      
+      const ownerId = (uploaderObj && typeof uploaderObj === 'object') 
+        ? (uploaderObj._id || uploaderObj.id) 
+        : (typeof uploaderObj === 'string' ? uploaderObj : null);
+      
+      if (ownerId) {
+        prefetchPage(`profile.html?id=${encodeURIComponent(ownerId)}`);
+      }
+
+      // Extract Uploader Name
+      let uploaderName = '—';
+      if (typeof uploaderObj === 'object' && uploaderObj !== null) {
+        uploaderName = uploaderObj.fullname || uploaderObj.fullName || uploaderObj.name || uploaderObj.username || uploaderObj.userName || '—';
+      } else if (typeof uploaderObj === 'string') {
+        uploaderName = uploaderObj;
+      } else if (res.author) {
+        uploaderName = res.author;
+      }
+      document.getElementById('ownerName').textContent = uploaderName;
+
+      // ==========================================
+      // CONDITION: HEADER & ABOUT / INTRO SETUP
+      // ==========================================
+      const titleText = res.title || res.notebookTitle || res.name || "Untitled";
       document.getElementById('pageTitle').textContent = titleText + ' — StudySphere';
       document.getElementById('title').textContent = titleText;
-      document.getElementById('subtitle').textContent = res.subtitle || '';
 
-      // Get cover image
+      const aboutHeadingEl = document.getElementById('aboutHeading');
+
+      if (isNotebook) {
+        // NOTEBOOK SPECIFIC MAPPING
+        // Header: Note Title, Uploader's Name, About the Book/Notebook snippet
+        document.getElementById('authors').textContent = uploaderName;
+        document.getElementById('subtitle').textContent = res.about || res.aboutBook || res.aboutNotebook || res.subtitle || res.summary || '';
+        
+        // About Section becomes "Introduction"
+        if (aboutHeadingEl) aboutHeadingEl.textContent = "Introduction";
+        const introContent = res.introduction || res.intro || res.description || res.summary || res.content || (res.contentHtml ? res.contentHtml.replace(/<\/?[^>]+(>|$)/g, "") : "");
+        document.getElementById('aboutText').textContent = introContent || 'No introduction available.';
+      } else {
+        // STANDARD RESOURCE MAPPING
+        const authorText = Array.isArray(res.authors) 
+          ? res.authors.join(", ") 
+          : (res.author || res.authors || uploaderName || "");
+        document.getElementById('authors').textContent = authorText;
+        document.getElementById('subtitle').textContent = res.subtitle || '';
+
+        // About Section remains "About this book"
+        if (aboutHeadingEl) aboutHeadingEl.textContent = "About this book";
+        const descText = res.description || res.summary || res.abstract || res.content || (res.contentHtml ? res.contentHtml.replace(/<\/?[^>]+(>|$)/g, "") : "");
+        document.getElementById('aboutText').textContent = descText || 'No description available.';
+      }
+
+      // Cover image
       const coverImg = document.getElementById('coverImg');
       const coverPlaceholder = document.getElementById('coverPlaceholder');
       const cover = res.cover?.url || res.coverImage || res.thumbnail || res.image || (typeof res.cover === 'string' ? res.cover : null);
@@ -533,12 +582,6 @@
         coverImg.classList.add("hidden");
         coverPlaceholder.classList.remove("hidden");
       }
-
-      // Fallbacks for Authors
-      const authorText = Array.isArray(res.authors) 
-        ? res.authors.join(", ") 
-        : (res.author || res.authors || res.owner?.fullname || res.uploader?.fullname || res.uploader?.username || res.uploader || res.owner || "");
-      document.getElementById('authors').textContent = authorText;
 
       if(res.published === false || res.published === 'false') document.getElementById('availabilityBadge').classList.add('hidden'); else document.getElementById('availabilityBadge').classList.remove('hidden');
 
@@ -575,36 +618,7 @@
       document.getElementById('fileSize').textContent = (mainFile && mainFile.size) ? formatBytes(mainFile.size) : '—';
       document.getElementById('addedDate').textContent = res.createdAt ? isoDateToLocal(res.createdAt) : (res.uploadedAt ? isoDateToLocal(res.uploadedAt) : '—');
 
-      // Description
-      const descText = res.description || res.summary || res.abstract || res.content || (res.contentHtml ? res.contentHtml.replace(/<\/?[^>]+(>|$)/g, "") : "");
-      document.getElementById('aboutText').textContent = descText || 'No description available.';
-
-      // ==========================================
-      // UPLOADER / OWNER DATA EXTRACTION (UPDATED)
-      // ==========================================
-      const uploaderObj = res.uploader || res.owner || res.uploadedBy || res.authorObj || res.user || res.creator || null;
-      
-      const ownerId = (uploaderObj && typeof uploaderObj === 'object') 
-        ? (uploaderObj._id || uploaderObj.id) 
-        : (typeof uploaderObj === 'string' ? uploaderObj : null);
-      
-      // Prefetch profile page
-      if (ownerId) {
-        prefetchPage(`profile.html?id=${encodeURIComponent(ownerId)}`);
-      }
-
-      // Extract Uploader Name
-      let uploaderName = '—';
-      if (typeof uploaderObj === 'object' && uploaderObj !== null) {
-        uploaderName = uploaderObj.fullname || uploaderObj.fullName || uploaderObj.name || uploaderObj.username || uploaderObj.userName || '—';
-      } else if (typeof uploaderObj === 'string') {
-        uploaderName = uploaderObj;
-      } else if (res.author) {
-        uploaderName = res.author;
-      }
-      document.getElementById('ownerName').textContent = uploaderName;
-
-      // Extract Department & Meta
+      // Uploader Dept / Meta Info
       let uploaderDept = '';
       if (typeof uploaderObj === 'object' && uploaderObj !== null) {
         uploaderDept = uploaderObj.department || uploaderObj.dept || uploaderObj.faculty || '';
