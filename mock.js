@@ -1,6 +1,3 @@
-/* Full mock.js — replace your existing mock.js with this file. Only institution logic changed:
-   the file now always sends institution = "OAU" (from hidden input) when registering.
-*/
 (function() {
     const params = new URLSearchParams(window.location.search);
     const ref = params.get('ref');
@@ -8,6 +5,20 @@
         localStorage.setItem('pendingReferral', ref);
     }
 })();
+
+// ====== REDIRECT HELPER ======
+function handleAuthSuccess(defaultUrl = 'loader') {
+    const urlParams = new URLSearchParams(window.location.search);
+    const redirectTo = urlParams.get('redirect');
+
+    if (redirectTo) {
+        // Redirect back to the intended page
+        window.location.href = decodeURIComponent(redirectTo);
+    } else {
+        // Fallback to default page if no redirect URL was specified
+        window.location.href = defaultUrl;
+    }
+}
 
 const facultySelect = document.getElementById('reg-faculty');
 const deptSelect = document.getElementById('reg-department');
@@ -276,7 +287,7 @@ forms.login.addEventListener('submit', async function(e) {
                         case 'admin':
                             roleMsg = "Welcome, Admin!";
                             break;
-                          case 'tutor':
+                        case 'tutor':
                             roleMsg = "Welcome, User!";
                             break;
                         case 'uploader':
@@ -300,10 +311,8 @@ forms.login.addEventListener('submit', async function(e) {
                     );
 
                     setTimeout(() => {
-                        window.location.href =
-                            role === 'superadmin'
-                                ? "supaadmin.html"
-                                : "loader";
+                        const defaultTarget = role === 'superadmin' ? "supaadmin.html" : "loader";
+                        handleAuthSuccess(defaultTarget);
                     }, 1300);
 
                     await setLoginLoading(false);
@@ -320,7 +329,7 @@ forms.login.addEventListener('submit', async function(e) {
                 );
 
                 setTimeout(() => {
-                    window.location.href = "loader";
+                    handleAuthSuccess("loader");
                 }, 1200);
             }
 
@@ -516,9 +525,8 @@ forms.register.addEventListener('submit', async function(e) {
     });
 
 });
-/* guest login, social buttons and other code remain unchanged */
+
 // ====== Guest login (no backend) ======
-// Appends a "Continue as Guest" button to the login form and simulates a login.
 (function setupGuestLogin() {
   // Create button
   const guestBtn = document.createElement('button');
@@ -557,18 +565,19 @@ forms.register.addEventListener('submit', async function(e) {
     localStorage.setItem('token', 'guest_token');
     localStorage.setItem('studentData', JSON.stringify(guestUser));
 
-    // Inform the user and redirect to dashboard
+    // Inform the user and redirect to dashboard or target page
     showStatusModal('success', 'Guest Login', 'You are now signed in as a guest. Some features may be limited.', false);
 
     // Short delay so user sees the modal, then navigate
     setTimeout(() => {
       // close modal if present
       try { closeModal(); } catch (e) {}
-      // redirect to student dashboard or desired page
-      window.location.href = 'loader';
+      // redirect using handleAuthSuccess
+      handleAuthSuccess('loader');
     }, 1200);
   });
 })();
+
 document.querySelectorAll('.social-btn').forEach(btn => {
     btn.addEventListener('click', function() {
         const platform = btn.classList.contains('google') ? "Google" : "Facebook";
