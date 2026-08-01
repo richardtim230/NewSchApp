@@ -91,6 +91,39 @@
         </div>
       </div>
 
+      <!-- Points Summary Card (fetches and shows creditPoints, task points, total and naira equivalent) -->
+      <div id="pointsSummary" class="relative overflow-hidden rounded-[18px] bg-white p-4 text-slate-900 shadow-sm select-none">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h4 class="text-sm font-bold text-slate-900">Points Summary</h4>
+            <p class="text-[12px] text-slate-500 mt-1">Shows your credit points and points from completed tasks</p>
+          </div>
+          <div class="text-right">
+            <div id="pointsEquivalent" class="text-sm font-extrabold text-slate-900">₦0.00</div>
+            <div class="text-[11px] text-slate-400">100 pts = ₦50</div>
+          </div>
+        </div>
+
+        <div class="mt-3 grid grid-cols-3 gap-3 text-center">
+          <div class="p-2 rounded-lg bg-slate-50">
+            <div class="text-xs text-slate-500">Credit Points</div>
+            <div id="creditPointsDisplay" class="text-sm font-bold text-slate-800">0</div>
+          </div>
+          <div class="p-2 rounded-lg bg-slate-50">
+            <div class="text-xs text-slate-500">Task Points</div>
+            <div id="taskPointsDisplay" class="text-sm font-bold text-slate-800">0</div>
+          </div>
+          <div class="p-2 rounded-lg bg-slate-50">
+            <div class="text-xs text-slate-500">Total Points</div>
+            <div id="totalPointsDisplay" class="text-sm font-bold text-slate-800">0</div>
+          </div>
+        </div>
+
+        <div class="mt-3 text-right">
+          <button id="usePointsBtn" onclick="usePointsAsAmount()" class="hidden text-xs font-semibold text-emerald-600 hover:underline">Use points for withdrawal</button>
+        </div>
+      </div>
+
       <!-- 1. Select Withdrawal Method -->
       <div>
         <h3 class="text-[13px] font-bold text-slate-900 mb-3 tracking-tight">1. Select Withdrawal Method</h3>
@@ -162,7 +195,10 @@
             <input type="number" id="amountInput" value="5000" placeholder="0.00" oninput="validateAmount()" class="w-full bg-white border border-slate-200 rounded-xl pl-8 pr-14 py-3 text-sm font-bold text-slate-900 focus:outline-none focus:border-blue-600 transition" />
             <button onclick="setMaxAmount()" class="absolute right-3.5 text-xs font-bold text-blue-600 hover:text-blue-800 transition active:scale-95">Max</button>
           </div>
-          <p class="text-[11px] text-slate-400 font-medium mt-1.5">Minimum withdrawal: ₦1,000</p>
+          <div class="mt-1 flex items-center justify-between">
+            <p class="text-[11px] text-slate-400 font-medium">Minimum withdrawal: ₦1,000</p>
+            <button id="usePointsInlineBtn" onclick="usePointsAsAmount()" class="text-[11px] text-emerald-600 font-semibold hidden">Use points</button>
+          </div>
         </div>
 
         <!-- Bank Name Dropdown -->
@@ -354,12 +390,164 @@
   </div>
 
   <script>
-    // State
+    // --- Configuration & State ---
+    const API_BASE = "https://examguide.onrender.com/api"; // adjust if your backend uses another base
+    const POINTS_TO_NAIRA_RATE = 50 / 100; // 100 points => ₦50 => 1 point = ₦0.5
+
     let currentBalance = 12540.00;
     let isBalanceVisible = true;
     let selectedMethod = 'bank';
     let verifiedAccountName = '';
+    // last fetched points
+    let latestCreditPoints = 0;
+    let latestTaskPoints = 0;
+    let latestTotalPoints = 0;
+    let latestNairaEquivalent = 0;
 
+    // --- Utility helpers ---
+    function getAuthHeaders() {
+      const keys = ['token', 'authToken', 'accessToken', 'examguide_token'];
+      for (const k of keys) {
+        const t = localStorage.getItem(k) || sessionStorage.getItem(k);
+        if (t) return { 'Authorization': 'Bearer ' + t };
+      }
+      return {};
+    }
+
+    async function tryEndpoints(endpoints = []) {
+      for (const ep of endpoints) {
+        if (!ep) continue;
+        const url = (ep.startsWith('http') ? ep : (API_BASE + ep));
+        try {
+          const res = await fetch(url, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+            credentials: 'include'
+          });
+          if (!res.ok) {
+            // skip non-200 responses, but keep trying others
+            continue;
+          }
+          const json = await res.json();
+          return json;
+        } catch (err) {
+          console.warn('Endpoint failed:', url, err);
+          continue;
+        }
+      }
+      return null;
+    }
+
+    function asNumber(v) {
+      if (v == null) return 0;
+      if (typeof v === 'number') return v;
+      if (typeof v === 'string') {
+        const n = parseFloat(v.replace(/[^0-9.-]+/g, ''));
+        return isNaN(n) ? 0 : n;
+      }
+      if (Array.isArray(v)) return v.length;
+      return 0;
+    }
+
+    // --- Points fetching & UI update ---
+    async function fetchAndUpdatePoints() {
+      // candidate user endpoints
+      const userEndpoints = [
+        '/users/me',
+        '/auth/me',
+        '/me',
+        '/users/profile'
+      ];
+
+      const userData = await tryEndpoints(userEndpoints);
+      let creditPoints = 0;
+      let userId = null;
+
+      if (userData) {
+        const user = userData.user || userData.data || userData;
+        creditPoints = asNumber(user.creditPoints ?? user.credit_points ?? user.points ?? 0);
+        userId = user._id || user.id || user.userId || null;
+      }
+
+      // candidate task endpoints
+      const taskEndpoints = [
+        '/users/me/tasks',
+        userId ? `/users/${userId}/tasks` : null,
+        '/tasks/my',
+        '/tasks?mine=true',
+        userId ? `/tasks?userId=${userId}` : null,
+        '/tasks'
+      ].filter(Boolean);
+
+      let taskPoints = 0;
+      const tasksData = await tryEndpoints(taskEndpoints);
+
+      if (tasksData) {
+        const list = Array.isArray(tasksData) ? tasksData : (tasksData.tasks || tasksData.data || []);
+        if (Array.isArray(list)) {
+          taskPoints = list.reduce((acc, t) => {
+            const p = asNumber(t.points ?? t.point ?? t.rewardPoints ?? t.credit ?? t.earnedPoints ?? t.pointsAwarded ?? 0);
+            return acc + p;
+          }, 0);
+        } else {
+          // single object containing points
+          taskPoints = asNumber(list.points ?? list.totalPoints ?? 0);
+        }
+      }
+
+      const totalPoints = creditPoints + taskPoints;
+      const nairaEquivalent = Math.round((totalPoints * POINTS_TO_NAIRA_RATE) * 100) / 100;
+
+      // persist to state
+      latestCreditPoints = creditPoints;
+      latestTaskPoints = taskPoints;
+      latestTotalPoints = totalPoints;
+      latestNairaEquivalent = nairaEquivalent;
+
+      // update DOM
+      const creditEl = document.getElementById('creditPointsDisplay');
+      const taskEl = document.getElementById('taskPointsDisplay');
+      const totalEl = document.getElementById('totalPointsDisplay');
+      const eqEl = document.getElementById('pointsEquivalent');
+      const useBtn = document.getElementById('usePointsBtn');
+      const useInline = document.getElementById('usePointsInlineBtn');
+
+      if (creditEl) creditEl.innerText = creditPoints.toLocaleString();
+      if (taskEl) taskEl.innerText = taskPoints.toLocaleString();
+      if (totalEl) totalEl.innerText = totalPoints.toLocaleString();
+      if (eqEl) eqEl.innerText = `₦${nairaEquivalent.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+
+      // show/hide Use points button depending on availability
+      if (useBtn) {
+        if (totalPoints > 0) {
+          useBtn.classList.remove('hidden');
+          useBtn.innerText = `Use points for withdrawal (₦${nairaEquivalent.toLocaleString('en-US', { minimumFractionDigits: 2 })})`;
+        } else {
+          useBtn.classList.add('hidden');
+        }
+      }
+      if (useInline) {
+        if (totalPoints > 0) {
+          useInline.classList.remove('hidden');
+          useInline.innerText = `Use points (₦${nairaEquivalent.toLocaleString('en-US', { minimumFractionDigits: 2 })})`;
+        } else {
+          useInline.classList.add('hidden');
+        }
+      }
+
+      return { creditPoints, taskPoints, totalPoints, nairaEquivalent };
+    }
+
+    function usePointsAsAmount() {
+      const amt = latestNairaEquivalent || 0;
+      const input = document.getElementById('amountInput');
+      if (!input) return;
+      input.value = amt;
+      validateAmount();
+      triggerToast('Amount set from points');
+    }
+
+    // --- Existing app logic (keeps behavior) ---
     // Toggle Balance
     function toggleBalanceVisibility() {
       isBalanceVisible = !isBalanceVisible;
@@ -494,7 +682,7 @@
         <span>Processing...</span>
       `;
 
-      setTimeout(() => {
+      setTimeout(async () => {
         const amountVal = parseFloat(document.getElementById('amountInput').value) || 0;
         currentBalance -= amountVal;
 
@@ -508,6 +696,13 @@
 
         confirmBtn.disabled = false;
         confirmBtn.innerHTML = `<span>Confirm & Transfer</span>`;
+
+        // Refresh points summary after withdrawal (if withdrawal affects points/back-end balances)
+        try {
+          await fetchAndUpdatePoints();
+        } catch (err) {
+          console.warn('Failed to refresh points after withdrawal', err);
+        }
       }, 1200);
     }
 
@@ -557,6 +752,20 @@
         toast.classList.remove('opacity-100', 'translate-y-0');
       }, 2000);
     }
+
+    // initialize on load
+    window.addEventListener('DOMContentLoaded', () => {
+      // initial balance into UI
+      if (document.getElementById('balanceDisplay')) {
+        document.getElementById('balanceDisplay').innerText = `₦${currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+      }
+      // fetch points summary
+      fetchAndUpdatePoints().catch(err => {
+        console.error('Could not fetch points:', err);
+        // silent fail; show toast only if unauthenticated or network problems
+        triggerToast('Unable to load points — please check network or sign in');
+      });
+    });
   </script>
 </body>
 </html>
