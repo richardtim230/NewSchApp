@@ -423,20 +423,10 @@
           </div>
 
           <!-- Progress Bar Pill overlay -->
-          <div class="bg-white text-slate-800 rounded-2xl p-3 shadow-md flex items-center gap-3">
-            <div class="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-              </svg>
-            </div>
-            <div class="flex-1 space-y-1.5">
-              <p class="text-[11px] font-bold text-slate-800 leading-none">Keep going! Complete more tasks to earn more.</p>
-              <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                <div class="bg-blue-600 h-full rounded-full" style="width: 58%;"></div>
-              </div>
-            </div>
-            <span class="text-[10px] font-bold text-slate-400 shrink-0">7 / 12 completed</span>
-          </div>
+          <div
+    id="taskProgressCard"
+    class="bg-white text-slate-800 rounded-2xl p-3 shadow-md flex items-center gap-3">
+</div>
 
         </section>
 
@@ -1214,6 +1204,8 @@ async function loadUserTasks() {
   try {
     const signal = getAbortSignal('tasks');
     const tasks = await TaskService.getMyTasks(signal);
+    // Update progress card
+renderTaskProgress(tasks);
 
     // Point 12: Friendly Empty States
     if (!tasks || tasks.length === 0) {
@@ -1359,7 +1351,60 @@ function setReadingTaskTimer(postId, seconds = 120) {
 // ==========================================
 // 5. WITHDRAWAL & FORM ACTIONS (Points 1, 16)
 // ==========================================
+function renderTaskProgress(tasks = []) {
+  const progressCard = document.getElementById("taskProgressCard");
+  if (!progressCard) return;
 
+  const total = tasks.length;
+
+  const completed = tasks.filter(task => {
+    const status = (task.status || "").toLowerCase();
+    return ["completed", "rewarded", "done"].includes(status);
+  }).length;
+
+  const percentage = total > 0
+    ? Math.min(100, Math.round((completed / total) * 100))
+    : 0;
+
+  let message = "";
+
+  if (total === 0) {
+    message = "No tasks available at the moment.";
+  } else if (completed === total) {
+    message = "🎉 Amazing! You've completed every available task.";
+  } else if (percentage >= 75) {
+    message = "🔥 You're almost there! Finish the remaining tasks.";
+  } else if (percentage >= 40) {
+    message = "Keep going! Complete more tasks to earn more.";
+  } else {
+    message = "Start completing tasks to earn more points.";
+  }
+
+  progressCard.innerHTML = `
+    <div class="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
+      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+      </svg>
+    </div>
+
+    <div class="flex-1 space-y-1.5">
+      <p class="text-[11px] font-bold text-slate-800 leading-none">
+        ${message}
+      </p>
+
+      <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+        <div
+          class="bg-blue-600 h-full rounded-full transition-all duration-700"
+          style="width:${percentage}%">
+        </div>
+      </div>
+    </div>
+
+    <span class="text-[10px] font-bold text-slate-400 shrink-0">
+      ${completed} / ${total} completed
+    </span>
+  `;
+}
 async function confirmWithdrawal() {
   const confirmBtn = document.getElementById('confirmBtn');
   if (confirmBtn) {
