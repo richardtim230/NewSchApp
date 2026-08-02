@@ -1138,23 +1138,24 @@
     if (isDone) wrapper.classList.add('completed');
 
     wrapper.innerHTML = `
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-3 min-w-0 flex-1">
         <div class="w-10 h-10 rounded-2xl bg-slate-50 text-slate-700 flex items-center justify-center shrink-0">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
           </svg>
         </div>
-        <div class="space-y-0.5 min-w-0">
-          <h4 class="text-xs font-bold text-slate-900 truncate">${escapeHtml(title)}</h4>
-          <p class="text-[10px] text-slate-400 font-medium truncate">${escapeHtml(desc)}</p>
+        <div class="space-y-0.5 min-w-0 flex-1">
+          <h4 class="text-xs font-bold text-slate-900 break-words">${escapeHtml(title)}</h4>
+          <p class="text-[10px] text-slate-400 font-medium break-words">${escapeHtml(desc)}</p>
           <span class="inline-block text-[9px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full mt-1">${pts} pts</span>
         </div>
       </div>
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-3 shrink-0">
         <button class="px-4 py-2 btn-do-task text-xs font-bold rounded-xl ${isDone ? 'bg-slate-100 text-slate-500' : 'bg-blue-600 text-white'}">${isDone ? 'Done' : 'Do Task'}</button>
         ${ isDone ? '' : `<button class="px-3 py-1 btn-complete text-xs rounded-lg bg-white border border-slate-200">Mark done</button>` }
       </div>
     `;
+
 
     // Do Task
     const doBtn = wrapper.querySelector('.btn-do-task');
@@ -1182,45 +1183,59 @@
     });
 
     // Mark done
-    const completeBtn = wrapper.querySelector('.btn-complete');
-    if (completeBtn) {
-      completeBtn.addEventListener('click', async () => {
-        completeBtn.disabled = true;
-        completeBtn.innerText = 'Saving...';
-        try {
-          const token = getToken();
-          if (!token) {
-            showToast('Please log in to complete tasks');
-            completeBtn.disabled = false;
-            completeBtn.innerText = 'Mark done';
-            return;
-          }
-          const res = await fetch(`${API_BASE}/tasks/${id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-            body: JSON.stringify({ status: 'done' })
-          });
-          if (!res.ok) {
-            const txt = await res.text().catch(()=>'');
-            throw new Error(txt || 'Failed');
-          }
-          // update UI
-          doBtn.classList.remove('bg-blue-600','text-white');
-          doBtn.classList.add('bg-slate-100','text-slate-500');
-          doBtn.innerText = 'Done';
-          completeBtn.remove();
-          // refresh on page if functions exist
-          if (typeof fetchBalanceData === 'function') fetchBalanceData(true).catch(()=>{});
-          if (typeof fetchHistoryData === 'function') fetchHistoryData(true).catch(()=>{});
-          showToast('Task completed — points awarded.');
-        } catch (err) {
-          console.error('complete task error', err);
-          showToast('Could not mark task done');
-          completeBtn.disabled = false;
-          completeBtn.innerText = 'Mark done';
-        }
+    const completeBtn = wrapper.querySelector(".btn-complete");
+
+if (completeBtn) {
+  completeBtn.addEventListener("click", async () => {
+    completeBtn.disabled = true;
+    completeBtn.textContent = "Saving...";
+
+    try {
+      const token = getToken();
+      if (!token) {
+        showToast("Please log in to complete tasks");
+        completeBtn.disabled = false;
+        completeBtn.textContent = "Mark done";
+        return;
+      }
+
+      const res = await fetch(`${API_BASE}/task-actions/complete`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({
+          type: task.activityType || "task",
+          id
+        })
       });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || data.message || "Failed");
+      }
+
+      doBtn.classList.remove("bg-blue-600", "text-white");
+      doBtn.classList.add("bg-slate-100", "text-slate-500");
+      doBtn.textContent = "Done";
+
+      completeBtn.remove();
+
+      if (typeof fetchTasks === "function") fetchTasks();
+      if (typeof fetchBalanceData === "function") fetchBalanceData(true).catch(() => {});
+      if (typeof fetchHistoryData === "function") fetchHistoryData(true).catch(() => {});
+
+      showToast(data.message || "Task completed successfully.");
+    } catch (err) {
+      console.error(err);
+      showToast(err.message || "Could not complete task");
+      completeBtn.disabled = false;
+      completeBtn.textContent = "Mark done";
     }
+  });
+}
 
     return wrapper;
   }
