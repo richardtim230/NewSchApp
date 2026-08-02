@@ -53,7 +53,7 @@
         @keyframes shimmer { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }
     </style>
 </head>
-<body class="w-full min-h-screen bg-[#FAFAFC] text-slate-800 flex flex-col pb-24">
+<body class="w-full min-h-screen bg-[#FAFAFC] text-slate-800 flex flex-col pb-16">
 
     <div class="w-full bg-white border-b border-slate-100 sticky top-0 z-40">
         <div class="max-w-7xl mx-auto px-3 sm:px-6">
@@ -177,11 +177,12 @@
         </div>
 
         <!-- pagination controls (rendered by JS) -->
-        <div id="publishersPagination" class="flex items-center justify-center gap-1 sm:gap-1.5 mb-8 w-full overflow-x-auto no-scrollbar py-1">
+        <div id="publishersPagination" class="flex items-center justify-center gap-1 sm:gap-1.5 mb-6 w-full overflow-x-auto no-scrollbar py-1">
             <!-- JS will render pagination -->
         </div>
 
-        <div class="bg-gradient-to-r from-blue-50/70 via-indigo-50/40 to-blue-50/70 border border-blue-100/80 rounded-2xl p-4 sm:p-6 mb-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <!-- Becoming a Publisher Card (margin reduced to mb-3) -->
+        <div class="bg-gradient-to-r from-blue-50/70 via-indigo-50/40 to-blue-50/70 border border-blue-100/80 rounded-2xl p-4 sm:p-6 mb-3 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div class="flex items-center gap-3 sm:gap-4 text-left">
                 <div class="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-white shadow-sm flex items-center justify-center shrink-0 border border-slate-100">
                     <i class="fa-solid fa-graduation-cap text-xl sm:text-3xl text-brand-blue"></i>
@@ -264,19 +265,19 @@
 
       // render helpers
       function renderPublisherCard(p) {
-        // p expected fields: _id, username, fullname, profilePic, about, specialties, institution, role, approved, createdAt, updatedAt
         const profile = p || {};
+        const publisherId = profile._id || profile.id || '';
+        const profileLink = `/NextWeb/profile.html?id=${publisherId}`;
         const avatar = createAvatarUrl(profile.profilePic);
         const name = safeText(profile.fullname || profile.username || 'Unknown');
-        const username = encodeURIComponent(profile.username || '');
         const specialty = safeText((profile.specialties && profile.specialties[0]) || (profile.about) || 'General');
         const institution = safeText((profile.institution && (profile.institution.name || profile.institution)) || '');
-        const books = (profile.stats && profile.stats.booksCount) || profile.booksCount || Math.floor(Math.random()*30)+3; // fallback
-        const followers = (profile.stats && profile.stats.followers) || profile.followers || Math.floor(Math.random()*900)+30; // fallback
+        const books = (profile.stats && profile.stats.booksCount) || profile.booksCount || Math.floor(Math.random()*30)+3;
+        const followers = (profile.stats && profile.stats.followers) || profile.followers || Math.floor(Math.random()*900)+30;
         const rating = (profile.stats && profile.stats.rating) || profile.rating || (4 + Math.round(Math.random()*10)/10);
 
         return `
-          <div class="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden flex flex-col justify-between">
+          <div onclick="window.location.href='${profileLink}'" class="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden flex flex-col justify-between cursor-pointer hover:border-brand-blue/40 transition-all">
             <div>
               <div class="h-20 sm:h-24 banner-cs relative px-3 sm:px-4 pt-2.5 sm:pt-3" style="background:linear-gradient(135deg,#eef2ff,#f8fafc);">
                 <div class="absolute top-2.5 right-2.5 sm:top-3 sm:right-3 text-slate-600 hover:text-slate-900 cursor-pointer">
@@ -319,7 +320,7 @@
             </div>
 
             <div class="px-2.5 sm:px-4 pb-2.5 sm:pb-4 pt-1">
-              <a href="/publisher/${username}" class="w-full block text-center bg-[#F0F5FF] hover:bg-blue-100 text-brand-blue font-bold py-1.5 sm:py-2.5 rounded-xl text-[11px] sm:text-xs transition-colors">Visit Library</a>
+              <a href="${profileLink}" onclick="event.stopPropagation();" class="w-full block text-center bg-[#F0F5FF] hover:bg-blue-100 text-brand-blue font-bold py-1.5 sm:py-2.5 rounded-xl text-[11px] sm:text-xs transition-colors">Visit Library</a>
             </div>
           </div>
         `;
@@ -333,7 +334,6 @@
         }
         const frag = document.createElement('div');
         frag.innerHTML = items.map(p => renderPublisherCard(p)).join('');
-        // append children of frag to grid
         Array.from(frag.children).forEach(c => publishersGrid.appendChild(c));
       }
 
@@ -389,7 +389,6 @@
       async function loadPublishers(page = 1, search = '') {
         currentPage = Math.max(1, page || 1);
         currentSearch = String(search || '').trim();
-        // show skeletons
         publishersGrid.innerHTML = Array.from({length: limit}).map(()=>`
           <div class="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
             <div class="h-24 skeleton"></div>
@@ -410,9 +409,7 @@
           const data = await fetchJSON(url, { method: 'GET' });
           if (data && data.ok) {
             totalPublishers = data.total || (data.data && data.data.length) || 0;
-            // update top stats where possible
             publishersCountEl.textContent = formatNumber(totalPublishers);
-            // booksCount/niches/avgRating are not guaranteed by API; use heuristics if provided in top-level meta
             booksCountEl.textContent = formatNumber(data.totalBooks || 0);
             nichesCountEl.textContent = formatNumber(data.totalNiches || 0);
             avgRatingEl.textContent = (data.avgRating !== undefined && data.avgRating !== null) ? Number(data.avgRating).toFixed(1) : '—';
@@ -428,7 +425,6 @@
         }
       }
 
-      // fetch current user: tries several endpoints
       async function loadCurrentUser() {
         if (!token) {
           showSignedOut();
@@ -459,10 +455,9 @@
         signInBtn.classList.add('hidden');
         userDropdownChevron.classList.remove('hidden');
 
-        // add simple dropdown/menu (optional)
-        // clicking avatar could open profile - simple handler:
-        userAvatar.addEventListener('click', () => { window.location.href = '/account'; });
-        userNameDisplay.addEventListener('click', () => { window.location.href = '/account'; });
+        // Redirect user profile click to /NextWeb/view-pro.html
+        userAvatar.addEventListener('click', () => { window.location.href = '/NextWeb/view-pro.html'; });
+        userNameDisplay.addEventListener('click', () => { window.location.href = '/NextWeb/view-pro.html'; });
       }
 
       function showSignedOut() {
@@ -471,12 +466,10 @@
         signInBtn.classList.remove('hidden');
         userDropdownChevron.classList.add('hidden');
         signInBtn.addEventListener('click', () => {
-          // adapt to your auth flow
           window.location.href = '/login';
         });
       }
 
-      // debounce helper
       function debounce(fn, wait = 350) {
         let t;
         return function (...args) {
@@ -485,25 +478,21 @@
         };
       }
 
-      // wire search
       const onSearch = debounce((e) => {
         const q = e.target.value || '';
         loadPublishers(1, q);
       }, 450);
       searchInput.addEventListener('input', onSearch);
 
-      // initial load
       document.addEventListener('DOMContentLoaded', () => {
         loadCurrentUser().catch(()=>{});
         loadPublishers(1, '');
       });
 
-      // expose small debug helpers
       window.__UL_loadPublishers = loadPublishers;
       window.__UL_loadCurrentUser = loadCurrentUser;
     })();
 
-    // toast helper reused from pub-reg (simple)
     function showToast(message) {
       let toast = document.getElementById('globalToast');
       if (!toast) {
