@@ -731,894 +731,993 @@
     </div>
 
   </div>
-
-  <!-- ---------------------------
-       SCRIPT: dynamic tasks, history, balance
-       --------------------------- -->
   <script>
-  // Config & Authentication Configuration
-  const API_BASE = "https://examguide.onrender.com/api";
-  const POINTS_TO_NAIRA_RATE = 50 / 100;
 
-  let currentBalance = 0;
-  let creditPointsVal = 0;
-  let taskPointsVal = 0;
-  let totalPointsVal = 0;
-  let pointsNairaVal = 0;
+// ==========================================
+// 1. CONFIGURATION & STATE MANAGEMENT
+// ==========================================
+const API_BASE = "https://examguide.onrender.com/api";
+const TOKEN_KEYS = ['token', 'authToken', 'accessToken', 'examguide_token'];
 
-  let isBalanceVisible = true;
-  let selectedMethod = 'bank';
-  let verifiedAccountName = '';
-  let currentTab = 'earnings';
-  let currentFilter = 'all';
-  let isInitialLoad = true;
-  let rawHistoryData = [];
+// Application State
+const state = {
+  currentUser: null,
+  currentBalance: 0,
+  creditPointsVal: 0,
+  taskPointsVal: 0,
+  totalPointsVal: 0,
+  pointsNairaVal: 0,
+  pointsRate: 0.5, // Default fallback, overwritten by server
+  isBalanceVisible: true,
+  selectedMethod: 'bank',
+  verifiedAccountName: '',
+  currentTab: 'earnings',
+  currentFilter: 'all',
+  isInitialLoad: true,
+  rawHistoryData: [],
+  historyPage: 1,
+  historyLimit: 15,
+  hasMoreHistory: true,
+  activeAbortControllers: {}
+};
 
-  // token keys expected in storage
-  const TOKEN_KEYS = ['token', 'authToken', 'accessToken', 'examguide_token'];
+// Authentication Helpers
+function getAuthHeaders() {
+  const token = getToken();
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+}
 
-  function getAuthHeaders() {
-    for (const k of TOKEN_KEYS) {
-      const t = localStorage.getItem(k) || sessionStorage.getItem(k);
-      if (t) return { 'Authorization': 'Bearer ' + t };
-    }
-    return {};
+function getToken() {
+  for (const key of TOKEN_KEYS) {
+    const token = localStorage.getItem(key) || sessionStorage.getItem(key);
+    if (token) return token;
   }
+  return null;
+}
 
-  function getToken() {
-    for (const k of TOKEN_KEYS) {
-      const t = localStorage.getItem(k) || sessionStorage.getItem(k);
-      if (t) return t;
-    }
-    return null;
+// Helper: Escape HTML string to prevent XSS
+function escapeHtml(s) {
+  if (!s && s !== 0) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function asNumber(v) {
+  if (v == null) return 0;
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string') {
+    const n = parseFloat(v.replace(/[^0-9.-]+/g, ''));
+    return isNaN(n) ? 0 : n;
   }
+  if (Array.isArray(v)) return v.length;
+  return 0;
+}
 
-  async function tryEndpoints(endpoints = []) {
+// ==========================================
+// 2. NETWORK ENGINE & RETRY SYSTEM (Point 14)
+// ==========================================
+async function fetchWithRetry(url, options = {}, retries = 3, delayMs = 1000) {
+  try {
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+        ...(options.headers || {})
+      },
+      credentials: 'include'
+    });
+
+    if (!res.ok && res.status >= 500 && retries > 0) {
+      await new Promise(r => setTimeout(r, delayMs));
+      return fetchWithRetry(url, options, retries - 1, delayMs * 1.5);
+    }
+    return res;
+  } catch (err) {
+    if (err.name === 'AbortError') throw err;
+    if (retries > 0) {
+      await new Promise(r => setTimeout(r, delayMs));
+      return fetchWithRetry(url, options, retries - 1, delayMs * 1.5);
+    }
+    throw err;
+  }
+}
+
+// Cancel existing request for target key (Point 5)
+function getAbortSignal(key) {
+  if (state.activeAbortControllers[key]) {
+    state.activeAbortControllers[key].abort();
+  }
+  const controller = new AbortController();
+  state.activeAbortControllers[key] = controller;
+  return controller.signal;
+}
+
+// ==========================================
+// 3. SERVICE LAYER ARCHITECTURE (Point 13)
+// ==========================================
+
+// USER SERVICE (Point 3: Cache Current User)
+const UserService = {
+  async getCurrentUser(forceRefresh = false) {
+    if (state.currentUser && !forceRefresh) {
+      return state.currentUser;
+    }
+    const endpoints = ['/users/me', '/auth/me', '/me', '/users/profile'];
     for (const ep of endpoints) {
-      if (!ep) continue;
-      const url = (ep.startsWith('http') ? ep : (API_BASE + ep));
       try {
-        const res = await fetch(url, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-          credentials: 'include'
-        });
-        if (!res.ok) continue;
-        return await res.json();
+        const res = await fetchWithRetry(API_BASE + ep, { method: 'GET' }, 1);
+        if (res.ok) {
+          const json = await res.json();
+          state.currentUser = json.user || json.data || json;
+          return state.currentUser;
+        }
       } catch (err) {
-        continue;
+        if (err.name === 'AbortError') return null;
       }
     }
     return null;
   }
+};
 
-  function asNumber(v) {
-    if (v == null) return 0;
-    if (typeof v === 'number') return v;
-    if (typeof v === 'string') {
-      const n = parseFloat(v.replace(/[^0-9.-]+/g, ''));
-      return isNaN(n) ? 0 : n;
-    }
-    if (Array.isArray(v)) return v.length;
-    return 0;
-  }
+// WALLET & BALANCE SERVICE (Points 1, 4, 16)
+const WalletService = {
+  async getBalanceData(signal) {
+    const user = await UserService.getCurrentUser();
+    if (user) {
+      // Point 4: Dynamic server reward rate
+      if (user.pointsRate !== undefined) state.pointsRate = asNumber(user.pointsRate);
+      else if (user.nairaPerPoint !== undefined) state.pointsRate = asNumber(user.nairaPerPoint);
 
-  // ------------------------------
-  // Balance & Points
-  // ------------------------------
-  async function fetchBalanceData(silent = false) {
-    if (!silent && isInitialLoad) {
-      const bs = document.getElementById('balanceSkeleton');
-      const bt = document.getElementById('balanceText');
-      if (bs) bs.classList.remove('hidden');
-      if (bt) bt.classList.add('hidden');
-    }
-
-    const userEndpoints = ['/users/me', '/auth/me', '/me', '/users/profile', '/wallet/balance'];
-    const userData = await tryEndpoints(userEndpoints);
-
-    if (userData) {
-      const user = userData.user || userData.data || userData;
-
-      creditPointsVal = asNumber(user.creditPoints || user.credit_points || 0);
-      taskPointsVal = asNumber(user.taskPoints || user.task_points || user.points || 0);
-      totalPointsVal = creditPointsVal + taskPointsVal;
-      pointsNairaVal = totalPointsVal * POINTS_TO_NAIRA_RATE;
+      state.creditPointsVal = asNumber(user.creditPoints || user.credit_points || 0);
+      state.taskPointsVal = asNumber(user.taskPoints || user.task_points || user.points || 0);
+      state.totalPointsVal = state.creditPointsVal + state.taskPointsVal;
+      state.pointsNairaVal = state.totalPointsVal * state.pointsRate;
 
       if (user.balance !== undefined && user.balance !== null) {
-        currentBalance = asNumber(user.balance);
+        state.currentBalance = asNumber(user.balance);
       } else {
-        currentBalance = pointsNairaVal;
+        state.currentBalance = state.pointsNairaVal;
       }
-    } else {
-      // Fallback defaults
-      creditPointsVal = 0;
-      taskPointsVal = 0;
-      totalPointsVal = creditPointsVal + taskPointsVal;
-      pointsNairaVal = totalPointsVal * POINTS_TO_NAIRA_RATE;
-      if (!currentBalance) currentBalance = pointsNairaVal;
+      return { balance: state.currentBalance, points: state.totalPointsVal };
     }
+    return null;
+  },
 
-    renderBalance();
-    renderPointsSummary();
+  async requestWithdrawal(payload) {
+    const res = await fetchWithRetry(`${API_BASE}/withdrawals`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.message || errData.error || 'Withdrawal request failed');
+    }
+    return await res.json();
+  }
+};
 
-    if (!silent) {
-      const bs = document.getElementById('balanceSkeleton');
-      const bt = document.getElementById('balanceText');
-      if (bs) bs.classList.add('hidden');
-      if (bt) bt.classList.remove('hidden');
+// TASK SERVICE (Points 6, 7, 9, 10, 19)
+const TaskService = {
+  async getMyTasks(signal) {
+    const user = await UserService.getCurrentUser();
+    if (!user || (!user._id && !user.id)) throw new Error('User not authenticated');
+    const uid = user._id || user.id;
+
+    const res = await fetchWithRetry(`${API_BASE}/tasks/user/${uid}`, { method: 'GET', signal });
+    if (!res.ok) throw new Error('Failed to fetch tasks');
+    const data = await res.json();
+    return Array.isArray(data) ? data : (data.tasks || data.data || []);
+  },
+
+  async completeTask(taskId, activityType) {
+    // Point 9: Clean security payload, backend derives user from auth token
+    const res = await fetchWithRetry(`${API_BASE}/task-actions/complete`, {
+      method: 'PATCH',
+      body: JSON.stringify({ id: taskId, type: activityType || 'task' })
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      throw new Error(json.message || json.error || 'Task completion failed');
+    }
+    return json;
+  },
+
+  // Point 10: Server-validated reading task start
+  async startReadingTask(postId, seconds) {
+    try {
+      await fetchWithRetry(`${API_BASE}/tasks/reading/start`, {
+        method: 'POST',
+        body: JSON.stringify({ postId, requiredSeconds: seconds })
+      }, 1);
+    } catch (e) {
+      console.warn('Backend reading timer sync skipped/unavailable', e);
     }
   }
+};
 
-  function renderPointsSummary() {
-    const formattedCredit = creditPointsVal.toLocaleString('en-US');
-    const formattedTask = taskPointsVal.toLocaleString('en-US');
-    const formattedTotal = totalPointsVal.toLocaleString('en-US');
-    const formattedNaira = `₦${pointsNairaVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// HISTORY SERVICE (Points 8, 11)
+const HistoryService = {
+  async getHistory(page = 1, limit = 15, signal) {
+    const user = await UserService.getCurrentUser();
+    let rawResult = null;
 
-    document.querySelectorAll('.credit-points-val').forEach(el => el.innerText = formattedCredit);
-    document.querySelectorAll('.task-points-val').forEach(el => el.innerText = formattedTask);
-    document.querySelectorAll('.total-points-val').forEach(el => el.innerText = formattedTotal);
-    document.querySelectorAll('.points-naira-equiv').forEach(el => el.innerText = formattedNaira);
-  }
-
-  function usePointsForWithdrawal() {
-    if (currentTab !== 'earnings') {
-      setActiveTab('earnings');
-    }
-    const amtInput = document.getElementById('amountInput');
-    if (amtInput) amtInput.value = pointsNairaVal;
-    showToast(`Points equivalent (${document.querySelectorAll('.points-naira-equiv')[0].innerText}) applied!`);
-  }
-
-  // ------------------------------
-  // Current user helper
-  // ------------------------------
-  async function getCurrentUser() {
-    const tryList = ['/users/me', '/auth/me', '/me'];
-    const resp = await tryEndpoints(tryList);
-    if (!resp) return null;
-    return resp.user || resp.data || resp;
-  }
-
-  // ------------------------------
-  // Points history (unchanged)
-  // ------------------------------
-  function normalizePointsHistoryApi(resp) {
-    if (!resp) return [];
-
-    if (resp.ok && Array.isArray(resp.data)) {
-      return resp.data.map(d => ({
-        id: d.id || d._id || Math.random().toString(36).slice(2,9),
-        type: d.type || 'unknown',
-        points: (typeof d.points === 'number') ? d.points : (d.points ? Number(d.points) : null),
-        amount: (typeof d.amount === 'number') ? d.amount : (d.amount ? Number(d.amount) : null),
-        date: d.date || d.createdAt || d.requestedAt || null,
-        meta: d.meta || {},
-        title: d.meta && d.meta.title ? d.meta.title : (d.summary || null),
-        status: d.meta && d.meta.status ? d.meta.status : (d.status || null)
-      }));
+    if (user && (user._id || user.id)) {
+      const uid = user._id || user.id;
+      const res = await fetchWithRetry(`${API_BASE}/users/${uid}/points-history?page=${page}&limit=${limit}`, { method: 'GET', signal }, 1);
+      if (res.ok) {
+        rawResult = await res.json();
+      }
     }
 
-    if (Array.isArray(resp)) {
-      return resp.map(normalizeLegacyTransaction);
+    if (!rawResult) {
+      const res = await fetchWithRetry(`${API_BASE}/withdrawals?page=${page}&limit=${limit}`, { method: 'GET', signal }, 1);
+      if (res.ok) rawResult = await res.json();
     }
-    if (Array.isArray(resp.withdrawals)) return resp.withdrawals.map(normalizeLegacyTransaction);
-    if (Array.isArray(resp.transactions)) return resp.transactions.map(normalizeLegacyTransaction);
-    if (Array.isArray(resp.data)) return resp.data.map(normalizeLegacyTransaction);
-    if (Array.isArray(resp.items)) return resp.items.map(normalizeLegacyTransaction);
 
-    for (const k of Object.keys(resp)) {
-      if (Array.isArray(resp[k])) return resp[k].map(normalizeLegacyTransaction);
-    }
-    return [];
+    const normalized = normalizeHistoryData(rawResult);
+    
+    // Point 11: Explicit history sorting (Newest First)
+    normalized.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+    return normalized;
   }
+};
 
-  function normalizeLegacyTransaction(tx) {
-    const id = tx._id || tx.id || Math.random().toString(36).slice(2,9);
-    if (tx.amount !== undefined && (tx.requestedAt || tx.requested_at || tx.createdAt)) {
+// BANK SERVICE (Point 18)
+const BankService = {
+  async resolveAccount(accountNumber, bankCode) {
+    const res = await fetchWithRetry(`${API_BASE}/banks/resolve?account_number=${accountNumber}&bank_code=${bankCode}`, { method: 'GET' }, 1);
+    if (!res.ok) throw new Error('Account resolution failed');
+    return await res.json();
+  }
+};
+
+// Normalization Helper for Legacy API Responses
+function normalizeHistoryData(resp) {
+  if (!resp) return [];
+  let list = [];
+  if (Array.isArray(resp)) list = resp;
+  else if (Array.isArray(resp.data)) list = resp.data;
+  else if (Array.isArray(resp.withdrawals)) list = resp.withdrawals;
+  else if (Array.isArray(resp.transactions)) list = resp.transactions;
+  else if (Array.isArray(resp.items)) list = resp.items;
+
+  return list.map(tx => {
+    const id = tx._id || tx.id || Math.random().toString(36).slice(2, 9);
+    const date = tx.date || tx.createdAt || tx.requestedAt || tx.timestamp || null;
+    const isWithdrawal = tx.amount !== undefined && (tx.requestedAt || tx.bankName || tx.bank || tx.type === 'withdrawal');
+
+    if (isWithdrawal) {
       return {
         id,
         type: 'withdrawal',
         points: null,
         amount: -Math.abs(asNumber(tx.amount)),
-        date: tx.requestedAt || tx.createdAt || tx.created_at || tx.date || null,
+        date,
         meta: tx,
-        title: tx.bankName || tx.bank || tx.title || tx.description || 'Withdrawal',
-        status: tx.status || tx.state || null
+        title: tx.bankName || tx.bank || tx.title || 'Withdrawal',
+        status: tx.status || tx.state || 'Pending'
       };
     }
-    if (tx.amount !== undefined && (tx.createdAt || tx.created_at || tx.timestamp)) {
-      const amt = asNumber(tx.amount);
-      return {
-        id,
-        type: 'credit_transaction',
-        points: null,
-        amount: amt,
-        date: tx.createdAt || tx.timestamp || tx.date || null,
-        meta: tx,
-        title: tx.type || tx.summary || 'Transaction',
-        status: tx.status || null
-      };
-    }
+
     return {
       id,
-      type: tx.type ? tx.type.toString().toLowerCase() : 'unknown',
+      type: tx.type ? tx.type.toString().toLowerCase() : 'reward',
       points: tx.points !== undefined ? asNumber(tx.points) : null,
       amount: tx.amount !== undefined ? asNumber(tx.amount) : null,
-      date: tx.date || tx.createdAt || null,
+      date,
       meta: tx,
-      title: tx.title || tx.summary || null,
-      status: tx.status || null
+      title: tx.title || tx.summary || (tx.meta && tx.meta.title) || 'Reward Points',
+      status: tx.status || (tx.meta && tx.meta.status) || 'Completed'
     };
-  }
-
-  // ------------------------------
-  // History fetch & render
-  // ------------------------------
-  async function fetchHistoryData(silent = false) {
-    if (!silent && isInitialLoad) {
-      const hs = document.getElementById('historySkeleton');
-      const hl = document.getElementById('historyListContent');
-      if (hs) hs.classList.remove('hidden');
-      if (hl) hl.classList.add('hidden');
-    }
-
-    let user = null;
-    try { user = await getCurrentUser(); } catch (e) { user = null; }
-
-    let usedUnified = false;
-
-    if (user && (user._id || user.id)) {
-      const uid = user._id || user.id;
-      const phUrl = `${API_BASE}/users/${uid}/points-history?page=1&limit=200`;
-
-      try {
-        const res = await fetch(phUrl, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-          credentials: 'include'
-        });
-        if (res.ok) {
-          const json = await res.json();
-          const normalized = normalizePointsHistoryApi(json);
-          rawHistoryData = normalized;
-          usedUnified = true;
-        }
-      } catch (err) {
-        /* ignore */
-      }
-    }
-
-    if (!usedUnified) {
-      const historyEndpoints = [
-        'https://examguide.onrender.com/api/withdrawals',
-        '/wallet/history',
-        '/transactions',
-        '/withdrawals/me'
-      ];
-      const resp = await tryEndpoints(historyEndpoints);
-      if (resp) {
-        const normalized = normalizePointsHistoryApi(resp);
-        rawHistoryData = normalized;
-      } else {
-        rawHistoryData = [];
-      }
-    }
-
-    renderHistoryItems();
-    renderHistoryMetrics();
-
-    if (!silent) {
-      const hs = document.getElementById('historySkeleton');
-      const hl = document.getElementById('historyListContent');
-      if (hs) hs.classList.add('hidden');
-      if (hl) hl.classList.remove('hidden');
-    }
-  }
-
-  function renderHistoryItems() {
-    const container = document.getElementById('historyListContent');
-    if (!container) return;
-
-    container.innerHTML = '';
-
-    if (!rawHistoryData || rawHistoryData.length === 0) {
-      container.innerHTML = `<div class="text-center py-8 text-slate-400 text-xs">No transaction history found.</div>`;
-      return;
-    }
-
-    rawHistoryData.forEach(item => {
-      const statusRaw = (item.status || item.meta?.status || '').toString().toLowerCase();
-      const isPending = statusRaw === 'pending' || statusRaw === 'processing' || (item.type && item.type === 'withdrawal' && !statusRaw);
-      const statusClass = isPending ? 'text-amber-600 bg-amber-50' : 'text-emerald-600 bg-emerald-50';
-      const iconBg = isPending ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600';
-      const statusText = isPending ? (item.meta?.status || 'Processing') : (item.meta?.status || (item.type === 'withdrawal' ? 'Completed' : 'Completed'));
-      const itemType = isPending ? 'pending' : 'completed';
-
-      if (currentFilter !== 'all' && itemType !== currentFilter) return;
-
-      const amt = item.amount !== null && item.amount !== undefined ? asNumber(item.amount) : null;
-      const pts = item.points !== null && item.points !== undefined ? asNumber(item.points) : null;
-      const title = item.title || item.meta?.title || item.meta?.bankName || item.meta?.bank || (item.type ? item.type.replace(/_/g,' ') : "Transaction");
-      const dateStr = item.date ? new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : (item.createdAt ? new Date(item.createdAt).toLocaleDateString() : 'Recent');
-
-      const card = document.createElement('div');
-      card.className = `history-item ${itemType} bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between mb-2`;
-      card.innerHTML = `
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center shrink-0">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              ${isPending 
-                ? '<path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />'
-                : (pts !== null ? '<path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />' : '<path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />')
-              }
-            </svg>
-          </div>
-          <div>
-            <h4 class="text-xs font-bold text-slate-900">${title}</h4>
-            <p class="text-[10px] text-slate-400 font-medium">${dateStr}</p>
-          </div>
-        </div>
-        <div class="text-right">
-          <span class="text-xs font-extrabold text-slate-900 block">
-            ${ amt !== null ? `₦${amt.toLocaleString('en-US', {minimumFractionDigits: 2})}` : (pts !== null ? `${pts.toLocaleString('en-US')} pts` : '—') }
-          </span>
-          ${ item.type === 'withdrawal' || amt !== null
-            ? `<span class="inline-block text-[9px] font-bold ${statusClass} px-2 py-0.5 rounded-md mt-0.5">${statusText}</span>`
-            : `<span class="inline-block text-[9px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md mt-0.5">Reward</span>`
-          }
-        </div>
-      `;
-      container.appendChild(card);
-    });
-  }
-
-  function renderHistoryMetrics() {
-    let total = 0;
-    let pending = 0;
-
-    rawHistoryData.forEach(item => {
-      const amt = item.amount !== null && item.amount !== undefined ? asNumber(item.amount) : 0;
-      const st = (item.status || item.meta?.status || '').toString().toLowerCase();
-      if (st === 'completed' || st === 'success' || st === 'successful') {
-        total += Math.abs(amt);
-      } else if (st === 'pending' || st === 'processing') {
-        pending += Math.abs(amt);
-      }
-    });
-
-    const totalEl = document.getElementById('totalWithdrawnMetric');
-    const pendingEl = document.getElementById('pendingPayoutsMetric');
-    if (totalEl) totalEl.innerText = `₦${total.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
-    if (pendingEl) pendingEl.innerText = `₦${pending.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
-  }
-
-  // ------------------------------
-  // Task loading / rendering
-  // ------------------------------
-  // Set a reading task timer marker in localStorage. Called from tasks list "Do Task".
-  function setReadingTaskTimer(postId, seconds = 120) {
-    if (!postId) return;
-    const key = `readingTask:${postId}`;
-    try {
-      const existing = localStorage.getItem(key);
-      if (existing) {
-        showToast("Reading task already started. Open the article to continue.");
-        return;
-      }
-      const payload = {
-        startedAt: Date.now(),
-        requiredSeconds: Number(seconds),
-        activeSeconds: 0,
-        lastActiveAt: Date.now()
-      };
-      localStorage.setItem(key, JSON.stringify(payload));
-      showToast("Reading task started — open the article to complete it.");
-    } catch (e) {
-      console.warn("Failed to set reading task timer", e);
-    }
-  }
-
-  // Render single task card
-  function createTaskCard(task) {
-    const id = task._id || task.id || Math.random().toString(36).slice(2,9);
-    const status = (task.status || '').toLowerCase();
-    const pts = task.points || (task.meta && task.meta.points) || 0;
-    const activity = task.activityType || (task.meta && task.meta.type) || 'task';
-    const title = task.title || (task.meta && task.meta.title) || activity.replace(/_/g,' ');
-    const desc = task.description || (task.meta && task.meta.description) || '';
-    const isDone = status === 'done';
-    const postId = task.meta && (task.meta.postId || task.meta.resourceId) ? (task.meta.postId || task.meta.resourceId) : null;
-    const url = task.meta && (task.meta.url || task.meta.link) ? (task.meta.url || task.meta.link) : (postId ? `/blog-details.html?id=${postId}` : null);
-    const requiredSeconds = Number(task.meta && (task.meta.requiredSeconds || task.meta.requiredSecondsForReading) || 120);
-
-    const wrapper = document.createElement('div');
-    wrapper.className = 'p-3.5 flex items-center justify-between gap-3 hover:bg-slate-50/80 transition task-card mb-2';
-    if (isDone) wrapper.classList.add('completed');
-
-    wrapper.innerHTML = `
-      <div class="flex items-center gap-3 min-w-0 flex-1">
-        <div class="w-10 h-10 rounded-2xl bg-slate-50 text-slate-700 flex items-center justify-center shrink-0">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-          </svg>
-        </div>
-        <div class="space-y-0.5 min-w-0 flex-1">
-          <h4 class="text-xs font-bold text-slate-900 break-words">${escapeHtml(title)}</h4>
-          <p class="text-[10px] text-slate-400 font-medium break-words">${escapeHtml(desc)}</p>
-          <span class="inline-block text-[9px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full mt-1">${pts} pts</span>
-        </div>
-      </div>
-      <div class="flex items-center gap-3 shrink-0">
-        <button class="px-4 py-2 btn-do-task text-xs font-bold rounded-xl ${isDone ? 'bg-slate-100 text-slate-500' : 'bg-blue-600 text-white'}">${isDone ? 'Done' : 'Do Task'}</button>
-        ${ isDone ? '' : `<button class="px-3 py-1 btn-complete text-xs rounded-lg bg-white border border-slate-200">Mark done</button>` }
-      </div>
-    `;
-
-
-    // Do Task
-    const doBtn = wrapper.querySelector('.btn-do-task');
-    doBtn.addEventListener('click', () => {
-      if (activity === 'reading') {
-        if (!postId) {
-          showToast('No article attached to this task.');
-          return;
-        }
-        // create reading marker and go to article
-        setReadingTaskTimer(postId, requiredSeconds);
-        if (url) window.location.href = url;
-        else window.location.href = `/blog-details.html?id=${postId}`;
-        return;
-      }
-
-      if (url) {
-        // open provided link
-        window.open(url, '_blank');
-        return;
-      }
-
-      // default behaviour
-      showToast('Opening task...');
-    });
-
-    // Mark done
-    const completeBtn = wrapper.querySelector(".btn-complete");
-
-if (completeBtn) {
-  completeBtn.addEventListener("click", async () => {
-    completeBtn.disabled = true;
-    completeBtn.textContent = "Saving...";
-
-    try {
-      const token = getToken();
-      if (!token) {
-        showToast("Please log in to complete tasks");
-        completeBtn.disabled = false;
-        completeBtn.textContent = "Mark done";
-        return;
-      }
-
-      const res = await fetch(`${API_BASE}/task-actions/complete`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...getAuthHeaders()
-        },
-        body: JSON.stringify({
-          type: task.activityType || "task",
-          id
-        })
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || data.message || "Failed");
-      }
-
-      doBtn.classList.remove("bg-blue-600", "text-white");
-      doBtn.classList.add("bg-slate-100", "text-slate-500");
-      doBtn.textContent = "Done";
-
-      completeBtn.remove();
-
-      if (typeof fetchTasks === "function") fetchTasks();
-      if (typeof fetchBalanceData === "function") fetchBalanceData(true).catch(() => {});
-      if (typeof fetchHistoryData === "function") fetchHistoryData(true).catch(() => {});
-
-      showToast(data.message || "Task completed successfully.");
-    } catch (err) {
-      console.error(err);
-      showToast(err.message || "Could not complete task");
-      completeBtn.disabled = false;
-      completeBtn.textContent = "Mark done";
-    }
   });
 }
 
-    return wrapper;
+// ==========================================
+// 4. UI RENDERERS & CONTROLLERS
+// ==========================================
+
+// Point 6: Icon Mapper for Task Categories
+function getTaskIcon(activityType = '') {
+  const type = activityType.toLowerCase();
+  if (type.includes('read') || type.includes('article')) return '📖';
+  if (type.includes('video') || type.includes('watch')) return '▶️';
+  if (type.includes('profile') || type.includes('account')) return '👤';
+  if (type.includes('practice') || type.includes('quiz')) return '📝';
+  if (type.includes('assignment') || type.includes('project')) return '📂';
+  if (type.includes('goal') || type.includes('streak')) return '🎯';
+  if (type.includes('social') || type.includes('share') || type.includes('invite')) return '👥';
+  if (type.includes('mock') || type.includes('exam') || type.includes('test')) return '🎓';
+  return '⚡';
+}
+
+// Balance & Points UI updates
+async function fetchBalanceData(silent = false) {
+  if (!silent && state.isInitialLoad) {
+    toggleSkeleton('balanceSkeleton', 'balanceText', true);
   }
 
-  function escapeHtml(s) {
-    if (!s && s !== 0) return '';
-    return String(s)
-      .replace(/&/g,'&amp;')
-      .replace(/</g,'&lt;')
-      .replace(/>/g,'&gt;')
-      .replace(/"/g,'&quot;')
-      .replace(/'/g,'&#039;');
-  }
-
-  // Load tasks for current user and render into #tasks-container
-  async function loadUserTasks() {
-    const container = document.getElementById('tasks-container');
-    if (!container) return;
-
-    container.innerHTML = `<div class="p-4"><div class="skeleton h-12 w-full rounded mb-2"></div><div class="skeleton h-12 w-full rounded"></div></div>`;
-
-    try {
-      const user = await getCurrentUser();
-      if (!user || !user._id) {
-        container.innerHTML = `<div class="p-4 text-sm text-slate-500">Please log in to see your tasks.</div>`;
-        return;
-      }
-      const resp = await fetch(`${API_BASE}/tasks/user/${user._id}`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }
-      });
-      if (!resp.ok) throw new Error('Failed to fetch tasks');
-      const tasks = await resp.json();
-      const arr = Array.isArray(tasks) ? tasks : (tasks.tasks || tasks.data || []);
-      if (!arr.length) {
-        container.innerHTML = `<div class="p-4 text-sm text-slate-500">No tasks right now. Check back later.</div>`;
-        return;
-      }
-      container.innerHTML = '';
-      arr.forEach(t => container.appendChild(createTaskCard(t)));
-    } catch (err) {
-      console.error('loadUserTasks error', err);
-      container.innerHTML = `<div class="p-4 text-sm text-rose-600">Could not load tasks. Try again later.</div>`;
-    }
-  }
-
-  // expose for debugging / manual refresh
-  window.loadUserTasks = loadUserTasks;
-  window.setReadingTaskTimer = setReadingTaskTimer;
-
-  // ------------------------------
-  // Remaining UI helpers and navigation (unchanged)
-  // ------------------------------
-  function renderBalance() {
-    const balEl = document.getElementById('balanceText');
-    if (!balEl) return;
-    if (isBalanceVisible) {
-      balEl.innerText = `₦${currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    } else {
-      balEl.innerText = '₦ ••••••••';
-    }
-  }
-
-  function toggleBalanceVisibility() {
-    isBalanceVisible = !isBalanceVisible;
-    const eyeIcon = document.getElementById('eyeIcon');
+  try {
+    const signal = getAbortSignal('balance');
+    await WalletService.getBalanceData(signal);
     renderBalance();
+    renderPointsSummary();
+  } catch (err) {
+    if (err.name !== 'AbortError') console.error('fetchBalanceData error', err);
+  } finally {
+    if (!silent) {
+      toggleSkeleton('balanceSkeleton', 'balanceText', false);
+    }
+  }
+}
 
-    if (isBalanceVisible) {
-      eyeIcon.innerHTML = `
-        <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12c1.73-4.39 6-7.5 10.964-7.5 4.97 0 9.236 3.11 10.964 7.5-1.73 4.39-6 7.5-10.964 7.5-4.97 0-9.236-3.11-10.964-7.5z" />
-        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-      `;
+function renderBalance() {
+  const balEl = document.getElementById('balanceText');
+  if (!balEl) return;
+  if (state.isBalanceVisible) {
+    balEl.innerText = `₦${state.currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  } else {
+    balEl.innerText = '₦ ••••••••';
+  }
+}
+
+function renderPointsSummary() {
+  const formattedCredit = state.creditPointsVal.toLocaleString('en-US');
+  const formattedTask = state.taskPointsVal.toLocaleString('en-US');
+  const formattedTotal = state.totalPointsVal.toLocaleString('en-US');
+  const formattedNaira = `₦${state.pointsNairaVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  document.querySelectorAll('.credit-points-val').forEach(el => el.innerText = formattedCredit);
+  document.querySelectorAll('.task-points-val').forEach(el => el.innerText = formattedTask);
+  document.querySelectorAll('.total-points-val').forEach(el => el.innerText = formattedTotal);
+  document.querySelectorAll('.points-naira-equiv').forEach(el => el.innerText = formattedNaira);
+}
+
+// History UI rendering (Point 8: Pagination, Point 12: Empty states)
+async function fetchHistoryData(silent = false, append = false) {
+  if (!append) {
+    state.historyPage = 1;
+  }
+
+  if (!silent && state.isInitialLoad) {
+    toggleSkeleton('historySkeleton', 'historyListContent', true);
+  }
+
+  try {
+    const signal = getAbortSignal('history');
+    const newItems = await HistoryService.getHistory(state.historyPage, state.historyLimit, signal);
+
+    if (append) {
+      state.rawHistoryData = [...state.rawHistoryData, ...newItems];
     } else {
-      eyeIcon.innerHTML = `
-        <path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.664 16.39 7.93 19.5 12.9 19.5c1.802 0 3.504-.402 5.02-1.127M12 4.5c4.97 0 9.236 3.11 10.964 7.5a10.45 10.45 0 01-2.157 3.5M3 3l18 18" />
-      `;
+      state.rawHistoryData = newItems;
+    }
+
+    state.hasMoreHistory = newItems.length >= state.historyLimit;
+    renderHistoryItems();
+    renderHistoryMetrics();
+  } catch (err) {
+    if (err.name !== 'AbortError') console.error('fetchHistoryData error', err);
+  } finally {
+    if (!silent) {
+      toggleSkeleton('historySkeleton', 'historyListContent', false);
     }
   }
+}
 
-  function setMaxAmount() {
-    const amtInput = document.getElementById('amountInput');
-    if (amtInput) amtInput.value = currentBalance;
-    showToast("Maximum balance selected");
+function renderHistoryItems() {
+  const container = document.getElementById('historyListContent');
+  if (!container) return;
+  container.innerHTML = '';
+
+  // Point 12: Friendly Empty States
+  if (!state.rawHistoryData || state.rawHistoryData.length === 0) {
+    container.innerHTML = `
+      <div class="text-center py-10 px-4">
+        <div class="text-3xl mb-2">🎉</div>
+        <h4 class="text-xs font-bold text-slate-700">No transaction history yet!</h4>
+        <p class="text-[10px] text-slate-400 mt-1">Your payouts and rewards will appear here.</p>
+      </div>`;
+    return;
   }
 
-  function selectMethod(method, skipBankUpdate = false) {
-    selectedMethod = method;
-    const methods = ['bank', 'opay', 'mobile'];
+  state.rawHistoryData.forEach(item => {
+    const statusRaw = (item.status || item.meta?.status || '').toString().toLowerCase();
+    const isPending = statusRaw === 'pending' || statusRaw === 'processing' || (item.type === 'withdrawal' && !statusRaw);
+    const statusClass = isPending ? 'text-amber-600 bg-amber-50' : 'text-emerald-600 bg-emerald-50';
+    const iconBg = isPending ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600';
+    const statusText = isPending ? 'Processing' : 'Completed';
+    const itemType = isPending ? 'pending' : 'completed';
 
-    methods.forEach(m => {
-      const el = document.getElementById(`method-${m}`);
-      if (!el) return;
-      const radio = el.querySelector('input[type="radio"]');
-      if (m === method) {
-        el.className = "flex items-center justify-between p-3.5 bg-white border-2 border-blue-600 rounded-2xl cursor-pointer transition shadow-sm";
-        if (radio) radio.checked = true;
-      } else {
-        el.className = "flex items-center justify-between p-3.5 bg-white border border-slate-200/90 rounded-2xl cursor-pointer transition shadow-sm hover:border-slate-300";
-        if (radio) radio.checked = false;
+    if (state.currentFilter !== 'all' && itemType !== state.currentFilter) return;
+
+    const amt = item.amount !== null && item.amount !== undefined ? asNumber(item.amount) : null;
+    const pts = item.points !== null && item.points !== undefined ? asNumber(item.points) : null;
+    const title = item.title || (item.type ? item.type.replace(/_/g, ' ') : "Transaction");
+    const dateStr = item.date ? new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recent';
+
+    const card = document.createElement('div');
+    card.className = `history-item ${itemType} bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between mb-2`;
+    card.innerHTML = `
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center shrink-0">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            ${isPending 
+              ? '<path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />' 
+              : '<path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />'}
+          </svg>
+        </div>
+        <div>
+          <h4 class="text-xs font-bold text-slate-900">${escapeHtml(title)}</h4>
+          <p class="text-[10px] text-slate-400 font-medium">${dateStr}</p>
+        </div>
+      </div>
+      <div class="text-right">
+        <span class="text-xs font-extrabold text-slate-900 block">
+          ${amt !== null ? `₦${Math.abs(amt).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : (pts !== null ? `${pts.toLocaleString('en-US')} pts` : '—')}
+        </span>
+        <span class="inline-block text-[9px] font-bold ${statusClass} px-2 py-0.5 rounded-md mt-0.5">${statusText}</span>
+      </div>`;
+    container.appendChild(card);
+  });
+
+  // Load More Button for Pagination (Point 8)
+  if (state.hasMoreHistory) {
+    const loadMoreBtn = document.createElement('button');
+    loadMoreBtn.className = "w-full py-2.5 mt-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition";
+    loadMoreBtn.innerText = "Load More Transactions";
+    loadMoreBtn.onclick = () => {
+      state.historyPage += 1;
+      fetchHistoryData(true, true);
+    };
+    container.appendChild(loadMoreBtn);
+  }
+}
+
+function renderHistoryMetrics() {
+  let total = 0;
+  let pending = 0;
+
+  state.rawHistoryData.forEach(item => {
+    const amt = item.amount !== null && item.amount !== undefined ? asNumber(item.amount) : 0;
+    const st = (item.status || item.meta?.status || '').toString().toLowerCase();
+
+    if (st === 'completed' || st === 'success' || st === 'successful') {
+      total += Math.abs(amt);
+    } else if (st === 'pending' || st === 'processing') {
+      pending += Math.abs(amt);
+    }
+  });
+
+  const totalEl = document.getElementById('totalWithdrawnMetric');
+  const pendingEl = document.getElementById('pendingPayoutsMetric');
+  if (totalEl) totalEl.innerText = `₦${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+  if (pendingEl) pendingEl.innerText = `₦${pending.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+}
+
+// Tasks Loading and Card Generation (Points 6, 7, 10, 12, 19)
+async function loadUserTasks() {
+  const container = document.getElementById('tasks-container');
+  if (!container) return;
+
+  // Point 15: Task Skeleton
+  container.innerHTML = `
+    <div class="p-3.5 space-y-2">
+      <div class="h-16 bg-slate-100 rounded-2xl animate-pulse"></div>
+      <div class="h-16 bg-slate-100 rounded-2xl animate-pulse"></div>
+    </div>`;
+
+  try {
+    const signal = getAbortSignal('tasks');
+    const tasks = await TaskService.getMyTasks(signal);
+
+    // Point 12: Friendly Empty States
+    if (!tasks || tasks.length === 0) {
+      container.innerHTML = `
+        <div class="p-8 text-center">
+          <div class="text-3xl mb-2">🎉</div>
+          <h4 class="text-xs font-bold text-slate-800">You're all caught up!</h4>
+          <p class="text-[10px] text-slate-400 mt-1">New tasks will appear here soon.</p>
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = '';
+    tasks.forEach(task => container.appendChild(createTaskCard(task)));
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    console.error('loadUserTasks error', err);
+    container.innerHTML = `<div class="p-4 text-xs font-semibold text-rose-600 text-center">Could not load tasks. Please try again.</div>`;
+  }
+}
+
+function createTaskCard(task) {
+  const id = task._id || task.id;
+  // Point 19: Task Status Flow (pending -> active -> in_progress -> completed -> rewarded)
+  const status = (task.status || '').toLowerCase();
+  const activity = task.activityType || (task.meta && task.meta.type) || 'task';
+  const isDone = status === 'completed' || status === 'rewarded' || status === 'done';
+
+  const pts = task.points || (task.meta && task.meta.points) || 0;
+  const title = task.title || (task.meta && task.meta.title) || activity.replace(/_/g, ' ');
+  const desc = task.description || (task.meta && task.meta.description) || '';
+  const postId = task.meta && (task.meta.postId || task.meta.resourceId) ? (task.meta.postId || task.meta.resourceId) : null;
+  const url = task.meta && (task.meta.url || task.meta.link) ? (task.meta.url || task.meta.link) : (postId ? `/blog-details.html?id=${postId}` : null);
+  const requiredSeconds = Number(task.meta && (task.meta.requiredSeconds || task.meta.requiredSecondsForReading) || 120);
+
+  // Point 6: Render task category icon
+  const taskIcon = getTaskIcon(activity);
+
+  const wrapper = document.createElement('div');
+  wrapper.className = `p-3.5 flex items-center justify-between gap-3 bg-white rounded-2xl border border-slate-200/80 hover:bg-slate-50/80 transition task-card mb-2 ${isDone ? 'completed opacity-75' : ''}`;
+
+  wrapper.innerHTML = `
+    <div class="flex items-center gap-3 min-w-0 flex-1">
+      <div class="w-10 h-10 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center text-lg shrink-0">
+        ${taskIcon}
+      </div>
+      <div class="space-y-0.5 min-w-0 flex-1">
+        <h4 class="text-xs font-bold text-slate-900 break-words">${escapeHtml(title)}</h4>
+        <p class="text-[10px] text-slate-400 font-medium break-words">${escapeHtml(desc)}</p>
+        <span class="inline-block text-[9px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full mt-1">${pts} pts</span>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 shrink-0">
+      <button class="px-3.5 py-2 btn-do-task text-xs font-bold rounded-xl transition ${isDone ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}" ${isDone ? 'disabled' : ''}>
+        ${isDone ? 'Done' : 'Do Task'}
+      </button>
+      ${!isDone ? `<button class="px-3 py-2 btn-complete text-xs font-semibold rounded-xl bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100 transition">Mark done</button>` : ''}
+    </div>`;
+
+  const doBtn = wrapper.querySelector('.btn-do-task');
+  const completeBtn = wrapper.querySelector('.btn-complete');
+
+  // Handle Do Task Click
+  doBtn.addEventListener('click', () => {
+    if (isDone) return;
+    if (activity === 'reading') {
+      if (!postId) {
+        showToast('No article attached to this task.');
+        return;
       }
-    });
-
-    if (!skipBankUpdate) {
-      const bankSelect = document.getElementById('bankSelect');
-      if (!bankSelect) return;
-      if (method === 'opay') {
-        bankSelect.value = '999992'; // OPay
-      } else if (method === 'mobile') {
-        bankSelect.value = '50211';  // Kuda
-      } else if (method === 'bank') {
-        bankSelect.value = '058';    // GTBank
-      }
+      setReadingTaskTimer(postId, requiredSeconds);
+      if (url) window.location.href = url;
+      else window.location.href = `/blog-details.html?id=${postId}`;
+      return;
     }
-  }
-
-  function handleBankSelectChange(val) {
-    if (val === '999992' || val === '999991') {
-      selectMethod('opay', true);
-    } else if (val === '50211') {
-      selectMethod('mobile', true);
-    } else {
-      selectMethod('bank', true);
+    if (url) {
+      window.open(url, '_blank');
+      return;
     }
-  }
+    showToast('Opening task...');
+  });
 
-  async function handleAccountInput(val) {
-    const nameInput = document.getElementById('accountNameInput');
-    const skeleton = document.getElementById('accountNameSkeleton');
-    const bankSelect = document.getElementById('bankSelect');
-
-    if (val.length === 10) {
-      if (skeleton) skeleton.classList.remove('hidden');
-      if (nameInput) nameInput.value = "";
+  // Handle Complete Task Click (Point 7: Prevent Double Completion)
+  if (completeBtn) {
+    completeBtn.addEventListener('click', async () => {
+      completeBtn.disabled = true;
+      completeBtn.textContent = "Saving...";
 
       try {
-        const bankCode = bankSelect ? bankSelect.value || "058" : "058";
-        const res = await fetch(`${API_BASE}/banks/resolve?account_number=${val}&bank_code=${bankCode}`, {
-          headers: { ...getAuthHeaders() }
-        });
-        const data = await res.json();
-        if (skeleton) skeleton.classList.add('hidden');
+        const data = await TaskService.completeTask(id, activity);
 
-        if (data && (data.account_name || data.name || data.data?.account_name)) {
-          verifiedAccountName = data.account_name || data.name || data.data.account_name;
-          if (nameInput) {
-            nameInput.value = verifiedAccountName;
-            nameInput.classList.add('text-blue-600');
-          }
-          showToast("Account name verified!");
-        } else {
-          verifiedAccountName = "Account Verified";
-          if (nameInput) {
-            nameInput.value = verifiedAccountName;
-            nameInput.classList.add('text-blue-600');
-          }
-        }
+        doBtn.classList.remove("bg-blue-600", "text-white");
+        doBtn.classList.add("bg-slate-100", "text-slate-400");
+        doBtn.textContent = "Done";
+        doBtn.disabled = true;
+        completeBtn.remove();
+
+        showToast(data.message || "Task completed successfully!");
+
+        // Refresh state cleanly from server
+        await Promise.all([
+          fetchBalanceData(true),
+          fetchHistoryData(true)
+        ]);
       } catch (err) {
-        if (skeleton) skeleton.classList.add('hidden');
-        verifiedAccountName = "Account Verified";
-        if (nameInput) {
-          nameInput.value = verifiedAccountName;
-          nameInput.classList.add('text-blue-600');
-        }
+        console.error('Task complete error:', err);
+        showToast(err.message || "Could not complete task");
+        completeBtn.disabled = false;
+        completeBtn.textContent = "Mark done";
       }
-    } else {
-      if (skeleton) skeleton.classList.add('hidden');
-      if (nameInput) {
-        nameInput.value = "";
-        nameInput.classList.remove('text-blue-600');
-      }
-      verifiedAccountName = "";
-    }
+    });
   }
 
-  function handleReviewWithdrawal() {
-    const amt = parseFloat(document.getElementById('amountInput').value);
-    const bankSelect = document.getElementById('bankSelect');
-    const bankText = bankSelect ? bankSelect.options[bankSelect.selectedIndex]?.text || "--" : "--";
-    const accNum = document.getElementById('accountNumInput').value;
-    const accName = document.getElementById('accountNameInput').value;
+  return wrapper;
+}
 
-    if (!amt || amt < 1000) {
-      showToast("Minimum withdrawal is ₦1,000");
+// Reading Task Helper (Point 10: Server and local tracking)
+function setReadingTaskTimer(postId, seconds = 120) {
+  if (!postId) return;
+  const key = `readingTask:${postId}`;
+  try {
+    const existing = localStorage.getItem(key);
+    if (existing) {
+      showToast("Reading task already started. Open article to complete.");
       return;
     }
-    if (amt > currentBalance) {
-      showToast("Amount exceeds available balance");
-      return;
-    }
-    if (!bankSelect || !bankSelect.value) {
-      showToast("Please select your bank");
-      return;
-    }
-    if (!accNum || accNum.length < 10) {
-      showToast("Enter a valid 10-digit account number");
-      return;
-    }
+    const payload = {
+      startedAt: Date.now(),
+      requiredSeconds: Number(seconds),
+      activeSeconds: 0,
+      lastActiveAt: Date.now()
+    };
+    localStorage.setItem(key, JSON.stringify(payload));
+    
+    // Server start notification
+    TaskService.startReadingTask(postId, seconds);
+    showToast("Reading task started — open article to complete.");
+  } catch (e) {
+    console.warn("Failed to set reading task timer", e);
+  }
+}
 
-    const summaryAmount = document.getElementById('summaryAmount');
-    const summaryBank = document.getElementById('summaryBank');
-    const summaryAccNum = document.getElementById('summaryAccNum');
-    const summaryAccName = document.getElementById('summaryAccName');
+// ==========================================
+// 5. WITHDRAWAL & FORM ACTIONS (Points 1, 16)
+// ==========================================
 
-    if (summaryAmount) summaryAmount.innerText = `₦${amt.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
-    if (summaryBank) summaryBank.innerText = bankText;
-    if (summaryAccNum) summaryAccNum.innerText = accNum;
-    if (summaryAccName) summaryAccName.innerText = accName || verifiedAccountName || "VERIFIED ACCOUNT";
-
-    toggleReviewModal(true);
+async function confirmWithdrawal() {
+  const confirmBtn = document.getElementById('confirmBtn');
+  if (confirmBtn) {
+    confirmBtn.disabled = true;
+    confirmBtn.innerHTML = `
+      <svg class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      <span>Processing...</span>`;
   }
 
-  async function confirmWithdrawal() {
-    const confirmBtn = document.getElementById('confirmBtn');
-    if (confirmBtn) {
-      confirmBtn.disabled = true;
-      confirmBtn.innerHTML = `<svg class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Processing...</span>`;
-    }
+  const amt = parseFloat(document.getElementById('amountInput').value) || 0;
+  const bankSelect = document.getElementById('bankSelect');
+  const bankText = bankSelect ? bankSelect.options[bankSelect.selectedIndex]?.text || "" : "";
+  const accNum = document.getElementById('accountNumInput').value;
 
-    const amt = parseFloat(document.getElementById('amountInput').value) || 0;
-    const bankSelect = document.getElementById('bankSelect');
-    const bankText = bankSelect ? bankSelect.options[bankSelect.selectedIndex]?.text || "" : "";
-    const accNum = document.getElementById('accountNumInput').value;
+  try {
+    // Submit request to server
+    await WalletService.requestWithdrawal({
+      amount: amt,
+      bankName: bankText,
+      accountNumber: accNum,
+      accountName: state.verifiedAccountName,
+      method: state.selectedMethod
+    });
 
-    try {
-      await fetch(`${API_BASE}/withdrawals`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body: JSON.stringify({
-          amount: amt,
-          bankName: bankText,
-          accountNumber: accNum,
-          accountName: verifiedAccountName,
-          method: selectedMethod
-        })
-      });
-    } catch (e) { /* ignore */ }
+    // Point 1 & 16: Balance is ONLY updated after explicit server success confirmation
+    showToast("Withdrawal Request Submitted! 🎉");
+    toggleReviewModal(false);
 
-    currentBalance -= amt;
-    if (currentBalance < 0) currentBalance = 0;
-    renderBalance();
+    // Refresh data from server source of truth
+    await Promise.all([
+      fetchBalanceData(true),
+      fetchHistoryData(true)
+    ]);
 
+    setTimeout(() => setActiveTab('history'), 500);
+  } catch (err) {
+    console.error("Withdrawal error:", err);
+    showToast(err.message || "Withdrawal failed. Please try again.");
+  } finally {
     if (confirmBtn) {
       confirmBtn.disabled = false;
       confirmBtn.innerHTML = `<span>Confirm & Transfer Now</span>`;
     }
-    toggleReviewModal(false);
-    showToast("Withdrawal Request Submitted! 🎉");
-
-    fetchBalanceData(true);
-    fetchHistoryData(true);
-
-    setTimeout(() => { setActiveTab('history'); }, 800);
   }
+}
 
-  // ------------------------------
-  // UI and navigation
-  // ------------------------------
-  function filterHistory(filter) {
-    currentFilter = filter;
-    const buttons = ['all', 'completed', 'pending'];
-    buttons.forEach(b => {
-      const btn = document.getElementById(`filter-${b}`);
-      if (btn) {
-        if (b === filter) btn.className = "px-4 py-1.5 rounded-full text-xs font-bold bg-slate-900 text-white transition shrink-0";
-        else btn.className = "px-4 py-1.5 rounded-full text-xs font-semibold bg-white text-slate-600 border border-slate-200/80 transition shrink-0 hover:bg-slate-50";
-      }
-    });
-    renderHistoryItems();
-  }
+async function handleAccountInput(val) {
+  const nameInput = document.getElementById('accountNameInput');
+  const skeleton = document.getElementById('accountNameSkeleton');
+  const bankSelect = document.getElementById('bankSelect');
 
-  function setActiveTab(tab) {
-    if (tab === 'home') { window.location.href = '/tutor/Oau.html'; return; }
-    if (tab === 'profile') { window.location.href = 'view-pro.html'; return; }
+  if (val.length === 10) {
+    if (skeleton) skeleton.classList.remove('hidden');
+    if (nameInput) nameInput.value = "";
 
-    currentTab = tab;
-    const tabs = ['home', 'earnings', 'tasks', 'history', 'profile'];
-    tabs.forEach(t => {
-      const btn = document.getElementById(`tab-${t}`);
-      if (btn) {
-        if (t === tab) btn.className = "flex flex-col items-center gap-1 text-blue-600 font-bold transition py-1 px-2.5";
-        else btn.className = "flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 transition py-1 px-2.5";
-      }
-    });
-
-    // hide all
-    const views = ['view-earnings','view-history','view-tasks','view-placeholder'];
-    views.forEach(v => {
-      const el = document.getElementById(v);
-      if (el) el.classList.add('hidden');
-    });
-
-    const headerTitle = document.getElementById('headerTitle');
-    const headerSubtitle = document.getElementById('headerSubtitle');
-
-    if (tab === 'earnings') {
-      const view = document.getElementById('view-earnings'); if (view) view.classList.remove('hidden');
-      if (headerTitle) headerTitle.innerText = "Withdraw Funds";
-      if (headerSubtitle) headerSubtitle.innerText = "Transfer your earnings to your account";
-    } else if (tab === 'history') {
-      const view = document.getElementById('view-history'); if (view) view.classList.remove('hidden');
-      if (headerTitle) headerTitle.innerText = "Transaction History";
-      if (headerSubtitle) headerSubtitle.innerText = "View recent payout & withdrawal records";
-      fetchHistoryData(false);
-    } else if (tab === 'tasks') {
-      const view = document.getElementById('view-tasks'); if (view) view.classList.remove('hidden');
-      if (headerTitle) headerTitle.innerText = "Tasks";
-      if (headerSubtitle) headerSubtitle.innerText = "Complete tasks and earn points";
-      // load tasks on tab open
-      loadUserTasks();
-    } else {
-      const view = document.getElementById('view-placeholder'); if (view) view.classList.remove('hidden');
-      if (headerTitle) headerTitle.innerText = tab.charAt(0).toUpperCase() + tab.slice(1);
-      if (headerSubtitle) headerSubtitle.innerText = `Manage your ${tab} options`;
-    }
-  }
-
-  function toggleReviewModal(show) {
-    const modal = document.getElementById('reviewModal');
-    const modalBox = document.getElementById('reviewModalBox');
-    if (!modal || !modalBox) return;
-    if (show) {
-      modal.classList.remove('opacity-0', 'pointer-events-none');
-      modalBox.classList.remove('translate-y-full');
-      modalBox.classList.add('translate-y-0');
-    } else {
-      modal.classList.add('opacity-0', 'pointer-events-none');
-      modalBox.classList.remove('translate-y-0');
-      modalBox.classList.add('translate-y-full');
-    }
-  }
-
-  function toggleHelpModal(show) {
-    const modal = document.getElementById('helpModal');
-    const modalBox = document.getElementById('helpModalBox');
-    if (!modal || !modalBox) return;
-    if (show) {
-      modal.classList.remove('opacity-0', 'pointer-events-none');
-      modalBox.classList.remove('scale-95');
-      modalBox.classList.add('scale-100');
-    } else {
-      modal.classList.add('opacity-0', 'pointer-events-none');
-      modalBox.classList.remove('scale-100');
-      modalBox.classList.add('scale-95');
-    }
-  }
-
-  function handleBack() { window.history.back(); }
-
-  function showToast(msg) {
-    const toast = document.getElementById('toast');
-    if (!toast) {
-      alert(msg);
-      return;
-    }
-    const msgEl = document.getElementById('toastMsg');
-    if (msgEl) msgEl.innerText = msg;
-    toast.classList.remove('opacity-0', 'pointer-events-none');
-    setTimeout(() => { toast.classList.add('opacity-0', 'pointer-events-none'); }, 2500);
-  }
-
-  function startSilentAutoRefresh() {
-    setInterval(() => {
-      fetchBalanceData(true);
-      fetchHistoryData(true);
-      // do not auto-refresh tasks too often; leave manual or call when switching
-    }, 5000);
-  }
-
-  // App init
-  window.addEventListener('DOMContentLoaded', async () => {
     try {
-      await Promise.all([
-        fetchBalanceData(false),
-        fetchHistoryData(false)
-      ]);
+      const bankCode = bankSelect ? bankSelect.value || "058" : "058";
+      const data = await BankService.resolveAccount(val, bankCode);
+      
+      if (skeleton) skeleton.classList.add('hidden');
+      if (data && (data.account_name || data.name || data.data?.account_name)) {
+        state.verifiedAccountName = data.account_name || data.name || data.data.account_name;
+        if (nameInput) {
+          nameInput.value = state.verifiedAccountName;
+          nameInput.classList.add('text-blue-600');
+        }
+        showToast("Account name verified!");
+      }
     } catch (err) {
-      showToast("Unable to reach server. Displaying offline balance.");
-    } finally {
-      isInitialLoad = false;
-      startSilentAutoRefresh();
+      if (skeleton) skeleton.classList.add('hidden');
+      state.verifiedAccountName = "Account Verified";
+      if (nameInput) {
+        nameInput.value = state.verifiedAccountName;
+        nameInput.classList.add('text-blue-600');
+      }
+    }
+  } else {
+    if (skeleton) skeleton.classList.add('hidden');
+    if (nameInput) {
+      nameInput.value = "";
+      nameInput.classList.remove('text-blue-600');
+    }
+    state.verifiedAccountName = "";
+  }
+}
+
+// ==========================================
+// 6. UI NAVIGATION & EVENT HANDLERS
+// ==========================================
+
+function toggleSkeleton(skeletonId, contentId, showSkeleton) {
+  const sk = document.getElementById(skeletonId);
+  const ct = document.getElementById(contentId);
+  if (sk) sk.classList.toggle('hidden', !showSkeleton);
+  if (ct) ct.classList.toggle('hidden', showSkeleton);
+}
+
+function usePointsForWithdrawal() {
+  if (state.currentTab !== 'earnings') setActiveTab('earnings');
+  const amtInput = document.getElementById('amountInput');
+  if (amtInput) amtInput.value = state.pointsNairaVal;
+  showToast(`Points equivalent (₦${state.pointsNairaVal.toLocaleString()}) applied!`);
+}
+
+function toggleBalanceVisibility() {
+  state.isBalanceVisible = !state.isBalanceVisible;
+  const eyeIcon = document.getElementById('eyeIcon');
+  renderBalance();
+
+  if (!eyeIcon) return;
+  if (state.isBalanceVisible) {
+    eyeIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12c1.73-4.39 6-7.5 10.964-7.5 4.97 0 9.236 3.11 10.964 7.5-1.73 4.39-6 7.5-10.964 7.5-4.97 0-9.236-3.11-10.964-7.5z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />`;
+  } else {
+    eyeIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.664 16.39 7.93 19.5 12.9 19.5c1.802 0 3.504-.402 5.02-1.127M12 4.5c4.97 0 9.236 3.11 10.964 7.5a10.45 10.45 0 01-2.157 3.5M3 3l18 18" />`;
+  }
+}
+
+function setMaxAmount() {
+  const amtInput = document.getElementById('amountInput');
+  if (amtInput) amtInput.value = state.currentBalance;
+  showToast("Maximum balance selected");
+}
+
+function selectMethod(method, skipBankUpdate = false) {
+  state.selectedMethod = method;
+  ['bank', 'opay', 'mobile'].forEach(m => {
+    const el = document.getElementById(`method-${m}`);
+    if (!el) return;
+    const radio = el.querySelector('input[type="radio"]');
+    if (m === method) {
+      el.className = "flex items-center justify-between p-3.5 bg-white border-2 border-blue-600 rounded-2xl cursor-pointer transition shadow-sm";
+      if (radio) radio.checked = true;
+    } else {
+      el.className = "flex items-center justify-between p-3.5 bg-white border border-slate-200/90 rounded-2xl cursor-pointer transition shadow-sm hover:border-slate-300";
+      if (radio) radio.checked = false;
     }
   });
+
+  if (!skipBankUpdate) {
+    const bankSelect = document.getElementById('bankSelect');
+    if (!bankSelect) return;
+    if (method === 'opay') bankSelect.value = '999992';
+    else if (method === 'mobile') bankSelect.value = '50211';
+    else if (method === 'bank') bankSelect.value = '058';
+  }
+}
+
+function handleBankSelectChange(val) {
+  if (val === '999992' || val === '999991') selectMethod('opay', true);
+  else if (val === '50211') selectMethod('mobile', true);
+  else selectMethod('bank', true);
+}
+
+function handleReviewWithdrawal() {
+  const amt = parseFloat(document.getElementById('amountInput').value);
+  const bankSelect = document.getElementById('bankSelect');
+  const bankText = bankSelect ? bankSelect.options[bankSelect.selectedIndex]?.text || "--" : "--";
+  const accNum = document.getElementById('accountNumInput').value;
+  const accName = document.getElementById('accountNameInput').value;
+
+  if (!amt || amt < 1000) {
+    showToast("Minimum withdrawal is ₦1,000");
+    return;
+  }
+  if (amt > state.currentBalance) {
+    showToast("Amount exceeds available balance");
+    return;
+  }
+  if (!bankSelect || !bankSelect.value) {
+    showToast("Please select your bank");
+    return;
+  }
+  if (!accNum || accNum.length < 10) {
+    showToast("Enter a valid 10-digit account number");
+    return;
+  }
+
+  const summaryAmount = document.getElementById('summaryAmount');
+  const summaryBank = document.getElementById('summaryBank');
+  const summaryAccNum = document.getElementById('summaryAccNum');
+  const summaryAccName = document.getElementById('summaryAccName');
+
+  if (summaryAmount) summaryAmount.innerText = `₦${amt.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+  if (summaryBank) summaryBank.innerText = bankText;
+  if (summaryAccNum) summaryAccNum.innerText = accNum;
+  if (summaryAccName) summaryAccName.innerText = accName || state.verifiedAccountName || "VERIFIED ACCOUNT";
+
+  toggleReviewModal(true);
+}
+
+function filterHistory(filter) {
+  state.currentFilter = filter;
+  ['all', 'completed', 'pending'].forEach(b => {
+    const btn = document.getElementById(`filter-${b}`);
+    if (btn) {
+      if (b === filter) btn.className = "px-4 py-1.5 rounded-full text-xs font-bold bg-slate-900 text-white transition shrink-0";
+      else btn.className = "px-4 py-1.5 rounded-full text-xs font-semibold bg-white text-slate-600 border border-slate-200/80 transition shrink-0 hover:bg-slate-50";
+    }
+  });
+  renderHistoryItems();
+}
+
+function setActiveTab(tab) {
+  if (tab === 'home') {
+    window.location.href = '/tutor/Oau.html';
+    return;
+  }
+  if (tab === 'profile') {
+    window.location.href = 'view-pro.html';
+    return;
+  }
+
+  state.currentTab = tab;
+  ['home', 'earnings', 'tasks', 'history', 'profile'].forEach(t => {
+    const btn = document.getElementById(`tab-${t}`);
+    if (btn) {
+      if (t === tab) btn.className = "flex flex-col items-center gap-1 text-blue-600 font-bold transition py-1 px-2.5";
+      else btn.className = "flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 transition py-1 px-2.5";
+    }
+  });
+
+  ['view-earnings', 'view-history', 'view-tasks', 'view-placeholder'].forEach(v => {
+    const el = document.getElementById(v);
+    if (el) el.classList.add('hidden');
+  });
+
+  const headerTitle = document.getElementById('headerTitle');
+  const headerSubtitle = document.getElementById('headerSubtitle');
+
+  if (tab === 'earnings') {
+    const view = document.getElementById('view-earnings');
+    if (view) view.classList.remove('hidden');
+    if (headerTitle) headerTitle.innerText = "Withdraw Funds";
+    if (headerSubtitle) headerSubtitle.innerText = "Transfer your earnings to your account";
+  } else if (tab === 'history') {
+    const view = document.getElementById('view-history');
+    if (view) view.classList.remove('hidden');
+    if (headerTitle) headerTitle.innerText = "Transaction History";
+    if (headerSubtitle) headerSubtitle.innerText = "View recent payout & withdrawal records";
+    fetchHistoryData(false);
+  } else if (tab === 'tasks') {
+    const view = document.getElementById('view-tasks');
+    if (view) view.classList.remove('hidden');
+    if (headerTitle) headerTitle.innerText = "Tasks";
+    if (headerSubtitle) headerSubtitle.innerText = "Complete tasks and earn points";
+    loadUserTasks();
+  }
+}
+
+function toggleReviewModal(show) {
+  const modal = document.getElementById('reviewModal');
+  const modalBox = document.getElementById('reviewModalBox');
+  if (!modal || !modalBox) return;
+  if (show) {
+    modal.classList.remove('opacity-0', 'pointer-events-none');
+    modalBox.classList.remove('translate-y-full');
+    modalBox.classList.add('translate-y-0');
+  } else {
+    modal.classList.add('opacity-0', 'pointer-events-none');
+    modalBox.classList.remove('translate-y-0');
+    modalBox.classList.add('translate-y-full');
+  }
+}
+
+function toggleHelpModal(show) {
+  const modal = document.getElementById('helpModal');
+  const modalBox = document.getElementById('helpModalBox');
+  if (!modal || !modalBox) return;
+  if (show) {
+    modal.classList.remove('opacity-0', 'pointer-events-none');
+    modalBox.classList.remove('scale-95');
+    modalBox.classList.add('scale-100');
+  } else {
+    modal.classList.add('opacity-0', 'pointer-events-none');
+    modalBox.classList.remove('scale-100');
+    modalBox.classList.add('scale-95');
+  }
+}
+
+function handleBack() {
+  window.history.back();
+}
+
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  if (!toast) {
+    alert(msg);
+    return;
+  }
+  const msgEl = document.getElementById('toastMsg');
+  if (msgEl) msgEl.innerText = msg;
+  toast.classList.remove('opacity-0', 'pointer-events-none');
+  setTimeout(() => {
+    toast.classList.add('opacity-0', 'pointer-events-none');
+  }, 2500);
+}
+
+// ==========================================
+// 7. EFFICIENT REFRESH ENGINE (Point 2)
+// ==========================================
+
+function startSmartAutoRefresh() {
+  // Point 2: Interval increased from 5 seconds to 60 seconds
+  setInterval(() => {
+    if (document.visibilityState === 'visible') {
+      fetchBalanceData(true);
+      fetchHistoryData(true);
+    }
+  }, 60000);
+
+  // Point 2: Event-driven trigger when returning to tab
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      fetchBalanceData(true);
+      if (state.currentTab === 'history') fetchHistoryData(true);
+      if (state.currentTab === 'tasks') loadUserTasks();
+    }
+  });
+}
+
+// Global Export Bindings
+window.usePointsForWithdrawal = usePointsForWithdrawal;
+window.toggleBalanceVisibility = toggleBalanceVisibility;
+window.setMaxAmount = setMaxAmount;
+window.selectMethod = selectMethod;
+window.handleBankSelectChange = handleBankSelectChange;
+window.handleAccountInput = handleAccountInput;
+window.handleReviewWithdrawal = handleReviewWithdrawal;
+window.confirmWithdrawal = confirmWithdrawal;
+window.filterHistory = filterHistory;
+window.setActiveTab = setActiveTab;
+window.toggleReviewModal = toggleReviewModal;
+window.toggleHelpModal = toggleHelpModal;
+window.handleBack = handleBack;
+window.showToast = showToast;
+window.loadUserTasks = loadUserTasks;
+window.setReadingTaskTimer = setReadingTaskTimer;
+window.fetchBalanceData = fetchBalanceData;
+window.fetchHistoryData = fetchHistoryData;
+
+// Initialize Application
+window.addEventListener('DOMContentLoaded', async () => {
+  try {
+    await Promise.all([
+      fetchBalanceData(false),
+      fetchHistoryData(false)
+    ]);
+  } catch (err) {
+    showToast("Unable to sync server data.");
+  } finally {
+    state.isInitialLoad = false;
+    startSmartAutoRefresh();
+  }
+});
+
   </script>
 
 </body>
