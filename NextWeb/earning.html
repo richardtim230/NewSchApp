@@ -735,6 +735,52 @@
         </button>
       </div>
     </div>
+    <!-- Task Detail Modal -->
+    <div id="taskDetailModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 opacity-0 pointer-events-none transition-opacity duration-300">
+      <div id="taskDetailModalBox" class="w-full sm:w-[90%] max-w-sm bg-white rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl space-y-4 transform translate-y-full sm:translate-y-0 sm:scale-95 transition-all duration-300">
+        
+        <!-- Modal Header -->
+        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div class="flex items-center gap-2">
+            <span id="taskModalIcon" class="text-xl">⚡</span>
+            <h3 class="text-sm font-bold text-slate-900">Task Details</h3>
+          </div>
+          <button onclick="toggleTaskModal(false)" class="p-1 text-slate-400 hover:text-slate-600 rounded-full transition">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- Detail Content -->
+        <div class="space-y-3">
+          <div class="flex items-start justify-between gap-2">
+            <h4 id="taskModalTitle" class="text-sm font-bold text-slate-900 break-words">Task Title</h4>
+            <span id="taskModalPoints" class="shrink-0 text-xs font-extrabold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">0 pts</span>
+          </div>
+
+          <p id="taskModalDesc" class="text-xs text-slate-500 font-medium leading-relaxed break-words">
+            Task details and instructions will appear here.
+          </p>
+
+          <div class="bg-slate-50 border border-slate-100 rounded-2xl p-3 flex items-center justify-between text-xs">
+            <span class="text-slate-400 font-semibold">Activity Type</span>
+            <span id="taskModalType" class="font-bold text-slate-700 capitalize">General Task</span>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex items-center gap-2 pt-2">
+          <button onclick="toggleTaskModal(false)" class="flex-1 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-bold py-3 rounded-2xl text-xs transition">
+            Cancel
+          </button>
+          <button id="continueTaskBtn" class="flex-1 bg-[#0A57FF] hover:bg-blue-700 active:scale-95 text-white font-bold py-3 rounded-2xl text-xs transition shadow-lg shadow-blue-600/25">
+            Continue Task
+          </button>
+        </div>
+
+      </div>
+    </div>
 
     <!-- Toast Notification -->
     <div id="toast" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 backdrop-blur-md text-white text-xs font-semibold px-4 py-2.5 rounded-full shadow-2xl opacity-0 pointer-events-none transition-all duration-300 flex items-center gap-2">
@@ -1160,6 +1206,110 @@ async function fetchHistoryData(silent = false, append = false) {
     }
   }
 }
+    // ==========================================
+// TASK DETAIL MODAL CONTROLLER (WITH TIMER)
+// ==========================================
+let currentModalTask = null;
+let modalTimerInterval = null;
+
+function toggleTaskModal(show, task = null) {
+  const modal = document.getElementById('taskDetailModal');
+  const modalBox = document.getElementById('taskDetailModalBox');
+  if (!modal || !modalBox) return;
+
+  // Clear any active timer intervals on open/close
+  if (modalTimerInterval) {
+    clearInterval(modalTimerInterval);
+    modalTimerInterval = null;
+  }
+
+  if (show && task) {
+    currentModalTask = task;
+
+    // Populate task details
+    document.getElementById('taskModalIcon').textContent = task.taskIcon || '⚡';
+    document.getElementById('taskModalTitle').textContent = task.title || 'Task Details';
+    document.getElementById('taskModalDesc').textContent = task.description || 'Complete this task to earn points.';
+    document.getElementById('taskModalPoints').textContent = `${task.points || 0} pts`;
+    document.getElementById('taskModalType').textContent = (task.activity || 'Task').replace(/_/g, ' ');
+
+    const continueBtn = document.getElementById('continueTaskBtn');
+    const timerBox = document.getElementById('taskModalTimerBox');
+    const timerText = document.getElementById('taskModalTimerText');
+
+    const isReadingTask = task.activity === 'reading' && Number(task.requiredSeconds) > 0;
+
+    if (isReadingTask) {
+      let secondsLeft = Number(task.requiredSeconds);
+
+      // Display timer banner and disable button initially
+      timerBox.classList.remove('hidden');
+      timerText.textContent = formatTimerSeconds(secondsLeft);
+
+      setContinueButtonState(continueBtn, false, `Wait (${secondsLeft}s)`);
+
+      // Start countdown
+      modalTimerInterval = setInterval(() => {
+        secondsLeft--;
+        timerText.textContent = formatTimerSeconds(secondsLeft);
+        continueBtn.textContent = `Wait (${secondsLeft}s)`;
+
+        if (secondsLeft <= 0) {
+          clearInterval(modalTimerInterval);
+          modalTimerInterval = null;
+
+          // Unlock Continue Task button
+          setContinueButtonState(continueBtn, true, 'Continue Task');
+          timerBox.classList.add('hidden');
+        }
+      }, 1000);
+    } else {
+      // Standard task: enable button immediately
+      timerBox.classList.add('hidden');
+      setContinueButtonState(continueBtn, true, 'Continue Task');
+    }
+
+    // Attach click handler
+    continueBtn.onclick = () => {
+      if (!continueBtn.disabled) {
+        executeTask(currentModalTask);
+      }
+    };
+
+    // Animate Modal In
+    modal.classList.remove('pointer-events-none', 'opacity-0');
+    modalBox.classList.remove('translate-y-full', 'sm:scale-95');
+    modalBox.classList.add('translate-y-0', 'sm:scale-100');
+  } else {
+    // Animate Modal Out
+    modalBox.classList.remove('translate-y-0', 'sm:scale-100');
+    modalBox.classList.add('translate-y-full', 'sm:scale-95');
+    modal.classList.add('opacity-0', 'pointer-events-none');
+    currentModalTask = null;
+  }
+}
+
+// Helper: Toggle Continue Button Enabled/Disabled Styling
+function setContinueButtonState(button, isEnabled, text) {
+  button.disabled = !isEnabled;
+  button.textContent = text;
+
+  if (isEnabled) {
+    button.classList.remove('bg-slate-200', 'text-slate-400', 'cursor-not-allowed');
+    button.classList.add('bg-[#0A57FF]', 'hover:bg-blue-700', 'text-white', 'shadow-lg');
+  } else {
+    button.classList.remove('bg-[#0A57FF]', 'hover:bg-blue-700', 'text-white', 'shadow-lg');
+    button.classList.add('bg-slate-200', 'text-slate-400', 'cursor-not-allowed');
+  }
+}
+
+// Helper: Format Seconds into mm:ss
+function formatTimerSeconds(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
 function renderTaskStats(tasks = []) {
     let available = 0;
     let completed = 0;
@@ -1324,7 +1474,6 @@ renderTaskProgress(tasks);
 
 function createTaskCard(task) {
   const id = task._id || task.id;
-  // Point 19: Task Status Flow (pending -> active -> in_progress -> completed -> rewarded)
   const status = (task.status || '').toLowerCase();
   const activity = task.activityType || (task.meta && task.meta.type) || 'task';
   const isDone = status === 'completed' || status === 'rewarded' || status === 'done';
@@ -1336,7 +1485,6 @@ function createTaskCard(task) {
   const url = task.meta && (task.meta.url || task.meta.link) ? (task.meta.url || task.meta.link) : (postId ? `/blog-details.html?id=${postId}` : null);
   const requiredSeconds = Number(task.meta && (task.meta.requiredSeconds || task.meta.requiredSecondsForReading) || 120);
 
-  // Point 6: Render task category icon
   const taskIcon = getTaskIcon(activity);
 
   const wrapper = document.createElement('div');
@@ -1363,27 +1511,23 @@ function createTaskCard(task) {
   const doBtn = wrapper.querySelector('.btn-do-task');
   const completeBtn = wrapper.querySelector('.btn-complete');
 
-  // Handle Do Task Click
+  // Handle Do Task Click -> Opens Detail Modal
   doBtn.addEventListener('click', () => {
     if (isDone) return;
-    if (activity === 'reading') {
-      if (!postId) {
-        showToast('No article attached to this task.');
-        return;
-      }
-      setReadingTaskTimer(postId, requiredSeconds);
-      if (url) window.location.href = url;
-      else window.location.href = `/blog-details.html?id=${postId}`;
-      return;
-    }
-    if (url) {
-      window.open(url, '_blank');
-      return;
-    }
-    showToast('Opening task...');
+    toggleTaskModal(true, {
+      id,
+      title,
+      description: desc,
+      points: pts,
+      activity,
+      postId,
+      url,
+      requiredSeconds,
+      taskIcon
+    });
   });
 
-  // Handle Complete Task Click (Point 7: Prevent Double Completion)
+  // Handle Complete Task Click
   if (completeBtn) {
     completeBtn.addEventListener('click', async () => {
       completeBtn.disabled = true;
@@ -1399,7 +1543,6 @@ function createTaskCard(task) {
 
         showToast(data.message || "Task completed successfully!");
 
-        // Refresh state cleanly from server
         await Promise.all([
           fetchBalanceData(true),
           fetchHistoryData(true)
@@ -1415,6 +1558,7 @@ function createTaskCard(task) {
 
   return wrapper;
 }
+
 
 // Reading Task Helper (Point 10: Server and local tracking)
 function setReadingTaskTimer(postId, seconds = 120) {
