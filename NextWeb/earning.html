@@ -735,7 +735,7 @@
         </button>
       </div>
     </div>
-    <!-- Task Detail Modal -->
+        <!-- Task Detail Modal -->
     <div id="taskDetailModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 opacity-0 pointer-events-none transition-opacity duration-300">
       <div id="taskDetailModalBox" class="w-full sm:w-[90%] max-w-sm bg-white rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl space-y-4 transform translate-y-full sm:translate-y-0 sm:scale-95 transition-all duration-300">
         
@@ -781,6 +781,7 @@
 
       </div>
     </div>
+
 
     <!-- Toast Notification -->
     <div id="toast" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 backdrop-blur-md text-white text-xs font-semibold px-4 py-2.5 rounded-full shadow-2xl opacity-0 pointer-events-none transition-all duration-300 flex items-center gap-2">
@@ -1206,75 +1207,29 @@ async function fetchHistoryData(silent = false, append = false) {
     }
   }
 }
-    // ==========================================
-// TASK DETAIL MODAL CONTROLLER (WITH TIMER)
+// ==========================================
+// TASK DETAIL MODAL CONTROLLER
 // ==========================================
 let currentModalTask = null;
-let modalTimerInterval = null;
 
 function toggleTaskModal(show, task = null) {
   const modal = document.getElementById('taskDetailModal');
   const modalBox = document.getElementById('taskDetailModalBox');
   if (!modal || !modalBox) return;
 
-  // Clear any active timer intervals on open/close
-  if (modalTimerInterval) {
-    clearInterval(modalTimerInterval);
-    modalTimerInterval = null;
-  }
-
   if (show && task) {
     currentModalTask = task;
 
-    // Populate task details
+    // Populate modal fields
     document.getElementById('taskModalIcon').textContent = task.taskIcon || '⚡';
     document.getElementById('taskModalTitle').textContent = task.title || 'Task Details';
     document.getElementById('taskModalDesc').textContent = task.description || 'Complete this task to earn points.';
     document.getElementById('taskModalPoints').textContent = `${task.points || 0} pts`;
     document.getElementById('taskModalType').textContent = (task.activity || 'Task').replace(/_/g, ' ');
 
+    // Configure "Continue Task" button click handler
     const continueBtn = document.getElementById('continueTaskBtn');
-    const timerBox = document.getElementById('taskModalTimerBox');
-    const timerText = document.getElementById('taskModalTimerText');
-
-    const isReadingTask = task.activity === 'reading' && Number(task.requiredSeconds) > 0;
-
-    if (isReadingTask) {
-      let secondsLeft = Number(task.requiredSeconds);
-
-      // Display timer banner and disable button initially
-      timerBox.classList.remove('hidden');
-      timerText.textContent = formatTimerSeconds(secondsLeft);
-
-      setContinueButtonState(continueBtn, false, `Wait (${secondsLeft}s)`);
-
-      // Start countdown
-      modalTimerInterval = setInterval(() => {
-        secondsLeft--;
-        timerText.textContent = formatTimerSeconds(secondsLeft);
-        continueBtn.textContent = `Wait (${secondsLeft}s)`;
-
-        if (secondsLeft <= 0) {
-          clearInterval(modalTimerInterval);
-          modalTimerInterval = null;
-
-          // Unlock Continue Task button
-          setContinueButtonState(continueBtn, true, 'Continue Task');
-          timerBox.classList.add('hidden');
-        }
-      }, 1000);
-    } else {
-      // Standard task: enable button immediately
-      timerBox.classList.add('hidden');
-      setContinueButtonState(continueBtn, true, 'Continue Task');
-    }
-
-    // Attach click handler
-    continueBtn.onclick = () => {
-      if (!continueBtn.disabled) {
-        executeTask(currentModalTask);
-      }
-    };
+    continueBtn.onclick = () => executeTask(currentModalTask);
 
     // Animate Modal In
     modal.classList.remove('pointer-events-none', 'opacity-0');
@@ -1288,6 +1243,30 @@ function toggleTaskModal(show, task = null) {
     currentModalTask = null;
   }
 }
+
+function executeTask(task) {
+  toggleTaskModal(false);
+  if (!task) return;
+
+  if (task.activity === 'reading') {
+    if (!task.postId) {
+      showToast('No article attached to this task.');
+      return;
+    }
+    setReadingTaskTimer(task.postId, task.requiredSeconds);
+    if (task.url) window.location.href = task.url;
+    else window.location.href = `/blog-details.html?id=${task.postId}`;
+    return;
+  }
+
+  if (task.url) {
+    window.open(task.url, '_blank');
+    return;
+  }
+
+  showToast('Opening task...');
+}
+
 
 // Helper: Toggle Continue Button Enabled/Disabled Styling
 function setContinueButtonState(button, isEnabled, text) {
