@@ -1515,9 +1515,42 @@ function toggleTaskModal(show, task = null) {
   }
 }
 
+// ==========================================
+// TASK PAYLOAD ENCRYPTION & MODAL CONTROLLER
+// ==========================================
+
+// Simple obfuscation/encryption helper for client storage
+function encryptTaskPayload(payload) {
+  try {
+    const jsonStr = JSON.stringify(payload);
+    // Base64 encode with URI encoding safety
+    return btoa(encodeURIComponent(jsonStr));
+  } catch (err) {
+    console.error('Payload encryption error:', err);
+    return null;
+  }
+}
+
 function executeTask(task) {
   toggleTaskModal(false);
   if (!task) return;
+
+  // Prepare encrypted task session payload
+  const rawTaskId = String(task.id || task._id || '');
+  const cleanTaskId = normalizeTaskId(rawTaskId);
+  
+  const taskPayload = {
+    taskId: cleanTaskId,
+    rawTaskId: rawTaskId,
+    points: Number(task.points || 0),
+    requiredSeconds: Number(task.requiredSeconds || 120),
+    timestamp: Date.now()
+  };
+
+  const encryptedData = encryptTaskPayload(taskPayload);
+  if (encryptedData) {
+    sessionStorage.setItem('active_task_session', encryptedData);
+  }
 
   const activity = (task.activity || '').toLowerCase();
 
@@ -1541,6 +1574,7 @@ function executeTask(task) {
 
   if (typeof showToast === 'function') showToast('Opening task...');
 }
+
 
 // Auto-restore task modal state when returning from ad page with ?verifiedTask=
 document.addEventListener('DOMContentLoaded', () => {
