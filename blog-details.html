@@ -706,9 +706,151 @@
         }  
     }  
 
-    document.addEventListener('DOMContentLoaded', () => {  
-        checkLoggedInUser();  
-        initArticle();  
+    // ==========================================
+// ACTIVE TASK TRACKER & AUTO-ALLOCATION
+// ==========================================
+
+function decryptTaskPayload(cipherText) {
+  try {
+    const jsonStr = decodeURIComponent(atob(cipherText));
+    return JSON.parse(jsonStr);
+  } catch (err) {
+    console.error('Failed to decrypt task payload:', err);
+    return null;
+  }
+}
+
+function initActiveTaskTracker() {
+  const encryptedSession = sessionStorage.getItem('active_task_session');
+  if (!encryptedSession) return;
+
+  const taskSession = decryptTaskPayload(encryptedSession);
+  if (!taskSession || !taskSession.taskId) {
+    sessionStorage.removeItem('active_task_session');
+    return;
+  }
+
+  const requiredSeconds = taskSession.requiredSeconds || 120;
+  let remainingSeconds = requiredSeconds;
+  let isActive = true;
+  let inactivityTimer = null;
+  const INACTIVITY_THRESHOLD_MS = 15000; // Cancel if idle for >15 seconds
+
+  // Clear task data and cancel allocation
+  function abortTaskSession(reason) {
+    sessionStorage.removeItem('active_task_session');
+    if (countdownInterval) clearInterval(countdownInterval);
+    if (inactivityTimer) clearTimeout(inactivityTimer);
+
+    // Remove event listeners
+    window.removeEventListener('mousemove', resetInactivity);
+    window.removeEventListener('scroll', resetInactivity);
+    window.removeEventListener('keydown', resetInactivity);
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+
+    console.warn(`Task session aborted: ${reason}`);
+    if (typeof showToast === 'function') {
+      showToast(`Task progress cancelled: ${reason}`);
+    } else {
+      alert(`Task progress cancelled: ${reason}`);
+    }
+  }
+
+  // Reset idle timer on active user interaction
+  function resetInactivity() {
+    if (!isActive) return;
+    if (inactivityTimer) clearTimeout(inactivityTimer);
+
+    inactivityTimer = setTimeout(() => {
+      isActive = false;
+      abortTaskSession('User became inactive during timer.');
+    }, INACTIVITY_THRESHOLD_MS);
+  }
+
+  // Abort if page is hidden/tab switched
+  function handleVisibilityChange() {
+    if (document.hidden) {
+      isActive = false;
+      abortTaskSession('Navigated away or minimized page.');
+    }
+  }
+
+  // Attach activity listeners
+  window.addEventListener('mousemove', resetInactivity);
+  window.addEventListener('scroll', resetInactivity);
+  window.addEventListener('keydown', resetInactivity);
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+
+  // Initial inactivity timer start
+  resetInactivity();
+
+  // Start task countdown
+  const countdownInterval = setInterval(async () => {
+    if (!isActive || document.hidden) {
+      return;
+    }
+
+    remainingSeconds--;
+
+    if (remainingSeconds <= 0) {
+      clearInterval(countdownInterval);
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+
+      // Submit automatic credit allocation
+      await autoAllocateTaskPoints(taskSession);
+    }
+  }, 1000);
+}
+
+async function autoAllocateTaskPoints(taskSession) {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    sessionStorage.removeItem('active_task_session');
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_URL}tasks/auto-allocate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        taskId: taskSession.taskId,
+        expectedPoints: taskSession.points
+      })
+    });
+
+    const data = await response.json();
+
+    if (response.ok && data.success) {
+      sessionStorage.removeItem('active_task_session');
+      sessionStorage.setItem(`task_completed_${taskSession.taskId}`, 'true');
+
+      if (typeof showToast === 'function') {
+        showToast(data.message || `🎉 ${taskSession.points} credit points allocated!`);
+      } else {
+        alert(data.message || `🎉 ${taskSession.points} credit points allocated!`);
+      }
+    } else {
+      throw new Error(data.message || 'Allocation failed');
+    }
+  } catch (err) {
+    console.error('Auto-allocation error:', err);
+    sessionStorage.removeItem('active_task_session');
+    if (typeof showToast === 'function') {
+      showToast(err.message || 'Could not allocate task points.');
+    }
+  }
+}
+
+// Call inside DOMContentLoaded of blog-details.html
+document.addEventListener('DOMContentLoaded', () => {
+  checkLoggedInUser();
+  initArticle();
+  initActiveTaskTracker(); // Initialize active task tracking
+  initArticle();  
     });  
 </script>
 </body>  
