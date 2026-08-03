@@ -1228,134 +1228,8 @@ async function fetchHistoryData(silent = false, append = false) {
   }
 }
 
-let currentModalTask = null;
 
-function toggleTaskModal(show, task = null) {
-  const modal = document.getElementById('taskDetailModal');
-  const modalBox = document.getElementById('taskDetailModalBox');
-  if (!modal || !modalBox) return;
-
-  if (show && task) {
-    currentModalTask = task;
-
-    // Populate modal fields
-    document.getElementById('taskModalIcon').textContent = task.taskIcon || '⚡';
-    document.getElementById('taskModalTitle').textContent = task.title || 'Task Details';
-    document.getElementById('taskModalDesc').textContent = task.description || 'Complete this task to earn points.';
-    document.getElementById('taskModalPoints').textContent = `${task.points || 0} pts`;
-    document.getElementById('taskModalType').textContent = (task.activity || 'Task').replace(/_/g, ' ');
-
-    const continueBtn = document.getElementById('continueTaskBtn');
-    const watchAdBtn = document.getElementById('watchAdBtn');
-    const adStatusTitle = document.getElementById('adStatusTitle');
-    const adStatusDesc = document.getElementById('adStatusDesc');
-    const adBox = document.getElementById('adRequirementBox');
-
-    const taskId = task.id || task._id;
-    
-    // Check if URL contains verifiedTask parameter matching this task OR verified in session
-    const urlParams = new URLSearchParams(window.location.search);
-    const verifiedTaskId = urlParams.get('verifiedTask');
-    const isAdWatched = verifiedTaskId === taskId || sessionStorage.getItem(`ad_watched_${taskId}`) === 'true';
-
-    if (isAdWatched) {
-      // Store verification state so it stays enabled
-      sessionStorage.setItem(`ad_watched_${taskId}`, 'true');
-
-      // Enable Continue Task button
-      continueBtn.disabled = false;
-      continueBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-
-      // Update Ad status UI
-      adBox.className = "p-4 bg-emerald-50/80 border border-emerald-200/80 rounded-2xl flex items-center justify-between gap-3 text-xs sm:text-sm";
-      adStatusTitle.textContent = "Sponsor Verified";
-      adStatusTitle.className = "font-bold text-emerald-900";
-      adStatusDesc.textContent = "Ad requirement fulfilled.";
-      adStatusDesc.className = "text-[11px] text-emerald-700 font-medium";
-
-      watchAdBtn.innerHTML = `<span>Verified ✓</span>`;
-      watchAdBtn.className = "shrink-0 px-3.5 py-2.5 bg-emerald-600 text-white font-bold rounded-xl text-xs cursor-default";
-      watchAdBtn.onclick = null;
-    } else {
-      // Keep Continue Task button disabled
-      continueBtn.disabled = true;
-      continueBtn.classList.add('opacity-50', 'cursor-not-allowed');
-
-      // Reset Ad status UI
-      adBox.className = "p-4 bg-amber-50/80 border border-amber-200/80 rounded-2xl flex items-center justify-between gap-3 text-xs sm:text-sm";
-      adStatusTitle.textContent = "Sponsor Verification";
-      adStatusTitle.className = "font-bold text-amber-900";
-      adStatusDesc.textContent = "View sponsor ad to unlock action button.";
-      adStatusDesc.className = "text-[11px] text-amber-700 font-medium";
-
-      watchAdBtn.innerHTML = `
-        <span>View Ad</span>
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-        </svg>`;
-      watchAdBtn.className = "shrink-0 px-3.5 py-2.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold rounded-xl text-xs transition shadow-sm flex items-center gap-1.5";
-
-      // Redirect handler (External PWA scope navigation without _blank)
-      watchAdBtn.onclick = () => {
-        // Save pending task to reopen modal upon return
-        sessionStorage.setItem('pending_restore_task', JSON.stringify(task));
-
-        // Construct target ad URL with taskId
-        const adUrl = new URL(`/tutor/view-ads.html?taskId=${encodeURIComponent(taskId)}`, window.location.origin).href;
-        window.location.assign(adUrl);
-      };
-    }
-
-    // Configure "Continue Task" button click handler
-    continueBtn.onclick = () => {
-      if (!continueBtn.disabled) {
-        executeTask(currentModalTask);
-      }
-    };
-
-    // Animate Modal In
-    modal.classList.remove('pointer-events-none', 'opacity-0');
-    modalBox.classList.remove('translate-y-full', 'sm:scale-95');
-    modalBox.classList.add('translate-y-0', 'sm:scale-100');
-  } else {
-    // Animate Modal Out
-    modalBox.classList.remove('translate-y-0', 'sm:scale-100');
-    modalBox.classList.add('translate-y-full', 'sm:scale-95');
-    modal.classList.add('opacity-0', 'pointer-events-none');
-    currentModalTask = null;
-  }
-}
-
-// Auto-restore task modal state when returning from ad page with ?verifiedTask=
-document.addEventListener('DOMContentLoaded', () => {
-  const urlParams = new URLSearchParams(window.location.search);
-  const verifiedTaskId = urlParams.get('verifiedTask');
-
-  if (verifiedTaskId) {
-    sessionStorage.setItem(`ad_watched_${verifiedTaskId}`, 'true');
-  }
-
-  const pendingTaskData = sessionStorage.getItem('pending_restore_task');
-  if (pendingTaskData) {
-    try {
-      const task = JSON.parse(pendingTaskData);
-      const taskId = task.id || task._id;
-      sessionStorage.removeItem('pending_restore_task');
-
-      // Re-open modal if returning with matching verifiedTask param
-      if (verifiedTaskId === taskId || sessionStorage.getItem(`ad_watched_${taskId}`) === 'true') {
-        setTimeout(() => toggleTaskModal(true, task), 300);
-      }
-    } catch (err) {
-      console.error('Failed to restore modal state:', err);
-    }
-  }
-});
-
-
-
-
-
+        
 // Helper: Format Seconds into mm:ss
 function formatTimerSeconds(totalSeconds) {
   const m = Math.floor(totalSeconds / 60);
@@ -1525,6 +1399,185 @@ renderTaskProgress(tasks);
   }
 }
 
+// ==========================================
+// TASK DETAIL MODAL CONTROLLER
+// ==========================================
+let currentModalTask = null;
+
+// Helper function to normalize task IDs across prefix variations
+function normalizeTaskId(id) {
+  if (!id) return '';
+  return String(id).replace(/^article_/, '').trim();
+}
+
+function toggleTaskModal(show, task = null) {
+  const modal = document.getElementById('taskDetailModal');
+  const modalBox = document.getElementById('taskDetailModalBox');
+  if (!modal || !modalBox) return;
+
+  if (show && task) {
+    currentModalTask = task;
+
+    // Populate modal fields
+    document.getElementById('taskModalIcon').textContent = task.taskIcon || '⚡';
+    document.getElementById('taskModalTitle').textContent = task.title || 'Task Details';
+    document.getElementById('taskModalDesc').textContent = task.description || 'Complete this task to earn points.';
+    document.getElementById('taskModalPoints').textContent = `${task.points || 0} pts`;
+    document.getElementById('taskModalType').textContent = (task.activity || 'Task').replace(/_/g, ' ');
+
+    const continueBtn = document.getElementById('continueTaskBtn');
+    const watchAdBtn = document.getElementById('watchAdBtn');
+    const adStatusTitle = document.getElementById('adStatusTitle');
+    const adStatusDesc = document.getElementById('adStatusDesc');
+    const adBox = document.getElementById('adRequirementBox');
+
+    const rawTaskId = String(task.id || task._id || '');
+    const cleanTaskId = normalizeTaskId(rawTaskId);
+
+    // Get URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const verifiedTaskId = urlParams.get('verifiedTask') || '';
+    const cleanVerifiedId = normalizeTaskId(verifiedTaskId);
+
+    // Match either raw ID or normalized ID
+    const isVerifiedInUrl = verifiedTaskId && (rawTaskId === verifiedTaskId || cleanTaskId === cleanVerifiedId);
+    const isVerifiedInStorage =
+      sessionStorage.getItem(`ad_watched_${rawTaskId}`) === 'true' ||
+      sessionStorage.getItem(`ad_watched_${cleanTaskId}`) === 'true';
+
+    const isAdWatched = isVerifiedInUrl || isVerifiedInStorage;
+
+    if (isAdWatched) {
+      // Persist verification under both key forms
+      if (rawTaskId) sessionStorage.setItem(`ad_watched_${rawTaskId}`, 'true');
+      if (cleanTaskId) sessionStorage.setItem(`ad_watched_${cleanTaskId}`, 'true');
+
+      // Enable Continue Task button
+      continueBtn.disabled = false;
+      continueBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+
+      // Update Ad status UI
+      adBox.className = "p-4 bg-emerald-50/80 border border-emerald-200/80 rounded-2xl flex items-center justify-between gap-3 text-xs sm:text-sm";
+      adStatusTitle.textContent = "Sponsor Verified";
+      adStatusTitle.className = "font-bold text-emerald-900";
+      adStatusDesc.textContent = "Ad requirement fulfilled.";
+      adStatusDesc.className = "text-[11px] text-emerald-700 font-medium";
+
+      watchAdBtn.innerHTML = `<span>Verified ✓</span>`;
+      watchAdBtn.className = "shrink-0 px-3.5 py-2.5 bg-emerald-600 text-white font-bold rounded-xl text-xs cursor-default";
+      watchAdBtn.onclick = null;
+    } else {
+      // Keep Continue Task button disabled
+      continueBtn.disabled = true;
+      continueBtn.classList.add('opacity-50', 'cursor-not-allowed');
+
+      // Reset Ad status UI
+      adBox.className = "p-4 bg-amber-50/80 border border-amber-200/80 rounded-2xl flex items-center justify-between gap-3 text-xs sm:text-sm";
+      adStatusTitle.textContent = "Sponsor Verification";
+      adStatusTitle.className = "font-bold text-amber-900";
+      adStatusDesc.textContent = "View sponsor ad to unlock action button.";
+      adStatusDesc.className = "text-[11px] text-amber-700 font-medium";
+
+      watchAdBtn.innerHTML = `
+        <span>View Ad</span>
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+        </svg>`;
+      watchAdBtn.className = "shrink-0 px-3.5 py-2.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold rounded-xl text-xs transition shadow-sm flex items-center gap-1.5";
+
+      // Redirect handler
+      watchAdBtn.onclick = () => {
+        sessionStorage.setItem('pending_restore_task', JSON.stringify(task));
+        const targetId = rawTaskId.startsWith('article_') ? rawTaskId : `article_${cleanTaskId}`;
+        const adUrl = new URL(`/tutor/view-ads.html?taskId=${encodeURIComponent(targetId)}`, window.location.origin).href;
+        window.location.assign(adUrl);
+      };
+    }
+
+    // Configure "Continue Task" click handler
+    continueBtn.onclick = (e) => {
+      e.preventDefault();
+      if (!continueBtn.disabled && currentModalTask) {
+        executeTask(currentModalTask);
+      }
+    };
+
+    // Animate Modal In
+    modal.classList.remove('pointer-events-none', 'opacity-0');
+    modalBox.classList.remove('translate-y-full', 'sm:scale-95');
+    modalBox.classList.add('translate-y-0', 'sm:scale-100');
+  } else {
+    // Animate Modal Out
+    modalBox.classList.remove('translate-y-0', 'sm:scale-100');
+    modalBox.classList.add('translate-y-full', 'sm:scale-95');
+    modal.classList.add('opacity-0', 'pointer-events-none');
+    currentModalTask = null;
+  }
+}
+
+function executeTask(task) {
+  toggleTaskModal(false);
+  if (!task) return;
+
+  const activity = (task.activity || '').toLowerCase();
+
+  if (activity.includes('reading') || activity.includes('article')) {
+    if (!task.postId) {
+      if (typeof showToast === 'function') showToast('No article attached to this task.');
+      return;
+    }
+    if (typeof setReadingTaskTimer === 'function') {
+      setReadingTaskTimer(task.postId, task.requiredSeconds || 120);
+    }
+    if (task.url) window.location.href = task.url;
+    else window.location.href = `/blog-details.html?id=${task.postId}`;
+    return;
+  }
+
+  if (task.url) {
+    window.location.href = task.url;
+    return;
+  }
+
+  if (typeof showToast === 'function') showToast('Opening task...');
+}
+
+// Auto-restore task modal state when returning from ad page with ?verifiedTask=
+document.addEventListener('DOMContentLoaded', () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const verifiedTaskId = urlParams.get('verifiedTask');
+
+  if (verifiedTaskId) {
+    const raw = String(verifiedTaskId);
+    const clean = normalizeTaskId(raw);
+    sessionStorage.setItem(`ad_watched_${raw}`, 'true');
+    sessionStorage.setItem(`ad_watched_${clean}`, 'true');
+  }
+
+  const pendingTaskData = sessionStorage.getItem('pending_restore_task');
+  if (pendingTaskData) {
+    try {
+      const task = JSON.parse(pendingTaskData);
+      const rawTaskId = String(task.id || task._id || '');
+      const cleanTaskId = normalizeTaskId(rawTaskId);
+      const cleanVerifiedId = normalizeTaskId(verifiedTaskId || '');
+
+      sessionStorage.removeItem('pending_restore_task');
+
+      const isVerified =
+        (verifiedTaskId && (rawTaskId === verifiedTaskId || cleanTaskId === cleanVerifiedId)) ||
+        sessionStorage.getItem(`ad_watched_${rawTaskId}`) === 'true' ||
+        sessionStorage.getItem(`ad_watched_${cleanTaskId}`) === 'true';
+
+      if (isVerified) {
+        setTimeout(() => toggleTaskModal(true, task), 300);
+      }
+    } catch (err) {
+      console.error('Failed to restore modal state:', err);
+    }
+  }
+});
+
 function createTaskCard(task) {
   const id = task._id || task.id;
   const status = (task.status || '').toLowerCase();
@@ -1538,10 +1591,13 @@ function createTaskCard(task) {
   const url = task.meta && (task.meta.url || task.meta.link) ? (task.meta.url || task.meta.link) : (postId ? `/blog-details.html?id=${postId}` : null);
   const requiredSeconds = Number(task.meta && (task.meta.requiredSeconds || task.meta.requiredSecondsForReading) || 120);
 
-  const taskIcon = getTaskIcon(activity);
+  const taskIcon = typeof getTaskIcon === 'function' ? getTaskIcon(activity) : '⚡';
 
   const wrapper = document.createElement('div');
   wrapper.className = `p-3.5 flex items-center justify-between gap-3 bg-white rounded-2xl border border-slate-200/80 hover:bg-slate-50/80 transition task-card mb-2 ${isDone ? 'completed opacity-75' : ''}`;
+
+  const cleanTitle = typeof escapeHtml === 'function' ? escapeHtml(title) : title;
+  const cleanDesc = typeof escapeHtml === 'function' ? escapeHtml(desc) : desc;
 
   wrapper.innerHTML = `
     <div class="flex items-center gap-3 min-w-0 flex-1">
@@ -1549,8 +1605,8 @@ function createTaskCard(task) {
         ${taskIcon}
       </div>
       <div class="space-y-0.5 min-w-0 flex-1">
-        <h4 class="text-xs font-bold text-slate-900 break-words">${escapeHtml(title)}</h4>
-        <p class="text-[10px] text-slate-400 font-medium break-words">${escapeHtml(desc)}</p>
+        <h4 class="text-xs font-bold text-slate-900 break-words">${cleanTitle}</h4>
+        <p class="text-[10px] text-slate-400 font-medium break-words">${cleanDesc}</p>
         <span class="inline-block text-[9px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full mt-1">${pts} pts</span>
       </div>
     </div>
@@ -1564,7 +1620,6 @@ function createTaskCard(task) {
   const doBtn = wrapper.querySelector('.btn-do-task');
   const completeBtn = wrapper.querySelector('.btn-complete');
 
-  // Handle Do Task Click -> Opens Detail Modal
   doBtn.addEventListener('click', () => {
     if (isDone) return;
     toggleTaskModal(true, {
@@ -1580,7 +1635,6 @@ function createTaskCard(task) {
     });
   });
 
-  // Handle Complete Task Click
   if (completeBtn) {
     completeBtn.addEventListener('click', async () => {
       completeBtn.disabled = true;
@@ -1594,15 +1648,17 @@ function createTaskCard(task) {
         doBtn.disabled = true;
         completeBtn.remove();
 
-        showToast(data.message || "Task completed successfully!");
+        if (typeof showToast === 'function') showToast(data.message || "Task completed successfully!");
 
-        await Promise.all([
-          fetchBalanceData(true),
-          fetchHistoryData(true)
-        ]);
+        if (typeof fetchBalanceData === 'function' && typeof fetchHistoryData === 'function') {
+          await Promise.all([
+            fetchBalanceData(true),
+            fetchHistoryData(true)
+          ]);
+        }
       } catch (err) {
         console.error('Task complete error:', err);
-        showToast(err.message || "Could not complete task");
+        if (typeof showToast === 'function') showToast(err.message || "Could not complete task");
         completeBtn.disabled = false;
         completeBtn.textContent = "Mark done";
       }
@@ -1611,7 +1667,7 @@ function createTaskCard(task) {
 
   return wrapper;
 }
-
+        
 
 // Reading Task Helper (Point 10: Server and local tracking)
 function setReadingTaskTimer(postId, seconds = 120) {
