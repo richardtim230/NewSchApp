@@ -1227,9 +1227,7 @@ async function fetchHistoryData(silent = false, append = false) {
     }
   }
 }
-// ==========================================
-// TASK DETAIL MODAL CONTROLLER
-// ==========================================
+
 let currentModalTask = null;
 
 function toggleTaskModal(show, task = null) {
@@ -1253,11 +1251,17 @@ function toggleTaskModal(show, task = null) {
     const adStatusDesc = document.getElementById('adStatusDesc');
     const adBox = document.getElementById('adRequirementBox');
 
-    // Check if user has completed watching ad for this specific task
     const taskId = task.id || task._id;
-    const isAdWatched = sessionStorage.getItem(`ad_watched_${taskId}`) === 'true';
+    
+    // Check if URL contains verifiedTask parameter matching this task OR verified in session
+    const urlParams = new URLSearchParams(window.location.search);
+    const verifiedTaskId = urlParams.get('verifiedTask');
+    const isAdWatched = verifiedTaskId === taskId || sessionStorage.getItem(`ad_watched_${taskId}`) === 'true';
 
     if (isAdWatched) {
+      // Store verification state so it stays enabled
+      sessionStorage.setItem(`ad_watched_${taskId}`, 'true');
+
       // Enable Continue Task button
       continueBtn.disabled = false;
       continueBtn.classList.remove('opacity-50', 'cursor-not-allowed');
@@ -1273,7 +1277,7 @@ function toggleTaskModal(show, task = null) {
       watchAdBtn.className = "shrink-0 px-3.5 py-2.5 bg-emerald-600 text-white font-bold rounded-xl text-xs cursor-default";
       watchAdBtn.onclick = null;
     } else {
-      // Disable Continue Task button until ad is viewed
+      // Keep Continue Task button disabled
       continueBtn.disabled = true;
       continueBtn.classList.add('opacity-50', 'cursor-not-allowed');
 
@@ -1291,13 +1295,12 @@ function toggleTaskModal(show, task = null) {
         </svg>`;
       watchAdBtn.className = "shrink-0 px-3.5 py-2.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold rounded-xl text-xs transition shadow-sm flex items-center gap-1.5";
 
-      // Redirect handler (External PWA scope navigation without _blank with dynamic taskId parameter)
+      // Redirect handler (External PWA scope navigation without _blank)
       watchAdBtn.onclick = () => {
-        // Mark task ad as watched and save active task to restore on return
-        sessionStorage.setItem(`ad_watched_${taskId}`, 'true');
+        // Save pending task to reopen modal upon return
         sessionStorage.setItem('pending_restore_task', JSON.stringify(task));
 
-        // Construct absolute URL containing taskId parameter
+        // Construct target ad URL with taskId
         const adUrl = new URL(`/tutor/view-ads.html?taskId=${encodeURIComponent(taskId)}`, window.location.origin).href;
         window.location.assign(adUrl);
       };
@@ -1323,20 +1326,32 @@ function toggleTaskModal(show, task = null) {
   }
 }
 
-// Auto-restore task modal state when user returns from ad page
+// Auto-restore task modal state when returning from ad page with ?verifiedTask=
 document.addEventListener('DOMContentLoaded', () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const verifiedTaskId = urlParams.get('verifiedTask');
+
+  if (verifiedTaskId) {
+    sessionStorage.setItem(`ad_watched_${verifiedTaskId}`, 'true');
+  }
+
   const pendingTaskData = sessionStorage.getItem('pending_restore_task');
   if (pendingTaskData) {
     try {
       const task = JSON.parse(pendingTaskData);
+      const taskId = task.id || task._id;
       sessionStorage.removeItem('pending_restore_task');
-      // Re-open modal with Continue Task enabled
-      setTimeout(() => toggleTaskModal(true, task), 300);
+
+      // Re-open modal if returning with matching verifiedTask param
+      if (verifiedTaskId === taskId || sessionStorage.getItem(`ad_watched_${taskId}`) === 'true') {
+        setTimeout(() => toggleTaskModal(true, task), 300);
+      }
     } catch (err) {
       console.error('Failed to restore modal state:', err);
     }
   }
 });
+
 
 
 
