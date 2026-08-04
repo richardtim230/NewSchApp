@@ -290,7 +290,7 @@
 
 <script>
 /* ---------------------------
-   Helpers: API + URL helpers
+   Helpers: API + URL helpers & Storage Caching
    --------------------------- */
 const API_BASE = "https://examguide.onrender.com";
 
@@ -304,6 +304,20 @@ async function tryFetch(url, opts){
     try { const res = await fetch(url, opts); if(!res.ok) throw res; const ct = res.headers.get('content-type') || ''; if(ct.includes('application/json')) return await res.json(); return res; } catch (e) { return null; }
 }
 function qsParam(name){ const params = new URLSearchParams(window.location.search); return params.get(name); }
+
+/* Cache storage helpers */
+function getCachedData(key) {
+    try {
+        const item = localStorage.getItem(key);
+        return item ? JSON.parse(item) : null;
+    } catch(e) { return null; }
+}
+function setCachedData(key, value) {
+    try {
+        localStorage.setItem(key, JSON.stringify(value));
+    } catch(e) { console.warn('Cache quota exceeded or disabled', e); }
+}
+
 async function fetchResourceById(id){
   if(!id) return null;
   const candidates = [`${API_BASE}/api/resource/${id}`, `${API_BASE}/api/resource/${id}`];
@@ -348,7 +362,7 @@ async function idbGet(key){
     const tx = db.transaction('files', 'readonly');
     const store = tx.objectStore('files');
     const req = store.get(key);
-    req.onsuccess = () => resolve(e.target.result);
+    req.onsuccess = (e) => resolve(e.target.result);
     req.onerror = (e) => reject(e.target.error);
   });
 }
@@ -990,8 +1004,16 @@ async function setupDocumentMode(res) {
 }
 
 /* ---------------------------
-   Main initialization flow
+   Main initialization flow (Stale-While-Revalidate)
    --------------------------- */
+function applyResourceMetadata(res) {
+    resource = res;
+    document.title = `${res.title || res.name || 'Resource'} — Reader`;
+    bookTitleEl.textContent = res.title || res.name || 'Untitled';
+    const authors = Array.isArray(res.authors) ? res.authors.join(', ') : (res.authors || res.author || '');
+    bookAuthorEl.textContent = authors || (res.uploader && (res.uploader.fullname || res.uploader.username)) || '';
+}
+
 async function initReader(){
     if(!resourceId){
         document.title = 'Resource not found';
@@ -999,20 +1021,6 @@ async function initReader(){
         readerArticle.innerHTML = '<p class="text-center text-gray-500 font-sans">No resource id provided in the URL.</p>';
         return;
     }
-
-    document.title = 'Loading…';
-    const res = await fetchResourceById(resourceId);
-    if(!res){
-        document.title = 'Resource not found';
-        bookTitleEl.textContent = 'Resource not found';
-        readerArticle.innerHTML = '<p class="text-center text-gray-500 font-sans">Could not load the selected resource.</p>';
-        return;
-    }
-    resource = res;
-    document.title = `${res.title || res.name || 'Resource'} — Reader`;
-    bookTitleEl.textContent = res.title || res.name || 'Untitled';
-    const authors = Array.isArray(res.authors) ? res.authors.join(', ') : (res.authors || res.author || '');
-    bookAuthorEl.textContent = authors || (res.uploader && (res.uploader.fullname || res.uploader.username)) || '';
 
     const savedFont = localStorage.getItem(`readerFontSize:${resourceId}`) || localStorage.getItem(`readerFontSize:global`);
     if(savedFont && readerArticle){
@@ -1024,21 +1032,75 @@ async function initReader(){
     loadNotes();
     renderNotes();
 
-    // Fetch chapter system resources
-    const chaptersData = await tryFetch(`${API_BASE}/api/resource/${resourceId}/chapters`, { credentials: "include" });
-    if (chaptersData) {
-        const rawChapters = chaptersData.chapters || (Array.isArray(chaptersData) ? chaptersData : []);
-        publishedChapters = rawChapters
-            .filter(chapter => chapter.status === "published")
-            .sort((a, b) => a.chapterNumber - b.chapterNumber);
+    // Cache keys
+    const cacheKeyResource = `cache_resource:${resourceId}`;
+    const cacheKeyChapters = `cache_chapters:${resourceId}`;
+
+    // Load from LocalStorage Cache First
+    const cachedRes = getCachedData(cacheKeyResource);
+    const cachedChaptersData = getCachedData(cacheKeyChapters);
+
+    let hasLoadedFromCache = false;
+
+    if (cachedRes) {
+        applyResourceMetadata(cachedRes);
+        if (cachedChaptersData) {
+            const rawChapters = cachedChaptersData.chapters || (Array.isArray(cachedChaptersData) ? cachedChaptersData : []);
+            publishedChapters = rawChapters
+                .filter(chapter => chapter.status === "published")
+                .sort((a, b) => a.chapterNumber - b.chapterNumber);
+        }
+        
+        if (publishedChapters.length > 0) {
+            setupBookMode(publishedChapters);
+        } else {
+            setupDocumentMode(cachedRes);
+        }
+        hasLoadedFromCache = true;
     }
 
-    // Direct mode routing: Book mode if published chapters exist, otherwise Document mode
-    if (publishedChapters.length > 0) {
-        setupBookMode(publishedChapters);
-    } else {
-        await setupDocumentMode(res);
+    if (!hasLoadedFromCache) {
+        document.title = 'Loading…';
     }
+
+    // Revalidate in background from backend API
+    (async () => {
+        try {
+            const freshRes = await fetchResourceById(resourceId);
+            if (freshRes) {
+                setCachedData(cacheKeyResource, freshRes);
+                applyResourceMetadata(freshRes);
+            }
+
+            const freshChaptersData = await tryFetch(`${API_BASE}/api/resource/${resourceId}/chapters`, { credentials: "include" });
+            if (freshChaptersData) {
+                setCachedData(cacheKeyChapters, freshChaptersData);
+                const rawChapters = freshChaptersData.chapters || (Array.isArray(freshChaptersData) ? freshChaptersData : []);
+                publishedChapters = rawChapters
+                    .filter(chapter => chapter.status === "published")
+                    .sort((a, b) => a.chapterNumber - b.chapterNumber);
+            }
+
+            const activeResource = freshRes || cachedRes;
+            if (!activeResource && !freshRes) {
+                if (!hasLoadedFromCache) {
+                    document.title = 'Resource not found';
+                    bookTitleEl.textContent = 'Resource not found';
+                    readerArticle.innerHTML = '<p class="text-center text-gray-500 font-sans">Could not load the selected resource.</p>';
+                }
+                return;
+            }
+
+            // Update UI with latest backend state
+            if (publishedChapters.length > 0) {
+                setupBookMode(publishedChapters);
+            } else {
+                await setupDocumentMode(activeResource);
+            }
+        } catch (err) {
+            console.warn('Revalidation background update failed:', err);
+        }
+    })();
 }
 
 /* ---------------------------
