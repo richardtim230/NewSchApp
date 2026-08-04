@@ -15,7 +15,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     
-<script defer src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script defer src="https://unpkg.com/@phosphor-icons/web"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script>
@@ -212,9 +212,6 @@
         </div>
     </div>
 </aside>
-
-
-            
 
 
     <!-- ========================================== -->
@@ -496,10 +493,42 @@
     <script>
       const API_BASE = "https://examguide.onrender.com";
 
+      // Cache Keys Definition
+      const CACHE_KEYS = {
+        USER: 'ec_cache_user',
+        CATEGORIES: 'ec_cache_categories',
+        FEATURED: 'ec_cache_featured',
+        CONTINUE: 'ec_cache_continue',
+        RECENT: 'ec_cache_recent'
+      };
+
       // Pagination & Lazy Loading States
       let currentPage = 1;
       let isLoadingMore = false;
       let hasMoreResources = true;
+
+      // ===================================================
+      // LOCALSTORAGE CACHE HELPER FUNCTIONS
+      // ===================================================
+      function getCache(key) {
+        try {
+          const data = localStorage.getItem(key);
+          return data ? JSON.parse(data) : null;
+        } catch(e) {
+          console.warn(`[Cache Error] Failed to read ${key}:`, e);
+          return null;
+        }
+      }
+
+      function setCache(key, data) {
+        try {
+          if (data !== null && data !== undefined) {
+            localStorage.setItem(key, JSON.stringify(data));
+          }
+        } catch(e) {
+          console.warn(`[Cache Error] Failed to write ${key}:`, e);
+        }
+      }
 
       // ===================================================
       // MOBILE SIDEBAR CONTROLLER
@@ -603,12 +632,113 @@
         `).join('');
       }
 
-      // Initialize all skeleton loaders immediately on script load
-      function showAllSkeletons() {
-        renderCategorySkeletons(7);
-        renderGridCardSkeletons('continueList', 4);
-        renderGridCardSkeletons('recentList', 8);
-        renderRightSidebarSkeletons(3);
+      // ===================================================
+      // UI RENDERERS (REUSABLE FOR CACHE & FRESH FETCH)
+      // ===================================================
+      function renderUserProfile(user) {
+        if (!user) return;
+        const name = user.fullname || user.username || (user.email ? user.email.split('@')[0] : 'Me');
+        const desktopHello = document.getElementById('desktopHello');
+        const desktopTier = document.getElementById('desktopTier');
+        const desktopAvatar = document.getElementById('desktopAvatar');
+        const mobileAvatar = document.getElementById('mobileAvatar');
+        
+        if(desktopHello) desktopHello.textContent = `Hello, ${name}`;
+        if(desktopTier) desktopTier.textContent = (user.tier || user.plan || 'Member');
+        if(user.profilePic || user.avatar){ 
+          const url = normalizeUrl(user.profilePic || user.avatar); 
+          if(desktopAvatar) desktopAvatar.src = url; 
+          if(mobileAvatar) mobileAvatar.src = url; 
+        }
+      }
+
+      function renderCategories(cats) {
+        const categoriesRow = document.getElementById('categoriesRow');
+        if(!categoriesRow) return;
+        categoriesRow.innerHTML = '';
+        if(cats && cats.length){
+          cats.slice(0,7).forEach(c => {
+            const el = document.createElement('div');
+            el.className = 'flex flex-col items-center gap-1.5 cursor-pointer group';
+            const icon = c.icon || 'fa-layer-group';
+            el.innerHTML = `<div class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-indigo-100/70 text-indigo-600 flex items-center justify-center text-lg sm:text-xl group-hover:scale-105 transition-transform"><i class="${escapeHtml(icon)}"></i></div><span class="text-[10px] sm:text-xs font-bold text-slate-700">${escapeHtml(c.name || c.title || c.category)}</span>`;
+            el.addEventListener('click', () => window.location.href = `/browse.html?category=${encodeURIComponent(c.name || c.title || c.category)}`);
+            categoriesRow.appendChild(el);
+          });
+        } else {
+          const fallback = ['Books','Notes','Videos','Audio','Documents','More'];
+          fallback.forEach(name => {
+            const el = document.createElement('div');
+            el.className = 'flex flex-col items-center gap-1.5 cursor-pointer group';
+            el.innerHTML = `<div class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-indigo-100/70 text-indigo-600 flex items-center justify-center text-lg sm:text-xl group-hover:scale-105 transition-transform"><i class="fa-solid fa-layer-group"></i></div><span class="text-[10px] sm:text-xs font-bold text-slate-700">${escapeHtml(name)}</span>`;
+            categoriesRow.appendChild(el);
+          });
+        }
+      }
+
+      function renderFeatured(featured) {
+        const heroTitle = document.getElementById('heroTitle');
+        const heroSubtitle = document.getElementById('heroSubtitle');
+        const heroAction = document.getElementById('heroAction');
+        const heroCard = document.getElementById('heroCard');
+        if(!heroTitle || !heroSubtitle || !heroAction || !heroCard) return;
+
+        if(featured && featured.length){
+          const r = featured[0];
+          heroTitle.textContent = r.title || r.name || 'Featured Resource';
+          heroSubtitle.textContent = r.subtitle || (r.authors ? (Array.isArray(r.authors) ? r.authors.join(', ') : r.authors) : '');
+          const cover = r.cover && r.cover.url ? normalizeUrl(r.cover.url) : (r.thumbnail ? normalizeUrl(r.thumbnail) : null);
+          if(cover) heroCard.style.backgroundImage = `linear-gradient(135deg, rgba(15, 23, 42, 0.88) 0%, rgba(30, 27, 75, 0.75) 100%), url('${cover}')`;
+          const file = Array.isArray(r.files) ? r.files[0] : (r.file || null);
+          const fileUrl = file && (file.url || file.path) ? normalizeUrl(file.url || file.path) : null;
+          heroAction.onclick = () => fileUrl ? window.open(fileUrl, '_blank') : window.location.href = `book.html?id=${encodeURIComponent(r._id || r.id)}`;
+        } else {
+          heroAction.onclick = () => window.location.href = '/browse.html';
+        }
+      }
+
+      function renderContinue(continueRes) {
+        const continueList = document.getElementById('continueList');
+        if(!continueList) return;
+        continueList.innerHTML = '';
+        if(continueRes && continueRes.length){
+          continueRes.forEach(r => continueList.appendChild(makeCard(r)));
+          
+          // Populate Right Sidebar List
+          const right = document.getElementById('rightContinueList');
+          if(right){ 
+            right.innerHTML = ''; 
+            continueRes.slice(0,3).forEach(r => {
+              const row = document.createElement('div');
+              row.className = 'flex items-center gap-3.5 cursor-pointer hover:bg-slate-50 p-1.5 rounded-xl transition-colors';
+              const cover = r.cover && r.cover.url ? normalizeUrl(r.cover.url) : null;
+              row.innerHTML = `<div class="w-12 h-14 rounded-xl ${cover ? 'overflow-hidden' : 'bg-slate-900'} shrink-0 flex items-center justify-center text-indigo-400 text-lg">${cover ? `<img src="${escapeHtml(cover)}" loading="lazy" class="w-full h-full object-cover">` : '<i class="fa-solid fa-circle-nodes"></i>'}</div>
+                <div class="flex-1 min-w-0">
+                  <h4 class="text-xs font-bold text-slate-900 truncate">${escapeHtml(r.title || r.name)}</h4>
+                  <p class="text-[10px] text-slate-400 font-medium">${escapeHtml(Array.isArray(r.authors) ? r.authors.join(', ') : (r.authors||''))}</p>
+                  <div class="w-full bg-slate-100 h-1.5 rounded-full mt-2 overflow-hidden"><div class="bg-indigo-600 h-full rounded-full" style="width:${Math.min(90, Math.round(Math.random()*80)+10)}%"></div></div>
+                </div>
+                <span class="text-xs font-bold text-slate-400">${Math.round(Math.random()*60)+20}%</span>`;
+              row.addEventListener('click', () => window.location.href = `book.html?id=${encodeURIComponent(r._id || r.id)}`);
+              right.appendChild(row);
+            }); 
+          }
+        } else {
+          continueList.innerHTML = '<p class="text-xs text-slate-400 font-medium col-span-full py-4 text-center">No recent reading history found.</p>';
+          const right = document.getElementById('rightContinueList');
+          if(right) right.innerHTML = '<p class="text-xs text-slate-400 font-medium py-2 text-center">No active items.</p>';
+        }
+      }
+
+      function renderRecent(recentRes) {
+        const recentList = document.getElementById('recentList');
+        if(!recentList) return;
+        recentList.innerHTML = '';
+        if(recentRes && recentRes.length){
+          recentRes.forEach(r => recentList.appendChild(makeCard(r)));
+        } else {
+          recentList.innerHTML = '<p class="text-xs text-slate-400 font-medium col-span-full py-4 text-center">No recent resources available.</p>';
+        }
       }
 
       // ===================================================
@@ -733,132 +863,102 @@
       }
 
       // ===================================================
-      // PAGE INITIALIZATION
+      // PAGE INITIALIZATION (STALE-WHILE-REVALIDATE PATTERN)
       // ===================================================
       async function init(){
         // Setup Mobile Navigation Drawer Controls
         setupMobileSidebar();
 
-        // Render Skeletons instantly
-        showAllSkeletons();
+        // 1. STEP 1: READ LOCALSTORAGE CACHE FOR INSTANT RENDER
+        const cachedUser = getCache(CACHE_KEYS.USER);
+        const cachedCats = getCache(CACHE_KEYS.CATEGORIES);
+        const cachedFeatured = getCache(CACHE_KEYS.FEATURED);
+        const cachedContinue = getCache(CACHE_KEYS.CONTINUE);
+        const cachedRecent = getCache(CACHE_KEYS.RECENT);
 
-        // Trigger Parallel Async Operations
-        const [userResult, catsResult, featuredResult, continueResult, recentResult] = await Promise.allSettled([
+        // Render cached data immediately OR render skeletons if no cache exists
+        if (cachedUser) {
+          renderUserProfile(cachedUser);
+        }
+
+        if (cachedCats) {
+          renderCategories(cachedCats);
+        } else {
+          renderCategorySkeletons(7);
+        }
+
+        if (cachedFeatured) {
+          renderFeatured(cachedFeatured);
+        }
+
+        if (cachedContinue) {
+          renderContinue(cachedContinue);
+        } else {
+          renderGridCardSkeletons('continueList', 4);
+          renderRightSidebarSkeletons(3);
+        }
+
+        if (cachedRecent) {
+          renderRecent(cachedRecent);
+        } else {
+          renderGridCardSkeletons('recentList', 8);
+        }
+
+        // 2. STEP 2: SILENT BACKGROUND FETCH TO REVALIDATE DATA
+        Promise.allSettled([
           fetchLoggedInUser(),
           fetchCategories(),
           fetchResources({ limit: 1, featured: true }),
           fetchResources({ limit: 4, page: 1 }),
           fetchResources({ limit: 8, page: 1 })
-        ]);
+        ]).then(([userResult, catsResult, featuredResult, continueResult, recentResult]) => {
 
-        // 1. User Profile Resolution
-        if (userResult.status === 'fulfilled' && userResult.value) {
-          const user = userResult.value;
-          const name = user.fullname || user.username || (user.email ? user.email.split('@')[0] : 'Me');
-          const desktopHello = document.getElementById('desktopHello');
-          const desktopTier = document.getElementById('desktopTier');
-          const desktopAvatar = document.getElementById('desktopAvatar');
-          const mobileAvatar = document.getElementById('mobileAvatar');
-          if(desktopHello) desktopHello.textContent = `Hello, ${name}`;
-          if(desktopTier) desktopTier.textContent = (user.tier || user.plan || 'Member');
-          if(user.profilePic || user.avatar){ 
-            const url = normalizeUrl(user.profilePic || user.avatar); 
-            if(desktopAvatar) desktopAvatar.src = url; 
-            if(mobileAvatar) mobileAvatar.src = url; 
+          // Revalidate User Profile
+          if (userResult.status === 'fulfilled' && userResult.value) {
+            setCache(CACHE_KEYS.USER, userResult.value);
+            renderUserProfile(userResult.value);
           }
-        }
 
-        // 2. Categories Resolution
-        const categoriesRow = document.getElementById('categoriesRow');
-        categoriesRow.innerHTML = '';
-        const cats = catsResult.status === 'fulfilled' ? catsResult.value : [];
-        if(cats && cats.length){
-          cats.slice(0,7).forEach(c => {
-            const el = document.createElement('div');
-            el.className = 'flex flex-col items-center gap-1.5 cursor-pointer group';
-            const icon = c.icon || 'fa-layer-group';
-            el.innerHTML = `<div class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-indigo-100/70 text-indigo-600 flex items-center justify-center text-lg sm:text-xl group-hover:scale-105 transition-transform"><i class="${escapeHtml(icon)}"></i></div><span class="text-[10px] sm:text-xs font-bold text-slate-700">${escapeHtml(c.name || c.title || c.category)}</span>`;
-            el.addEventListener('click', () => window.location.href = `/browse.html?category=${encodeURIComponent(c.name || c.title || c.category)}`);
-            categoriesRow.appendChild(el);
-          });
-        } else {
-          const fallback = ['Books','Notes','Videos','Audio','Documents','More'];
-          fallback.forEach(name => {
-            const el = document.createElement('div');
-            el.className = 'flex flex-col items-center gap-1.5 cursor-pointer group';
-            el.innerHTML = `<div class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-indigo-100/70 text-indigo-600 flex items-center justify-center text-lg sm:text-xl group-hover:scale-105 transition-transform"><i class="fa-solid fa-layer-group"></i></div><span class="text-[10px] sm:text-xs font-bold text-slate-700">${escapeHtml(name)}</span>`;
-            categoriesRow.appendChild(el);
-          });
-        }
-
-        // 3. Featured Banner Resolution
-        const featured = featuredResult.status === 'fulfilled' ? featuredResult.value : [];
-        const heroTitle = document.getElementById('heroTitle');
-        const heroSubtitle = document.getElementById('heroSubtitle');
-        const heroAction = document.getElementById('heroAction');
-        const heroCard = document.getElementById('heroCard');
-        if(featured && featured.length){
-          const r = featured[0];
-          heroTitle.textContent = r.title || r.name || 'Featured Resource';
-          heroSubtitle.textContent = r.subtitle || (r.authors ? (Array.isArray(r.authors) ? r.authors.join(', ') : r.authors) : '');
-          const cover = r.cover && r.cover.url ? normalizeUrl(r.cover.url) : (r.thumbnail ? normalizeUrl(r.thumbnail) : null);
-          if(cover) heroCard.style.backgroundImage = `linear-gradient(135deg, rgba(15, 23, 42, 0.88) 0%, rgba(30, 27, 75, 0.75) 100%), url('${cover}')`;
-          const file = Array.isArray(r.files) ? r.files[0] : (r.file || null);
-          const fileUrl = file && (file.url || file.path) ? normalizeUrl(file.url || file.path) : null;
-          heroAction.onclick = () => fileUrl ? window.open(fileUrl, '_blank') : window.location.href = `book.html?id=${encodeURIComponent(r._id || r.id)}`;
-        } else {
-          heroAction.onclick = () => window.location.href = '/browse.html';
-        }
-
-        // 4. Continue Reading Resolution
-        const continueList = document.getElementById('continueList');
-        continueList.innerHTML = '';
-        const continueRes = continueResult.status === 'fulfilled' ? continueResult.value : [];
-        if(continueRes && continueRes.length){
-          continueRes.forEach(r => continueList.appendChild(makeCard(r)));
-          
-          // Populate Right Sidebar List
-          const right = document.getElementById('rightContinueList');
-          if(right){ 
-            right.innerHTML = ''; 
-            continueRes.slice(0,3).forEach(r => {
-              const row = document.createElement('div');
-              row.className = 'flex items-center gap-3.5 cursor-pointer hover:bg-slate-50 p-1.5 rounded-xl transition-colors';
-              const cover = r.cover && r.cover.url ? normalizeUrl(r.cover.url) : null;
-              row.innerHTML = `<div class="w-12 h-14 rounded-xl ${cover ? 'overflow-hidden' : 'bg-slate-900'} shrink-0 flex items-center justify-center text-indigo-400 text-lg">${cover ? `<img src="${escapeHtml(cover)}" loading="lazy" class="w-full h-full object-cover">` : '<i class="fa-solid fa-circle-nodes"></i>'}</div>
-                <div class="flex-1 min-w-0">
-                  <h4 class="text-xs font-bold text-slate-900 truncate">${escapeHtml(r.title || r.name)}</h4>
-                  <p class="text-[10px] text-slate-400 font-medium">${escapeHtml(Array.isArray(r.authors) ? r.authors.join(', ') : (r.authors||''))}</p>
-                  <div class="w-full bg-slate-100 h-1.5 rounded-full mt-2 overflow-hidden"><div class="bg-indigo-600 h-full rounded-full" style="width:${Math.min(90, Math.round(Math.random()*80)+10)}%"></div></div>
-                </div>
-                <span class="text-xs font-bold text-slate-400">${Math.round(Math.random()*60)+20}%</span>`;
-              row.addEventListener('click', () => window.location.href = `book.html?id=${encodeURIComponent(r._id || r.id)}`);
-              right.appendChild(row);
-            }); 
+          // Revalidate Categories
+          if (catsResult.status === 'fulfilled' && catsResult.value) {
+            setCache(CACHE_KEYS.CATEGORIES, catsResult.value);
+            renderCategories(catsResult.value);
+          } else if (!cachedCats) {
+            renderCategories([]);
           }
-        } else {
-          continueList.innerHTML = '<p class="text-xs text-slate-400 font-medium col-span-full py-4 text-center">No recent reading history found.</p>';
-          const right = document.getElementById('rightContinueList');
-          if(right) right.innerHTML = '<p class="text-xs text-slate-400 font-medium py-2 text-center">No active items.</p>';
-        }
 
-        // 5. Recently Added Resolution
-        const recentList = document.getElementById('recentList');
-        recentList.innerHTML = '';
-        const recent = recentResult.status === 'fulfilled' ? recentResult.value : [];
-        if(recent && recent.length){
-          recent.forEach(r => recentList.appendChild(makeCard(r)));
-        } else {
-          recentList.innerHTML = '<p class="text-xs text-slate-400 font-medium col-span-full py-4 text-center">No recent resources available.</p>';
-        }
+          // Revalidate Featured Banner
+          if (featuredResult.status === 'fulfilled' && featuredResult.value) {
+            setCache(CACHE_KEYS.FEATURED, featuredResult.value);
+            renderFeatured(featuredResult.value);
+          } else if (!cachedFeatured) {
+            renderFeatured([]);
+          }
 
-        // 6. Setup Infinite Scroll Observer
+          // Revalidate Continue Reading
+          if (continueResult.status === 'fulfilled' && continueResult.value) {
+            setCache(CACHE_KEYS.CONTINUE, continueResult.value);
+            renderContinue(continueResult.value);
+          } else if (!cachedContinue) {
+            renderContinue([]);
+          }
+
+          // Revalidate Recently Added
+          if (recentResult.status === 'fulfilled' && recentResult.value) {
+            setCache(CACHE_KEYS.RECENT, recentResult.value);
+            renderRecent(recentResult.value);
+          } else if (!cachedRecent) {
+            renderRecent([]);
+          }
+        });
+
+        // 3. STEP 3: SETUP INFINITE SCROLL OBSERVER
         setupLazyLoadingObserver();
 
-        // 7. Global Event Listeners
-        document.getElementById('navNotes').addEventListener('click', (e) => { e.preventDefault(); window.location.href = '/browse.html?category=Notes'; });
-        document.getElementById('sidebarUpgrade').addEventListener('click', () => window.location.href = '/pricing.html');
-        document.getElementById('mobileUpgrade').addEventListener('click', () => window.location.href = '/pricing.html');
+        // 4. STEP 4: GLOBAL EVENT LISTENERS
+        document.getElementById('navNotes')?.addEventListener('click', (e) => { e.preventDefault(); window.location.href = '/browse.html?category=Notes'; });
+        document.getElementById('sidebarUpgrade')?.addEventListener('click', () => window.location.href = '/pricing.html');
+        document.getElementById('mobileUpgrade')?.addEventListener('click', () => window.location.href = '/pricing.html');
         document.getElementById('desktopSearch')?.addEventListener('keydown', (e) => { if(e.key==='Enter'){ const q=e.target.value.trim(); if(q) window.location.href=`/search.html?q=${encodeURIComponent(q)}`; }});
         document.getElementById('mobileSearch')?.addEventListener('keydown', (e) => { if(e.key==='Enter'){ const q=e.target.value.trim(); if(q) window.location.href=`/search.html?q=${encodeURIComponent(q)}`; }});
       }
