@@ -356,8 +356,7 @@
          class="max-w-[95vw] max-h-[90vh] rounded-lg object-contain">
 
   </div>
-
-  <script>
+<script>
   (function () {
     'use strict';
     const API_BASE = 'https://examguide.onrender.com/api';
@@ -406,6 +405,30 @@
     function getQueryParam(name) { return new URLSearchParams(window.location.search).get(name); }
     function safeHtml(s){ if (s===null||s===undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
     function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
+    // Cache Helpers
+    function getStorageKey() {
+      return isGroup ? `chat_cache_group_${groupId}` : `chat_cache_user_${userId}`;
+    }
+
+    function saveMessagesToCache(normalizedArr) {
+      try {
+        localStorage.setItem(getStorageKey(), JSON.stringify(normalizedArr));
+      } catch (e) {
+        console.warn('Failed to save messages to local storage', e);
+      }
+    }
+
+    function loadMessagesFromCache() {
+      try {
+        const cached = localStorage.getItem(getStorageKey());
+        return cached ? JSON.parse(cached) : null;
+      } catch (e) {
+        console.warn('Failed to load messages from local storage', e);
+        return null;
+      }
+    }
+
     // Generate a thumbnail from an image file
 function createThumbnail(file) {
     return new Promise((resolve, reject) => {
@@ -1184,7 +1207,9 @@ function getCachedImage(url) {
       const url = isGroup ? `${MESSAGES_API}/group/${groupId}/send` : `${MESSAGES_API}/user/${userId}/send`;
       const tmpId = `tmp-${Date.now()}`;
       const optimistic = { _id: tmpId, from: currentUserId||'me', fromName: 'You', fromAvatar: '', text: text|| (attachmentMeta[0]?.filename || ''), attachments: attachmentMeta, reactions: {}, time: new Date().toISOString() };
-      renderMessages([ ...(messages||[]), optimistic ]);
+      const updatedMessages = [...(messages||[]), optimistic];
+      renderMessages(updatedMessages);
+      saveMessagesToCache(updatedMessages);
       messageInput.value = '';
       adjustInputHeight(); // reset height after sending
       attachmentsToUpload = [];
@@ -1243,6 +1268,14 @@ function getCachedImage(url) {
     async function loadMessages(){
       if (!token) return;
       if (!userId && !groupId) return;
+
+      // 1. First load from local storage cache if available
+      const cachedMessages = loadMessagesFromCache();
+      if (cachedMessages && cachedMessages.length > 0 && messages.length === 0) {
+        await renderMessages(cachedMessages);
+        showSkeleton(false);
+      }
+
       const url = isGroup ? `${MESSAGES_API}/group/${groupId}/messages` : `${MESSAGES_API}/user/${userId}/messages`;
       try {
         const res = await fetchWithTimeout(url, { headers:{ 'Authorization': `Bearer ${token}` } }, FETCH_TIMEOUT_MS);
@@ -1250,6 +1283,9 @@ function getCachedImage(url) {
         consecutiveErrors = 0;
         const arr = await res.json();
         const normalized = normalizeMessages(arr);
+        
+        // 2. Save fresh updates to cache and render
+        saveMessagesToCache(normalized);
         await renderMessages(normalized);
       } catch (err) {
         consecutiveErrors++;
@@ -1342,7 +1378,9 @@ const optimisticMessage = {
     time: new Date().toISOString()
 };
 
-await renderMessages([...messages, optimisticMessage]);
+const updatedMessages = [...messages, optimisticMessage];
+await renderMessages(updatedMessages);
+saveMessagesToCache(updatedMessages);
 scrollToBottom(false);
 
     
@@ -1524,6 +1562,14 @@ function closeImageModal(){
     async function init() {
       setHeaderDefaults();
       showSkeleton(true);
+      
+      // Load from cache initially if available before network call completes
+      const cachedMessages = loadMessagesFromCache();
+      if (cachedMessages && cachedMessages.length > 0) {
+        await renderMessages(cachedMessages);
+        showSkeleton(false);
+      }
+
       await loadCurrentUser();
       await loadMeta();
       await loadMessages();
