@@ -404,1216 +404,1210 @@
             </form>
         </div>
     </div>
+<script>
+    // API Configuration
+    const API_BASE = "https://examguide.onrender.com/api";
+    const MESSAGES_API = API_BASE + "/messages";
+    const GROUPS_API = MESSAGES_API + "/group";
+    const DISCUSSIONS_API = API_BASE + "/discussions";
+    const USER_API = API_BASE + "/users";
+    const token = localStorage.getItem('token');
 
-    <script>
-        // API Configuration
-        const API_BASE = "https://examguide.onrender.com/api";
-        const MESSAGES_API = API_BASE + "/messages";
-        const GROUPS_API = MESSAGES_API + "/group";
-        const DISCUSSIONS_API = API_BASE + "/discussions";
-        const USER_API = API_BASE + "/users";
-        const token = localStorage.getItem('token');
+    let allChats = [];
+    let allForums = [];
+    let allDiscussions = [];
+    let currentFilter = 'direct';
+    let currentUser = null;
+    let searchTimeout = null;
 
-        let allChats = [];
-        let allForums = [];
-        let allDiscussions = [];
-        let currentFilter = 'direct';
-        let currentUser = null;
-        let searchTimeout = null;
+    // In-flight guards to avoid overlapping refreshes
+    let isLoadingChats = false;
+    let isLoadingForums = false;
+    let isLoadingDiscussions = false;
 
-        // In-flight guards to avoid overlapping refreshes
-        let isLoadingChats = false;
-        let isLoadingForums = false;
-        let isLoadingDiscussions = false;
-
-        // --- Initialize on page load ---
-        document.addEventListener('DOMContentLoaded', async () => {
-    await loadCurrentUser();
-    // Load chats, forums, discussions and groups in parallel
-    await Promise.all([ loadChats(), loadForums(), loadDiscussions(), loadGroupsForDiscussion() ]);
-    setupSearch();
-    setupUserSearch();
-    // Start silent refresh every 3 seconds
-    setInterval(refreshAll, 3000);
-});
-
-        // Refresh function (silent)
-        async function refreshAll() {
-            // Kick off loads but guards inside each will prevent overlaps
-            loadChats().catch(e => console.debug('refresh-chats failed', e));
-            loadForums().catch(e => console.debug('refresh-forums failed', e));
-            loadDiscussions().catch(e => console.debug('refresh-discussions failed', e));
+    // --- LocalStorage Cache Helpers ---
+    function setCache(key, data) {
+        try {
+            localStorage.setItem(key, JSON.stringify(data));
+        } catch (e) {
+            console.warn(`Failed to set localStorage key "${key}":`, e);
         }
-
-        // --- Load current user info ---
-        async function loadCurrentUser() {
-            try {
-                const res = await fetch(`${API_BASE}/auth/me`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (!res.ok) throw new Error('Failed to fetch user');
-                const data = await res.json();
-                currentUser = data.user || null;
-                
-                const initials = (currentUser && (currentUser.fullname || currentUser.username)) ?
-                    (currentUser.fullname || currentUser.username)
-                        .split(' ')
-                        .map(n => n.charAt(0).toUpperCase())
-                        .join('')
-                        .slice(0, 2) : 'U';
-                
-                const avatar = (currentUser && (currentUser.profilePicture || currentUser.avatar)) || 
-                    `https://ui-avatars.com/api/?name=${initials}&background=1664FF&color=fff`;
-                const headerAvatarEl = document.getElementById('headerUserAvatar');
-                if (headerAvatarEl) headerAvatarEl.src = avatar;
-            } catch (error) {
-                console.error("Error loading user:", error);
-            }
-        }
-
-        // --- Normalizers ---
-        function normalizeChat(raw) {
-            // Accept many shapes. Return a stable object used by rendering code.
-            const id = raw._id || raw.id || raw.chatId || raw._chatId || null;
-
-            // extract last message
-            let lastMessageText = '';
-            let lastMessageTime = raw.lastMessageTime || raw.last_message_time || raw.last_message_time || raw.lastMessage?.createdAt || raw.lastMessage?.created_at || raw.lastMessage?.time || null;
-
-            if (!lastMessageText) {
-                if (raw.lastMessage && typeof raw.lastMessage === 'object') {
-                    lastMessageText = raw.lastMessage.text || raw.lastMessage.body || raw.lastMessage.message || '';
-                    lastMessageTime = lastMessageTime || raw.lastMessage.createdAt || raw.lastMessage.created_at || raw.lastMessage.time || lastMessageTime;
-                } else if (raw.lastMessageText) {
-                    lastMessageText = raw.lastMessageText;
-                } else if (raw.last_message) {
-                    lastMessageText = raw.last_message.text || raw.last_message.message || raw.last_message.body || '';
-                    lastMessageTime = lastMessageTime || raw.last_message.createdAt || raw.last_message.created_at || raw.last_message.time;
-                } else if (Array.isArray(raw.messages) && raw.messages.length > 0) {
-                    const last = raw.messages[raw.messages.length - 1];
-                    lastMessageText = last.text || last.body || last.message || '';
-                    lastMessageTime = lastMessageTime || last.createdAt || last.created_at || last.time;
-                } else if (raw.last && typeof raw.last === 'object') {
-                    lastMessageText = raw.last.text || raw.last.body || raw.last.message || '';
-                    lastMessageTime = lastMessageTime || raw.last.createdAt || raw.last.created_at || raw.last.time;
-                }
-            }
-
-            // fallback time as ISO or null
-            if (lastMessageTime) {
-                try { lastMessageTime = new Date(lastMessageTime).toISOString(); } catch (e) { /* keep as-is */ }
-            }
-
-            // unread
-            const unreadCount = raw.unreadCount ?? raw.unread_count ?? raw.unread ?? 0;
-
-            // Name and avatar: try many fields; if chat is a one-to-one conversation with participants, pick the "other" user
-            let name = raw.fullname || raw.name || raw.title || raw.username || '';
-            let avatar = raw.avatar || raw.profilePicture || raw.picture || raw.image || '';
-
-            if ((!name || name.toLowerCase() === 'unknown' || name.trim() === '') && Array.isArray(raw.participants)) {
-                // pick the participant other than currentUser if available
-                const other = raw.participants.find(p => {
-                    if (!p) return false;
-                    if (!currentUser) return true;
-                    return String(p._id || p.id) !== String(currentUser._id || currentUser.id);
-                }) || raw.participants[0];
-
-                if (other) {
-                    name = name || other.fullname || other.name || other.username || other.displayName || other.email || '';
-                    avatar = avatar || other.profilePicture || other.avatar || other.picture || '';
-                }
-            }
-
-            // final fallbacks
-            name = (name && String(name).trim()) ? String(name).trim() : (raw.displayName || raw.handle || 'Unknown');
-            avatar = avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
-
-            return {
-                ...raw,
-                _id: id,
-                lastMessageText: (lastMessageText && String(lastMessageText).trim()) ? String(lastMessageText) : '',
-                lastMessageTime,
-                unreadCount: Number(unreadCount || 0),
-                fullname: name,
-                username: raw.username || raw.handle || '',
-                avatar
-            };
-        }
-
-        // --- Normalizers ---
-function normalizeForum(raw) {
-    const id = raw._id || raw.id || raw.groupId || raw.group_id || null;
-
-    let lastMessageText = raw.lastMessageText || raw.last_message_text || '';
-    let lastMessageTime = raw.lastMessageTime || raw.last_message_time || raw.lastMessage?.createdAt || null;
-    if (!lastMessageText && Array.isArray(raw.messages) && raw.messages.length > 0) {
-        const last = raw.messages[raw.messages.length - 1];
-        lastMessageText = last.text || last.body || last.message || '';
-        lastMessageTime = lastMessageTime || last.createdAt || last.created_at || last.time;
     }
 
-    if (lastMessageTime) {
-        try { lastMessageTime = new Date(lastMessageTime).toISOString(); } catch(e) {}
+    function getCache(key) {
+        try {
+            const data = localStorage.getItem(key);
+            return data ? JSON.parse(data) : null;
+        } catch (e) {
+            console.warn(`Failed to get localStorage key "${key}":`, e);
+            return null;
+        }
     }
 
-    const unreadCount = raw.unreadCount ?? raw.unread_count ?? 0;
-    const name = raw.name || raw.title || raw.groupName || 'Unnamed Forum';
-    const avatar = raw.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
-
-    // New flags: isMember and isPublic (backend now provides these when listing groups)
-    const isMember = raw.isMember ?? raw.is_member ?? false;
-    const isPublic = raw.isPublic ?? raw.is_public ?? !!raw.isPublic;
-    const memberCount = raw.memberCount ?? raw.members?.length ?? raw.member_count ?? 0;
-
-    return {
-        ...raw,
-        _id: id,
-        name,
-        avatar,
-        lastMessageText: (lastMessageText && String(lastMessageText).trim()) ? String(lastMessageText) : '',
-        lastMessageTime,
-        unreadCount: Number(unreadCount || 0),
-        isMember: !!isMember,
-        isPublic: !!isPublic,
-        memberCount: Number(memberCount || 0)
-    };
-}
-
-// --- Load forums ---
-async function loadForums() {
-    if (isLoadingForums) return;
-    isLoadingForums = true;
-    try {
-        // Try groups endpoint first, fallback to chats endpoint if not available
-        let res = await fetch(`${GROUPS_API}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if (!res.ok) {
-            // fallback
-            console.debug('Groups endpoint not available, falling back to messages/chats for forums', res.status);
-            res = await fetch(`${MESSAGES_API}/chats`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+    // --- Load Cached Data Immediately on Script Exec ---
+    function loadFromCache() {
+        // 1. User
+        const cachedUser = getCache('cached_currentUser');
+        if (cachedUser) {
+            currentUser = cachedUser;
+            updateUserUI(currentUser);
         }
 
-        if (!res.ok) {
-            console.warn('loadForums fetch returned', res.status);
-            allForums = [];
+        // 2. Chats
+        const cachedChats = getCache('cached_chats');
+        if (Array.isArray(cachedChats)) {
+            allChats = cachedChats;
+            renderChats();
+            updateChatCounts();
+        }
+
+        // 3. Forums
+        const cachedForums = getCache('cached_forums');
+        if (Array.isArray(cachedForums)) {
+            allForums = cachedForums;
             renderForums();
             updateForumCounts();
-            return;
         }
 
-        const data = await res.json();
-        let forumsRaw = [];
-        if (Array.isArray(data)) forumsRaw = data;
-        else if (Array.isArray(data.groups)) forumsRaw = data.groups;
-        else if (Array.isArray(data.forums)) forumsRaw = data.forums;
-        else if (Array.isArray(data.groupsList)) forumsRaw = data.groupsList;
-        else if (Array.isArray(data.data)) forumsRaw = data.data;
-        else forumsRaw = [];
-
-        // Normalize each forum and keep membership/public flags
-        allForums = forumsRaw.map(normalizeForum);
-
-        // Sort by last message time (fallback to updatedAt)
-        allForums.sort((a, b) => {
-            const ta = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : (a.updatedAt ? new Date(a.updatedAt).getTime() : 0);
-            const tb = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : (b.updatedAt ? new Date(b.updatedAt).getTime() : 0);
-            return tb - ta;
-        });
-
-        renderForums();
-        updateForumCounts();
-    } catch (error) {
-        console.error("Error loading forums:", error);
-        allForums = [];
-        renderForums();
-        updateForumCounts();
-    } finally {
-        isLoadingForums = false;
-    }
-}
-
-// Helper: request to join a group (public groups auto-join on server)
-async function requestToJoin(groupId, btnEl) {
-    if (!groupId) return;
-    try {
-        if (btnEl) {
-            btnEl.disabled = true;
-            const originalText = btnEl.innerHTML;
-            btnEl.innerHTML = '<i class="fa-solid fa-spinner animate-spin mr-2"></i>Sending...';
-        }
-
-        const res = await fetch(`${MESSAGES_API}/group/${encodeURIComponent(groupId)}/request`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({})
-        });
-
-        const body = await res.json().catch(()=>null);
-
-        if (!res.ok) {
-            const msg = (body && (body.error || body.message)) ? (body.error || body.message) : `Request failed (${res.status})`;
-            throw new Error(msg);
-        }
-
-        // Update local state: mark the forum as member if server indicates it
-        const idx = allForums.findIndex(f => String(f._id) === String(groupId));
-        if (idx > -1) {
-            allForums[idx].isMember = !!(body && body.isMember) || true; // server auto-approves public groups
-            // increment memberCount if joined
-            allForums[idx].memberCount = (allForums[idx].memberCount || 0) + (allForums[idx].isMember ? 1 : 0);
-        }
-
-        renderForums();
-        updateForumCounts();
-
-        // Navigate directly into group chat if user became a member
-        if (body && body.isMember) {
-            // small delay so UI updates visibly
-            setTimeout(() => {
-                window.location.href = `/tutor/groupchat.html?groupId=${encodeURIComponent(groupId)}`;
-            }, 200);
-        } else {
-            alert(body?.message || 'Join request submitted and is pending approval.');
-        }
-    } catch (error) {
-        console.error('Join request failed:', error);
-        alert('Failed to send join request: ' + (error.message || 'unknown'));
-        if (btnEl) {
-            btnEl.disabled = false;
-            btnEl.innerHTML = 'Request';
+        // 4. Discussions
+        const cachedDiscussions = getCache('cached_discussions');
+        if (Array.isArray(cachedDiscussions)) {
+            allDiscussions = cachedDiscussions;
+            renderDiscussions();
+            updateDiscussionCounts();
         }
     }
-}
 
-// --- Render forums ---
-function renderForums() {
-    const forumsMain = document.getElementById('forumsMain');
-    const emptyState = document.getElementById('emptyStateForums');
-    
-    if (!forumsMain) return;
-    
-    if (allForums.length === 0) {
-        forumsMain.innerHTML = '';
-        emptyState.classList.remove('hidden');
-        return;
-    }
-    
-    emptyState.classList.add('hidden');
-    
-    forumsMain.innerHTML = allForums.map(forum => {
-        const timeStr = formatTime(forum.lastMessageTime);
-        const lastMsg = forum.lastMessageText || '(No messages)';
-        const unreadBadge = (forum.unreadCount || 0) > 0 ? `<span class="bg-brand-blue text-white text-[12px] font-bold min-w-[22px] h-[22px] px-1.5 rounded-full flex items-center justify-center shrink-0">${forum.unreadCount}</span>` : '';
+    // --- Initialize on page load ---
+    document.addEventListener('DOMContentLoaded', async () => {
+        // Render stale data immediately from cache if available
+        loadFromCache();
+
+        // Fetch updates from network in parallel
+        await Promise.all([
+            loadCurrentUser(),
+            loadChats(),
+            loadForums(),
+            loadDiscussions(),
+            loadGroupsForDiscussion()
+        ]);
+
+        setupSearch();
+        setupUserSearch();
         
-        const avatar = forum.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(forum.name)}&background=random`;
-        const forumId = forum._id || forum.id;
-        const isMember = !!forum.isMember;
-        const isPublic = !!forum.isPublic;
-        const memberCount = forum.memberCount || 0;
+        // Start silent refresh every 3 seconds
+        setInterval(refreshAll, 3000);
+    });
 
-        // If user is a member show the usual link; otherwise show a "Join" button.
-        if (isMember) {
-            const forumUrl = `/tutor/groupchat.html?groupId=${forumId}`;
-            return `
-                <a href="${forumUrl}" class="flex items-center gap-3.5 px-4 py-2.5 hover:bg-gray-50 cursor-pointer transition-colors w-full border-b border-gray-50 last:border-b-0">
-                    <img src="${avatar}" alt="${escapeHtml(forum.name)}" class="w-[56px] h-[56px] rounded-full object-cover border border-gray-100">
-                    
-                    <div class="flex-1 min-w-0 pr-1 overflow-hidden">
-                        <div class="flex items-center justify-between mb-1">
-                            <h3 class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtml(forum.name)}</h3>
-                            <span class="text-gray-500 text-[12px] shrink-0 ml-2">${timeStr}</span>
-                        </div>
-                        <div class="flex justify-between items-center">
-                            <p class="text-gray-500 text-[13px] truncate mr-2">${escapeHtml(lastMsg)}</p>
-                            <div class="flex items-center gap-2">${unreadBadge}${isPublic ? `<span class="text-xs text-gray-400 px-2 py-0.5 border rounded-full">Public</span>` : ''}</div>
-                        </div>
-                        <div class="text-xs text-gray-400 mt-2">${memberCount} member${memberCount !== 1 ? 's' : ''}</div>
-                    </div>
-                </a>
-            `;
-        } else {
-            // Not a member: show a non-navigable card with Join button
-            return `
-                <div class="flex items-center gap-3.5 px-4 py-3.5 hover:bg-gray-50 transition-colors w-full border-b border-gray-50 last:border-b-0">
-                    <img src="${avatar}" alt="${escapeHtml(forum.name)}" class="w-[56px] h-[56px] rounded-full object-cover border border-gray-100">
-                    
-                    <div class="flex-1 min-w-0 pr-1 overflow-hidden">
-                        <div class="flex items-center justify-between mb-1">
-                            <h3 class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtml(forum.name)}</h3>
-                            <span class="text-gray-500 text-[12px] shrink-0 ml-2">${timeStr}</span>
-                        </div>
-                        <p class="text-gray-500 text-[13px] truncate mb-2">${escapeHtml(lastMsg)}</p>
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center gap-2">
-                                ${isPublic ? `<span class="text-xs text-gray-400 px-2 py-0.5 border rounded-full">Public</span>` : `<span class="text-xs text-gray-400 px-2 py-0.5 border rounded-full">Private</span>`}
-                                <span class="text-xs text-gray-400">${memberCount} member${memberCount !== 1 ? 's' : ''}</span>
-                            </div>
-                            <div>
-                                <button onclick="requestToJoin('${forumId}', this)" class="bg-brand-blue text-white px-3 py-1.5 rounded-full text-sm font-semibold hover:opacity-90 transition">
-                                    ${isPublic ? 'Request / Join' : 'Request'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
+    // Refresh function (silent)
+    async function refreshAll() {
+        // Kick off loads but guards inside each will prevent overlaps
+        loadChats().catch(e => console.debug('refresh-chats failed', e));
+        loadForums().catch(e => console.debug('refresh-forums failed', e));
+        loadDiscussions().catch(e => console.debug('refresh-discussions failed', e));
+    }
+
+    // Helper UI Renderer for User
+    function updateUserUI(user) {
+        if (!user) return;
+        const initials = (user.fullname || user.username) ?
+            (user.fullname || user.username)
+                .split(' ')
+                .map(n => n.charAt(0).toUpperCase())
+                .join('')
+                .slice(0, 2) : 'U';
+        
+        const avatar = (user.profilePicture || user.avatar) || 
+            `https://ui-avatars.com/api/?name=${initials}&background=1664FF&color=fff`;
+        const headerAvatarEl = document.getElementById('headerUserAvatar');
+        if (headerAvatarEl) headerAvatarEl.src = avatar;
+    }
+
+    // --- Load current user info ---
+    async function loadCurrentUser() {
+        try {
+            const res = await fetch(`${API_BASE}/auth/me`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error('Failed to fetch user');
+            const data = await res.json();
+            currentUser = data.user || null;
+            
+            // Save to cache
+            if (currentUser) {
+                setCache('cached_currentUser', currentUser);
+            }
+            updateUserUI(currentUser);
+        } catch (error) {
+            console.error("Error loading user:", error);
         }
-    }).join('');
-}
+    }
 
-        // --- Load all chats from backend ---
-        async function loadChats() {
-            if (isLoadingChats) return;
-            isLoadingChats = true;
-            try {
-                const res = await fetch(`${MESSAGES_API}/chats`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (!res.ok) {
-                    console.warn('loadChats fetch returned', res.status);
-                    // don't throw to keep app stable
-                    allChats = [];
-                    renderChats();
-                    updateChatCounts();
-                    return;
-                }
-                const data = await res.json();
-                // data may be { chats: [...] } or an array
-                let chatsRaw = [];
-                if (Array.isArray(data)) chatsRaw = data;
-                else if (Array.isArray(data.chats)) chatsRaw = data.chats;
-                else if (Array.isArray(data.data)) chatsRaw = data.data;
-                else chatsRaw = [];
+    // --- Normalizers ---
+    function normalizeChat(raw) {
+        const id = raw._id || raw.id || raw.chatId || raw._chatId || null;
 
-                // Normalize each chat robustly
-                allChats = chatsRaw.map(normalizeChat);
+        let lastMessageText = '';
+        let lastMessageTime = raw.lastMessageTime || raw.last_message_time || raw.lastMessage?.createdAt || raw.lastMessage?.created_at || raw.lastMessage?.time || null;
 
-                // Sort by last message time (fallback to createdAt)
-                allChats.sort((a, b) => {
-                    const ta = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : (a.updatedAt ? new Date(a.updatedAt).getTime() : 0);
-                    const tb = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : (b.updatedAt ? new Date(b.updatedAt).getTime() : 0);
-                    return tb - ta;
-                });
-
-                renderChats();
-                updateChatCounts();
-            } catch (error) {
-                console.error("Error loading chats:", error);
-            } finally {
-                isLoadingChats = false;
+        if (!lastMessageText) {
+            if (raw.lastMessage && typeof raw.lastMessage === 'object') {
+                lastMessageText = raw.lastMessage.text || raw.lastMessage.body || raw.lastMessage.message || '';
+                lastMessageTime = lastMessageTime || raw.lastMessage.createdAt || raw.lastMessage.created_at || raw.lastMessage.time || lastMessageTime;
+            } else if (raw.lastMessageText) {
+                lastMessageText = raw.lastMessageText;
+            } else if (raw.last_message) {
+                lastMessageText = raw.last_message.text || raw.last_message.message || raw.last_message.body || '';
+                lastMessageTime = lastMessageTime || raw.last_message.createdAt || raw.last_message.created_at || raw.last_message.time;
+            } else if (Array.isArray(raw.messages) && raw.messages.length > 0) {
+                const last = raw.messages[raw.messages.length - 1];
+                lastMessageText = last.text || last.body || last.message || '';
+                lastMessageTime = lastMessageTime || last.createdAt || last.created_at || last.time;
+            } else if (raw.last && typeof raw.last === 'object') {
+                lastMessageText = raw.last.text || raw.last.body || raw.last.message || '';
+                lastMessageTime = lastMessageTime || raw.last.createdAt || raw.last.created_at || raw.last.time;
             }
         }
 
-        // --- Load forums ---
-        
+        if (lastMessageTime) {
+            try { lastMessageTime = new Date(lastMessageTime).toISOString(); } catch (e) { /* keep as-is */ }
+        }
 
-        // --- Load discussions from backend ---
-        async function loadDiscussions() {
-            if (isLoadingDiscussions) return;
-            isLoadingDiscussions = true;
-            try {
-                const res = await fetch(`${DISCUSSIONS_API}?limit=50`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (!res.ok) {
-                    console.warn('Discussions endpoint returned', res.status);
-                    allDiscussions = [];
-                    renderDiscussions();
-                    updateDiscussionCounts();
-                    return;
-                }
-                const data = await res.json();
-                // API might return { discussions } or array directly
-                const raw = Array.isArray(data) ? data : (data.discussions || data.data || []);
-                allDiscussions = (raw || []).map(d => ({
-                    _id: d._id || d.id || null,
-                    title: d.title || d.subject || 'Untitled',
-                    description: d.description || d.body || '',
-                    createdAt: d.createdAt || d.created_at || d.created || null,
-                    replies: d.replyCount ?? (Array.isArray(d.replies) ? d.replies.length : (d.replies || 0)),
-                    author: d.author || d.user || null,
-                    category: d.category || 'general'
-                }));
+        const unreadCount = raw.unreadCount ?? raw.unread_count ?? raw.unread ?? 0;
 
-                allDiscussions.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-                renderDiscussions();
-                updateDiscussionCounts();
-            } catch (error) {
-                console.error("Error loading discussions:", error);
-                allDiscussions = [];
-                renderDiscussions();
-                updateDiscussionCounts();
-            } finally {
-                isLoadingDiscussions = false;
+        let name = raw.fullname || raw.name || raw.title || raw.username || '';
+        let avatar = raw.avatar || raw.profilePicture || raw.picture || raw.image || '';
+
+        if ((!name || name.toLowerCase() === 'unknown' || name.trim() === '') && Array.isArray(raw.participants)) {
+            const other = raw.participants.find(p => {
+                if (!p) return false;
+                if (!currentUser) return true;
+                return String(p._id || p.id) !== String(currentUser._id || currentUser.id);
+            }) || raw.participants[0];
+
+            if (other) {
+                name = name || other.fullname || other.name || other.username || other.displayName || other.email || '';
+                avatar = avatar || other.profilePicture || other.avatar || other.picture || '';
             }
         }
 
-        // --- Render chat list ---
-        function renderChats() {
-            const chatsMain = document.getElementById('chatsMain');
-            const emptyState = document.getElementById('emptyStateChats');
-            
-            if (!chatsMain) return;
-            
-            if (allChats.length === 0) {
-                chatsMain.innerHTML = '';
-                emptyState.classList.remove('hidden');
+        name = (name && String(name).trim()) ? String(name).trim() : (raw.displayName || raw.handle || 'Unknown');
+        avatar = avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
+
+        return {
+            ...raw,
+            _id: id,
+            lastMessageText: (lastMessageText && String(lastMessageText).trim()) ? String(lastMessageText) : '',
+            lastMessageTime,
+            unreadCount: Number(unreadCount || 0),
+            fullname: name,
+            username: raw.username || raw.handle || '',
+            avatar
+        };
+    }
+
+    function normalizeForum(raw) {
+        const id = raw._id || raw.id || raw.groupId || raw.group_id || null;
+
+        let lastMessageText = raw.lastMessageText || raw.last_message_text || '';
+        let lastMessageTime = raw.lastMessageTime || raw.last_message_time || raw.lastMessage?.createdAt || null;
+        if (!lastMessageText && Array.isArray(raw.messages) && raw.messages.length > 0) {
+            const last = raw.messages[raw.messages.length - 1];
+            lastMessageText = last.text || last.body || last.message || '';
+            lastMessageTime = lastMessageTime || last.createdAt || last.created_at || last.time;
+        }
+
+        if (lastMessageTime) {
+            try { lastMessageTime = new Date(lastMessageTime).toISOString(); } catch(e) {}
+        }
+
+        const unreadCount = raw.unreadCount ?? raw.unread_count ?? 0;
+        const name = raw.name || raw.title || raw.groupName || 'Unnamed Forum';
+        const avatar = raw.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
+
+        const isMember = raw.isMember ?? raw.is_member ?? false;
+        const isPublic = raw.isPublic ?? raw.is_public ?? !!raw.isPublic;
+        const memberCount = raw.memberCount ?? raw.members?.length ?? raw.member_count ?? 0;
+
+        return {
+            ...raw,
+            _id: id,
+            name,
+            avatar,
+            lastMessageText: (lastMessageText && String(lastMessageText).trim()) ? String(lastMessageText) : '',
+            lastMessageTime,
+            unreadCount: Number(unreadCount || 0),
+            isMember: !!isMember,
+            isPublic: !!isPublic,
+            memberCount: Number(memberCount || 0)
+        };
+    }
+
+    // --- Load forums ---
+    async function loadForums() {
+        if (isLoadingForums) return;
+        isLoadingForums = true;
+        try {
+            let res = await fetch(`${GROUPS_API}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!res.ok) {
+                console.debug('Groups endpoint not available, falling back to messages/chats for forums', res.status);
+                res = await fetch(`${MESSAGES_API}/chats`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+            }
+
+            if (!res.ok) {
+                console.warn('loadForums fetch returned', res.status);
+                if (!allForums.length) {
+                    allForums = [];
+                    renderForums();
+                    updateForumCounts();
+                }
                 return;
             }
+
+            const data = await res.json();
+            let forumsRaw = [];
+            if (Array.isArray(data)) forumsRaw = data;
+            else if (Array.isArray(data.groups)) forumsRaw = data.groups;
+            else if (Array.isArray(data.forums)) forumsRaw = data.forums;
+            else if (Array.isArray(data.groupsList)) forumsRaw = data.groupsList;
+            else if (Array.isArray(data.data)) forumsRaw = data.data;
+            else forumsRaw = [];
+
+            allForums = forumsRaw.map(normalizeForum);
+
+            allForums.sort((a, b) => {
+                const ta = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : (a.updatedAt ? new Date(a.updatedAt).getTime() : 0);
+                const tb = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : (b.updatedAt ? new Date(b.updatedAt).getTime() : 0);
+                return tb - ta;
+            });
+
+            // Cache updated forums
+            setCache('cached_forums', allForums);
+
+            renderForums();
+            updateForumCounts();
+        } catch (error) {
+            console.error("Error loading forums:", error);
+            if (!allForums.length) {
+                allForums = [];
+                renderForums();
+                updateForumCounts();
+            }
+        } finally {
+            isLoadingForums = false;
+        }
+    }
+
+    async function requestToJoin(groupId, btnEl) {
+        if (!groupId) return;
+        try {
+            if (btnEl) {
+                btnEl.disabled = true;
+                btnEl.innerHTML = '<i class="fa-solid fa-spinner animate-spin mr-2"></i>Sending...';
+            }
+
+            const res = await fetch(`${MESSAGES_API}/group/${encodeURIComponent(groupId)}/request`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({})
+            });
+
+            const body = await res.json().catch(()=>null);
+
+            if (!res.ok) {
+                const msg = (body && (body.error || body.message)) ? (body.error || body.message) : `Request failed (${res.status})`;
+                throw new Error(msg);
+            }
+
+            const idx = allForums.findIndex(f => String(f._id) === String(groupId));
+            if (idx > -1) {
+                allForums[idx].isMember = !!(body && body.isMember) || true;
+                allForums[idx].memberCount = (allForums[idx].memberCount || 0) + (allForums[idx].isMember ? 1 : 0);
+                setCache('cached_forums', allForums);
+            }
+
+            renderForums();
+            updateForumCounts();
+
+            if (body && body.isMember) {
+                setTimeout(() => {
+                    window.location.href = `/tutor/groupchat.html?groupId=${encodeURIComponent(groupId)}`;
+                }, 200);
+            } else {
+                alert(body?.message || 'Join request submitted and is pending approval.');
+            }
+        } catch (error) {
+            console.error('Join request failed:', error);
+            alert('Failed to send join request: ' + (error.message || 'unknown'));
+            if (btnEl) {
+                btnEl.disabled = false;
+                btnEl.innerHTML = 'Request';
+            }
+        }
+    }
+
+    // --- Render forums ---
+    function renderForums() {
+        const forumsMain = document.getElementById('forumsMain');
+        const emptyState = document.getElementById('emptyStateForums');
+        
+        if (!forumsMain) return;
+        
+        if (allForums.length === 0) {
+            forumsMain.innerHTML = '';
+            emptyState.classList.remove('hidden');
+            return;
+        }
+        
+        emptyState.classList.add('hidden');
+        
+        forumsMain.innerHTML = allForums.map(forum => {
+            const timeStr = formatTime(forum.lastMessageTime);
+            const lastMsg = forum.lastMessageText || '(No messages)';
+            const unreadBadge = (forum.unreadCount || 0) > 0 ? `<span class="bg-brand-blue text-white text-[12px] font-bold min-w-[22px] h-[22px] px-1.5 rounded-full flex items-center justify-center shrink-0">${forum.unreadCount}</span>` : '';
             
-            emptyState.classList.add('hidden');
-            
-            chatsMain.innerHTML = allChats.map(chat => {
-                const timeStr = formatTime(chat.lastMessageTime);
-                const lastMsg = chat.lastMessageText || '(No messages)';
-                const unreadBadge = (chat.unreadCount || 0) > 0 ? `<span class="bg-brand-blue text-white text-[12px] font-bold min-w-[22px] h-[22px] px-1.5 rounded-full flex items-center justify-center shrink-0">${chat.unreadCount}</span>` : '';
-                
-                const name = chat.fullname || chat.username || 'Unknown';
-                const avatar = chat.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
-                
-                const chatUrl = `/tutor/chat.html?userId=${chat._id || chat.id}`;
-                
+            const avatar = forum.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(forum.name)}&background=random`;
+            const forumId = forum._id || forum.id;
+            const isMember = !!forum.isMember;
+            const isPublic = !!forum.isPublic;
+            const memberCount = forum.memberCount || 0;
+
+            if (isMember) {
+                const forumUrl = `/tutor/groupchat.html?groupId=${forumId}`;
                 return `
-                    <a href="${chatUrl}" class="flex items-center gap-3.5 px-4 py-2.5 hover:bg-gray-50 cursor-pointer transition-colors w-full border-b border-gray-50 last:border-b-0">
-                        <img src="${avatar}" alt="${escapeHtml(name)}" class="w-[56px] h-[56px] rounded-full object-cover border border-gray-100">
+                    <a href="${forumUrl}" class="flex items-center gap-3.5 px-4 py-2.5 hover:bg-gray-50 cursor-pointer transition-colors w-full border-b border-gray-50 last:border-b-0">
+                        <img src="${avatar}" alt="${escapeHtml(forum.name)}" class="w-[56px] h-[56px] rounded-full object-cover border border-gray-100">
                         
                         <div class="flex-1 min-w-0 pr-1 overflow-hidden">
                             <div class="flex items-center justify-between mb-1">
-                                <h3 class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtml(name)}</h3>
+                                <h3 class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtml(forum.name)}</h3>
                                 <span class="text-gray-500 text-[12px] shrink-0 ml-2">${timeStr}</span>
                             </div>
                             <div class="flex justify-between items-center">
                                 <p class="text-gray-500 text-[13px] truncate mr-2">${escapeHtml(lastMsg)}</p>
-                                ${unreadBadge}
+                                <div class="flex items-center gap-2">${unreadBadge}${isPublic ? `<span class="text-xs text-gray-400 px-2 py-0.5 border rounded-full">Public</span>` : ''}</div>
                             </div>
+                            <div class="text-xs text-gray-400 mt-2">${memberCount} member${memberCount !== 1 ? 's' : ''}</div>
                         </div>
                     </a>
                 `;
-            }).join('');
-        }
-
-
-
-        // --- Render discussions ---
-        function renderDiscussions() {
-            const discussionsMain = document.getElementById('discussionsMain');
-            const emptyState = document.getElementById('emptyStateDiscussions');
-            
-            if (!discussionsMain) return;
-            
-            if (allDiscussions.length === 0) {
-                discussionsMain.innerHTML = '';
-                emptyState.classList.remove('hidden');
-                return;
-            }
-            
-            emptyState.classList.add('hidden');
-            
-            discussionsMain.innerHTML = allDiscussions.map(discussion => {
-                const timeStr = formatTime(discussion.createdAt);
-                const repliesCount = discussion.replies || 0;
-                
-                const avatar = discussion.author?.profilePicture || `https://ui-avatars.com/api/?name=${encodeURIComponent(discussion.author?.fullname || 'A')}&background=random`;
-                const authorName = discussion.author?.fullname || discussion.author?.username || 'Anonymous';
-                
+            } else {
                 return `
-                    <a href="/tutor/discussion.html?id=${discussion._id}" class="flex items-center gap-3.5 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors w-full border-b border-gray-50 last:border-b-0">
-                        <img src="${avatar}" alt="${escapeHtml(authorName)}" class="w-12 h-12 rounded-full object-cover border border-gray-100">
+                    <div class="flex items-center gap-3.5 px-4 py-3.5 hover:bg-gray-50 transition-colors w-full border-b border-gray-50 last:border-b-0">
+                        <img src="${avatar}" alt="${escapeHtml(forum.name)}" class="w-[56px] h-[56px] rounded-full object-cover border border-gray-100">
                         
                         <div class="flex-1 min-w-0 pr-1 overflow-hidden">
                             <div class="flex items-center justify-between mb-1">
-                                <h3 class="font-semibold text-gray-900 text-[14px] truncate">${escapeHtml(discussion.title)}</h3>
-                                <span class="text-gray-500 text-[11px] shrink-0 ml-2">${timeStr}</span>
+                                <h3 class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtml(forum.name)}</h3>
+                                <span class="text-gray-500 text-[12px] shrink-0 ml-2">${timeStr}</span>
                             </div>
-                            <p class="text-gray-600 text-[12px] truncate mb-1">${escapeHtml(authorName)}</p>
-                            <div class="flex items-center gap-3 text-gray-500 text-[11px]">
-                                <span><i class="fa-solid fa-comment text-brand-blue"></i> ${repliesCount} replies</span>
-                                <span class="ml-2 text-xs text-gray-400">${escapeHtml(discussion.category || '')}</span>
+                            <p class="text-gray-500 text-[13px] truncate mb-2">${escapeHtml(lastMsg)}</p>
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-2">
+                                    ${isPublic ? `<span class="text-xs text-gray-400 px-2 py-0.5 border rounded-full">Public</span>` : `<span class="text-xs text-gray-400 px-2 py-0.5 border rounded-full">Private</span>`}
+                                    <span class="text-xs text-gray-400">${memberCount} member${memberCount !== 1 ? 's' : ''}</span>
+                                </div>
+                                <div>
+                                    <button onclick="requestToJoin('${forumId}', this)" class="bg-brand-blue text-white px-3 py-1.5 rounded-full text-sm font-semibold hover:opacity-90 transition">
+                                        ${isPublic ? 'Request / Join' : 'Request'}
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                    </a>
-                `;
-            }).join('');
-        }
-
-        // --- Update chat counts ---
-        function updateChatCounts() {
-            const totalCount = allChats.length;
-            const unreadCount = allChats.reduce((sum, chat) => sum + (chat.unreadCount || 0), 0);
-            
-            const totalChatsCountEl = document.getElementById('totalChatsCount');
-            if (totalChatsCountEl) totalChatsCountEl.textContent = totalCount;
-            
-            const navChatsCount = document.getElementById('navChatsCount');
-            if (navChatsCount) {
-                if (unreadCount > 0) {
-                    navChatsCount.classList.remove('hidden');
-                    navChatsCount.textContent = unreadCount;
-                } else {
-                    navChatsCount.classList.add('hidden');
-                }
-            }
-        }
-
-        function updateForumCounts() {
-            const totalCount = allForums.length;
-            const totalForumsCountEl = document.getElementById('totalForumsCount');
-            if (totalForumsCountEl) totalForumsCountEl.textContent = totalCount;
-        }
-
-        function updateDiscussionCounts() {
-            const totalCount = allDiscussions.length;
-            const totalDiscussionsCountEl = document.getElementById('totalDiscussionsCount');
-            if (totalDiscussionsCountEl) totalDiscussionsCountEl.textContent = totalCount;
-        }
-
-
-function switchTab(tab) {
-    // Hide all tabs (add hidden, remove flex)
-    document.querySelectorAll('.tab-content').forEach(el => {
-        el.classList.add('hidden');
-        el.classList.remove('flex');
-    });
-
-    // Show selected tab (remove hidden, add flex)
-    const tabEl = document.getElementById(`tab-${tab}`);
-    if (tabEl) {
-        tabEl.classList.remove('hidden');
-        tabEl.classList.add('flex');
-    }
-
-    // Update top tab buttons
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.remove('border-brand-blue', 'text-brand-blue');
-        btn.classList.add('text-gray-500');
-    });
-    const topBtn = document.querySelector(`[data-tab="${tab}"]`);
-    if (topBtn) {
-        topBtn.classList.add('border-brand-blue', 'text-brand-blue');
-        topBtn.classList.remove('text-gray-500');
-    }
-
-    // Update bottom nav items
-    document.querySelectorAll('.nav-item').forEach(item => {
-        item.classList.remove('text-brand-blue');
-        item.classList.add('text-[#536471]', 'hover:text-gray-900');
-    });
-    const navItem = document.querySelector(`[data-nav="${tab}"]`);
-    if (navItem) {
-        navItem.classList.add('text-brand-blue');
-        navItem.classList.remove('text-[#536471]', 'hover:text-gray-900');
-    }
-
-    currentFilter = tab;
-}
-
-        function formatTime(timestamp) {
-    if (!timestamp) return "";
-
-    const date = new Date(timestamp);
-
-    if (isNaN(date.getTime())) {
-        return "";
-    }
-
-    const now = new Date();
-
-    const diff = now.getTime() - date.getTime();
-
-    const oneMinute = 60 * 1000;
-    const oneHour = 60 * oneMinute;
-    const oneDay = 24 * oneHour;
-
-    if (diff < oneMinute) {
-        return "Just now";
-    }
-
-    if (diff < oneHour) {
-        return date.toLocaleTimeString([], {
-            hour: "numeric",
-            minute: "2-digit"
-        });
-    }
-
-    if (diff < oneDay) {
-        return date.toLocaleTimeString([], {
-            hour: "numeric",
-            minute: "2-digit"
-        });
-    }
-
-    return date.toLocaleDateString([], {
-        day: "numeric",
-        month: "short"
-    });
-}
-
-        // --- Setup search functionality ---
-        function setupSearch() {
-            const el = document.getElementById('searchInput');
-            if (!el) return;
-            el.addEventListener('input', (e) => {
-                const query = (e.target.value || '').toLowerCase();
-                
-                if (currentFilter === 'direct') {
-                    const filtered = allChats.filter(chat => {
-                        const name = (chat.fullname || chat.username || '').toLowerCase();
-                        const lastMsg = (chat.lastMessageText || '').toLowerCase();
-                        return name.includes(query) || lastMsg.includes(query);
-                    });
-                    
-                    const chatsMain = document.getElementById('chatsMain');
-                    if (!chatsMain) return;
-                    if (filtered.length === 0) {
-                        chatsMain.innerHTML = '<p class="text-center text-gray-400 py-8">No chats found</p>';
-                    } else {
-                        chatsMain.innerHTML = filtered.map(chat => {
-                            const timeStr = formatTime(chat.lastMessageTime);
-                            const lastMsg = chat.lastMessageText || '(No messages)';
-                            const unreadBadge = (chat.unreadCount || 0) > 0 ? `<span class="bg-brand-blue text-white text-[12px] font-bold min-w-[22px] h-[22px] px-1.5 rounded-full flex items-center justify-center shrink-0">${chat.unreadCount}</span>` : '';
-                            
-                            const name = chat.fullname || chat.username || 'Unknown';
-                            const avatar = chat.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
-                            const chatUrl = `/tutor/chat.html?userId=${chat._id}`;
-                            
-                            return `
-                                <a href="${chatUrl}" class="flex items-center gap-3.5 px-4 py-2.5 hover:bg-gray-50 cursor-pointer transition-colors w-full border-b border-gray-50 last:border-b-0">
-                                    <img src="${avatar}" alt="${escapeHtml(name)}" class="w-[56px] h-[56px] rounded-full object-cover border border-gray-100">
-                                    <div class="flex-1 min-w-0 pr-1 overflow-hidden">
-                                        <div class="flex items-center justify-between mb-1">
-                                            <h3 class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtml(name)}</h3>
-                                            <span class="text-gray-500 text-[12px] shrink-0 ml-2">${timeStr}</span>
-                                        </div>
-                                        <div class="flex justify-between items-center">
-                                            <p class="text-gray-500 text-[13px] truncate mr-2">${escapeHtml(lastMsg)}</p>
-                                            ${unreadBadge}
-                                        </div>
-                                    </div>
-                                </a>
-                            `;
-                        }).join('');
-                    }
-                } else if (currentFilter === 'forums') {
-                    const filtered = allForums.filter(forum => {
-                        const name = (forum.name || '').toLowerCase();
-                        const lastMsg = (forum.lastMessageText || '').toLowerCase();
-                        return name.includes(query) || lastMsg.includes(query);
-                    });
-                    
-                    const forumsMain = document.getElementById('forumsMain');
-                    if (!forumsMain) return;
-                    if (filtered.length === 0) {
-                        forumsMain.innerHTML = '<p class="text-center text-gray-400 py-8">No forums found</p>';
-                    } else {
-                        forumsMain.innerHTML = filtered.map(forum => {
-                            const timeStr = formatTime(forum.lastMessageTime);
-                            const lastMsg = forum.lastMessageText || '(No messages)';
-                            const unreadBadge = (forum.unreadCount || 0) > 0 ? `<span class="bg-brand-blue text-white text-[12px] font-bold min-w-[22px] h-[22px] px-1.5 rounded-full flex items-center justify-center shrink-0">${forum.unreadCount}</span>` : '';
-                            
-                            const avatar = forum.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(forum.name)}&background=random`;
-                            const forumUrl = `/tutor/groupchat.html?groupId=${forum._id}`;
-                            
-                            return `
-                                <a href="${forumUrl}" class="flex items-center gap-3.5 px-4 py-2.5 hover:bg-gray-50 cursor-pointer transition-colors w-full border-b border-gray-50 last:border-b-0">
-                                    <img src="${avatar}" alt="${escapeHtml(forum.name)}" class="w-[56px] h-[56px] rounded-full object-cover border border-gray-100">
-                                    <div class="flex-1 min-w-0 pr-1 overflow-hidden">
-                                        <div class="flex items-center justify-between mb-1">
-                                            <h3 class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtml(forum.name)}</h3>
-                                            <span class="text-gray-500 text-[12px] shrink-0 ml-2">${timeStr}</span>
-                                        </div>
-                                        <div class="flex justify-between items-center">
-                                            <p class="text-gray-500 text-[13px] truncate mr-2">${escapeHtml(lastMsg)}</p>
-                                            ${unreadBadge}
-                                        </div>
-                                    </div>
-                                </a>
-                            `;
-                        }).join('');
-                    }
-                } else if (currentFilter === 'discussions') {
-                    const filtered = allDiscussions.filter(d => {
-                        const title = (d.title || '').toLowerCase();
-                        const desc = (d.description || '').toLowerCase();
-                        const author = (d.author?.fullname || d.author?.username || '').toLowerCase();
-                        return title.includes(query) || desc.includes(query) || author.includes(query);
-                    });
-
-                    const discussionsMain = document.getElementById('discussionsMain');
-                    if (!discussionsMain) return;
-                    if (filtered.length === 0) {
-                        discussionsMain.innerHTML = '<p class="text-center text-gray-400 py-8">No discussions found</p>';
-                    } else {
-                        discussionsMain.innerHTML = filtered.map(discussion => {
-                            const timeStr = formatTime(discussion.createdAt);
-                            const repliesCount = discussion.replies || 0;
-                            const avatar = discussion.author?.profilePicture || `https://ui-avatars.com/api/?name=${encodeURIComponent(discussion.author?.fullname || 'A')}&background=random`;
-                            const authorName = discussion.author?.fullname || discussion.author?.username || 'Anonymous';
-                            return `
-                                <a href="/tutor/discussion.html?id=${discussion._id}" class="flex items-center gap-3.5 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors w-full border-b border-gray-50 last:border-b-0">
-                                    <img src="${avatar}" alt="${escapeHtml(authorName)}" class="w-12 h-12 rounded-full object-cover border border-gray-100">
-                                    <div class="flex-1 min-w-0 pr-1 overflow-hidden">
-                                        <div class="flex items-center justify-between mb-1">
-                                            <h3 class="font-semibold text-gray-900 text-[14px] truncate">${escapeHtml(discussion.title)}</h3>
-                                            <span class="text-gray-500 text-[11px] shrink-0 ml-2">${timeStr}</span>
-                                        </div>
-                                        <p class="text-gray-600 text-[12px] truncate mb-1">${escapeHtml(authorName)}</p>
-                                        <div class="flex items-center gap-3 text-gray-500 text-[11px]">
-                                            <span><i class="fa-solid fa-comment text-brand-blue"></i> ${repliesCount} replies</span>
-                                        </div>
-                                    </div>
-                                </a>
-                            `;
-                        }).join('');
-                    }
-                }
-            });
-        }
-
-        // --- User Search with Real-time Results (extracted setup into function) ---
-        function setupUserSearch() {
-            const userSearchInput = document.getElementById('userSearchInput');
-            if (!userSearchInput) return;
-
-            userSearchInput.addEventListener('input', async (e) => {
-                const query = e.target.value.trim();
-                const resultsContainer = document.getElementById('userSearchResults');
-                
-                if (!query) {
-                    resultsContainer.innerHTML = '<p class="text-gray-400 text-sm text-center py-8">Start typing to search for users...</p>';
-                    return;
-                }
-                
-                if (query.length < 2) {
-                    resultsContainer.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">Type at least 2 characters...</p>';
-                    return;
-                }
-                
-                resultsContainer.innerHTML = '<div class="flex justify-center py-4"><i class="fa-solid fa-spinner animate-spin text-brand-blue text-xl"></i></div>';
-                
-                try {
-                    // Clear previous timeout
-                    clearTimeout(searchTimeout);
-                    
-                    // Debounce search
-                    searchTimeout = setTimeout(async () => {
-                        // Prefer server-side query param if available
-                        let url = `${MESSAGES_API}/similar-users?q=${encodeURIComponent(query)}`;
-                        const res = await fetch(url, {
-                            headers: { 'Authorization': `Bearer ${token}` }
-                        });
-                        if (!res.ok) {
-                            // fallback to endpoint without query
-                            console.debug('similar-users returned', res.status, 'falling back to basic endpoint');
-                            const fallback = await fetch(`${MESSAGES_API}/similar-users`, { headers: { 'Authorization': `Bearer ${token}` } });
-                            if (!fallback.ok) throw new Error('Failed to search users');
-                            const fb = await fallback.json();
-                            renderUserSearchResults(fb, query, resultsContainer);
-                            return;
-                        }
-                        const usersResp = await res.json();
-                        renderUserSearchResults(usersResp, query, resultsContainer);
-                    }, 300); // 300ms debounce
-                } catch (error) {
-                    console.error("Error searching users:", error);
-                    resultsContainer.innerHTML = '<p class="text-red-500 text-sm text-center py-4">Error searching users</p>';
-                }
-            });
-        }
-
-        function renderUserSearchResults(usersResp, query, resultsContainer) {
-            // api may return array or { users: [...] }
-            let users = Array.isArray(usersResp) ? usersResp : (Array.isArray(usersResp.users) ? usersResp.users : (Array.isArray(usersResp.data) ? usersResp.data : []));
-            // client-side filter as extra safety
-            const q = (query || '').toLowerCase();
-            users = users.filter(user => {
-                const fullName = (user.fullname || user.name || '').toLowerCase();
-                const username = (user.username || user.handle || '').toLowerCase();
-                const deptName = (user.department || '').toLowerCase();
-                return fullName.includes(q) || username.includes(q) || deptName.includes(q);
-            });
-
-            if (users.length === 0) {
-                resultsContainer.innerHTML = `
-                    <div class="text-center py-8">
-                        <i class="fa-solid fa-user-slash text-gray-300 text-3xl mb-2"></i>
-                        <p class="text-gray-400 text-sm">No users found matching "${escapeHtml(query)}"</p>
                     </div>
                 `;
+            }
+        }).join('');
+    }
+
+    // --- Load all chats from backend ---
+    async function loadChats() {
+        if (isLoadingChats) return;
+        isLoadingChats = true;
+        try {
+            const res = await fetch(`${MESSAGES_API}/chats`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) {
+                console.warn('loadChats fetch returned', res.status);
+                if (!allChats.length) {
+                    allChats = [];
+                    renderChats();
+                    updateChatCounts();
+                }
+                return;
+            }
+            const data = await res.json();
+            let chatsRaw = [];
+            if (Array.isArray(data)) chatsRaw = data;
+            else if (Array.isArray(data.chats)) chatsRaw = data.chats;
+            else if (Array.isArray(data.data)) chatsRaw = data.data;
+            else chatsRaw = [];
+
+            allChats = chatsRaw.map(normalizeChat);
+
+            allChats.sort((a, b) => {
+                const ta = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : (a.updatedAt ? new Date(a.updatedAt).getTime() : 0);
+                const tb = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : (b.updatedAt ? new Date(b.updatedAt).getTime() : 0);
+                return tb - ta;
+            });
+
+            // Cache updated chats
+            setCache('cached_chats', allChats);
+
+            renderChats();
+            updateChatCounts();
+        } catch (error) {
+            console.error("Error loading chats:", error);
+        } finally {
+            isLoadingChats = false;
+        }
+    }
+
+    // --- Load discussions from backend ---
+    async function loadDiscussions() {
+        if (isLoadingDiscussions) return;
+        isLoadingDiscussions = true;
+        try {
+            const res = await fetch(`${DISCUSSIONS_API}?limit=50`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) {
+                console.warn('Discussions endpoint returned', res.status);
+                if (!allDiscussions.length) {
+                    allDiscussions = [];
+                    renderDiscussions();
+                    updateDiscussionCounts();
+                }
+                return;
+            }
+            const data = await res.json();
+            const raw = Array.isArray(data) ? data : (data.discussions || data.data || []);
+            allDiscussions = (raw || []).map(d => ({
+                _id: d._id || d.id || null,
+                title: d.title || d.subject || 'Untitled',
+                description: d.description || d.body || '',
+                createdAt: d.createdAt || d.created_at || d.created || null,
+                replies: d.replyCount ?? (Array.isArray(d.replies) ? d.replies.length : (d.replies || 0)),
+                author: d.author || d.user || null,
+                category: d.category || 'general'
+            }));
+
+            allDiscussions.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+            // Cache updated discussions
+            setCache('cached_discussions', allDiscussions);
+
+            renderDiscussions();
+            updateDiscussionCounts();
+        } catch (error) {
+            console.error("Error loading discussions:", error);
+            if (!allDiscussions.length) {
+                allDiscussions = [];
+                renderDiscussions();
+                updateDiscussionCounts();
+            }
+        } finally {
+            isLoadingDiscussions = false;
+        }
+    }
+
+    // --- Render chat list ---
+    function renderChats() {
+        const chatsMain = document.getElementById('chatsMain');
+        const emptyState = document.getElementById('emptyStateChats');
+        
+        if (!chatsMain) return;
+        
+        if (allChats.length === 0) {
+            chatsMain.innerHTML = '';
+            emptyState.classList.remove('hidden');
+            return;
+        }
+        
+        emptyState.classList.add('hidden');
+        
+        chatsMain.innerHTML = allChats.map(chat => {
+            const timeStr = formatTime(chat.lastMessageTime);
+            const lastMsg = chat.lastMessageText || '(No messages)';
+            const unreadBadge = (chat.unreadCount || 0) > 0 ? `<span class="bg-brand-blue text-white text-[12px] font-bold min-w-[22px] h-[22px] px-1.5 rounded-full flex items-center justify-center shrink-0">${chat.unreadCount}</span>` : '';
+            
+            const name = chat.fullname || chat.username || 'Unknown';
+            const avatar = chat.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
+            
+            const chatUrl = `/tutor/chat.html?userId=${chat._id || chat.id}`;
+            
+            return `
+                <a href="${chatUrl}" class="flex items-center gap-3.5 px-4 py-2.5 hover:bg-gray-50 cursor-pointer transition-colors w-full border-b border-gray-50 last:border-b-0">
+                    <img src="${avatar}" alt="${escapeHtml(name)}" class="w-[56px] h-[56px] rounded-full object-cover border border-gray-100">
+                    
+                    <div class="flex-1 min-w-0 pr-1 overflow-hidden">
+                        <div class="flex items-center justify-between mb-1">
+                            <h3 class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtml(name)}</h3>
+                            <span class="text-gray-500 text-[12px] shrink-0 ml-2">${timeStr}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <p class="text-gray-500 text-[13px] truncate mr-2">${escapeHtml(lastMsg)}</p>
+                            ${unreadBadge}
+                        </div>
+                    </div>
+                </a>
+            `;
+        }).join('');
+    }
+
+    // --- Render discussions ---
+    function renderDiscussions() {
+        const discussionsMain = document.getElementById('discussionsMain');
+        const emptyState = document.getElementById('emptyStateDiscussions');
+        
+        if (!discussionsMain) return;
+        
+        if (allDiscussions.length === 0) {
+            discussionsMain.innerHTML = '';
+            emptyState.classList.remove('hidden');
+            return;
+        }
+        
+        emptyState.classList.add('hidden');
+        
+        discussionsMain.innerHTML = allDiscussions.map(discussion => {
+            const timeStr = formatTime(discussion.createdAt);
+            const repliesCount = discussion.replies || 0;
+            
+            const avatar = discussion.author?.profilePicture || `https://ui-avatars.com/api/?name=${encodeURIComponent(discussion.author?.fullname || 'A')}&background=random`;
+            const authorName = discussion.author?.fullname || discussion.author?.username || 'Anonymous';
+            
+            return `
+                <a href="/tutor/discussion.html?id=${discussion._id}" class="flex items-center gap-3.5 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors w-full border-b border-gray-50 last:border-b-0">
+                    <img src="${avatar}" alt="${escapeHtml(authorName)}" class="w-12 h-12 rounded-full object-cover border border-gray-100">
+                    
+                    <div class="flex-1 min-w-0 pr-1 overflow-hidden">
+                        <div class="flex items-center justify-between mb-1">
+                            <h3 class="font-semibold text-gray-900 text-[14px] truncate">${escapeHtml(discussion.title)}</h3>
+                            <span class="text-gray-500 text-[11px] shrink-0 ml-2">${timeStr}</span>
+                        </div>
+                        <p class="text-gray-600 text-[12px] truncate mb-1">${escapeHtml(authorName)}</p>
+                        <div class="flex items-center gap-3 text-gray-500 text-[11px]">
+                            <span><i class="fa-solid fa-comment text-brand-blue"></i> ${repliesCount} replies</span>
+                            <span class="ml-2 text-xs text-gray-400">${escapeHtml(discussion.category || '')}</span>
+                        </div>
+                    </div>
+                </a>
+            `;
+        }).join('');
+    }
+
+    // --- Update counts ---
+    function updateChatCounts() {
+        const totalCount = allChats.length;
+        const unreadCount = allChats.reduce((sum, chat) => sum + (chat.unreadCount || 0), 0);
+        
+        const totalChatsCountEl = document.getElementById('totalChatsCount');
+        if (totalChatsCountEl) totalChatsCountEl.textContent = totalCount;
+        
+        const navChatsCount = document.getElementById('navChatsCount');
+        if (navChatsCount) {
+            if (unreadCount > 0) {
+                navChatsCount.classList.remove('hidden');
+                navChatsCount.textContent = unreadCount;
+            } else {
+                navChatsCount.classList.add('hidden');
+            }
+        }
+    }
+
+    function updateForumCounts() {
+        const totalCount = allForums.length;
+        const totalForumsCountEl = document.getElementById('totalForumsCount');
+        if (totalForumsCountEl) totalForumsCountEl.textContent = totalCount;
+    }
+
+    function updateDiscussionCounts() {
+        const totalCount = allDiscussions.length;
+        const totalDiscussionsCountEl = document.getElementById('totalDiscussionsCount');
+        if (totalDiscussionsCountEl) totalDiscussionsCountEl.textContent = totalCount;
+    }
+
+    function switchTab(tab) {
+        document.querySelectorAll('.tab-content').forEach(el => {
+            el.classList.add('hidden');
+            el.classList.remove('flex');
+        });
+
+        const tabEl = document.getElementById(`tab-${tab}`);
+        if (tabEl) {
+            tabEl.classList.remove('hidden');
+            tabEl.classList.add('flex');
+        }
+
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.remove('border-brand-blue', 'text-brand-blue');
+            btn.classList.add('text-gray-500');
+        });
+        const topBtn = document.querySelector(`[data-tab="${tab}"]`);
+        if (topBtn) {
+            topBtn.classList.add('border-brand-blue', 'text-brand-blue');
+            topBtn.classList.remove('text-gray-500');
+        }
+
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.classList.remove('text-brand-blue');
+            item.classList.add('text-[#536471]', 'hover:text-gray-900');
+        });
+        const navItem = document.querySelector(`[data-nav="${tab}"]`);
+        if (navItem) {
+            navItem.classList.add('text-brand-blue');
+            navItem.classList.remove('text-[#536471]', 'hover:text-gray-900');
+        }
+
+        currentFilter = tab;
+    }
+
+    function formatTime(timestamp) {
+        if (!timestamp) return "";
+        const date = new Date(timestamp);
+        if (isNaN(date.getTime())) return "";
+
+        const now = new Date();
+        const diff = now.getTime() - date.getTime();
+
+        const oneMinute = 60 * 1000;
+        const oneHour = 60 * oneMinute;
+        const oneDay = 24 * oneHour;
+
+        if (diff < oneMinute) return "Just now";
+        if (diff < oneHour || diff < oneDay) {
+            return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+        }
+        return date.toLocaleDateString([], { day: "numeric", month: "short" });
+    }
+
+    // --- Setup search functionality ---
+    function setupSearch() {
+        const el = document.getElementById('searchInput');
+        if (!el) return;
+        el.addEventListener('input', (e) => {
+            const query = (e.target.value || '').toLowerCase();
+            
+            if (currentFilter === 'direct') {
+                const filtered = allChats.filter(chat => {
+                    const name = (chat.fullname || chat.username || '').toLowerCase();
+                    const lastMsg = (chat.lastMessageText || '').toLowerCase();
+                    return name.includes(query) || lastMsg.includes(query);
+                });
+                
+                const chatsMain = document.getElementById('chatsMain');
+                if (!chatsMain) return;
+                if (filtered.length === 0) {
+                    chatsMain.innerHTML = '<p class="text-center text-gray-400 py-8">No chats found</p>';
+                } else {
+                    chatsMain.innerHTML = filtered.map(chat => {
+                        const timeStr = formatTime(chat.lastMessageTime);
+                        const lastMsg = chat.lastMessageText || '(No messages)';
+                        const unreadBadge = (chat.unreadCount || 0) > 0 ? `<span class="bg-brand-blue text-white text-[12px] font-bold min-w-[22px] h-[22px] px-1.5 rounded-full flex items-center justify-center shrink-0">${chat.unreadCount}</span>` : '';
+                        
+                        const name = chat.fullname || chat.username || 'Unknown';
+                        const avatar = chat.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
+                        const chatUrl = `/tutor/chat.html?userId=${chat._id}`;
+                        
+                        return `
+                            <a href="${chatUrl}" class="flex items-center gap-3.5 px-4 py-2.5 hover:bg-gray-50 cursor-pointer transition-colors w-full border-b border-gray-50 last:border-b-0">
+                                <img src="${avatar}" alt="${escapeHtml(name)}" class="w-[56px] h-[56px] rounded-full object-cover border border-gray-100">
+                                <div class="flex-1 min-w-0 pr-1 overflow-hidden">
+                                    <div class="flex items-center justify-between mb-1">
+                                        <h3 class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtml(name)}</h3>
+                                        <span class="text-gray-500 text-[12px] shrink-0 ml-2">${timeStr}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center">
+                                        <p class="text-gray-500 text-[13px] truncate mr-2">${escapeHtml(lastMsg)}</p>
+                                        ${unreadBadge}
+                                    </div>
+                                </div>
+                            </a>
+                        `;
+                    }).join('');
+                }
+            } else if (currentFilter === 'forums') {
+                const filtered = allForums.filter(forum => {
+                    const name = (forum.name || '').toLowerCase();
+                    const lastMsg = (forum.lastMessageText || '').toLowerCase();
+                    return name.includes(query) || lastMsg.includes(query);
+                });
+                
+                const forumsMain = document.getElementById('forumsMain');
+                if (!forumsMain) return;
+                if (filtered.length === 0) {
+                    forumsMain.innerHTML = '<p class="text-center text-gray-400 py-8">No forums found</p>';
+                } else {
+                    forumsMain.innerHTML = filtered.map(forum => {
+                        const timeStr = formatTime(forum.lastMessageTime);
+                        const lastMsg = forum.lastMessageText || '(No messages)';
+                        const unreadBadge = (forum.unreadCount || 0) > 0 ? `<span class="bg-brand-blue text-white text-[12px] font-bold min-w-[22px] h-[22px] px-1.5 rounded-full flex items-center justify-center shrink-0">${forum.unreadCount}</span>` : '';
+                        
+                        const avatar = forum.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(forum.name)}&background=random`;
+                        const forumUrl = `/tutor/groupchat.html?groupId=${forum._id}`;
+                        
+                        return `
+                            <a href="${forumUrl}" class="flex items-center gap-3.5 px-4 py-2.5 hover:bg-gray-50 cursor-pointer transition-colors w-full border-b border-gray-50 last:border-b-0">
+                                <img src="${avatar}" alt="${escapeHtml(forum.name)}" class="w-[56px] h-[56px] rounded-full object-cover border border-gray-100">
+                                <div class="flex-1 min-w-0 pr-1 overflow-hidden">
+                                    <div class="flex items-center justify-between mb-1">
+                                        <h3 class="font-semibold text-gray-900 text-[15px] truncate">${escapeHtml(forum.name)}</h3>
+                                        <span class="text-gray-500 text-[12px] shrink-0 ml-2">${timeStr}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center">
+                                        <p class="text-gray-500 text-[13px] truncate mr-2">${escapeHtml(lastMsg)}</p>
+                                        ${unreadBadge}
+                                    </div>
+                                </div>
+                            </a>
+                        `;
+                    }).join('');
+                }
+            } else if (currentFilter === 'discussions') {
+                const filtered = allDiscussions.filter(d => {
+                    const title = (d.title || '').toLowerCase();
+                    const desc = (d.description || '').toLowerCase();
+                    const author = (d.author?.fullname || d.author?.username || '').toLowerCase();
+                    return title.includes(query) || desc.includes(query) || author.includes(query);
+                });
+
+                const discussionsMain = document.getElementById('discussionsMain');
+                if (!discussionsMain) return;
+                if (filtered.length === 0) {
+                    discussionsMain.innerHTML = '<p class="text-center text-gray-400 py-8">No discussions found</p>';
+                } else {
+                    discussionsMain.innerHTML = filtered.map(discussion => {
+                        const timeStr = formatTime(discussion.createdAt);
+                        const repliesCount = discussion.replies || 0;
+                        const avatar = discussion.author?.profilePicture || `https://ui-avatars.com/api/?name=${encodeURIComponent(discussion.author?.fullname || 'A')}&background=random`;
+                        const authorName = discussion.author?.fullname || discussion.author?.username || 'Anonymous';
+                        return `
+                            <a href="/tutor/discussion.html?id=${discussion._id}" class="flex items-center gap-3.5 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors w-full border-b border-gray-50 last:border-b-0">
+                                <img src="${avatar}" alt="${escapeHtml(authorName)}" class="w-12 h-12 rounded-full object-cover border border-gray-100">
+                                <div class="flex-1 min-w-0 pr-1 overflow-hidden">
+                                    <div class="flex items-center justify-between mb-1">
+                                        <h3 class="font-semibold text-gray-900 text-[14px] truncate">${escapeHtml(discussion.title)}</h3>
+                                        <span class="text-gray-500 text-[11px] shrink-0 ml-2">${timeStr}</span>
+                                    </div>
+                                    <p class="text-gray-600 text-[12px] truncate mb-1">${escapeHtml(authorName)}</p>
+                                    <div class="flex items-center gap-3 text-gray-500 text-[11px]">
+                                        <span><i class="fa-solid fa-comment text-brand-blue"></i> ${repliesCount} replies</span>
+                                    </div>
+                                </div>
+                            </a>
+                        `;
+                    }).join('');
+                }
+            }
+        });
+    }
+
+    // --- User Search with Real-time Results ---
+    function setupUserSearch() {
+        const userSearchInput = document.getElementById('userSearchInput');
+        if (!userSearchInput) return;
+
+        userSearchInput.addEventListener('input', async (e) => {
+            const query = e.target.value.trim();
+            const resultsContainer = document.getElementById('userSearchResults');
+            
+            if (!query) {
+                resultsContainer.innerHTML = '<p class="text-gray-400 text-sm text-center py-8">Start typing to search for users...</p>';
                 return;
             }
             
-            resultsContainer.innerHTML = users.map((user, index) => {
+            if (query.length < 2) {
+                resultsContainer.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">Type at least 2 characters...</p>';
+                return;
+            }
+            
+            resultsContainer.innerHTML = '<div class="flex justify-center py-4"><i class="fa-solid fa-spinner animate-spin text-brand-blue text-xl"></i></div>';
+            
+            try {
+                clearTimeout(searchTimeout);
+                
+                searchTimeout = setTimeout(async () => {
+                    let url = `${MESSAGES_API}/similar-users?q=${encodeURIComponent(query)}`;
+                    const res = await fetch(url, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (!res.ok) {
+                        console.debug('similar-users returned', res.status, 'falling back to basic endpoint');
+                        const fallback = await fetch(`${MESSAGES_API}/similar-users`, { headers: { 'Authorization': `Bearer ${token}` } });
+                        if (!fallback.ok) throw new Error('Failed to search users');
+                        const fb = await fallback.json();
+                        renderUserSearchResults(fb, query, resultsContainer);
+                        return;
+                    }
+                    const usersResp = await res.json();
+                    renderUserSearchResults(usersResp, query, resultsContainer);
+                }, 300);
+            } catch (error) {
+                console.error("Error searching users:", error);
+                resultsContainer.innerHTML = '<p class="text-red-500 text-sm text-center py-4">Error searching users</p>';
+            }
+        });
+    }
+
+    function renderUserSearchResults(usersResp, query, resultsContainer) {
+        let users = Array.isArray(usersResp) ? usersResp : (Array.isArray(usersResp.users) ? usersResp.users : (Array.isArray(usersResp.data) ? usersResp.data : []));
+        const q = (query || '').toLowerCase();
+        users = users.filter(user => {
+            const fullName = (user.fullname || user.name || '').toLowerCase();
+            const username = (user.username || user.handle || '').toLowerCase();
+            const deptName = (user.department || '').toLowerCase();
+            return fullName.includes(q) || username.includes(q) || deptName.includes(q);
+        });
+
+        if (users.length === 0) {
+            resultsContainer.innerHTML = `
+                <div class="text-center py-8">
+                    <i class="fa-solid fa-user-slash text-gray-300 text-3xl mb-2"></i>
+                    <p class="text-gray-400 text-sm">No users found matching "${escapeHtml(query)}"</p>
+                </div>
+            `;
+            return;
+        }
+        
+        resultsContainer.innerHTML = users.map((user, index) => {
+            const displayName = user.fullname || user.name || user.username || 'Unknown';
+            const avatar = user.profilePicture || user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=random`;
+            return `
+                <a href="/tutor/chat.html?userId=${user._id || user.id}" 
+                   onclick="closeNewChatModal()" 
+                   class="user-search-result flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer border border-gray-100 hover:border-brand-blue"
+                   style="animation-delay: ${index * 50}ms">
+                    <img src="${avatar}" 
+                         alt="${escapeHtml(displayName)}" class="w-10 h-10 rounded-full object-cover flex-shrink-0">
+                    <div class="flex-1 min-w-0">
+                        <p class="font-semibold text-gray-900 text-sm truncate">${escapeHtml(displayName)}</p>
+                        <p class="text-gray-500 text-xs truncate">${escapeHtml(user.department || 'Student')} • ${escapeHtml(user.level || '')}</p>
+                    </div>
+                    <i class="fa-solid fa-arrow-right text-gray-300 text-sm flex-shrink-0"></i>
+                </a>
+            `;
+        }).join('');
+    }
+
+    // --- Modal functions ---
+    function openNewChatModal() {
+        document.getElementById('newChatModal').classList.remove('hidden');
+        loadRecentUsers();
+    }
+
+    function closeNewChatModal() {
+        document.getElementById('newChatModal').classList.add('hidden');
+        const input = document.getElementById('userSearchInput');
+        if (input) input.value = '';
+        const results = document.getElementById('userSearchResults');
+        if (results) results.innerHTML = '<p class="text-gray-400 text-sm text-center py-8">Start typing to search for users...</p>';
+    }
+
+    async function loadRecentUsers() {
+        try {
+            const res = await fetch(`${MESSAGES_API}/similar-users?limit=10`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error('Failed to load users');
+            const usersRaw = await res.json();
+            let users = Array.isArray(usersRaw) ? usersRaw : (usersRaw.users || usersRaw.data || []);
+            const recentUsers = document.getElementById('recentUsers');
+            if (!recentUsers) return;
+            recentUsers.innerHTML = (users.slice(0, 5).map(user => {
                 const displayName = user.fullname || user.name || user.username || 'Unknown';
                 const avatar = user.profilePicture || user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=random`;
                 return `
                     <a href="/tutor/chat.html?userId=${user._id || user.id}" 
                        onclick="closeNewChatModal()" 
-                       class="user-search-result flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer border border-gray-100 hover:border-brand-blue"
-                       style="animation-delay: ${index * 50}ms">
+                       class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer">
                         <img src="${avatar}" 
-                             alt="${escapeHtml(displayName)}" class="w-10 h-10 rounded-full object-cover flex-shrink-0">
+                             alt="${escapeHtml(displayName)}" class="w-8 h-8 rounded-full object-cover flex-shrink-0">
                         <div class="flex-1 min-w-0">
-                            <p class="font-semibold text-gray-900 text-sm truncate">${escapeHtml(displayName)}</p>
-                            <p class="text-gray-500 text-xs truncate">${escapeHtml(user.department || 'Student')} • ${escapeHtml(user.level || '')}</p>
+                            <p class="font-medium text-gray-900 text-xs truncate">${escapeHtml(displayName)}</p>
                         </div>
-                        <i class="fa-solid fa-arrow-right text-gray-300 text-sm flex-shrink-0"></i>
                     </a>
                 `;
-            }).join('');
+            }).join('')) || '<p class="text-gray-400 text-sm">No recent contacts</p>';
+        } catch (error) {
+            console.error("Error loading recent users:", error);
         }
+    }
 
-        // --- Modal functions ---
-        function openNewChatModal() {
-            document.getElementById('newChatModal').classList.remove('hidden');
-            loadRecentUsers();
-        }
+    function openNewForumModal() {
+        document.getElementById('newForumModal').classList.remove('hidden');
+    }
 
-        function closeNewChatModal() {
-            document.getElementById('newChatModal').classList.add('hidden');
-            const input = document.getElementById('userSearchInput');
-            if (input) input.value = '';
-            const results = document.getElementById('userSearchResults');
-            if (results) results.innerHTML = '<p class="text-gray-400 text-sm text-center py-8">Start typing to search for users...</p>';
-        }
+    function closeNewForumModal() {
+        document.getElementById('newForumModal').classList.add('hidden');
+    }
 
-        async function loadRecentUsers() {
-            try {
-                // prefer passing a small limit param
-                const res = await fetch(`${MESSAGES_API}/similar-users?limit=10`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (!res.ok) throw new Error('Failed to load users');
-                const usersRaw = await res.json();
-                let users = Array.isArray(usersRaw) ? usersRaw : (usersRaw.users || usersRaw.data || []);
-                const recentUsers = document.getElementById('recentUsers');
-                if (!recentUsers) return;
-                recentUsers.innerHTML = (users.slice(0, 5).map(user => {
-                    const displayName = user.fullname || user.name || user.username || 'Unknown';
-                    const avatar = user.profilePicture || user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=random`;
-                    return `
-                        <a href="/tutor/chat.html?userId=${user._id || user.id}" 
-                           onclick="closeNewChatModal()" 
-                           class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer">
-                            <img src="${avatar}" 
-                                 alt="${escapeHtml(displayName)}" class="w-8 h-8 rounded-full object-cover flex-shrink-0">
-                            <div class="flex-1 min-w-0">
-                                <p class="font-medium text-gray-900 text-xs truncate">${escapeHtml(displayName)}</p>
-                            </div>
-                        </a>
-                    `;
-                }).join('')) || '<p class="text-gray-400 text-sm">No recent contacts</p>';
-            } catch (error) {
-                console.error("Error loading recent users:", error);
-            }
-        }
+    function openNewDiscussionModal() {
+        document.getElementById('newDiscussionModal').classList.remove('hidden');
+    }
 
-        function openNewForumModal() {
-            document.getElementById('newForumModal').classList.remove('hidden');
-        }
+    function closeNewDiscussionModal() {
+        document.getElementById('newDiscussionModal').classList.add('hidden');
+    }
 
-        function closeNewForumModal() {
-            document.getElementById('newForumModal').classList.add('hidden');
-        }
-
-        function openNewDiscussionModal() {
-            document.getElementById('newDiscussionModal').classList.remove('hidden');
-        }
-
-        function closeNewDiscussionModal() {
-            document.getElementById('newDiscussionModal').classList.add('hidden');
-        }
-
-        async function createForum(event) {
-            event.preventDefault();
-            const name = (document.getElementById('forumName') || {}).value;
-            const desc = (document.getElementById('forumDesc') || {}).value;
-            
-            try {
-                const res = await fetch(`${MESSAGES_API}/groups/create`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({
-                        name,
-                        memberIds: [],
-                        avatar: ''
-                    })
-                });
-                
-                if (!res.ok) {
-                    const err = await res.json().catch(()=>null);
-                    throw new Error(err?.error || err?.message || 'Failed to create forum');
-                }
-                const data = await res.json();
-                
-                closeNewForumModal();
-                await loadForums();
-                alert('Forum created successfully!');
-            } catch (error) {
-                console.error("Error creating forum:", error);
-                alert('Failed to create forum: ' + (error.message || 'unknown error'));
-            }
-        }
-
-                // Load groups into the Group dropdown in the discussion modal
-        async function loadGroupsForDiscussion() {
-            try {
-                const sel = document.getElementById('discussionGroup');
-                if (!sel) return;
-
-                // Fetch groups (reuse GROUPS_API constant). If your groups endpoint uses a different path, change it.
-                const res = await fetch(`${GROUPS_API}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (!res.ok) {
-                    console.debug('Failed to load groups for discussion modal', res.status);
-                    return;
-                }
-                const data = await res.json();
-                let groups = [];
-                if (Array.isArray(data)) groups = data;
-                else if (Array.isArray(data.groups)) groups = data.groups;
-                else if (Array.isArray(data.data)) groups = data.data;
-                else groups = [];
-
-                // Clear existing options except the first (No group)
-                while (sel.options.length > 1) sel.remove(1);
-
-                groups.forEach(g => {
-                    const id = g._id || g.id || g.groupId || g.slug;
-                    const name = g.name || g.title || g.groupName || 'Unnamed group';
-                    const opt = document.createElement('option');
-                    opt.value = id;
-                    opt.textContent = name;
-                    sel.appendChild(opt);
-                });
-            } catch (err) {
-                console.error('loadGroupsForDiscussion error', err);
-            }
-        }
-
-        // Cover image preview handler
-        const coverInput = document.getElementById('discussionCover');
-        if (coverInput) {
-            coverInput.addEventListener('change', (e) => {
-                const file = e.target.files && e.target.files[0];
-                const preview = document.getElementById('discussionCoverPreview');
-                const placeholder = document.getElementById('discussionCoverPlaceholder');
-                if (file && preview) {
-                    const url = URL.createObjectURL(file);
-                    preview.src = url;
-                    preview.classList.remove('hidden');
-                    if (placeholder) placeholder.classList.add('hidden');
-                } else {
-                    if (preview) { preview.src = ''; preview.classList.add('hidden'); }
-                    if (placeholder) placeholder.classList.remove('hidden');
-                }
+    async function createForum(event) {
+        event.preventDefault();
+        const name = (document.getElementById('forumName') || {}).value;
+        const desc = (document.getElementById('forumDesc') || {}).value;
+        
+        try {
+            const res = await fetch(`${MESSAGES_API}/groups/create`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    name,
+                    memberIds: [],
+                    avatar: ''
+                })
             });
+            
+            if (!res.ok) {
+                const err = await res.json().catch(()=>null);
+                throw new Error(err?.error || err?.message || 'Failed to create forum');
+            }
+            const data = await res.json();
+            
+            closeNewForumModal();
+            await loadForums();
+            alert('Forum created successfully!');
+        } catch (error) {
+            console.error("Error creating forum:", error);
+            alert('Failed to create forum: ' + (error.message || 'unknown error'));
+        }
+    }
+
+    async function loadGroupsForDiscussion() {
+        try {
+            const sel = document.getElementById('discussionGroup');
+            if (!sel) return;
+
+            const res = await fetch(`${GROUPS_API}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) {
+                console.debug('Failed to load groups for discussion modal', res.status);
+                return;
+            }
+            const data = await res.json();
+            let groups = [];
+            if (Array.isArray(data)) groups = data;
+            else if (Array.isArray(data.groups)) groups = data.groups;
+            else if (Array.isArray(data.data)) groups = data.data;
+            else groups = [];
+
+            while (sel.options.length > 1) sel.remove(1);
+
+            groups.forEach(g => {
+                const id = g._id || g.id || g.groupId || g.slug;
+                const name = g.name || g.title || g.groupName || 'Unnamed group';
+                const opt = document.createElement('option');
+                opt.value = id;
+                opt.textContent = name;
+                sel.appendChild(opt);
+            });
+        } catch (err) {
+            console.error('loadGroupsForDiscussion error', err);
+        }
+    }
+
+    const coverInput = document.getElementById('discussionCover');
+    if (coverInput) {
+        coverInput.addEventListener('change', (e) => {
+            const file = e.target.files && e.target.files[0];
+            const preview = document.getElementById('discussionCoverPreview');
+            const placeholder = document.getElementById('discussionCoverPlaceholder');
+            if (file && preview) {
+                const url = URL.createObjectURL(file);
+                preview.src = url;
+                preview.classList.remove('hidden');
+                if (placeholder) placeholder.classList.add('hidden');
+            } else {
+                if (preview) { preview.src = ''; preview.classList.add('hidden'); }
+                if (placeholder) placeholder.classList.remove('hidden');
+            }
+        });
+    }
+
+    async function uploadImageToServer(file) {
+      if (!file) return null;
+      const fd = new FormData();
+      fd.append('image', file);
+
+      const res = await fetch(`${API_BASE}/images`, {
+        method: 'POST',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        body: fd
+      });
+
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        const msg = body?.error || body?.message || `Upload failed (${res.status})`;
+        throw new Error(msg);
+      }
+      return body.url || body.secure_url || null;
+    }
+
+    async function createDiscussion(e) {
+      e.preventDefault();
+      const btn = document.getElementById('createDiscussionBtn');
+      if (btn) {
+        btn.disabled = true;
+        btn.dataset.orig = btn.innerHTML;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Posting...';
+      }
+
+      try {
+        const title = (document.getElementById('discussionTitle')?.value || '').trim();
+        const description = (document.getElementById('discussionDesc')?.value || '').trim();
+        if (!title || !description) {
+          alert('Title and details are required.');
+          return;
         }
 
-        // Helper: upload a single File to /api/images and return the secure url
-async function uploadImageToServer(file) {
-  if (!file) return null;
-  const fd = new FormData();
-  fd.append('image', file); // must match server's uploadToMemory.single("image")
+        const tagsRaw = (document.getElementById('discussionTags')?.value || '').trim();
+        const tags = tagsRaw.length ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
 
-  const res = await fetch(`${API_BASE}/images`, {
-    method: 'POST',
-    headers: token ? { 'Authorization': `Bearer ${token}` } : {}, // don't set Content-Type
-    body: fd
-  });
+        let coverFile = null;
+        const coverInput = document.getElementById('discussionCover');
+        if (coverInput && coverInput.files && coverInput.files[0]) {
+          coverFile = coverInput.files[0];
+        } else {
+          const preview = document.getElementById('discussionCoverPreview');
+          if (preview && !preview.classList.contains('hidden') && preview.src) {
+            const dataUrl = preview.src;
+            const res = await fetch(dataUrl);
+            coverFile = await res.blob();
+            coverFile = new File([coverFile], (document.getElementById('discussionTitle')?.value || 'cover') + '.png', { type: coverFile.type || 'image/png' });
+          }
+        }
 
-  const body = await res.json().catch(() => null);
-  if (!res.ok) {
-    const msg = body?.error || body?.message || `Upload failed (${res.status})`;
-    throw new Error(msg);
-  }
-  // Expecting { url: 'https://...' }
-  return body.url || body.secure_url || null;
-}
+        let coverUrl = '';
+        if (coverFile) {
+          try {
+            const fd = new FormData();
+            fd.append('image', coverFile);
 
-// Replace createDiscussion with this implementation
-async function createDiscussion(e) {
-  e.preventDefault();
-  const btn = document.getElementById('createDiscussionBtn');
-  if (btn) {
-    btn.disabled = true;
-    btn.dataset.orig = btn.innerHTML;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Posting...';
-  }
+            const res = await fetch(`${API_BASE}/images`, {
+              method: 'POST',
+              headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+              body: fd
+            });
 
-  try {
-    const title = (document.getElementById('discussionTitle')?.value || '').trim();
-    const description = (document.getElementById('discussionDesc')?.value || '').trim();
-    if (!title || !description) {
-      alert('Title and details are required.');
-      return;
-    }
+            const body = await res.json().catch(() => null);
 
-    // Build tags array
-    const tagsRaw = (document.getElementById('discussionTags')?.value || '').trim();
-    const tags = tagsRaw.length ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
+            if (!res.ok) {
+              const msg = body?.error || body?.message || `Upload failed (${res.status})`;
+              throw new Error(msg);
+            }
 
-    // Prepare cover file or canvas blob (prefer user-selected file)
-    let coverFile = null;
-    const coverInput = document.getElementById('discussionCover');
-    if (coverInput && coverInput.files && coverInput.files[0]) {
-      coverFile = coverInput.files[0];
-      console.log('Using selected cover file:', coverFile.name, coverFile.size, coverFile.type);
-    } else {
-      // Optional: if you have a preview canvas and want to upload that instead
-      const preview = document.getElementById('discussionCoverPreview');
-      if (preview && !preview.classList.contains('hidden') && preview.src) {
-        // convert dataURL to blob
-        const dataUrl = preview.src;
-        const res = await fetch(dataUrl);
-        coverFile = await res.blob();
-        // give a filename
-        coverFile = new File([coverFile], (document.getElementById('discussionTitle')?.value || 'cover') + '.png', { type: coverFile.type || 'image/png' });
-        console.log('Using canvas preview blob as cover file');
-      }
-    }
+            coverUrl = body?.url || body?.secure_url || (body?.result && body.result.secure_url) || '';
+          } catch (uploadErr) {
+            console.error('Cover image upload failed:', uploadErr);
+            alert('Failed to upload cover image: ' + (uploadErr.message || 'unknown'));
+            return;
+          }
+        }
 
-    let coverUrl = '';
-    if (coverFile) {
-      // Upload the image to /api/images (FormData, field name must be "image")
-      try {
-        const fd = new FormData();
-        fd.append('image', coverFile);
+        const payload = {
+          title,
+          description,
+          category: document.getElementById('discussionCategory')?.value || 'general',
+          tags,
+          content: description,
+          groupId: document.getElementById('discussionGroup')?.value || undefined,
+          coverImage: coverUrl || undefined,
+          isPinned: !!document.getElementById('discussionPin')?.checked
+        };
 
-        console.log('Uploading cover image to /api/images...');
-
-        const res = await fetch(`${API_BASE}/images`, {
+        const createRes = await fetch(`${DISCUSSIONS_API}`, {
           method: 'POST',
-          headers: token ? { 'Authorization': `Bearer ${token}` } : {}, // do NOT set Content-Type here
-          body: fd
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify(payload)
         });
 
-        const body = await res.json().catch(() => null);
-        console.log('/api/images response', res.status, body);
+        const createBody = await createRes.json().catch(() => null);
 
-        if (!res.ok) {
-          const msg = body?.error || body?.message || `Upload failed (${res.status})`;
+        if (!createRes.ok) {
+          const msg = (createBody && (createBody.error || createBody.message)) || `Create failed (${createRes.status})`;
           throw new Error(msg);
         }
 
-        // Accept multiple keys returned by the server
-        coverUrl = body?.url || body?.secure_url || (body?.result && body.result.secure_url) || '';
-        if (!coverUrl) {
-          console.warn('Upload succeeded but no URL returned; server body:', body);
+        const newId =
+          createBody?.discussion?._id ||
+          createBody?.discussion?.id ||
+          createBody?._id ||
+          createBody?.id;
+
+        try {
+          document.getElementById('newDiscussionForm').reset();
+          const preview = document.getElementById('discussionCoverPreview');
+          const placeholder = document.getElementById('discussionCoverPlaceholder');
+          if (preview) { preview.src = ''; preview.classList.add('hidden'); }
+          if (placeholder) { placeholder.classList.remove('hidden'); }
+        } catch (ignore) {}
+
+        if (newId) {
+          window.location.href = `/tutor/discussion.html?id=${encodeURIComponent(newId)}`;
         } else {
-          console.log('Uploaded cover image URL:', coverUrl);
+          closeNewDiscussionModal();
+          await loadDiscussions();
+          updateDiscussionCounts();
         }
-      } catch (uploadErr) {
-        console.error('Cover image upload failed:', uploadErr);
-        alert('Failed to upload cover image: ' + (uploadErr.message || 'unknown'));
-        return;
+      } catch (err) {
+        console.error('createDiscussion error', err);
+        alert('Failed to create discussion: ' + (err.message || 'unknown'));
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = btn.dataset.orig || 'Post Discussion';
+        }
       }
-    } else {
-      console.log('No cover file selected, skipping upload.');
     }
 
-    // Build and send discussion payload
-    const payload = {
-      title,
-      description,
-      category: document.getElementById('discussionCategory')?.value || 'general',
-      tags,
-      content: description,
-      groupId: document.getElementById('discussionGroup')?.value || undefined,
-      coverImage: coverUrl || undefined,
-      isPinned: !!document.getElementById('discussionPin')?.checked
-    };
-
-    console.log('Creating discussion with payload:', payload);
-
-    const createRes = await fetch(`${DISCUSSIONS_API}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-      },
-      body: JSON.stringify(payload)
+    // Close modals on outside click
+    ['newChatModal', 'newForumModal', 'newDiscussionModal'].forEach(modalId => {
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target.id === modalId) {
+                    if (modalId === 'newChatModal') closeNewChatModal();
+                    else if (modalId === 'newForumModal') closeNewForumModal();
+                    else if (modalId === 'newDiscussionModal') closeNewDiscussionModal();
+                }
+            });
+        }
     });
 
-    const createBody = await createRes.json().catch(() => null);
-    console.log('Create discussion response', createRes.status, createBody);
-
-    if (!createRes.ok) {
-      const msg = (createBody && (createBody.error || createBody.message)) || `Create failed (${createRes.status})`;
-      throw new Error(msg);
+    // Helper to escape text in inserted HTML
+    function escapeHtml(str) {
+        if (!str && str !== 0) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
     }
-
-    const newId =
-      createBody?.discussion?._id ||
-      createBody?.discussion?.id ||
-      createBody?._id ||
-      createBody?.id;
-
-    // Reset UI and redirect to the new discussion
-    try {
-      document.getElementById('newDiscussionForm').reset();
-      const preview = document.getElementById('discussionCoverPreview');
-      const placeholder = document.getElementById('discussionCoverPlaceholder');
-      if (preview) { preview.src = ''; preview.classList.add('hidden'); }
-      if (placeholder) { placeholder.classList.remove('hidden'); }
-    } catch (ignore) {}
-
-    if (newId) {
-      window.location.href = `/tutor/discussion.html?id=${encodeURIComponent(newId)}`;
-    } else {
-      closeNewDiscussionModal();
-      await loadDiscussions();
-      updateDiscussionCounts();
-    }
-  } catch (err) {
-    console.error('createDiscussion error', err);
-    alert('Failed to create discussion: ' + (err.message || 'unknown'));
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.innerHTML = btn.dataset.orig || 'Post Discussion';
-    }
-  }
-}
-    
-
-
-        // Close modals on outside click
-        ['newChatModal', 'newForumModal', 'newDiscussionModal'].forEach(modalId => {
-            const modal = document.getElementById(modalId);
-            if (modal) {
-                modal.addEventListener('click', (e) => {
-                    if (e.target.id === modalId) {
-                        if (modalId === 'newChatModal') closeNewChatModal();
-                        else if (modalId === 'newForumModal') closeNewForumModal();
-                        else if (modalId === 'newDiscussionModal') closeNewDiscussionModal();
-                    }
-                });
-            }
-        });
-
-        // Helper to escape text in inserted HTML
-        function escapeHtml(str) {
-            if (!str && str !== 0) return '';
-            return String(str)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#039;');
-        }
-    </script>
-
+</script>
 </body>
 </html>
