@@ -278,6 +278,20 @@
     const subcoursesContainer = document.getElementById('subcoursesContainer');
     const subcoursesViewAll = document.getElementById('subcoursesViewAll');
 
+    function escapeHtml(str) {
+        return String(str || '').replace(/[&<>"']/g, (m) => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        })[m]);
+    }
+
+    function escapeAttr(str) {
+        return escapeHtml(str);
+    }
+
     function showSkeletons() {
         courseTitle.innerHTML = '<div class="h-8 bg-white/20 rounded-lg w-3/4 animate-pulse"></div>';
         courseLevel.innerHTML = '<div class="h-3 bg-white/20 rounded w-12 animate-pulse inline-block"></div>';
@@ -551,105 +565,149 @@
     }
 
     async function loadSubcoursesForParent(parentId) {
-        if (!parentId) {
-            subcoursesContainer.innerHTML = '<div class="text-sm text-gray-500">No subcourses available.</div>';
-            return;
+      if (!parentId) {
+        subcoursesContainer.innerHTML = '<div class="text-sm text-gray-500">No subcourses available.</div>';
+        return;
+      }
+
+      // show loading skeletons
+      subcoursesContainer.innerHTML = Array(3).fill(0).map(() => `
+        <div class="p-4 border border-gray-100 rounded-xl bg-white animate-pulse">
+          <div class="h-36 bg-gray-200 rounded mb-3"></div>
+          <div class="h-3 bg-gray-200 rounded w-3/4 mb-2"></div>
+          <div class="h-2.5 bg-gray-200 rounded w-1/2"></div>
+        </div>
+      `).join('');
+
+      try {
+        const url = `${API_BASE}/${encodeURIComponent(parentId)}/subcourses?limit=100`;
+        const res = await fetch(url);
+
+        // read raw text first so we can debug invalid JSON
+        const text = await res.text();
+
+        if (!res.ok) {
+          console.warn('Subcourses fetch failed', { url, status: res.status, body: text });
+          subcoursesContainer.innerHTML = '<div class="text-sm text-gray-500">No subcourses available.</div>';
+          return;
+        }
+
+        let payload;
+        try {
+          payload = text ? JSON.parse(text) : {};
+        } catch (parseErr) {
+          console.warn('Invalid JSON from subcourses endpoint', { url, parseErr, text });
+          subcoursesContainer.innerHTML = '<div class="text-sm text-gray-500">No subcourses available.</div>';
+          return;
+        }
+
+        // Normalize possible shapes:
+        // { meta: {...}, subcourses: [...] } OR { subcourses: [...] } OR [...] OR { data: [...] }
+        let subs = [];
+        if (Array.isArray(payload.subcourses)) subs = payload.subcourses;
+        else if (Array.isArray(payload)) subs = payload;
+        else if (Array.isArray(payload.data)) subs = payload.data;
+        else if (Array.isArray(payload.results)) subs = payload.results;
+
+        if (!Array.isArray(subs) || subs.length === 0) {
+          subcoursesContainer.innerHTML = '<div class="text-sm text-gray-500">No subcourses available.</div>';
+          return;
         }
 
         subcoursesContainer.innerHTML = '';
-        subcoursesContainer.innerHTML = Array(3).fill(0).map(() => `
-            <div class="p-4 border border-gray-100 rounded-xl bg-white animate-pulse">
-                <div class="h-36 bg-gray-200 rounded mb-3"></div>
-                <div class="h-3 bg-gray-200 rounded w-3/4 mb-2"></div>
-                <div class="h-2.5 bg-gray-200 rounded w-1/2"></div>
-            </div>
-        `).join('');
-
-        try {
-            const res = await fetch(`${API_BASE}/${encodeURIComponent(parentId)}/subcourses?limit=100`);
-            if (!res.ok) {
-                subcoursesContainer.innerHTML = '<div class="text-sm text-gray-500">No subcourses available.</div>';
-                return;
-            }
-            const payload = await res.json();
-            const subs = payload.subcourses || payload.subcourses || payload;
-            if (!Array.isArray(subs) || !subs.length) {
-                subcoursesContainer.innerHTML = '<div class="text-sm text-gray-500">No subcourses available.</div>';
-                return;
-            }
-            subcoursesContainer.innerHTML = '';
-            subs.slice(0, 12).forEach(s => subcoursesContainer.appendChild(createSubcourseCard(s)));
-            subcoursesViewAll.href = `/NextWeb/subcourses-list.html?courseId=${encodeURIComponent(parentId)}`;
-        } catch (err) {
-            console.error('Could not load subcourses', err);
-            subcoursesContainer.innerHTML = '<div class="text-sm text-red-600">Unable to load subcourses.</div>';
-        }
+        subs.slice(0, 12).forEach(s => subcoursesContainer.appendChild(createSubcourseCard(s)));
+        if (subcoursesViewAll) subcoursesViewAll.href = `/NextWeb/subcourses-list.html?courseId=${encodeURIComponent(parentId)}`;
+      } catch (err) {
+        console.error('Could not load subcourses', err);
+        subcoursesContainer.innerHTML = '<div class="text-sm text-red-600">Unable to load subcourses.</div>';
+      }
     }
 
     async function initCourseLoad(id) {
-        if (!id) {
-            courseTitle.textContent = 'No course selected';
-            courseDescription.textContent = 'Provide a course id in the URL (e.g. ?id=...)';
+      if (!id) {
+        courseTitle.textContent = 'No course selected';
+        courseDescription.textContent = 'Provide a course id in the URL (e.g. ?id=...)';
+        aboutText.textContent = '';
+        booksContainer.innerHTML = '';
+        notesContainer.innerHTML = '';
+        subcoursesContainer.innerHTML = '';
+        return;
+      }
+
+      const cacheKey = `cached_course_${id}`;
+      const cachedData = localStorage.getItem(cacheKey);
+
+      if (cachedData) {
+        try {
+          const parsedCourse = JSON.parse(cachedData);
+          renderCourse(parsedCourse, id);
+          const inlineSubs = Array.isArray(parsedCourse.subcourses) ? parsedCourse.subcourses : (Array.isArray(parsedCourse.meta?.subcourses) ? parsedCourse.meta.subcourses : []);
+          if (!inlineSubs || !inlineSubs.length) {
+            loadSubcoursesForParent(id);
+          }
+        } catch (e) {
+          // corrupted cache -> ignore and show skeletons
+          console.warn('Invalid cached course data', e);
+          showSkeletons();
+        }
+      } else {
+        showSkeletons();
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/${encodeURIComponent(id)}`);
+        const text = await res.text();
+        if (!res.ok) {
+          console.warn('Course fetch failed', { id, status: res.status, body: text });
+          if (!cachedData) {
+            courseTitle.textContent = 'Course not found';
+            courseDescription.textContent = `Could not load course (${res.status})`;
             aboutText.textContent = '';
             booksContainer.innerHTML = '';
             notesContainer.innerHTML = '';
             subcoursesContainer.innerHTML = '';
-            return;
+          } else {
+            // fallback to loading subcourses from endpoint when course fetch failed but cache exists
+            loadSubcoursesForParent(id);
+          }
+          return;
         }
 
-        const cacheKey = `cached_course_${id}`;
-        const cachedData = localStorage.getItem(cacheKey);
-
-        if (cachedData) {
-            try {
-                const parsedCourse = JSON.parse(cachedData);
-                renderCourse(parsedCourse, id);
-                const inlineSubs = Array.isArray(parsedCourse.subcourses) ? parsedCourse.subcourses : (Array.isArray(parsedCourse.meta?.subcourses) ? parsedCourse.meta.subcourses : []);
-                if (!inlineSubs || !inlineSubs.length) {
-                    loadSubcoursesForParent(id);
-                }
-            } catch (e) {
-                showSkeletons();
-            }
-        } else {
-            showSkeletons();
-        }
-
+        let freshCourse;
         try {
-            const res = await fetch(`${API_BASE}/${encodeURIComponent(id)}`);
-            if (res.ok) {
-                const freshCourse = await res.json();
-                localStorage.setItem(cacheKey, JSON.stringify(freshCourse));
-                renderCourse(freshCourse, id);
-                const inlineSubs = Array.isArray(freshCourse.subcourses) ? freshCourse.subcourses : (Array.isArray(freshCourse.meta?.subcourses) ? freshCourse.meta.subcourses : []);
-                if (!inlineSubs || !inlineSubs.length) {
-                    loadSubcoursesForParent(id);
-                }
-            } else if (!cachedData) {
-                const txt = await res.text();
-                courseTitle.textContent = 'Course not found';
-                courseDescription.textContent = `Could not load course (${res.status}) ${txt}`;
-                aboutText.textContent = '';
-                booksContainer.innerHTML = '';
-                notesContainer.innerHTML = '';
-                subcoursesContainer.innerHTML = '';
-            } else {
-                // if not ok but cache exists, try loading subs from endpoint
-                loadSubcoursesForParent(id);
-            }
-        } catch (err) {
-            console.error('Failed background sync of course data', err);
-            if (!cachedData) {
-                courseTitle.textContent = 'Could not load course';
-                courseDescription.textContent = 'An error occurred while fetching course data.';
-                aboutText.textContent = '';
-                booksContainer.innerHTML = '<div class="p-4 text-sm text-red-600">Unable to fetch course details. Please try again later.</div>';
-                notesContainer.innerHTML = '<div class="p-4 text-sm text-red-600">Unable to fetch course details. Please try again later.</div>';
-                subcoursesContainer.innerHTML = '<div class="p-4 text-sm text-red-600">Unable to fetch subcourses. Please try again later.</div>';
-            } else {
-                loadSubcoursesForParent(id);
-            }
+          freshCourse = text ? JSON.parse(text) : null;
+        } catch (parseErr) {
+          console.warn('Invalid JSON from course endpoint', { id, parseErr, body: text });
+          if (!cachedData) {
+            courseTitle.textContent = 'Course not found';
+            courseDescription.textContent = 'Could not parse course data.';
+            subcoursesContainer.innerHTML = '';
+          } else {
+            loadSubcoursesForParent(id);
+          }
+          return;
         }
+
+        localStorage.setItem(cacheKey, JSON.stringify(freshCourse));
+        renderCourse(freshCourse, id);
+
+        const inlineSubs = Array.isArray(freshCourse.subcourses) ? freshCourse.subcourses : (Array.isArray(freshCourse.meta?.subcourses) ? freshCourse.meta.subcourses : []);
+        if (!inlineSubs || !inlineSubs.length) {
+          loadSubcoursesForParent(id);
+        }
+      } catch (err) {
+        console.error('Failed background sync of course data', err);
+        // if cache exists, still attempt to load subcourses
+        if (cachedData) loadSubcoursesForParent(id);
+        else {
+          courseTitle.textContent = 'Could not load course';
+          courseDescription.textContent = 'An error occurred while fetching course data.';
+          aboutText.textContent = '';
+          booksContainer.innerHTML = '<div class="p-4 text-sm text-red-600">Unable to fetch course details. Please try again later.</div>';
+          notesContainer.innerHTML = '<div class="p-4 text-sm text-red-600">Unable to fetch course details. Please try again later.</div>';
+          subcoursesContainer.innerHTML = '<div class="p-4 text-sm text-red-600">Unable to fetch subcourses. Please try again later.</div>';
+        }
+      }
     }
 
     document.getElementById('backBtn').addEventListener('click', () => history.back());
