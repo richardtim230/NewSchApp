@@ -222,8 +222,8 @@
           <i class="fa-solid fa-check text-sm"></i>
         </div>
         <div class="min-w-0">
-          <h3 id="availabilityText" class="font-bold text-xs text-gray-900">Loading availability</h3>
-          <p id="availabilitySub" class="text-[11px] text-gray-500 truncate mt-0.5">—</p>
+          <h3 id="availabilityText" class="font-bold text-xs text-gray-900">Available</h3>
+          <p id="availabilitySub" class="text-[11px] text-gray-500 truncate mt-0.5">Ready for immediate access</p>
         </div>
       </div>
 
@@ -288,43 +288,58 @@
 
   <nav class="fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-md border-t border-gray-200/80 z-50 px-4 py-2.5 shadow-lg">
     <div class="max-w-md mx-auto flex justify-between items-center text-center">
-      <!-- 1. Home -->
       <a href="/tutor/Oau.html" class="flex flex-col items-center text-gray-400 hover:text-brand-blue transition-colors gap-1 min-w-[50px]">
         <i class="fa-solid fa-house text-lg"></i>
         <span class="text-[10px] font-medium">Home</span>
       </a>
 
-      <!-- 2. Categories (formerly Subjects) -->
       <a href="course.html" class="flex flex-col items-center text-gray-400 hover:text-brand-blue transition-colors gap-1 min-w-[50px]">
         <i class="fa-solid fa-layer-group text-lg"></i>
         <span class="text-[10px] font-medium">Categories</span>
       </a>
 
-      <!-- 3. My Library (Centered) -->
       <a href="user-lib.html" class="flex flex-col items-center text-brand-blue font-bold gap-1 min-w-[50px]">
         <i class="fa-solid fa-book-bookmark text-lg"></i>
         <span class="text-[10px]">My Library</span>
       </a>
 
-      <!-- 4. GoodLibrary (Next after My Library) -->
       <a href="oausphere.html" class="flex flex-col items-center text-gray-400 hover:text-brand-blue transition-colors gap-1 min-w-[50px]">
         <i class="fa-solid fa-book-atlas text-lg"></i>
         <span class="text-[10px] font-medium">GoodLibrary</span>
       </a>
 
-      <!-- 5. Profile (formerly Uploads) -->
       <a href="view-pro.html" class="flex flex-col items-center text-gray-400 hover:text-brand-blue transition-colors gap-1 min-w-[50px]">
         <i class="fa-solid fa-circle-user text-lg"></i>
         <span class="text-[10px] font-medium">Profile</span>
       </a>
     </div>
-</nav>
-
+  </nav>
 
   <script>
     const API_BASE = "https://examguide.onrender.com";
     const CREDIT_COST = 10;
+    const CACHE_PREFIX = "book_detail_cache_";
     let cachedSimilarBooks = null;
+    let currentItem = null; // Stores current active resource object
+
+    // Local Storage Helpers
+    function getCachedItem(id) {
+      try {
+        const data = localStorage.getItem(CACHE_PREFIX + id);
+        return data ? JSON.parse(data) : null;
+      } catch (e) {
+        console.warn("Error reading cache from localStorage:", e);
+        return null;
+      }
+    }
+
+    function setCachedItem(id, data) {
+      try {
+        localStorage.setItem(CACHE_PREFIX + id, JSON.stringify(data));
+      } catch (e) {
+        console.warn("Error saving cache to localStorage:", e);
+      }
+    }
 
     // Prefetch Helper
     function prefetchPage(url) {
@@ -546,23 +561,88 @@
       window.addEventListener('keydown', (e) => { if (e.key === 'Escape'){ const pm = document.getElementById('pdfModal'); const cm = document.getElementById('confirmModal'); if (!pm.classList.contains('hidden')) closePdfModal(); if (!cm.classList.contains('hidden')) { cm.classList.add('hidden'); document.body.style.overflow = ''; } } });
       document.getElementById('pdfModal').addEventListener('click', (e) => { if (e.target.id === 'pdfModal') closePdfModal(); });
       document.getElementById('confirmModal').addEventListener('click', (e) => { if (e.target.id === 'confirmModal') { document.getElementById('confirmModal').classList.add('hidden'); document.body.style.overflow = ''; } });
+
+      // Action Handlers bound once
+      const previewBtn = document.getElementById('previewBtn');
+      const readBtn = document.getElementById('readBtn');
+
+      previewBtn.addEventListener('click', () => {
+        if (!currentItem) return;
+        const mainFile = currentItem.files?.[0] || currentItem.file || currentItem.document || currentItem.pdf || null;
+        const fileUrl = normalizeUrl(
+          mainFile?.url || mainFile?.path || mainFile?.file || (typeof mainFile === 'string' ? mainFile : null) || currentItem.fileUrl || currentItem.pdfUrl
+        );
+        const previewUrl = currentItem.previewUrl ? normalizeUrl(currentItem.previewUrl) : (currentItem.readOnlineUrl ? normalizeUrl(currentItem.readOnlineUrl) : null);
+        const pdfToPreview = previewUrl || fileUrl;
+        const titleText = currentItem.title || currentItem.notebookTitle || currentItem.name || "Untitled";
+
+        if(!pdfToPreview) { showToast('No preview available', false); return; }
+        const isPdf = /\.pdf($|\?)/i.test(pdfToPreview) || (mainFile && (mainFile.mimeType||mainFile.mimetype) && /pdf/i.test(mainFile.mimeType||mainFile.mimetype));
+        if(isPdf) {
+          openPdfModal(pdfToPreview, titleText || 'Preview', CREDIT_COST);
+        } else {
+          window.open(pdfToPreview, '_blank');
+        }
+      });
+
+      readBtn.addEventListener("click", async () => {
+        if (!currentItem) return;
+        const resourceId = currentItem._id || currentItem.id || qsParam('id');
+        const token = localStorage.getItem("token");
+
+        try {
+          const resAccess = await fetch(
+            `${API_BASE}/api/resource/${resourceId}/read-access`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`
+              }
+            }
+          );
+
+          const data = await resAccess.json();
+
+          if (data.hasAccess) {
+            window.location.href = `read.html?id=${resourceId}`;
+            return;
+          }
+        } catch (e) {
+          console.error(e);
+        }
+
+        document.getElementById("confirmText").textContent =
+          `Continuing will deduct ${CREDIT_COST} credit points from your balance. Do you want to continue?`;
+
+        document.getElementById("confirmModal").classList.remove("hidden");
+        document.body.style.overflow = "hidden";
+      });
+
+      document.getElementById('bookmarkBtn').addEventListener('click', async () => { showToast('Bookmark feature not configured', false);});
+      document.getElementById('shareBtn').addEventListener('click', () => {
+        if (!currentItem) return;
+        const mainFile = currentItem.files?.[0] || currentItem.file || currentItem.document || currentItem.pdf || null;
+        const fileUrl = normalizeUrl(mainFile?.url || mainFile?.path || mainFile?.file || (typeof mainFile === 'string' ? mainFile : null) || currentItem.fileUrl || currentItem.pdfUrl);
+        const titleText = currentItem.title || currentItem.notebookTitle || currentItem.name || "Resource";
+        const shareTarget = fileUrl || (window.location.href);
+
+        if(navigator.share){ navigator.share({ title: titleText, url: shareTarget }).catch(()=>{}); } else { navigator.clipboard?.writeText(shareTarget).then(()=> showToast('Link copied!')).catch(()=>showToast('Copy failed', false)); }
+      });
+
+      document.getElementById('backBtn').addEventListener('click', () => history.back());
+      document.getElementById('requestBorrowBtn').addEventListener('click', () => showToast('Request feature not configured', false));
+      document.getElementById('viewProfileBtn').addEventListener('click', () => {
+        if (!currentItem) return;
+        const uploaderObj = currentItem.uploader || currentItem.owner || currentItem.uploadedBy || currentItem.authorObj || currentItem.user || currentItem.creator || null;
+        const ownerId = (uploaderObj && typeof uploaderObj === 'object') ? (uploaderObj._id || uploaderObj.id) : (typeof uploaderObj === 'string' ? uploaderObj : null);
+        if(ownerId) window.location.href = `profile.html?id=${encodeURIComponent(ownerId)}`; else showToast('No profile available', false);
+      });
     });
 
-    async function init(){
+    // Populate UI with object data
+    function renderUI(res) {
+      if (!res) return;
+      currentItem = res;
       const id = qsParam('id');
-      if(!id){
-        document.getElementById('pageTitle').textContent = 'Item not found';
-        document.getElementById('aboutText') && (document.getElementById('aboutText').textContent = 'No item id provided.');
-        return;
-      }
-
-      const res = await fetchItemById(id);
-      if(!res){
-        document.getElementById('pageTitle').textContent = 'Item not found';
-        document.getElementById('aboutText') && (document.getElementById('aboutText').textContent = 'Item could not be loaded.');
-        return;
-      }
-
       const resourceId = res._id || res.id || id;
 
       // 1. Prefetch reader page
@@ -593,9 +673,7 @@
       }
       document.getElementById('ownerName').textContent = uploaderName;
 
-      // ==========================================
-      // CONDITION: HEADER & ABOUT / INTRO SETUP
-      // ==========================================
+      // Header & About Setup
       const titleText = res.title || res.notebookTitle || res.name || "Untitled";
       document.getElementById('pageTitle').textContent = titleText + ' — StudySphere';
       document.getElementById('title').textContent = titleText;
@@ -603,24 +681,19 @@
       const aboutHeadingEl = document.getElementById('aboutHeading');
 
       if (isNotebook) {
-        // NOTEBOOK SPECIFIC MAPPING
-        // Header: Note Title, Uploader's Name, About the Book/Notebook snippet
         document.getElementById('authors').textContent = uploaderName;
         document.getElementById('subtitle').textContent = res.description || res.aboutBook || res.aboutNotebook || res.subtitle || res.summary || '';
         
-        // About Section becomes "Introduction"
         if (aboutHeadingEl) aboutHeadingEl.textContent = "Introduction";
         const introContent = res.introduction || res.intro || res.description || res.summary || res.content || (res.contentHtml ? res.contentHtml.replace(/<\/?[^>]+(>|$)/g, "") : "");
         document.getElementById('aboutText').textContent = introContent || 'No introduction available.';
       } else {
-        // STANDARD RESOURCE MAPPING
         const authorText = Array.isArray(res.authors) 
           ? res.authors.join(", ") 
           : (res.author || res.authors || uploaderName || "");
         document.getElementById('authors').textContent = authorText;
         document.getElementById('subtitle').textContent = res.subtitle || '';
 
-        // About Section remains "About this book"
         if (aboutHeadingEl) aboutHeadingEl.textContent = "About this book";
         const descText = res.description || res.summary || res.abstract || res.content || (res.contentHtml ? res.contentHtml.replace(/<\/?[^>]+(>|$)/g, "") : "");
         document.getElementById('aboutText').textContent = descText || 'No description available.';
@@ -655,7 +728,7 @@
         });
       }
 
-      // Metadata Fallbacks
+      // Metadata
       document.getElementById('category').textContent = res.department || res.category || res.faculty || res.subject || '—';
       document.getElementById('publisher').textContent = res.publisher || res.school || res.university || '—';
       document.getElementById('edition').textContent = res.edition || '—';
@@ -663,7 +736,7 @@
       document.getElementById('pubYear').textContent = res.publicationYear || res.year || (res.createdAt ? new Date(res.createdAt).getFullYear() : '—');
       document.getElementById('language').textContent = res.language || 'English';
 
-      // Get PDF/file correctly
+      // Files & Format
       const mainFile = res.files?.[0] || res.file || res.document || res.pdf || null;
       const fileUrl = normalizeUrl(
         mainFile?.url || mainFile?.path || mainFile?.file || (typeof mainFile === 'string' ? mainFile : null) || res.fileUrl || res.pdfUrl
@@ -674,7 +747,7 @@
       document.getElementById('fileSize').textContent = (mainFile && mainFile.size) ? formatBytes(mainFile.size) : '—';
       document.getElementById('addedDate').textContent = res.createdAt ? isoDateToLocal(res.createdAt) : (res.uploadedAt ? isoDateToLocal(res.uploadedAt) : '—');
 
-      // Uploader Dept / Meta Info
+      // Uploader Meta Info
       let uploaderDept = '';
       if (typeof uploaderObj === 'object' && uploaderObj !== null) {
         uploaderDept = uploaderObj.department || uploaderObj.dept || uploaderObj.faculty || '';
@@ -695,7 +768,7 @@
       }
       document.getElementById('ownerMeta').textContent = metaText;
 
-      // Extract Profile Picture & Fallback Avatar
+      // Extract Profile Picture & Avatar
       let picUrl = null;
       if (typeof uploaderObj === 'object' && uploaderObj !== null) {
         picUrl = uploaderObj.profilePic || uploaderObj.profilePicture || uploaderObj.avatar || uploaderObj.photo || uploaderObj.image || uploaderObj.picture;
@@ -721,11 +794,13 @@
         document.getElementById('ratingBlock').classList.remove('hidden');
       }
 
-      // Prefetch similar books API immediately
-      fetch(`${API_BASE}/api/resource/similar/${encodeURIComponent(resourceId)}`, { credentials: "include" })
-        .then(r => r.ok ? r.json() : null)
-        .then(data => { cachedSimilarBooks = data; })
-        .catch(() => {});
+      // Similar books prefetch
+      if (!cachedSimilarBooks) {
+        fetch(`${API_BASE}/api/resource/similar/${encodeURIComponent(resourceId)}`, { credentials: "include" })
+          .then(r => r.ok ? r.json() : null)
+          .then(data => { cachedSimilarBooks = data; })
+          .catch(() => {});
+      }
 
       // Prefetch PDF on Intent
       let pdfPrefetched = false;
@@ -739,8 +814,10 @@
       const previewBtn = document.getElementById('previewBtn');
       const readBtn = document.getElementById('readBtn');
 
+      readBtn.removeEventListener("mouseenter", prefetchPdfOnIntent);
       readBtn.addEventListener("mouseenter", prefetchPdfOnIntent);
       readBtn.addEventListener("touchstart", prefetchPdfOnIntent, { passive: true });
+      previewBtn.removeEventListener("mouseenter", prefetchPdfOnIntent);
       previewBtn.addEventListener("mouseenter", prefetchPdfOnIntent);
       previewBtn.addEventListener("touchstart", prefetchPdfOnIntent, { passive: true });
 
@@ -757,62 +834,34 @@
           });
         }).catch(() => {});
       }
+    }
 
-      const previewUrl = res.previewUrl ? normalizeUrl(res.previewUrl) : (res.readOnlineUrl ? normalizeUrl(res.readOnlineUrl) : null);
+    async function init(){
+      const id = qsParam('id');
+      if(!id){
+        document.getElementById('pageTitle').textContent = 'Item not found';
+        document.getElementById('aboutText') && (document.getElementById('aboutText').textContent = 'No item id provided.');
+        return;
+      }
 
-      previewBtn.addEventListener('click', (e) => {
-        const pdfToPreview = previewUrl || fileUrl;
-        if(!pdfToPreview) { showToast('No preview available', false); return; }
-        const isPdf = /\.pdf($|\?)/i.test(pdfToPreview) || (mainFile && (mainFile.mimeType||mainFile.mimetype) && /pdf/i.test(mainFile.mimeType||mainFile.mimetype));
-        if(isPdf) {
-          openPdfModal(pdfToPreview, titleText || 'Preview', CREDIT_COST);
-        } else {
-          window.open(pdfToPreview, '_blank');
-        }
-      });
+      // Step 1: Check and render local storage cache immediately
+      const cachedData = getCachedItem(id);
+      if (cachedData) {
+        renderUI(cachedData);
+      }
 
-      readBtn.addEventListener("click", async () => {
-        const token = localStorage.getItem("token");
-
-        try {
-          const resAccess = await fetch(
-            `${API_BASE}/api/resource/${resourceId}/read-access`,
-            {
-              headers: {
-                Authorization: `Bearer ${token}`
-              }
-            }
-          );
-
-          const data = await resAccess.json();
-
-          if (data.hasAccess) {
-            window.location.href = `read.html?id=${resourceId}`;
-            return;
-          }
-        } catch (e) {
-          console.error(e);
-        }
-
-        document.getElementById("confirmText").textContent =
-          `Continuing will deduct ${CREDIT_COST} credit points from your balance. Do you want to continue?`;
-
-        document.getElementById("confirmModal").classList.remove("hidden");
-        document.body.style.overflow = "hidden";
-      });
-
-      document.getElementById('bookmarkBtn').addEventListener('click', async () => { showToast('Bookmark feature not configured', false);});
-      document.getElementById('shareBtn').addEventListener('click', () => {
-        const shareTarget = fileUrl || (window.location.href);
-        if(navigator.share){ navigator.share({ title: titleText || 'Resource', url: shareTarget }).catch(()=>{}); } else { navigator.clipboard?.writeText(shareTarget).then(()=> showToast('Link copied!')).catch(()=>showToast('Copy failed', false)); }
-      });
-
-      document.getElementById('backBtn').addEventListener('click', () => history.back());
-
-      document.getElementById('requestBorrowBtn').addEventListener('click', () => showToast('Request feature not configured', false));
-      document.getElementById('viewProfileBtn').addEventListener('click', () => {
-        if(ownerId) window.location.href = `profile.html?id=${encodeURIComponent(ownerId)}`; else showToast('No profile available', false);
-      });
+      // Step 2: Fetch fresh data from backend in background
+      const freshData = await fetchItemById(id);
+      if (freshData) {
+        // Save fresh data to local storage
+        setCachedItem(id, freshData);
+        // Render/update UI with fresh details
+        renderUI(freshData);
+      } else if (!cachedData) {
+        // Only display item error if both local cache and network fetch fail
+        document.getElementById('pageTitle').textContent = 'Item not found';
+        document.getElementById('aboutText') && (document.getElementById('aboutText').textContent = 'Item could not be loaded.');
+      }
     }
 
     init();
