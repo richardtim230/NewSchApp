@@ -604,13 +604,25 @@
   </div>
 </nav>
 </nav>
-
 <script>
 const API_BASE = "https://examguide.onrender.com";
 let currentExamSetId = null;
 let examSetData = null;
 let lastAccessCode = "";
 let currentTab = "cbt"; // Track active tab
+
+// ============ AUTHENTICATION ============
+function authHeaders(json = false) {
+  const token = localStorage.getItem("token");
+  const headers = {};
+  if (json) {
+    headers["Content-Type"] = "application/json";
+  }
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  return headers;
+}
 
 // Fetch current user and render UI (name/avatar/role)
 async function fetchCurrentUser() {
@@ -619,9 +631,7 @@ async function fetchCurrentUser() {
     const nameEl = document.getElementById('user-fullname');
     const roleEl = document.getElementById('user-role');
 
-    const token = localStorage.getItem('token');
-    const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-    const opts = { method: 'GET', headers, credentials: 'include' };
+    const opts = { method: 'GET', headers: authHeaders(), credentials: 'include' };
 
     let res = await fetch(`${API_BASE}/api/auth/me`, opts);
     if (!res.ok) {
@@ -648,6 +658,26 @@ async function fetchCurrentUser() {
   } catch (err) {
     console.warn('Failed to fetch current user:', err);
     return null;
+  }
+}
+
+// Fetch user's owned exam sets
+async function fetchMyExamSets() {
+  try {
+    const res = await fetch(`${API_BASE}/api/exam-set/mine`, {
+      headers: authHeaders(),
+      credentials: "include"
+    });
+    if (!res.ok) {
+      throw new Error("Failed to fetch your exam sets");
+    }
+    const sets = await res.json();
+    window.myExamSets = Array.isArray(sets) ? sets : [];
+    return window.myExamSets;
+  } catch (err) {
+    console.error("Failed to fetch owned exam sets:", err);
+    window.myExamSets = [];
+    return [];
   }
 }
 
@@ -690,39 +720,96 @@ function stripHtml(html) {
   div.innerHTML = String(html);
   return div.textContent || div.innerText || "";
 }
+
 async function saveOrGetExamSet(e) {
   if (e) e.preventDefault();
-  const msg = document.getElementById('form-message');
+  const msg = document.getElementById("form-message");
   msg.textContent = "";
+  
   const { accessCode, subject, title, tags } = examsetFields();
-  if (!accessCode || !subject) {
-    msg.textContent = "❌ Please provide access code and subject";
+  
+  if (!accessCode || !subject || !title) {
+    msg.textContent = "❌ Please provide access code, subject and title";
     msg.className = "text-red-600 mt-2 text-sm font-medium";
     return;
   }
-  msg.textContent = "⏳ Saving/finding exam set...";
+  
+  const token = localStorage.getItem("token");
+  if (!token) {
+    msg.textContent = "❌ Please log in first";
+    msg.className = "text-red-600 mt-2 text-sm font-medium";
+    return;
+  }
+  
+  msg.textContent = "⏳ Checking your exam sets...";
+  msg.className = "text-gray-500 mt-2 text-sm font-medium";
+  
   try {
-    let res = await fetch(`${API_BASE}/api/exam-set/by-access?accessCode=${encodeURIComponent(accessCode)}&subject=${encodeURIComponent(subject)}&title=${encodeURIComponent(title)}&tags=${encodeURIComponent(tags.join(','))}`);
-    let data = await res.json();
-    if (data.examSet?._id) {
-      currentExamSetId = data.examSet._id;
-      examSetData = data.examSet;
-      lastAccessCode = accessCode;
-      document.getElementById('selected-examset').textContent = `✓ ${examSetData.subject} (${examSetData.accessCode})`;
-      msg.textContent = "✓ Exam set ready!";
-      msg.className = "text-green-700 mt-2 text-sm font-medium";
-      if (typeof fetchAndRenderQuestions === 'function') fetchAndRenderQuestions();
-    } else {
-      msg.textContent = "❌ Error saving/finding exam set!";
-      msg.className = "text-red-600 mt-2 text-sm font-medium";
+    const mineRes = await fetch(`${API_BASE}/api/exam-set/mine`, {
+      method: "GET",
+      headers: authHeaders(),
+      credentials: "include"
+    });
+    
+    if (mineRes.status === 401) {
+      throw new Error("Your session has expired. Please log in again.");
     }
-  } catch (e) {
-    msg.textContent = "❌ Error: " + e.message;
+    if (!mineRes.ok) {
+      throw new Error("Could not fetch your exam sets");
+    }
+    
+    const mySets = await mineRes.json();
+    const existing = Array.isArray(mySets) ? mySets.find(
+      set => String(set.accessCode).toLowerCase() === accessCode.toLowerCase()
+    ) : null;
+    
+    if (existing) {
+      currentExamSetId = existing._id;
+      examSetData = existing;
+      lastAccessCode = existing.accessCode;
+      document.getElementById("selected-examset").textContent = `✓ ${existing.subject} (${existing.accessCode})`;
+      msg.textContent = "✓ Your exam set loaded!";
+      msg.className = "text-green-700 mt-2 text-sm font-medium";
+      fetchAndRenderQuestions();
+      return;
+    }
+    
+    msg.textContent = "⏳ Creating exam set...";
+    const createRes = await fetch(`${API_BASE}/api/exam-set`, {
+      method: "POST",
+      headers: authHeaders(true),
+      credentials: "include",
+      body: JSON.stringify({
+        accessCode,
+        subject,
+        title,
+        tags,
+        duration: 3600,
+        examType: currentTab === "theory" ? "theory" : "cbt"
+      })
+    });
+    
+    const data = await createRes.json();
+    if (!createRes.ok) {
+      throw new Error(data.error || "Failed to create exam set");
+    }
+    
+    currentExamSetId = data._id;
+    examSetData = data;
+    lastAccessCode = data.accessCode;
+    document.getElementById("selected-examset").textContent = `✓ ${data.subject} (${data.accessCode})`;
+    msg.textContent = "✓ Exam set created!";
+    msg.className = "text-green-700 mt-2 text-sm font-medium";
+    fetchAndRenderQuestions();
+  } catch (err) {
+    console.error(err);
+    msg.textContent = `❌ ${err.message}`;
     msg.className = "text-red-600 mt-2 text-sm font-medium";
   }
 }
 
 document.getElementById('save-examset-btn').onclick = saveOrGetExamSet;
+
 document.getElementById('delete-examset-btn').onclick = async function() {
   if (!currentExamSetId) {
     alert("❌ No exam set selected.");
@@ -730,7 +817,10 @@ document.getElementById('delete-examset-btn').onclick = async function() {
   }
   if (!confirm("⚠️ Delete this Exam Set and ALL its questions? Cannot undo!")) return;
   try {
-    const resp = await fetch(`${API_BASE}/api/exam-set/${currentExamSetId}`, { method: "DELETE" });
+    const resp = await fetch(`${API_BASE}/api/exam-set/${currentExamSetId}`, { 
+      method: "DELETE",
+      headers: authHeaders() 
+    });
     if (resp.ok) {
       alert("✓ Exam set deleted.");
       currentExamSetId = null;
@@ -811,7 +901,7 @@ document.getElementById('json-upload-form-cbt').addEventListener('submit', async
     try {
       const resp = await fetch(`${API_BASE}/api/cbt-questions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders(true),
         body: JSON.stringify({ examSet: currentExamSetId, question: q.question, options: q.options, answer: q.answer, explanation: q.explanation || "", image: q.image || "" })
       });
       (resp.ok ? uploaded++ : failed++);
@@ -849,7 +939,7 @@ document.getElementById('manual-form-cbt').addEventListener('submit', async func
   try {
     const resp = await fetch(`${API_BASE}/api/cbt-questions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders(true),
       body: JSON.stringify({ examSet: currentExamSetId, question: qHtml, options: opts, answer: ans, explanation: explHtml, image: "" })
     });
     if (resp.ok) {
@@ -897,7 +987,9 @@ async function fetchAndRenderQuestions() {
 
    // Fetch CBT questions
    try {
-     const resp = await fetch(`${API_BASE}/api/cbt-questions?examSet=${encodeURIComponent(examSetId)}`);
+     const resp = await fetch(`${API_BASE}/api/cbt-questions?examSet=${encodeURIComponent(examSetId)}`, {
+       headers: authHeaders()
+     });
      const questions = await resp.json();
      const tbody = document.getElementById('questions-tbody-cbt');
      const msg = document.getElementById('no-questions-msg-cbt');
@@ -928,7 +1020,9 @@ async function fetchAndRenderQuestions() {
  
    // Fetch Theory questions
    try {
-     const resp = await fetch(`${API_BASE}/api/theory-questions?examSet=${encodeURIComponent(examSetId)}`);
+     const resp = await fetch(`${API_BASE}/api/theory-questions?examSet=${encodeURIComponent(examSetId)}`, {
+       headers: authHeaders()
+     });
      const questions = await resp.json();
      const tbody = document.getElementById('questions-tbody-theory');
      const msg = document.getElementById('no-questions-msg-theory');
@@ -958,6 +1052,7 @@ async function fetchAndRenderQuestions() {
      document.getElementById('no-questions-msg-theory').textContent = "Failed to fetch theory questions";
    }
  }
+
 window.showFullHtmlModal = function(htmlContent, title = "Content") {
   let modal = document.createElement("div");
   modal.className = "fixed left-0 top-0 w-full h-full bg-black bg-opacity-50 flex items-center justify-center z-50";
@@ -974,7 +1069,10 @@ window.showFullHtmlModal = function(htmlContent, title = "Content") {
 window.handleDeleteCBT = async function(id) {
   if (!confirm("Delete this CBT question?")) return;
   try {
-    await fetch(`${API_BASE}/api/cbt-questions/${id}`, { method: "DELETE" });
+    await fetch(`${API_BASE}/api/cbt-questions/${id}`, { 
+      method: "DELETE",
+      headers: authHeaders() 
+    });
     fetchAndRenderQuestions();
   } catch { alert("Delete failed"); }
 };
@@ -982,10 +1080,14 @@ window.handleDeleteCBT = async function(id) {
 window.handleDeleteTheory = async function(id) {
   if (!confirm("Delete this theory question?")) return;
   try {
-    await fetch(`${API_BASE}/api/theory-questions/${id}`, { method: "DELETE", headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } });
+    await fetch(`${API_BASE}/api/theory-questions/${id}`, { 
+      method: "DELETE", 
+      headers: authHeaders() 
+    });
     fetchAndRenderQuestions();
   } catch { alert("Delete failed"); }
 };
+
 // ============ THEORY HANDLERS ============
 let theoryQEditor, theorySampleEditor;
 let theoryRubricBuckets = [];
@@ -1065,7 +1167,7 @@ document.getElementById('json-upload-form-theory').addEventListener('submit', as
     try {
       const resp = await fetch(`${API_BASE}/api/theory-questions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${localStorage.getItem('token')}` },
+        headers: authHeaders(true),
         body: JSON.stringify({
           examSet: currentExamSetId,
           questionNumber: q.questionNumber,
@@ -1136,7 +1238,7 @@ document.getElementById('manual-form-theory').addEventListener('submit', async f
   try {
     const resp = await fetch(`${API_BASE}/api/theory-questions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+      headers: authHeaders(true),
       body: JSON.stringify(payload)
     });
     if (resp.ok) {
@@ -1163,6 +1265,7 @@ document.getElementById('manual-form-theory').addEventListener('submit', async f
 window.addEventListener('DOMContentLoaded', async () => {
   // fetch and render current user first (non-blocking but awaited for first paint)
   await fetchCurrentUser();
+  await fetchMyExamSets(); // Loads the list of user's owned exams
 
   // initialize editors
   initQuillEditorsCBT();
@@ -1171,9 +1274,12 @@ window.addEventListener('DOMContentLoaded', async () => {
   // keep original behavior for forms and initial question fetches if needed
   // e.g., if an exam set is selected previously, fetch questions
   setTimeout(() => {
-    if (typeof fetchAndRenderQuestions === 'function') fetchAndRenderQuestions();
+    if (typeof fetchAndRenderQuestions === 'function') {
+      fetchAndRenderQuestions();
+    }
   }, 120);
 });
 </script>
+
 </body>
 </html>
