@@ -51,6 +51,9 @@
         .tab-btn:not(.active) {
             color: #9CA3AF;
         }
+
+        /* small helper for card action buttons */
+        .card-actions > button { width: 34px; height: 34px; }
     </style>
 </head>
 <body class="w-full h-screen flex flex-col bg-white">
@@ -79,10 +82,6 @@
         <button onclick="switchTab('notes')" id="tab-notes" class="tab-btn flex-1 pb-3 pt-3 flex items-center justify-center gap-2 relative top-[1px] hover:bg-gray-50 transition-colors">
             <i class="fa-regular fa-file-lines text-[15px]"></i>
             <span class="text-[13px] sm:text-[14px]">Notes</span>
-        </button>
-        <button onclick="switchTab('borrowed')" id="tab-borrowed" class="tab-btn flex-1 pb-3 pt-3 flex items-center justify-center gap-2 relative top-[1px] hover:bg-gray-50 transition-colors">
-            <i class="fa-regular fa-clock text-[15px]"></i>
-            <span class="text-[13px] sm:text-[14px]">Borrowed</span>
         </button>
         <button onclick="switchTab('history')" id="tab-history" class="tab-btn flex-1 pb-3 pt-3 flex items-center justify-center gap-2 relative top-[1px] hover:bg-gray-50 transition-colors">
             <i class="fa-solid fa-clock-rotate-left text-[15px]"></i>
@@ -156,10 +155,16 @@
 
         <!-- NOTES TAB CONTENT -->
         <div id="content-notes" class="w-full px-4 sm:px-6 py-4 hidden">
-            <div class="flex flex-wrap items-center gap-2 sm:gap-3 mb-5 w-full">
+            <div class="flex items-center justify-between mb-4 w-full">
                 <div class="flex-1 bg-gray-100/80 rounded-xl px-4 py-2.5 flex items-center gap-2 min-w-[200px]">
                     <i class="fa-solid fa-magnifying-glass text-gray-400 text-[14px]"></i>
                     <input type="text" placeholder="Search your notes..." class="bg-transparent flex-1 outline-none text-[14px] placeholder-gray-400 text-gray-800">
+                </div>
+                <div class="ml-3">
+                    <!-- Add book button for notebook section, redirects to up.html -->
+                    <a href="up.html" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-blue text-white text-sm font-medium shadow-sm hover:opacity-95">
+                        <i class="fa-solid fa-plus"></i> Add Book
+                    </a>
                 </div>
             </div>
 
@@ -207,34 +212,10 @@
             <div id="notes-list-container" class="space-y-3 w-full"></div>
         </div>
 
-        <!-- BORROWED / ACCESSED TAB CONTENT -->
-        <div id="content-borrowed" class="w-full px-4 sm:px-6 py-4 hidden">
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6 w-full">
-                <div class="bg-blue-50/50 border border-blue-100/60 rounded-2xl p-3.5 relative overflow-hidden">
-                    <div class="flex items-center gap-2.5 mb-1.5">
-                        <div class="w-7 h-7 rounded-lg bg-blue-100 text-brand-blue flex items-center justify-center text-[12px]">
-                            <i class="fa-solid fa-bag-shopping"></i>
-                        </div>
-                        <span id="stat-total-accessed" class="text-[20px] font-bold text-brand-blue">0</span>
-                    </div>
-                    <span class="text-[12px] text-gray-500 font-medium">Accessed</span>
-                    <div class="absolute bottom-0 left-0 right-0 h-1 bg-brand-blue/30 rounded-b-2xl"></div>
-                </div>
-            </div>
-
-            <div class="flex justify-between items-center mb-3 w-full">
-                <h2 class="text-[16px] font-bold text-gray-900">Accessed Resources</h2>
-                <span id="accessed-header-count" class="text-[12px] text-gray-400 font-medium">0 items</span>
-            </div>
-
-            <!-- DYNAMIC ACCESSED CONTAINER -->
-            <div id="accessed-list-container" class="space-y-3 w-full"></div>
-        </div>
-
-        <!-- HISTORY TAB CONTENT -->
+        <!-- HISTORY TAB CONTENT (now contains borrowed/accessed + uploaded + reading history) -->
         <div id="content-history" class="w-full px-4 sm:px-6 py-4 hidden">
             <h2 class="text-[20px] font-bold text-gray-900 mb-1">History</h2>
-            <p class="text-[13px] text-gray-500 mb-4">A record of your recent reading activity.</p>
+            <p class="text-[13px] text-gray-500 mb-4">A record of your uploads, access/buy events, and recent reading activity.</p>
 
             <!-- DYNAMIC HISTORY CONTAINER -->
             <div id="history-list-container" class="space-y-6 relative pl-2 w-full"></div>
@@ -270,7 +251,7 @@
     <script>
         // Global UI state switch
         function switchTab(tabName) {
-            const tabs = ['library', 'notes', 'borrowed', 'history'];
+            const tabs = ['library', 'notes', 'history'];
             tabs.forEach(tab => {
                 const btn = document.getElementById(`tab-${tab}`);
                 const content = document.getElementById(`content-${tab}`);
@@ -383,8 +364,8 @@
                 renderStats(data.stats || {});
                 renderBooks(data.library?.books || []);
                 renderNotes(data.library?.notes || [], data.bookmarks || []);
-                renderAccessed(data.accessed || []);
-                renderHistory(data.history || []);
+                // accessed (borrowed) is displayed inside history per request
+                renderHistory(data.history || [], data.accessed || [], data.library?.books || []);
 
             } catch (err) {
                 console.error("Failed to fetch user library:", err);
@@ -418,17 +399,16 @@
 
             // Name
             const fullname = user.fullname || user.fullName || 'Library User';
-            document.getElementById('user-fullname').textContent = fullname;
+            const fullnameEl = document.getElementById('user-fullname');
+            if (fullnameEl) fullnameEl.textContent = fullname;
 
             // Department (handle null, string, or object with { name })
             let deptStr = 'General';
             if (user.department !== undefined && user.department !== null) {
                 if (typeof user.department === 'object') {
-                    // guard against null-like objects
                     if (user.department && typeof user.department.name === 'string' && user.department.name.trim() !== '') {
                         deptStr = user.department.name;
                     } else {
-                        // try toString or fallback
                         deptStr = user.department.toString ? String(user.department) : 'General';
                     }
                 } else {
@@ -438,8 +418,8 @@
 
             // Level
             const levelStr = user.level ? `${user.level} Level` : 'Student';
-
-            document.getElementById('user-academic-info').textContent = `${deptStr} • ${levelStr}`;
+            const acadEl = document.getElementById('user-academic-info');
+            if (acadEl) acadEl.textContent = `${deptStr} • ${levelStr}`;
 
             // Username / Faculty fallback (faculty may be object or string or null)
             let facultyName = '';
@@ -450,7 +430,8 @@
                     facultyName = String(user.faculty);
                 }
             }
-            document.getElementById('user-username').textContent = user.username ? `@${user.username}` : (facultyName || '');
+            const userNameEl = document.getElementById('user-username');
+            if (userNameEl) userNameEl.textContent = user.username ? `@${user.username}` : (facultyName || '');
 
             // Avatar
             if (user.profilePic) {
@@ -462,36 +443,54 @@
         // 2. Render Header & Tab Statistics
         function renderStats(stats) {
             if (!stats) return;
-            document.getElementById('stat-total-books').textContent = stats.totalBooks || 0;
-            document.getElementById('stat-total-notes').textContent = stats.totalNotes || 0;
-            document.getElementById('stat-completed-notes').textContent = stats.totalOpened || 0;
-            document.getElementById('stat-bookmarked-notes').textContent = stats.totalBookmarks || 0;
-            document.getElementById('stat-total-accessed').textContent = stats.totalAccessed || 0;
+            const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+            setText('stat-total-books', stats.totalBooks || 0);
+            setText('stat-total-notes', stats.totalNotes || 0);
+            setText('stat-completed-notes', stats.totalOpened || 0);
+            setText('stat-bookmarked-notes', stats.totalBookmarks || 0);
+            setText('stat-total-accessed', stats.totalAccessed || 0);
         }
 
-        // 3. Dynamic Rendering for Books
+        // 3. Dynamic Rendering for Books (cards include Edit + View buttons)
         function renderBooks(books = []) {
             const container = document.getElementById('books-grid');
             if (!container) return;
             container.innerHTML = '';
 
             books.forEach(book => {
+                const id = book._id || book.id || '';
                 const progressPct = book.progress?.progressPercent || 0;
-                const coverImage = book.coverImage || book.thumbnail || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&q=80&w=300';
-                
+                const coverImage = book.coverImage || book.thumbnail || (book.cover && book.cover.url) || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&q=80&w=300';
+                const title = book.title || '';
+                const uploaderName = (book.uploader && (book.uploader.fullname || book.uploader.username)) || 'Unknown Author';
+                const resourceType = book.resourceType || (book.type || '');
+
+                // Determine edit URL (textbook -> up.html, notebook -> Noteworkspace.html)
+                const editBase = (resourceType && resourceType.toLowerCase() === 'notebook') ? 'Noteworkspace.html' : 'up.html';
+                const editHref = `${editBase}?id=${encodeURIComponent(String(id))}`;
+                const viewHref = `book.html?id=${encodeURIComponent(String(id))}`;
+
                 const card = `
-                    <div class="flex flex-col bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow cursor-pointer">
+                    <div class="flex flex-col bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow cursor-pointer relative">
                         <div class="w-full aspect-[2/2.8] bg-gray-900 relative flex flex-col items-center justify-center text-center p-2">
-                            <img src="${escapeHtml(coverImage)}" alt="${escapeHtml(book.title || '')}" class="absolute inset-0 w-full h-full object-cover opacity-80" />
-                            <span class="text-white text-[12px] sm:text-[14px] font-bold leading-tight relative z-10 drop-shadow-md">${escapeHtml(book.title || '')}</span>
+                            <img src="${escapeHtml(coverImage)}" alt="${escapeHtml(title)}" class="absolute inset-0 w-full h-full object-cover opacity-80" />
+                            <span class="text-white text-[12px] sm:text-[14px] font-bold leading-tight relative z-10 drop-shadow-md">${escapeHtml(title)}</span>
+                            <div class="absolute top-2 right-2 flex gap-2 card-actions z-20">
+                                <a href="${escapeHtml(editHref)}" title="Edit" class="inline-flex items-center justify-center bg-white/90 text-gray-700 rounded-md shadow-sm hover:bg-white px-2 py-1">
+                                    <i class="fa-solid fa-pen"></i>
+                                </a>
+                                <a href="${escapeHtml(viewHref)}" title="View" class="inline-flex items-center justify-center bg-white/90 text-gray-700 rounded-md shadow-sm hover:bg-white px-2 py-1">
+                                    <i class="fa-solid fa-eye"></i>
+                                </a>
+                            </div>
                         </div>
                         <div class="p-2.5 flex-1 flex flex-col justify-between">
                             <div>
                                 <div class="flex justify-between items-start gap-1">
-                                    <h3 class="text-[11px] sm:text-[13px] font-bold text-gray-900 leading-tight line-clamp-1">${escapeHtml(book.title || '')}</h3>
+                                    <h3 class="text-[11px] sm:text-[13px] font-bold text-gray-900 leading-tight line-clamp-1">${escapeHtml(title)}</h3>
                                     <button class="text-gray-400 shrink-0 hover:text-gray-700"><i class="fa-solid fa-ellipsis-vertical text-[12px]"></i></button>
                                 </div>
-                                <p class="text-[9px] sm:text-[11px] text-gray-500 mt-0.5 line-clamp-1">${escapeHtml((book.uploader && book.uploader.fullname) || 'Unknown Author')}</p>
+                                <p class="text-[9px] sm:text-[11px] text-gray-500 mt-0.5 line-clamp-1">${escapeHtml(uploaderName)}</p>
                             </div>
                             <div class="flex items-center gap-2 mt-2">
                                 <div class="flex-1 h-[4px] sm:h-[5px] bg-gray-100 rounded-full overflow-hidden">
@@ -505,14 +504,16 @@
                 container.innerHTML += card;
             });
 
-            // Append persistent "Add Books" CTA tile
+            // Append persistent "Add Books" CTA tile (redirects to up.html)
             const addTile = `
                 <div class="flex flex-col bg-brand-graybg rounded-xl border-2 border-dashed border-gray-200 overflow-hidden items-center justify-center p-3 sm:p-4 text-center aspect-[2/2.8] cursor-pointer hover:border-brand-blue transition-colors">
-                    <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-brand-lightblue text-brand-blue flex items-center justify-center mb-3 sm:mb-4">
-                        <i class="fa-solid fa-plus text-[18px] sm:text-[22px]"></i>
-                    </div>
-                    <h3 class="text-[13px] sm:text-[15px] font-bold text-brand-blue mb-1.5">Add Books</h3>
-                    <p class="text-[10px] sm:text-[12px] text-gray-500 leading-snug px-1">Import or add new books to your library</p>
+                    <a href="up.html" class="flex flex-col items-center justify-center w-full h-full p-2">
+                        <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-brand-lightblue text-brand-blue flex items-center justify-center mb-3 sm:mb-4">
+                            <i class="fa-solid fa-plus text-[18px] sm:text-[22px]"></i>
+                        </div>
+                        <h3 class="text-[13px] sm:text-[15px] font-bold text-brand-blue mb-1.5">Add Books</h3>
+                        <p class="text-[10px] sm:text-[12px] text-gray-500 leading-snug px-1">Import or add new books to your library</p>
+                    </a>
                 </div>
             `;
             container.innerHTML += addTile;
@@ -521,7 +522,7 @@
             if (summary) summary.textContent = `Showing 1 - ${books.length} of ${books.length} books`;
         }
 
-        // 4. Dynamic Rendering for Notes
+        // 4. Dynamic Rendering for Notes (add Edit + View buttons; edit -> Noteworkspace.html, view -> book.html?id=)
         function renderNotes(notes = [], bookmarks = []) {
             const container = document.getElementById('notes-list-container');
             if (!container) return;
@@ -535,7 +536,13 @@
             }
 
             notes.forEach(note => {
+                const id = note._id || note.id || '';
                 const isBookmarked = bookmarks.some(b => String(b._id) === String(note._id));
+                const title = note.title || '';
+                const uploaderName = (note.uploader && (note.uploader.fullname || note.uploader.username)) || 'Notebook';
+                const editHref = `Noteworkspace.html?id=${encodeURIComponent(String(id))}`;
+                const viewHref = `book.html?id=${encodeURIComponent(String(id))}`;
+
                 const card = `
                     <div class="bg-white border border-gray-100 rounded-2xl p-3.5 sm:p-4 shadow-sm hover:shadow-md transition-shadow flex items-center justify-between gap-3 w-full">
                         <div class="flex items-start gap-3.5">
@@ -543,8 +550,8 @@
                                 <i class="fa-regular fa-file-lines text-[16px]"></i>
                             </div>
                             <div>
-                                <h3 class="font-bold text-gray-900 text-[14px] sm:text-[15px]">${escapeHtml(note.title || '')}</h3>
-                                <p class="text-[12px] text-gray-500 font-medium mb-2">${escapeHtml((note.uploader && note.uploader.fullname) || 'Notebook')}</p>
+                                <h3 class="font-bold text-gray-900 text-[14px] sm:text-[15px]">${escapeHtml(title)}</h3>
+                                <p class="text-[12px] text-gray-500 font-medium mb-2">${escapeHtml(uploaderName)}</p>
                                 <div class="flex flex-wrap gap-1.5">
                                     <span class="bg-blue-50 text-brand-blue text-[10px] font-semibold px-2 py-0.5 rounded-md">Notebook</span>
                                     ${note.courseCode ? `<span class="bg-emerald-50 text-emerald-600 text-[10px] font-semibold px-2 py-0.5 rounded-md">${escapeHtml(note.courseCode)}</span>` : ''}
@@ -552,8 +559,15 @@
                             </div>
                         </div>
                         <div class="flex flex-col items-end justify-between self-stretch shrink-0">
-                            <button class="text-gray-400 hover:text-gray-600"><i class="fa-solid fa-ellipsis text-[14px]"></i></button>
-                            <div class="flex items-center gap-3">
+                            <div class="flex items-center gap-2">
+                                <a href="${escapeHtml(editHref)}" title="Edit" class="inline-flex items-center justify-center bg-white/90 text-gray-700 rounded-md shadow-sm hover:bg-white px-2 py-1">
+                                    <i class="fa-solid fa-pen"></i>
+                                </a>
+                                <a href="${escapeHtml(viewHref)}" title="View" class="inline-flex items-center justify-center bg-white/90 text-gray-700 rounded-md shadow-sm hover:bg-white px-2 py-1">
+                                    <i class="fa-solid fa-eye"></i>
+                                </a>
+                            </div>
+                            <div class="flex items-center gap-3 mt-2">
                                 <i class="${isBookmarked ? 'fa-solid fa-bookmark text-brand-blue' : 'fa-regular fa-bookmark text-gray-400'} text-[14px]"></i>
                             </div>
                         </div>
@@ -563,94 +577,120 @@
             });
         }
 
-        // 5. Dynamic Rendering for Accessed Items
-        function renderAccessed(accessedItems = []) {
-            const container = document.getElementById('accessed-list-container');
-            if (!container) return;
-            container.innerHTML = '';
-            const headerCount = document.getElementById('accessed-header-count');
-            if (headerCount) headerCount.textContent = `${accessedItems.length} items`;
-
-            if (accessedItems.length === 0) {
-                container.innerHTML = `<p class="text-sm text-gray-500 py-4 text-center">No accessed resources yet.</p>`;
-                return;
-            }
-
-            accessedItems.forEach(item => {
-                const paidDate = item.access?.paidAt ? new Date(item.access.paidAt).toLocaleDateString() : 'Active';
-                const card = `
-                    <div class="bg-white border border-gray-100 rounded-2xl p-3.5 sm:p-4 shadow-sm hover:shadow-md transition-shadow flex items-center justify-between gap-3 w-full">
-                        <div class="flex items-center gap-3.5">
-                            <div class="w-14 h-16 sm:w-16 sm:h-20 rounded-lg overflow-hidden shrink-0 bg-slate-900">
-                                <img src="${escapeHtml(item.coverImage || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&q=80&w=200')}" alt="${escapeHtml(item.title || '')}" class="w-full h-full object-cover">
-                            </div>
-                            <div>
-                                <h3 class="font-bold text-gray-900 text-[14px] sm:text-[15px]">${escapeHtml(item.title || '')}</h3>
-                                <p class="text-[12px] text-gray-500 font-medium mb-2">${escapeHtml((item.uploader && item.uploader.fullname) || 'System')}</p>
-                                <span class="bg-blue-50 text-brand-blue text-[11px] font-medium px-2.5 py-1 rounded-md">Purchased Access</span>
-                            </div>
-                        </div>
-                        <div class="flex flex-col items-end justify-between self-stretch shrink-0">
-                            <div class="flex items-center gap-1.5 bg-emerald-50 text-emerald-600 border border-emerald-100 px-2.5 py-1 rounded-full text-[11px] font-semibold">
-                                <i class="fa-regular fa-circle-check"></i> Unlocked
-                            </div>
-                            <div class="text-right">
-                                <div class="text-[11px] text-gray-400">Access Date</div>
-                                <div class="text-[12px] font-bold text-gray-800">${escapeHtml(paidDate)}</div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-                container.innerHTML += card;
-            });
-        }
-
-        // 6. Dynamic Rendering for Reading History
-        function renderHistory(historyItems = []) {
+        // 5/6. Dynamic Rendering for History (merges uploads, accessed (borrowed) and reading history)
+        // signature: renderHistory(historyItems = [], accessedItems = [], uploaded = [])
+        function renderHistory(historyItems = [], accessedItems = [], uploaded = []) {
             const container = document.getElementById('history-list-container');
             if (!container) return;
             container.innerHTML = '';
 
-            if (historyItems.length === 0) {
+            // Build unified event list:
+            // - uploads => { type: 'upload', date: resource.createdAt || createdAt, resource }
+            // - accessed => { type: 'access', date: access.paidAt || createdAt, resource, access }
+            // - reads (historyItems) => { type: 'read', date: progress.updatedAt || progress.lastOpenedAt, resource, progress }
+            const events = [];
+
+            if (Array.isArray(uploaded)) {
+                for (const r of uploaded) {
+                    events.push({
+                        type: 'upload',
+                        date: r.createdAt || r.uploadedAt || null,
+                        resource: r,
+                        meta: {}
+                    });
+                }
+            }
+
+            if (Array.isArray(accessedItems)) {
+                for (const a of accessedItems) {
+                    events.push({
+                        type: 'access',
+                        date: a.access?.paidAt || a.access?.createdAt || a.paidAt || a.createdAt || null,
+                        resource: a,
+                        meta: { access: a.access || {} }
+                    });
+                }
+            }
+
+            if (Array.isArray(historyItems)) {
+                for (const h of historyItems) {
+                    events.push({
+                        type: 'read',
+                        date: h.progress?.updatedAt || h.progress?.lastOpenedAt || h.updatedAt || null,
+                        resource: h,
+                        meta: { progress: h.progress || {} }
+                    });
+                }
+            }
+
+            // sort newest first; items without date go to the end
+            events.sort((a, b) => {
+                if (!a.date && !b.date) return 0;
+                if (!a.date) return 1;
+                if (!b.date) return -1;
+                return new Date(b.date) - new Date(a.date);
+            });
+
+            if (events.length === 0) {
                 container.innerHTML = `<p class="text-sm text-gray-500 py-4 text-center">No history record found.</p>`;
                 return;
             }
 
-            let historyHTML = `
-                <div>
-                    <div class="flex items-center gap-2 mb-3">
-                        <div class="w-2.5 h-2.5 rounded-full bg-brand-blue"></div>
-                        <h3 class="font-bold text-gray-900 text-[14px]">Recent Activity</h3>
-                    </div>
-                    <div class="space-y-3 pl-4 border-l-2 border-gray-100 ml-1">
-            `;
+            // Render each event with a consistent card, showing event type, title, uploader, date and actions (view/edit where applicable)
+            let html = `<div class="space-y-3">`;
 
-            historyItems.forEach(item => {
-                const formattedTime = item.progress?.updatedAt ? new Date(item.progress.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-                historyHTML += `
+            for (const ev of events) {
+                const r = ev.resource || {};
+                const id = r._id || r.id || '';
+                const title = r.title || r.subtitle || 'Untitled';
+                const uploaderName = (r.uploader && (r.uploader.fullname || r.uploader.username)) || (r.authors || 'System');
+                const cover = r.coverImage || r.cover?.url || r.thumbnail || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&q=80&w=200';
+                const dateStr = ev.date ? new Date(ev.date).toLocaleString() : '—';
+
+                // event label
+                let label = '';
+                if (ev.type === 'upload') label = 'Uploaded';
+                else if (ev.type === 'access') label = 'Accessed / Borrowed';
+                else if (ev.type === 'read') label = `${(ev.meta.progress && ev.meta.progress.progressPercent) ? ev.meta.progress.progressPercent + '% Read' : 'Read'}`;
+
+                // determine edit link: notebook -> Noteworkspace.html, textbook -> up.html
+                const resourceType = r.resourceType || r.type || '';
+                const editBase = (resourceType && resourceType.toLowerCase() === 'notebook') ? 'Noteworkspace.html' : 'up.html';
+                const editHref = `${editBase}?id=${encodeURIComponent(String(id))}`;
+                const viewHref = `book.html?id=${encodeURIComponent(String(id))}`;
+
+                html += `
                     <div class="bg-white border border-gray-100 rounded-2xl p-3.5 flex items-center justify-between gap-3 hover:shadow-sm transition-shadow w-full">
                         <div class="flex items-center gap-3">
                             <div class="w-12 h-14 rounded-md overflow-hidden bg-slate-900 shrink-0">
-                                <img src="${escapeHtml(item.coverImage || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&q=80&w=200')}" alt="${escapeHtml(item.title || '')}" class="w-full h-full object-cover">
+                                <img src="${escapeHtml(cover)}" alt="${escapeHtml(title)}" class="w-full h-full object-cover">
                             </div>
                             <div>
-                                <h4 class="font-bold text-gray-900 text-[14px]">${escapeHtml(item.title || '')}</h4>
-                                <p class="text-[12px] text-gray-500 mb-1">${escapeHtml((item.uploader && item.uploader.fullname) || 'Resource')}</p>
-                                <span class="bg-blue-50 text-brand-blue text-[10px] font-semibold px-2 py-0.5 rounded-md">${escapeHtml(String(item.progress?.progressPercent || 0))}% Read</span>
+                                <div class="flex items-center gap-2 mb-1">
+                                    <h4 class="font-bold text-gray-900 text-[14px]">${escapeHtml(title)}</h4>
+                                    <span class="text-[11px] text-gray-400 px-2 py-0.5 rounded-md bg-gray-50">${escapeHtml(label)}</span>
+                                </div>
+                                <p class="text-[12px] text-gray-500 mb-1">${escapeHtml(uploaderName)}</p>
+                                <div class="text-[11px] text-gray-400">When: <span class="text-gray-700 font-semibold">${escapeHtml(dateStr)}</span></div>
                             </div>
                         </div>
-                        <div class="text-right flex items-center gap-3">
-                            <div>
-                                <div class="text-[11px] text-gray-400"><i class="fa-regular fa-clock"></i> ${escapeHtml(formattedTime)}</div>
+                        <div class="flex flex-col items-end justify-between gap-2">
+                            <div class="flex items-center gap-2">
+                                <a href="${escapeHtml(viewHref)}" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-gray-200 bg-white text-sm text-gray-700 hover:bg-gray-50">
+                                    <i class="fa-solid fa-eye"></i> View
+                                </a>
+                                <a href="${escapeHtml(editHref)}" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-gray-200 bg-white text-sm text-gray-700 hover:bg-gray-50">
+                                    <i class="fa-solid fa-pen"></i> Edit
+                                </a>
                             </div>
-                            <i class="fa-solid fa-chevron-right text-gray-300 text-[12px]"></i>
+                            ${ev.type === 'access' ? `<div class="text-[11px] text-green-600 font-semibold">Unlocked</div>` : `<div class="text-[11px] text-gray-400">&nbsp;</div>`}
                         </div>
                     </div>
                 `;
-            });
+            }
 
-            historyHTML += `</div></div>`;
-            container.innerHTML = historyHTML;
+            html += `</div>`;
+            container.innerHTML = html;
         }
     </script>
 </body>
