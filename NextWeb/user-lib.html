@@ -62,7 +62,7 @@
     </div>
 
     <header class="px-4 sm:px-6 py-3 flex items-center justify-between w-full border-b border-gray-100 bg-white z-10 shrink-0">
-        <button onclick="window.history.back()" class="w-10 h-10 flex items-center justify-start text-gray-700 hover:text-gray-900 transition-colors">
+        <button class="w-10 h-10 flex items-center justify-start text-gray-700 hover:text-gray-900 transition-colors">
             <i class="fa-solid fa-chevron-left text-[20px]"></i>
         </button>
         <h1 class="text-[18px] sm:text-[20px] font-bold text-gray-900 tracking-tight">My Library</h1>
@@ -159,7 +159,7 @@
             <div class="flex flex-wrap items-center gap-2 sm:gap-3 mb-5 w-full">
                 <div class="flex-1 bg-gray-100/80 rounded-xl px-4 py-2.5 flex items-center gap-2 min-w-[200px]">
                     <i class="fa-solid fa-magnifying-glass text-gray-400 text-[14px]"></i>
-                    <input type="text" id="search-notes-input" placeholder="Search your notes..." class="bg-transparent flex-1 outline-none text-[14px] placeholder-gray-400 text-gray-800">
+                    <input type="text" placeholder="Search your notes..." class="bg-transparent flex-1 outline-none text-[14px] placeholder-gray-400 text-gray-800">
                 </div>
             </div>
 
@@ -182,7 +182,7 @@
                         </div>
                         <span id="stat-completed-notes" class="text-[20px] sm:text-[24px] font-bold text-emerald-600">0</span>
                     </div>
-                    <span class="text-[12px] text-gray-500 font-medium">Opened</span>
+                    <span class="text-[12px] text-gray-500 font-medium">Completed</span>
                     <div class="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500/30 rounded-b-2xl"></div>
                 </div>
 
@@ -268,16 +268,7 @@
     </nav>
 
     <script>
-        // Data State Store
-        let libraryState = {
-            books: [],
-            notes: [],
-            bookmarks: [],
-            accessed: [],
-            history: []
-        };
-
-        // Switch UI Tabs
+        // Global UI state switch
         function switchTab(tabName) {
             const tabs = ['library', 'notes', 'borrowed', 'history'];
             tabs.forEach(tab => {
@@ -293,40 +284,15 @@
             });
         }
 
-        document.addEventListener("DOMContentLoaded", () => {
-            fetchUserLibrary();
+        // Fetch user data from backend API endpoint
+        document.addEventListener("DOMContentLoaded", fetchUserLibrary);
 
-            // Client-side search handlers
-            document.getElementById('search-books-input')?.addEventListener('input', (e) => {
-                const term = e.target.value.toLowerCase().trim();
-                const filtered = libraryState.books.filter(b => 
-                    (b.title && b.title.toLowerCase().includes(term)) || 
-                    (b.uploader?.fullname && b.uploader.fullname.toLowerCase().includes(term)) ||
-                    (b.courseCode && b.courseCode.toLowerCase().includes(term))
-                );
-                renderBooks(filtered);
-            });
-
-            document.getElementById('search-notes-input')?.addEventListener('input', (e) => {
-                const term = e.target.value.toLowerCase().trim();
-                const filtered = libraryState.notes.filter(n => 
-                    (n.title && n.title.toLowerCase().includes(term)) || 
-                    (n.courseCode && n.courseCode.toLowerCase().includes(term))
-                );
-                renderNotes(filtered, libraryState.bookmarks);
-            });
-        });
-
-        // Fetch user library from /api/users/me/library
         async function fetchUserLibrary() {
-            const spinner = document.getElementById('loading-spinner');
-            if (spinner) spinner.classList.remove('hidden');
-
             try {
                 const token = localStorage.getItem("token");
-                const response = await fetch('https://examguide.onrender.com/api/resource/users/me/library', {
+                const response = await fetch('https://examguide.onrender.com/api/users/me/library', {
                     method: 'GET',
-                    headers: {
+                    headers: { 
                         'Content-Type': 'application/json',
                         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                     },
@@ -343,55 +309,46 @@
                     throw new Error(data.error || 'Failed to load library');
                 }
 
-                // Cache state
-                libraryState.books = data.library?.books || [];
-                libraryState.notes = data.library?.notes || [];
-                libraryState.bookmarks = data.bookmarks || [];
-                libraryState.accessed = data.accessed || [];
-                libraryState.history = data.history || [];
-
                 renderUserProfile(data.user);
                 renderStats(data.stats);
-                renderBooks(libraryState.books);
-                renderNotes(libraryState.notes, libraryState.bookmarks);
-                renderAccessed(libraryState.accessed);
-                renderHistory(libraryState.history);
+                renderBooks(data.library?.books || []);
+                renderNotes(data.library?.notes || [], data.bookmarks || []);
+                renderAccessed(data.accessed || []);
+                renderHistory(data.history || []);
+                
             } catch (err) {
                 console.error("Failed to fetch user library:", err);
-                renderErrorState();
-            } font-medium {
+                const booksGrid = document.getElementById('books-grid');
+                if (booksGrid) {
+                    booksGrid.innerHTML = `
+                        <div class="col-span-full py-12 text-center w-full">
+                            <div class="w-12 h-12 mx-auto mb-3 rounded-full bg-red-50 text-red-500 flex items-center justify-center">
+                                <i class="fa-solid fa-triangle-exclamation"></i>
+                            </div>
+                            <h3 class="font-semibold text-gray-800">
+                                Unable to load library
+                            </h3>
+                            <p class="text-sm text-gray-500 mt-1">
+                                Please check your connection and try again.
+                            </p>
+                            <button onclick="fetchUserLibrary()" class="mt-4 px-4 py-2 rounded-lg bg-brand-blue text-white text-sm font-medium">
+                                Try Again
+                            </button>
+                        </div>
+                    `;
+                }
+            } finally {
+                const spinner = document.getElementById('loading-spinner');
                 if (spinner) spinner.classList.add('hidden');
             }
         }
 
-        // Render Error State inside books-grid
-        function renderErrorState() {
-            const grid = document.getElementById('books-grid');
-            if (!grid) return;
-            grid.innerHTML = `
-                <div class="col-span-full py-12 text-center w-full">
-                    <div class="w-12 h-12 mx-auto mb-3 rounded-full bg-red-50 text-red-500 flex items-center justify-center">
-                        <i class="fa-solid fa-triangle-exclamation"></i>
-                    </div>
-                    <h3 class="font-semibold text-gray-800">Unable to load library</h3>
-                    <p class="text-sm text-gray-500 mt-1">Please check your connection or authorization and try again.</p>
-                    <button onclick="fetchUserLibrary()" class="mt-4 px-4 py-2 rounded-lg bg-brand-blue text-white text-sm font-medium hover:bg-blue-700 transition-colors">
-                        Try Again
-                    </button>
-                </div>
-            `;
-        }
-
-        // 1. Render User Profile Details
+        // 1. Render User Details
         function renderUserProfile(user) {
             if (!user) return;
             document.getElementById('user-fullname').textContent = user.fullname || 'Library User';
-            
-            const dept = user.department || 'General';
-            const level = user.level ? `${user.level} Level` : 'Student';
-            document.getElementById('user-academic-info').textContent = `${dept} • ${level}`;
+            document.getElementById('user-academic-info').textContent = `${user.department || 'General'} • ${user.level ? user.level + ' Level' : 'Student'}`;
             document.getElementById('user-username').textContent = user.username ? `@${user.username}` : (user.faculty || '');
-            
             if (user.profilePic) {
                 document.getElementById('user-avatar').src = user.profilePic;
             }
@@ -442,7 +399,7 @@
                 container.innerHTML += card;
             });
 
-            // Persistent "Add Books" CTA tile
+            // Append persistent "Add Books" CTA tile
             const addTile = `
                 <div class="flex flex-col bg-brand-graybg rounded-xl border-2 border-dashed border-gray-200 overflow-hidden items-center justify-center p-3 sm:p-4 text-center aspect-[2/2.8] cursor-pointer hover:border-brand-blue transition-colors">
                     <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-brand-lightblue text-brand-blue flex items-center justify-center mb-3 sm:mb-4">
@@ -469,7 +426,7 @@
             }
 
             notes.forEach(note => {
-                const isBookmarked = bookmarks.some(b => String(b._id || b) === String(note._id));
+                const isBookmarked = bookmarks.some(b => String(b._id) === String(note._id));
                 const card = `
                     <div class="bg-white border border-gray-100 rounded-2xl p-3.5 sm:p-4 shadow-sm hover:shadow-md transition-shadow flex items-center justify-between gap-3 w-full">
                         <div class="flex items-start gap-3.5">
