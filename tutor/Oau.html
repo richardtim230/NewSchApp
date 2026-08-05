@@ -344,6 +344,739 @@ body.modal-open {
         </div>
     </div>
 </section>
+                    <section class="mock-announcement-section">
+
+    <div class="flex items-center justify-between mb-4">
+        <div>
+            <h2 class="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <i class="ph-fill ph-exam text-brand-active"></i>
+                Mock Exams
+            </h2>
+
+            <p class="text-sm text-gray-500 mt-1">
+                Challenge yourself before the real examination.
+            </p>
+        </div>
+
+        <span class="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold text-green-600 bg-green-50 px-3 py-1.5 rounded-full">
+            <span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+            Available Now
+        </span>
+    </div>
+
+
+    <div
+        id="mockCarousel"
+        class="relative w-full aspect-square sm:aspect-[2/1] lg:aspect-[2.4/1] rounded-3xl overflow-hidden shadow-premium border border-gray-100 bg-gray-900"
+    >
+
+        <!-- Dynamic slides inserted here -->
+        <div
+            id="mockCarouselTrack"
+            class="flex h-full transition-transform duration-700 ease-in-out"
+        ></div>
+
+
+        <!-- Previous -->
+        <button
+            id="mockCarouselPrev"
+            class="absolute left-3 sm:left-5 top-1/2 -translate-y-1/2 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-black/30 hover:bg-black/50 backdrop-blur-md text-white flex items-center justify-center transition z-20"
+            aria-label="Previous mock"
+        >
+            <i class="ph-bold ph-caret-left"></i>
+        </button>
+
+
+        <!-- Next -->
+        <button
+            id="mockCarouselNext"
+            class="absolute right-3 sm:right-5 top-1/2 -translate-y-1/2 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-black/30 hover:bg-black/50 backdrop-blur-md text-white flex items-center justify-center transition z-20"
+            aria-label="Next mock"
+        >
+            <i class="ph-bold ph-caret-right"></i>
+        </button>
+
+
+        <!-- Indicators -->
+        <div
+            id="mockCarouselDots"
+            class="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5"
+        ></div>
+
+    </div>
+
+                    </section>
+                    <script>
+/* =========================================================
+   RANDOM MOCK EXAM ANNOUNCEMENT CAROUSEL
+   ========================================================= */
+
+const MOCK_API_BASE = "https://examguide.onrender.com";
+
+let mockExams = [];
+let mockCurrentSlide = 0;
+let mockCarouselInterval = null;
+
+
+/* ---------------------------------------------------------
+   Background images
+   --------------------------------------------------------- */
+
+const mockBackgrounds = [
+    "https://images.unsplash.com/photo-1434030216411-0b793f4b4173?auto=format&fit=crop&w=1400&q=85",
+
+    "https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=1400&q=85",
+
+    "https://images.unsplash.com/photo-1453738773917-9c3eff1db985?auto=format&fit=crop&w=1400&q=85"
+];
+
+
+/* ---------------------------------------------------------
+   Fetch random exams
+   --------------------------------------------------------- */
+
+async function fetchRandomMockExams() {
+
+    const track = document.getElementById("mockCarouselTrack");
+
+    if (!track) return;
+
+    // Loading state
+    track.innerHTML = `
+        <div class="min-w-full h-full flex items-center justify-center">
+            <div class="text-center text-white">
+                <div class="w-9 h-9 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto mb-3"></div>
+
+                <p class="text-sm font-medium text-white/80">
+                    Finding available mock exams...
+                </p>
+            </div>
+        </div>
+    `;
+
+
+    try {
+
+        const response = await fetch(
+            `${MOCK_API_BASE}/api/exam-set/random?limit=3`,
+            {
+                method: "GET",
+                headers: {
+                    "Accept": "application/json"
+                },
+                credentials: "include"
+            }
+        );
+
+
+        if (!response.ok) {
+            throw new Error(
+                `Failed to fetch mock exams (${response.status})`
+            );
+        }
+
+
+        const data = await response.json();
+
+
+        if (!Array.isArray(data) || data.length === 0) {
+            showNoMockExams();
+            return;
+        }
+
+
+        mockExams = data.slice(0, 3);
+
+        mockCurrentSlide = 0;
+
+        renderMockExams();
+
+        updateMockCarousel();
+
+        startMockCarousel();
+
+    } catch (error) {
+
+        console.error(
+            "Failed to load random mock exams:",
+            error
+        );
+
+        showNoMockExams();
+    }
+}
+
+
+/* ---------------------------------------------------------
+   Render cards
+   --------------------------------------------------------- */
+
+function renderMockExams() {
+
+    const track =
+        document.getElementById("mockCarouselTrack");
+
+    const dots =
+        document.getElementById("mockCarouselDots");
+
+    if (!track || !dots) return;
+
+
+    track.innerHTML = "";
+
+    dots.innerHTML = "";
+
+
+    mockExams.forEach((exam, index) => {
+
+        const subject =
+            exam.subject ||
+            "University Examination";
+
+
+        const title =
+            exam.title ||
+            "Mock Examination";
+
+
+        const accessCode =
+            exam.accessCode ||
+            "";
+
+
+        const background =
+            mockBackgrounds[
+                index % mockBackgrounds.length
+            ];
+
+
+        const slide =
+            document.createElement("div");
+
+
+        slide.className =
+            "mock-slide min-w-full h-full relative overflow-hidden";
+
+
+        slide.innerHTML = `
+
+            <!-- Background image -->
+            <div
+                class="absolute inset-[-12px] bg-cover bg-center scale-105 blur-[5px]"
+                style="
+                    background-image:
+                    url('${background}');
+                "
+            ></div>
+
+
+            <!-- Image darkening -->
+            <div
+                class="absolute inset-0 bg-black/45"
+            ></div>
+
+
+            <!-- Bottom gradient -->
+            <div
+                class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent"
+            ></div>
+
+
+            <!-- Content -->
+            <div
+                class="absolute inset-x-0 bottom-0 p-5 sm:p-7 lg:p-9 text-white"
+            >
+
+                <span
+                    class="inline-flex items-center gap-1.5
+                           bg-brand-active
+                           px-3 py-1.5
+                           rounded-full
+                           text-[10px] sm:text-xs
+                           font-bold uppercase tracking-wider mb-3"
+                >
+                    <i class="ph-fill ph-sparkle"></i>
+                    New Mock Exam
+                </span>
+
+
+                <div
+                    class="text-xs sm:text-sm
+                           text-white/70
+                           font-semibold mb-1"
+                >
+                    ${escapeMockHTML(subject)}
+                </div>
+
+
+                <h3
+                    class="text-xl sm:text-2xl lg:text-3xl
+                           font-extrabold
+                           leading-tight
+                           max-w-2xl"
+                >
+                    ${escapeMockHTML(title)}
+                </h3>
+
+
+                <p
+                    class="text-white/75
+                           text-xs sm:text-sm
+                           mt-2
+                           max-w-xl"
+                >
+                    Test your preparation, improve your speed,
+                    and see how ready you are.
+                </p>
+
+
+                <button
+                    type="button"
+                    onclick="startRandomMock('${escapeMockAttribute(accessCode)}')"
+                    class="mt-4 inline-flex items-center gap-2
+                           bg-white text-gray-900
+                           px-4 py-2.5
+                           rounded-xl
+                           text-sm font-bold
+                           hover:bg-gray-100
+                           transition"
+                >
+                    Take Mock
+                    <i class="ph-bold ph-arrow-right"></i>
+                </button>
+
+            </div>
+
+        `;
+
+
+        track.appendChild(slide);
+
+
+        /* Dot */
+
+        const dot =
+            document.createElement("button");
+
+
+        dot.type = "button";
+
+
+        dot.className =
+            index === 0
+                ? "mock-carousel-dot w-6 h-1.5 rounded-full bg-white transition-all"
+                : "mock-carousel-dot w-1.5 h-1.5 rounded-full bg-white/40 transition-all";
+
+
+        dot.dataset.index = index;
+
+
+        dot.setAttribute(
+            "aria-label",
+            `Show mock exam ${index + 1}`
+        );
+
+
+        dot.addEventListener("click", () => {
+
+            mockCurrentSlide = index;
+
+            updateMockCarousel();
+
+            resetMockCarouselTimer();
+
+        });
+
+
+        dots.appendChild(dot);
+
+    });
+
+}
+
+
+/* ---------------------------------------------------------
+   Move carousel
+   --------------------------------------------------------- */
+
+function updateMockCarousel() {
+
+    const track =
+        document.getElementById(
+            "mockCarouselTrack"
+        );
+
+
+    if (!track || !mockExams.length) {
+        return;
+    }
+
+
+    track.style.transform =
+        `translateX(-${mockCurrentSlide * 100}%)`;
+
+
+    const dots =
+        document.querySelectorAll(
+            ".mock-carousel-dot"
+        );
+
+
+    dots.forEach((dot, index) => {
+
+        if (index === mockCurrentSlide) {
+
+            dot.classList.remove(
+                "bg-white/40",
+                "w-1.5"
+            );
+
+            dot.classList.add(
+                "bg-white",
+                "w-6"
+            );
+
+        } else {
+
+            dot.classList.remove(
+                "bg-white",
+                "w-6"
+            );
+
+            dot.classList.add(
+                "bg-white/40",
+                "w-1.5"
+            );
+
+        }
+
+    });
+
+}
+
+
+/* ---------------------------------------------------------
+   Next
+   --------------------------------------------------------- */
+
+function nextMockSlide() {
+
+    if (!mockExams.length) return;
+
+
+    mockCurrentSlide =
+        (mockCurrentSlide + 1) %
+        mockExams.length;
+
+
+    updateMockCarousel();
+}
+
+
+/* ---------------------------------------------------------
+   Previous
+   --------------------------------------------------------- */
+
+function previousMockSlide() {
+
+    if (!mockExams.length) return;
+
+
+    mockCurrentSlide =
+        (mockCurrentSlide - 1 +
+            mockExams.length) %
+        mockExams.length;
+
+
+    updateMockCarousel();
+}
+
+
+/* ---------------------------------------------------------
+   Buttons
+   --------------------------------------------------------- */
+
+document
+    .getElementById("mockCarouselNext")
+    ?.addEventListener("click", () => {
+
+        nextMockSlide();
+        resetMockCarouselTimer();
+
+    });
+
+
+document
+    .getElementById("mockCarouselPrev")
+    ?.addEventListener("click", () => {
+
+        previousMockSlide();
+        resetMockCarouselTimer();
+
+    });
+
+
+/* ---------------------------------------------------------
+   Auto rotation
+   --------------------------------------------------------- */
+
+function startMockCarousel() {
+
+    clearInterval(
+        mockCarouselInterval
+    );
+
+
+    if (mockExams.length <= 1) {
+        return;
+    }
+
+
+    mockCarouselInterval =
+        setInterval(() => {
+
+            nextMockSlide();
+
+        }, 5500);
+
+}
+
+
+function resetMockCarouselTimer() {
+
+    clearInterval(
+        mockCarouselInterval
+    );
+
+    startMockCarousel();
+
+}
+
+
+/* ---------------------------------------------------------
+   Pause on hover
+   --------------------------------------------------------- */
+
+const mockCarousel =
+    document.getElementById(
+        "mockCarousel"
+    );
+
+
+if (mockCarousel) {
+
+    mockCarousel.addEventListener(
+        "mouseenter",
+        () => {
+            clearInterval(
+                mockCarouselInterval
+            );
+        }
+    );
+
+
+    mockCarousel.addEventListener(
+        "mouseleave",
+        () => {
+            startMockCarousel();
+        }
+    );
+
+}
+
+
+/* ---------------------------------------------------------
+   Mobile swipe
+   --------------------------------------------------------- */
+
+let mockTouchStartX = 0;
+let mockTouchEndX = 0;
+
+
+if (mockCarousel) {
+
+    mockCarousel.addEventListener(
+        "touchstart",
+        event => {
+
+            mockTouchStartX =
+                event.changedTouches[0].screenX;
+
+            clearInterval(
+                mockCarouselInterval
+            );
+
+        },
+        { passive: true }
+    );
+
+
+    mockCarousel.addEventListener(
+        "touchend",
+        event => {
+
+            mockTouchEndX =
+                event.changedTouches[0].screenX;
+
+
+            const distance =
+                mockTouchStartX -
+                mockTouchEndX;
+
+
+            if (Math.abs(distance) > 50) {
+
+                if (distance > 0) {
+                    nextMockSlide();
+                } else {
+                    previousMockSlide();
+                }
+
+            }
+
+
+            startMockCarousel();
+
+        },
+        { passive: true }
+    );
+
+}
+
+
+/* ---------------------------------------------------------
+   Start actual exam
+   --------------------------------------------------------- */
+
+function startRandomMock(accessCode) {
+
+    if (!accessCode) {
+        console.error(
+            "Exam has no access code."
+        );
+
+        return;
+    }
+
+
+    window.location.href =
+        `https://oau.examguard.com.ng/tutor/mock.html?accessCode=${encodeURIComponent(accessCode)}`;
+}
+
+
+/* ---------------------------------------------------------
+   Empty state
+   --------------------------------------------------------- */
+
+function showNoMockExams() {
+
+    const track =
+        document.getElementById(
+            "mockCarouselTrack"
+        );
+
+
+    const dots =
+        document.getElementById(
+            "mockCarouselDots"
+        );
+
+
+    if (!track) return;
+
+
+    if (dots) {
+        dots.innerHTML = "";
+    }
+
+
+    track.innerHTML = `
+
+        <div
+            class="min-w-full h-full
+                   flex items-center justify-center
+                   bg-gradient-to-br from-gray-900 to-gray-800"
+        >
+
+            <div
+                class="text-center
+                       px-6
+                       max-w-md"
+            >
+
+                <div
+                    class="w-14 h-14
+                           mx-auto mb-4
+                           rounded-2xl
+                           bg-white/10
+                           flex items-center justify-center"
+                >
+                    <i
+                        class="ph ph-exam
+                               text-2xl
+                               text-white/70"
+                    ></i>
+                </div>
+
+
+                <h3
+                    class="text-lg
+                           font-bold
+                           text-white"
+                >
+                    No Mock Exams Available Yet
+                </h3>
+
+
+                <p
+                    class="text-sm
+                           text-white/60
+                           mt-1"
+                >
+                    New mock examinations will appear here
+                    when they are published.
+                </p>
+
+            </div>
+
+        </div>
+
+    `;
+
+}
+
+
+/* ---------------------------------------------------------
+   Basic HTML escaping
+   --------------------------------------------------------- */
+
+function escapeMockHTML(value) {
+
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+
+}
+
+
+function escapeMockAttribute(value) {
+
+    return String(value ?? "")
+        .replace(/\\/g, "\\\\")
+        .replace(/'/g, "\\'");
+
+}
+
+
+/* ---------------------------------------------------------
+   Initialize
+   --------------------------------------------------------- */
+
+fetchRandomMockExams();
+</script>
                     
                     <!-- Community Feed Tab -->
                     <section id="feed" class="tab-content active">
