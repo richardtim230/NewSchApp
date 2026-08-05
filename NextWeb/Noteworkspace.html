@@ -101,13 +101,25 @@
     @media (min-width: 768px) {
       .grid .md\:col-span-2 { padding-right: 1rem; }
     }
+
+    /* Access denied card */
+    .access-denied {
+      max-width: 820px;
+      margin: 4rem auto;
+      background: #fff;
+      border-radius: .75rem;
+      border: 1px solid #f1f5f9;
+      padding: 2rem;
+      text-align: center;
+      box-shadow: 0 8px 32px rgba(2,6,23,0.06);
+    }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen font-sans antialiased text-gray-900 pb-20 md:pb-6">
 
   <div id="toast" class="toast"><span id="toastText"></span></div>
 
-  <div class="w-full max-w-6xl mx-auto bg-[#F8FAFC] min-h-screen md:min-h-[850px] md:my-6 md:rounded-3xl shadow-xl border border-gray-200 flex flex-col relative">
+  <div id="appContainer" class="w-full max-w-6xl mx-auto bg-[#F8FAFC] min-h-screen md:min-h-[850px] md:my-6 md:rounded-3xl shadow-xl border border-gray-200 flex flex-col relative">
 
     <!-- Sticky Header -->
     <header class="px-4 sm:px-6 py-3.5 flex items-center justify-between bg-white/90 backdrop-blur-md border-b border-gray-200 sticky top-0 z-40 md:rounded-t-3xl shadow-sm">
@@ -127,10 +139,10 @@
       </div>
     </header>
 
-    <main class="flex-1 px-4 sm:px-6 py-6 space-y-6">
-
+    <main id="mainContent" class="flex-1 px-4 sm:px-6 py-6 space-y-6">
+      <!-- The normal UI is injected here (kept unchanged) -->
       <!-- Book Details Header Card -->
-      <div class="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200 flex flex-col sm:flex-row gap-5 items-start">
+      <div id="bookHeaderCard" class="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200 flex flex-col sm:flex-row gap-5 items-start">
         <div class="relative w-full sm:w-36 h-48 sm:h-52 rounded-xl overflow-hidden shadow-md shrink-0 flex flex-col justify-between p-3.5 text-white bg-emerald-950 group">
           <img id="cover-img" src="" class="absolute inset-0 w-full h-full object-cover opacity-90 transition" alt="cover">
           <div class="relative z-10 text-center mt-2">
@@ -389,10 +401,11 @@ async function imageHandler() {
   let chapters = [];
   let currentEditing = null;
   let previewsCollapsed = false;
+  let currentUser = null; // authenticated user
+  let currentResource = null; // resource metadata
 
   /**
    * Action Button Spinner Utility
-   * Disables button and replaces content with a spinner during execution to prevent duplicate clicks.
    */
   async function withLoading(btn, asyncFn) {
     if (!btn || btn.disabled || btn.getAttribute('data-loading') === 'true') return;
@@ -472,6 +485,26 @@ async function imageHandler() {
     if (ct.includes('application/json')) return res.json();
     return res.text();
   }
+
+  async function loadResourceFrom(res) {
+    const r = res.resource || res.data || res;
+    currentResource = r;
+    headerTitle.textContent = (r.title || r.name || 'Untitled');
+    mainBookTitle.textContent = (r.title || 'Untitled');
+    mainBookDesc.textContent = (r.description || r.introduction || '');
+    coverTitleDisplay.textContent = (r.title || '').split(' ').slice(0,3).join(' ');
+    coverSub.textContent = (r.subtitle || '').slice(0,40);
+    coverDesc.textContent = (r.publisher || '');
+    coverImg.src = (r.cover && r.cover.url) ? r.cover.url : '';
+
+    bookCourse.textContent = r.courseCode || r.course || '—';
+    bookFaculty.textContent = (typeof r.faculty === 'object' ? (r.faculty.name || '') : (r.faculty || '—'));
+    bookLecturer.textContent = (r.lecturer || r.uploaderName || (r.uploader && (r.uploader.fullname || r.uploader.username)) || '—');
+    bookVisibility.textContent = r.visibility || '—';
+    bookDept.textContent = (typeof r.department === 'object' ? (r.department.name || '') : (r.department || '—'));
+    bookCreated.textContent = r.createdAt ? new Date(r.createdAt).toLocaleString() : '—';
+  }
+
   async function loadResource() {
     if (!resourceId) {
       showToast('Missing resource id', true);
@@ -479,22 +512,7 @@ async function imageHandler() {
     }
     try {
       const j = await apiFetch(`/resource/${encodeURIComponent(resourceId)}`);
-      const res = j.resource || j.data || j;
-      headerTitle.textContent = (res.title || res.name || 'Untitled');
-      mainBookTitle.textContent = (res.title || 'Untitled');
-      mainBookDesc.textContent = (res.description || res.introduction || '');
-      coverTitleDisplay.textContent = (res.title || '').split(' ').slice(0,3).join(' ');
-      coverSub.textContent = (res.subtitle || '').slice(0,40);
-      coverDesc.textContent = (res.publisher || '');
-      coverImg.src = (res.cover && res.cover.url) ? res.cover.url : '';
-
-      bookCourse.textContent = res.courseCode || res.course || '—';
-      bookFaculty.textContent = res.faculty || '—';
-      bookLecturer.textContent = res.lecturer || res.uploaderName || '—';
-      bookVisibility.textContent = res.visibility || '—';
-      bookDept.textContent = res.department || '—';
-      bookCreated.textContent = res.createdAt ? new Date(res.createdAt).toLocaleString() : '—';
-
+      await loadResourceFrom(j);
     } catch (err) {
       console.error('loadResource error', err);
       showToast('Could not load resource', true);
@@ -619,7 +637,7 @@ async function imageHandler() {
     if (!resourceId) return;
     try {
       const order = chapters.map(c => c._id || c.id);
-      await apiFetch(`/resource/${encodeURIComponent(resourceId)}/reorder`, { method: 'PUT', body: { order } });
+      await apiFetch(`/resource/${encodeURIComponent(resourceId)}/chapters/reorder`, { method: 'PUT', body: { order } });
       showToast('Order saved');
       await loadChapters();
     } catch (err) {
@@ -690,7 +708,7 @@ async function imageHandler() {
       await loadChapters();
     } catch (err) {
       console.error('saveChapter err', err);
-      const msg = (err && err.body && err.body.error) ? err.body.error : 'Could not save chapter';
+      const msg = (err && err.body && (err.body.error || err.body.message)) ? (err.body.error || err.body.message) : 'Could not save chapter';
       showToast(msg, true);
     }
   }
@@ -805,13 +823,95 @@ async function imageHandler() {
     });
   });
 
+  function showAccessDenied(message) {
+    const app = document.getElementById('appContainer');
+    app.innerHTML = `
+      <div class="access-denied">
+        <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto mb-3 text-red-500" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4M12 17h.01"/></svg>
+        <h2 class="text-lg font-semibold mb-2">Access denied</h2>
+        <p class="text-sm text-gray-600 mb-4">${escapeHtml(message || 'You do not have permission to view or edit this resource.')}</p>
+        <div class="flex justify-center gap-3">
+          <a href="/" class="px-4 py-2 rounded-md bg-gray-100 border">Go Home</a>
+          <a href="/up.html" class="px-4 py-2 rounded-md bg-indigo-600 text-white">My Uploads</a>
+        </div>
+      </div>
+    `;
+  }
+
   (async function init(){
     if (!resourceId) {
       showToast('No resource specified', true);
       return;
     }
-    await loadResource();
-    await loadChapters();
+
+    // 1) Fetch auth
+    try {
+      const authResp = await apiFetch('/auth/me');
+      const user = authResp.user || authResp || null;
+      if (!user || !user._id && !user.id) {
+        showToast('Not authenticated', true);
+        showAccessDenied('You must be signed in as a publisher and be the uploader of this book to access the workspace.');
+        return;
+      }
+      currentUser = user;
+    } catch (err) {
+      console.error('auth fetch error', err);
+      showToast('Authentication required', true);
+      showAccessDenied('You must be signed in as a publisher and be the uploader of this book to access the workspace.');
+      return;
+    }
+
+    // 2) role check
+    const role = (currentUser.role || '').toString().toLowerCase();
+    if (role !== 'publisher') {
+      showToast('Access restricted to publishers', true);
+      showAccessDenied('Only users with the "publisher" role can access this editor.');
+      return;
+    }
+
+    // 3) fetch resource metadata and ensure uploader matches currentUser
+    let fetchedResource;
+    try {
+      const r = await apiFetch(`/resource/${encodeURIComponent(resourceId)}`);
+      fetchedResource = r.resource || r.data || r;
+      // extract uploader id (support populated object or raw id)
+      let uploaderId = null;
+      if (fetchedResource.uploader) {
+        if (typeof fetchedResource.uploader === 'object') {
+          uploaderId = fetchedResource.uploader._id || fetchedResource.uploader.id || null;
+        } else {
+          uploaderId = fetchedResource.uploader;
+        }
+      } else if (fetchedResource.uploaderId) {
+        uploaderId = fetchedResource.uploaderId;
+      } else if (fetchedResource.uploadedBy) {
+        uploaderId = fetchedResource.uploadedBy;
+      }
+
+      if (!uploaderId) {
+        console.warn('Unable to determine uploader id from resource', fetchedResource);
+        showToast('Resource uploader info missing', true);
+        showAccessDenied('Cannot verify ownership of this resource.');
+        return;
+      }
+
+      const userId = currentUser._id || currentUser.id;
+      if (String(uploaderId) !== String(userId)) {
+        showToast('You are not the uploader of this book', true);
+        showAccessDenied('Only the uploader of this book may open the editor.');
+        return;
+      }
+
+      // OK: allowed — render resource and load chapters
+      await loadResourceFrom(fetchedResource);
+      await loadChapters();
+
+    } catch (err) {
+      console.error('resource fetch error', err);
+      showToast('Could not verify resource or owner', true);
+      showAccessDenied('Could not load resource data or verify ownership.');
+      return;
+    }
   })();
 </script>
 
