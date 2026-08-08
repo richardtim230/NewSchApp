@@ -315,7 +315,7 @@ forms.login.addEventListener('submit', async function(e) {
                     );
 
                     setTimeout(() => {
-                        const defaultTarget = role === 'superadmin' ? "supaadmin.html" : "loader";
+                        const defaultTarget = role === 'superadmin' ? "supaadmin.html" : "s-dashboard";
                         handleAuthSuccess(defaultTarget);
                     }, 1300);
 
