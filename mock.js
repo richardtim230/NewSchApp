@@ -333,7 +333,7 @@ forms.login.addEventListener('submit', async function(e) {
                 );
 
                 setTimeout(() => {
-                    handleAuthSuccess("loader");
+                    handleAuthSuccess("s-dashboard");
                 }, 1200);
             }
 
