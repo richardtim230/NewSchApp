@@ -593,3 +593,15 @@ document.querySelectorAll('.social-btn').forEach(btn => {
         );
     });
 });
+// --- PWA Detection & Configuration ---
+    const isPWA = window.matchMedia("(display-mode: standalone)").matches ||
+                  window.navigator.standalone === true;
+
+    if (isPWA) {
+        // Disable pull-to-refresh
+        document.documentElement.style.overscrollBehavior = "none";
+        document.body.style.overscrollBehavior = "none";
+
+        // Force mobile layout
+        document.documentElement.classList.add("pwa-mobile");
+    }
