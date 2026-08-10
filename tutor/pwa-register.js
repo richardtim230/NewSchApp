@@ -1,5 +1,6 @@
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
+  // Register on DOMContentLoaded instead of waiting for window 'load' (all images/assets)
+  const registerSW = () => {
     navigator.serviceWorker.register('../tutor/service-worker.js')
       .then(registration => {
         console.log('Service Worker registered successfully:', registration);
@@ -24,7 +25,13 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', event => {
       console.log('Message from service worker:', event.data);
     });
-  });
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', registerSW);
+  } else {
+    registerSW();
+  }
 }
 
 function showUpdatePrompt(registration) {
@@ -211,16 +218,15 @@ function showInstallBanner() {
   });
 }
 
+// Prompt shows instantly when the browser fires beforeinstallprompt
 window.addEventListener('beforeinstallprompt', e => {
   console.log('beforeinstallprompt fired');
   e.preventDefault();
   deferredPrompt = e;
   
   if (!installPromptShown) {
-    setTimeout(() => {
-      showInstallBanner();
-      installPromptShown = true;
-    }, 2000);
+    showInstallBanner();
+    installPromptShown = true;
   }
 });
 
