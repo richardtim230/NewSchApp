@@ -238,6 +238,28 @@ window.addEventListener('appinstalled', () => {
   if (banner) banner.remove();
 });
 
+// Expose a global helper so pages can manually trigger the saved install prompt
+window.promptPWAInstall = async function promptPWAInstall() {
+  if (!deferredPrompt) {
+    return null;
+  }
+
+  try {
+    deferredPrompt.prompt();
+    const choice = await deferredPrompt.userChoice;
+    deferredPrompt = null;
+
+    // Remove banner if present
+    const banner = document.getElementById('pwa-install-banner');
+    if (banner) banner.remove();
+
+    return choice; // { outcome: 'accepted' | 'dismissed', platform: ... }
+  } catch (err) {
+    console.error('promptPWAInstall error', err);
+    return null;
+  }
+};
+
 class PWAWindowManager {
   constructor() {
     this.isStandalone = window.navigator.standalone === true || 
