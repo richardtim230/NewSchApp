@@ -583,19 +583,67 @@ const APP_DOWNLOAD_URL = "https://oau.examguard.com.ng/download"; // Link to mob
 const CREDIT_COST_PER_EXAM = 8;
 const WHATSAPP_ADMIN = "2349056254709";
 
-// PWA Detection & Installed State Tracking
+// ============ PWA Detection & Installed State Tracking ============
+// We'll detect multiple signals:
+// - display-mode (standalone)
+// - navigator.standalone (iOS)
+// - document.referrer contains android-app:// (Android webapk)
+// - navigator.getInstalledRelatedApps() (where available)
+// We expose two flags:
+// - isPWA (true when currently running in standalone display mode)
+// - isAppInstalled (true when the app is installed on the user's device, even if they opened the regular browser)
 let isAppInstalled = false;
-const isPWA = window.matchMedia("(display-mode: standalone)").matches || 
-              window.navigator.standalone === true || 
-              document.referrer.includes("android-app://");
+let isPWA = window.matchMedia && window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
 
-if (isPWA) {
-    isAppInstalled = true;
-    document.documentElement.style.overscrollBehavior = "none";
-    document.body.style.overscrollBehavior = "none";
-    document.documentElement.classList.add("pwa-mobile");
+async function detectInstalledState() {
+    try {
+        // Recompute isPWA from matchMedia + navigator.standalone
+        isPWA = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
+
+        if (isPWA) {
+            isAppInstalled = true;
+            return isAppInstalled;
+        }
+
+        // Document referrer check (useful for Android webapk launches)
+        if (document.referrer && document.referrer.startsWith('android-app://')) {
+            isAppInstalled = true;
+            return isAppInstalled;
+        }
+
+        // If navigator.getInstalledRelatedApps is supported, use it to see if a related app is installed.
+        if (navigator.getInstalledRelatedApps) {
+            try {
+                const related = await navigator.getInstalledRelatedApps();
+                if (Array.isArray(related) && related.length > 0) {
+                    // If any related app exists, treat it as installed.
+                    // This matches related_applications entries in your manifest (if present).
+                    isAppInstalled = related.some(app => {
+                        // treat any reported related app as indicator of installation
+                        return !!(app && (app.platform || app.id || app.url));
+                    });
+                    if (isAppInstalled) return isAppInstalled;
+                }
+            } catch (err) {
+                console.warn('getInstalledRelatedApps error:', err);
+            }
+        }
+
+        // Additional heuristic: some browsers expose a navigator.standalone-like flag or
+        // the presence of the WebAPK referrer; if none matched, assume not installed.
+        isAppInstalled = false;
+        return isAppInstalled;
+    } catch (e) {
+        console.warn('detectInstalledState failure', e);
+        isAppInstalled = false;
+        return isAppInstalled;
+    }
 }
 
+// Kick off detection early (don't block load)
+const installedStatePromise = detectInstalledState();
+
+// Listen for the appinstalled event to flip the flag if installation occurs while on the page
 window.addEventListener('appinstalled', () => {
     isAppInstalled = true;
 });
@@ -635,10 +683,14 @@ function setBtnSpinner(btn, show, text = "") {
         btn.disabled = true;
         btn._realText = btn.querySelector('span')?.textContent;
         const spinnerHTML = `<span class="spinner mr-2"></span>${text || "Processing"}`;
-        btn.querySelector('span').innerHTML = spinnerHTML;
+        if (btn.querySelector('span')) {
+            btn.querySelector('span').innerHTML = spinnerHTML;
+        } else {
+            btn.innerHTML = spinnerHTML;
+        }
     } else {
         btn.disabled = false;
-        if (btn._realText) {
+        if (btn._realText && btn.querySelector('span')) {
             btn.querySelector('span').textContent = btn._realText;
         }
     }
@@ -675,6 +727,26 @@ function showAppInstallModal(onProceedToExam) {
     }
 
     const root = document.getElementById("modal-root");
+
+    const downloadButtonHTML = `<a 
+                href="${APP_DOWNLOAD_URL}" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                id="download-app-modal-btn"
+                class="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-sm rounded-xl shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 transition-all"
+                style="text-decoration:none;">
+                <i class="fas fa-download text-sm"></i>
+                <span>Download Mobile App (Recommended)</span>
+            </a>`;
+
+    const earnCreditsHTML = `<a
+                href="./NextWeb/tasks-center"
+                id="earn-credits-btn"
+                class="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl shadow-lg flex items-center justify-center"
+                style="text-decoration:none;">
+                <i class="fas fa-hand-holding-usd mr-2"></i>
+                Earn Free Credits (Tasks)
+           </a>`;
 
     root.innerHTML = `
         <div class="modal-bg" id="app-modal-overlay">
@@ -737,16 +809,9 @@ function showAppInstallModal(onProceedToExam) {
 
                 <!-- Action CTA Buttons -->
                 <div class="flex flex-col gap-2.5">
-                    <a 
-                        href="${APP_DOWNLOAD_URL}" 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        id="download-app-modal-btn"
-                        class="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-sm rounded-xl shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 transition-all"
-                        style="text-decoration:none;">
-                        <i class="fas fa-download text-sm"></i>
-                        <span>Download Mobile App (Recommended)</span>
-                    </a>
+                    ${downloadButtonHTML}
+
+                    ${earnCreditsHTML}
 
                     <button 
                         id="continue-browser-btn"
@@ -759,9 +824,33 @@ function showAppInstallModal(onProceedToExam) {
         </div>
     `;
 
-    // Direct install/download button handler
-    document.getElementById("download-app-modal-btn")?.addEventListener('click', () => {
-        // Keeps modal active so user can still continue if needed
+    // If the download button is an anchor and the PWA prompt is available, let the download CTA still trigger the prompt (optional).
+    const downloadBtn = document.getElementById("download-app-modal-btn");
+    if (downloadBtn) {
+        downloadBtn.addEventListener('click', (e) => {
+            if (window.promptPWAInstall) {
+                e.preventDefault();
+                window.promptPWAInstall().then(choice => {
+                    if (!choice || choice.outcome === 'dismissed') {
+                        window.open(APP_DOWNLOAD_URL, '_blank', 'noopener');
+                    } else {
+                        document.getElementById('modal-root').innerHTML = '';
+                    }
+                }).catch(() => {
+                    window.open(APP_DOWNLOAD_URL, '_blank', 'noopener');
+                });
+            }
+        });
+    }
+
+    // Earn credits -> open tasks center (use PWA manager if available)
+    document.getElementById("earn-credits-btn")?.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (window.pwaWindowManager && typeof window.pwaWindowManager.navigateTo === 'function') {
+            window.pwaWindowManager.navigateTo('/NextWeb/tasks-center');
+        } else {
+            window.location.href = '/NextWeb/tasks-center';
+        }
     });
 
     // Continue in browser handler
@@ -773,6 +862,7 @@ function showAppInstallModal(onProceedToExam) {
     });
 }
 
+// ============ GENERIC MODAL ============
 function showModal(options) {
     const root = document.getElementById("modal-root");
     
@@ -1079,6 +1169,9 @@ window.logoutUser = logoutUser;
 (async function checkAuthOnLoad() {
     showLoadingOverlay(true, "Checking authentication...");
     try {
+        // ensure installed state detection completes early
+        await installedStatePromise;
+
         const token = getToken() || localStorage.getItem('token');
         if (token) {
             const user = await fetchProfile(token);
@@ -1312,6 +1405,9 @@ accessForm?.addEventListener('submit', async function(e) {
         const launchExamSession = () => {
             window.location.href = "exam-in-session";
         };
+
+        // Ensure installed-state detection completed before deciding to show modal
+        await detectInstalledState();
 
         // IF running in standard browser and NOT installed/PWA, prompt app recommendation modal
         if (!isPWA && !isAppInstalled) {
