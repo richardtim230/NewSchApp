@@ -578,21 +578,21 @@
       </a>
 
       <a href="javascript:void(0)"
-         id="nav-results"
-         onclick="switchMainView('dashboard')"
-         aria-label="Results"
-         class="nav-item flex-1 flex flex-col items-center justify-center gap-1 text-gray-400 transition-all duration-200 hover:text-indigo-600 active:scale-95">
+   id="nav-results"
+   onclick="switchMainView('dashboard'); openResultsPanel();"
+   aria-label="Results"
+   class="nav-item flex-1 flex flex-col items-center justify-center gap-1 text-gray-400 transition-all duration-200 hover:text-indigo-600 active:scale-95">
 
-        <div class="w-10 h-8 rounded-xl flex items-center justify-center">
-          <svg class="w-[19px] h-[19px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="1.8"
-                  d="M5 19V9m5 10V5m5 14v-7m5 7V3"/>
-          </svg>
-        </div>
+  <div class="w-10 h-8 rounded-xl flex items-center justify-center">
+    <svg class="w-[19px] h-[19px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="1.8"
+            d="M5 19V9m5 10V5m5 14v-7m5 7V3"/>
+    </svg>
+  </div>
 
-        <span class="text-[10px] font-medium">Results</span>
+  <span class="text-[10px] font-medium">Results</span>
       </a>
 
 <a href="/NextWeb/view-pro.html"
@@ -615,7 +615,30 @@
 
     </div>
   </nav>
+  <!-- Results Section: hidden by default -->
+<div id="results-section" class="hidden bg-white border border-gray-100 rounded-3xl p-6 sm:p-8 shadow-sm mb-6">
+  <div class="flex items-start justify-between mb-4">
+    <div>
+      <h2 class="text-lg font-bold text-gray-900">Results</h2>
+      <p class="text-xs text-gray-500">Summary of attempts for your exam sets (click "View Attempts" for details).</p>
+    </div>
+    <div class="flex gap-2 items-center">
+      <button id="refresh-results-btn" type="button" class="py-1 px-3 bg-indigo-600 text-white rounded-xl text-xs font-semibold" title="Refresh results">
+        Refresh
+      </button>
+    </div>
+  </div>
 
+  <div id="results-container" class="space-y-4">
+    <div id="results-skeleton" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div class="p-4 border rounded-xl animate-pulse bg-gray-50"></div>
+      <div class="p-4 border rounded-xl animate-pulse bg-gray-50"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal root for showing attempts list -->
+<div id="results-modal-root"></div>
 <script>
 const API_BASE = "https://examguide.onrender.com";
 let currentExamSetId = null;
@@ -742,7 +765,37 @@ async function fetchMyExamSets() {
 /* ==========================================================================
    NAVIGATION & UI SWITCHING
    ========================================================================== */
+function openResultsPanel() {
+  try {
+    const resultsSection = document.getElementById('results-section');
+    if (!resultsSection) return;
+
+    // Show dashboard (if not already visible) and then the results panel
+    resultsSection.classList.remove('hidden');
+
+    if (typeof loadAndRenderResults === 'function') {
+      loadAndRenderResults();
+    } else {
+      console.warn('loadAndRenderResults() not found; ensure the results rendering code is present.');
+    }
+
+    // scroll into view so user immediately sees it
+    resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) {
+    console.error('openResultsPanel error:', err);
+  }
+}
+
+function closeResultsPanel() {
+  const resultsSection = document.getElementById('results-section');
+  if (resultsSection) resultsSection.classList.add('hidden');
+}
+
 function switchMainView(viewName) {
+  // hide results whenever main view switches, it will be re-opened only by openResultsPanel
+  const resultsSection = document.getElementById('results-section');
+  if (resultsSection) resultsSection.classList.add('hidden');
+
   const dashView = document.getElementById('dashboard-view');
   const questView = document.getElementById('questions-view');
 
@@ -806,6 +859,235 @@ function switchTab(tab) {
 
   document.getElementById('management-section-cbt').style.display = tab === 'cbt' ? 'block' : 'none';
   document.getElementById('management-section-theory').style.display = tab === 'theory' ? 'block' : 'none';
+}
+
+/* ==========================================================================
+   RESULTS UI & ATTEMPT TRACKING
+   ========================================================================== */
+async function loadAndRenderResults() {
+  const container = document.getElementById('results-container');
+  const skeleton = document.getElementById('results-skeleton');
+  if (!container) return;
+
+  // show skeleton
+  container.innerHTML = '';
+  if (skeleton) container.appendChild(skeleton);
+
+  try {
+    // Ensure we have the latest exam sets
+    const examSets = window.myExamSets && window.myExamSets.length ? window.myExamSets : await fetchMyExamSets();
+    if (!examSets || examSets.length === 0) {
+      container.innerHTML = `<div class="text-gray-500 text-sm">You haven't created any exam sets yet.</div>`;
+      return;
+    }
+
+    container.innerHTML = '';
+
+    // Render a card for each exam set
+    for (const set of examSets) {
+      // Attempt to read lightweight summary from exam set first
+      let stats = null;
+
+      if (set.attemptSummary && typeof set.attemptSummary === 'object') {
+        stats = {
+          totalAttempts: set.attemptSummary.attempts || 0,
+          averageScore: typeof set.attemptSummary.averageScore === 'number' ? set.attemptSummary.averageScore : null,
+          bestScore: typeof set.attemptSummary.bestScore === 'number' ? set.attemptSummary.bestScore : null,
+          worstScore: typeof set.attemptSummary.worstScore === 'number' ? set.attemptSummary.worstScore : null,
+          totalTimeSpent: set.attemptSummary.totalTimeSpent || 0,
+          lastAttemptAt: set.attemptSummary.lastAttemptAt || null
+        };
+      }
+
+      // If no attemptSummary available, fall back to fetching exam-report summary from API
+      if (!stats) {
+        try {
+          const res = await fetch(`${API_BASE}/api/exam-reports/exam-set/${encodeURIComponent(set._id)}`, {
+            headers: authHeaders(),
+            credentials: 'include'
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const s = data.stats || {};
+            stats = {
+              totalAttempts: s.totalAttempts || 0,
+              averageScore: typeof s.averageScore === 'number' ? s.averageScore : (s.averageScore ? Number(s.averageScore) : null),
+              bestScore: s.bestScore || null,
+              worstScore: s.worstScore || null,
+              totalTimeSpent: s.totalTimeSpent || 0,
+              lastAttemptAt: (data.reports && data.reports.length > 0) ? data.reports[0].createdAt : null
+            };
+          }
+        } catch (err) {
+          console.warn('Could not fetch reports for set', set._id, err);
+        }
+      }
+
+      container.insertAdjacentHTML('beforeend', renderResultsCard(set, stats));
+    }
+  } catch (err) {
+    console.error('Failed to load results:', err);
+    container.innerHTML = `<div class="text-red-600 text-sm">Failed to load results: ${err.message}</div>`;
+  }
+}
+
+function renderResultsCard(set, stats) {
+  const attemptsText = stats && typeof stats.totalAttempts === 'number' ? stats.totalAttempts : '—';
+  const avg = stats && (stats.averageScore !== null && stats.averageScore !== undefined) ? `${stats.averageScore}%` : '—';
+  const best = stats && (stats.bestScore !== null && stats.bestScore !== undefined) ? `${stats.bestScore}%` : '—';
+  const worst = stats && (stats.worstScore !== null && stats.worstScore !== undefined) ? `${stats.worstScore}%` : '—';
+  const last = stats && stats.lastAttemptAt ? formatDateTime(stats.lastAttemptAt) : '—';
+
+  // Basic card with actions
+  return `
+    <div class="p-4 border rounded-2xl flex items-start justify-between gap-4 bg-white shadow-sm">
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="bg-indigo-100 text-indigo-700 font-bold text-xs px-2.5 py-1 rounded-md">${escapeHtml(set.accessCode || '')}</span>
+          <h3 class="text-sm font-semibold text-gray-800 truncate">${escapeHtml(set.subject || '')} — ${escapeHtml(set.title || 'Untitled')}</h3>
+        </div>
+        <div class="text-xs text-gray-600 mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div><span class="font-medium text-gray-800">${attemptsText}</span><div class="text-gray-400">Attempts</div></div>
+          <div><span class="font-medium text-gray-800">${avg}</span><div class="text-gray-400">Avg</div></div>
+          <div><span class="font-medium text-gray-800">${best}</span><div class="text-gray-400">Best</div></div>
+          <div><span class="font-medium text-gray-800">${worst}</span><div class="text-gray-400">Worst</div></div>
+        </div>
+        <div class="text-xs text-gray-400 mt-2">Last attempt: ${last}</div>
+      </div>
+
+      <div class="flex flex-col gap-2 items-end">
+        <button type="button" onclick="openExamSetAttemptsModal('${set._id}')" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-semibold hover:bg-indigo-700 transition-all">View Attempts</button>
+        <button type="button" onclick="selectAndLoadExamSet('${set._id}', '${set.accessCode}', \`${(set.subject||'').replace(/`/g, '\\`')}\`, \`${(set.title||'').replace(/`/g, '\\`')}\`)" class="px-4 py-2 border rounded-xl text-xs hover:bg-gray-50 transition-all">Edit Set</button>
+      </div>
+    </div>
+  `;
+}
+
+/* Modal: show attempts list for an exam set */
+async function openExamSetAttemptsModal(setId) {
+  const root = document.getElementById('results-modal-root');
+  if (!root) return;
+
+  // initial modal content
+  root.innerHTML = `
+    <div class="edit-modal-bg" id="results-modal">
+      <div class="edit-modal-panel max-w-4xl w-full">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-bold">Attempts</h3>
+          <div class="flex items-center gap-2">
+            <button id="close-results-modal" class="px-3 py-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200">Close</button>
+          </div>
+        </div>
+        <div id="results-modal-body" class="space-y-3">
+          <div class="text-sm text-gray-500">Loading attempts…</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const closeBtn = document.getElementById('close-results-modal');
+  closeBtn?.addEventListener('click', () => { root.innerHTML = ''; });
+
+  // fetch attempts for the exam set using creator-only endpoint
+  try {
+    const res = await fetch(`${API_BASE}/api/exam-reports/exam-set/${encodeURIComponent(setId)}?limit=50`, {
+      headers: authHeaders(),
+      credentials: 'include'
+    });
+
+    if (!res.ok) {
+      // if not allowed or endpoint missing, show friendly error
+      const errText = await res.text().catch(() => res.statusText);
+      document.getElementById('results-modal-body').innerHTML = `<div class="text-red-600 text-sm">Failed to fetch attempts: ${res.status} ${escapeHtml(errText)}</div>`;
+      return;
+    }
+
+    const data = await res.json();
+    const reports = Array.isArray(data.reports) ? data.reports : [];
+    const stats = data.stats || {};
+
+    if (reports.length === 0) {
+      document.getElementById('results-modal-body').innerHTML = `<div class="text-gray-500 text-sm">No attempts found for this exam set.</div>`;
+      return;
+    }
+
+    // render table of attempts
+    const rows = reports.map((r, idx) => {
+      const student = (r.userId && (r.userId.fullname || r.userId.fullName || r.userId.username || r.userId.email)) || 'Student';
+      const pct = (r.percentage !== undefined && r.percentage !== null) ? `${r.percentage}%` : '—';
+      const timeSpent = r.timeSpent ? formatDuration(r.timeSpent) : '—';
+      const status = r.status || 'submitted';
+      const createdAt = r.createdAt ? formatDateTime(r.createdAt) : (r.startTime ? formatDateTime(r.startTime) : '—');
+
+      return `
+        <tr class="border-b">
+          <td class="p-2 text-xs">${idx + 1}</td>
+          <td class="p-2 text-xs font-medium">${escapeHtml(student)}</td>
+          <td class="p-2 text-xs">${escapeHtml(r.attemptId || r._id || '')}</td>
+          <td class="p-2 text-xs text-center">${pct}</td>
+          <td class="p-2 text-xs text-center">${timeSpent}</td>
+          <td class="p-2 text-xs text-center">${escapeHtml(status)}</td>
+          <td class="p-2 text-xs text-right">${escapeHtml(createdAt)}</td>
+        </tr>
+      `;
+    }).join('');
+
+    document.getElementById('results-modal-body').innerHTML = `
+      <div class="mb-3 text-sm text-gray-600">Summary — Attempts: <strong>${stats.totalAttempts ?? reports.length}</strong>, Average: <strong>${stats.averageScore ?? '—'}</strong></div>
+      <div class="w-full overflow-x-auto">
+        <table class="w-full text-xs border rounded-xl custom-table">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="p-2 text-left">#</th>
+              <th class="p-2 text-left">Student</th>
+              <th class="p-2 text-left">Attempt ID</th>
+              <th class="p-2 text-center">Pct</th>
+              <th class="p-2 text-center">Time</th>
+              <th class="p-2 text-center">Status</th>
+              <th class="p-2 text-right">When</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } catch (err) {
+    console.error('Failed to fetch attempts for set', setId, err);
+    document.getElementById('results-modal-body').innerHTML = `<div class="text-red-600 text-sm">Failed to fetch attempts: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+// Helpers
+function formatDuration(seconds) {
+  seconds = Number(seconds) || 0;
+  const s = seconds % 60;
+  const m = Math.floor((seconds % 3600) / 60);
+  const h = Math.floor(seconds / 3600);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+function formatDateTime(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString();
+  } catch (e) {
+    return iso;
+  }
+}
+
+function escapeHtml(str) {
+  if (!str && str !== 0) return '';
+  return String(str)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 /* ==========================================================================
@@ -1862,7 +2144,22 @@ document.addEventListener("DOMContentLoaded", () => {
   fetchCurrentUser();
   initQuillEditors();
   addRubricBucket(10, "Full Answer", 1, "");
+
+  // Refresh results button listener
+  document.getElementById('refresh-results-btn')?.addEventListener('click', () => {
+    loadAndRenderResults();
+  });
+
+  // Ensure results load after page/user/exam sets load (non-blocking)
+  setTimeout(() => {
+    if (window.myExamSets && window.myExamSets.length) {
+      loadAndRenderResults();
+    } else {
+      fetchMyExamSets().then(() => loadAndRenderResults()).catch(() => loadAndRenderResults());
+    }
+  }, 400);
 });
 </script>
+
 </body>
 </html>
