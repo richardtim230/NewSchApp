@@ -446,124 +446,146 @@
     }
 
     async function loadEligibility() {
-      document.getElementById('plan-badge').innerText = 'Checking...';
-      document.getElementById('ref-badge').innerText = 'Checking...';
-      document.getElementById('task-badge').innerText = 'Checking...';
-      document.getElementById('upload-badge').innerText = 'Checking...';
-      document.getElementById('engage-badge').innerText = 'Checking...';
+  document.getElementById('plan-badge').innerText = 'Checking...';
+  document.getElementById('ref-badge').innerText = 'Checking...';
+  document.getElementById('task-badge').innerText = 'Checking...';
+  document.getElementById('upload-badge').innerText = 'Checking...';
+  document.getElementById('engage-badge').innerText = 'Checking...';
 
-      let user = null;
-      const userEndpoints = ['/api/users/me', '/api/auth/me', '/api/user/me', '/api/profile/me', '/api/me'];
-      for (const ep of userEndpoints) {
+  let rawUser = null;
+  const userEndpoints = ['/api/auth/me', '/api/user/me', '/api/profile/me', '/api/me'];
+  for (const ep of userEndpoints) {
+    try {
+      rawUser = await fetchJSON(ep);
+      if (rawUser) break;
+    } catch (err) {}
+  }
+
+  // 1. Unwrap nested response objects ({ user: ... } or { data: ... })
+  const user = rawUser?.user || rawUser?.data || rawUser;
+
+  if (!user || (!user._id && !user.id && !user.username && !user.email)) {
+    document.getElementById('plan-badge').innerText = 'Sign in';
+    document.getElementById('ref-badge').innerText = 'Sign in';
+    document.getElementById('task-badge').innerText = 'Sign in';
+    document.getElementById('upload-badge').innerText = 'Sign in';
+    document.getElementById('engage-badge').innerText = 'Sign in';
+
+    setProgress('plan-progress-bar', 'plan-progress-text', 0, 1, () => 'Sign in to check');
+    setProgress('ref-progress-bar', 'ref-progress-text', 0, 10, () => 'Sign in to check');
+    setProgress('task-progress-bar', 'task-progress-text', 0, 2, () => 'Sign in to check');
+    setProgress('upload-progress-bar', 'upload-progress-text', 0, 3, () => 'Sign in to check');
+    setProgress('engage-progress-bar', 'engage-progress-text', 0, 500, () => 'Sign in to check');
+    return;
+  }
+
+  currentUser = user;
+  const userId = user._id || user.id || user.userId;
+
+  // 2. Active Premium Check
+  let premium = false;
+  if (user.isPremium === true || user.premium === true) premium = true;
+  if (!premium && user.plan) {
+    if (String(user.plan).toLowerCase().includes('premium')) premium = true;
+    if (user.planName && String(user.planName).toLowerCase().includes('premium')) premium = true;
+  }
+  if (!premium && user.subscription && (user.subscription.status === 'active' || user.subscription.plan === 'premium')) premium = true;
+  
+  document.getElementById('plan-badge').innerText = premium ? 'Active' : 'Not active';
+  setProgress('plan-progress-bar', 'plan-progress-text', premium ? 1 : 0, 1, (v, t) => `${v} / ${t} ${premium ? '(100%)' : '(0%)'}`);
+
+  // 3. Referrals Check (handles both totalReferrals count and array of IDs/objects)
+  let verifiedReferrals = 0;
+  if (typeof user.totalReferrals === 'number') {
+    verifiedReferrals = user.totalReferrals;
+  } else if (typeof user.verifiedReferralsCount === 'number') {
+    verifiedReferrals = user.verifiedReferralsCount;
+  } else if (typeof user.totalVerifiedReferrals === 'number') {
+    verifiedReferrals = user.totalVerifiedReferrals;
+  } else if (Array.isArray(user.verifiedReferrals)) {
+    verifiedReferrals = user.verifiedReferrals.length;
+  } else if (Array.isArray(user.referrals)) {
+    verifiedReferrals = user.referrals.filter(r => {
+      if (typeof r === 'string' || typeof r === 'number') return true; // Account for array of ObjectIDs
+      return r && (r.verified === true || r.status === 'verified' || r.paid === true);
+    }).length;
+  }
+
+  if (verifiedReferrals === 0 && userId) {
+    try {
+      const refData = await fetchJSON(`/api/users/${userId}/referrals`);
+      if (Array.isArray(refData)) {
+        verifiedReferrals = refData.length;
+      } else if (refData.total) {
+        verifiedReferrals = Number(refData.total) || 0;
+      }
+    } catch (err) {}
+  }
+
+  const refTarget = 10;
+  document.getElementById('ref-badge').innerText = verifiedReferrals >= refTarget ? 'Met' : 'Required';
+  setProgress('ref-progress-bar', 'ref-progress-text', Math.min(verifiedReferrals, refTarget), refTarget, (v, t) => `${v} / ${t} Referrals (${Math.round((v / t) * 100)}%)`);
+
+  // 4. Tasks Progress Check (reads user.dailyTasks from DB)
+  let tasksDone = 0;
+  if (Array.isArray(user.dailyTasks)) {
+    tasksDone = user.dailyTasks.length;
+  } else if (typeof user.totalTasksDone === 'number') {
+    tasksDone = user.totalTasksDone;
+  } else if (user.rewardStats && typeof user.rewardStats.tasks === 'number') {
+    tasksDone = user.rewardStats.tasks;
+  }
+
+  if (tasksDone === 0 && userId) {
+    try {
+      const tasks = await fetchJSON(`/api/tasks/user/${encodeURIComponent(userId)}`);
+      if (Array.isArray(tasks)) {
+        tasksDone = tasks.filter(t => t.status === 'done' || t.completedAt).length;
+      } else if (Array.isArray(tasks?.tasks)) {
+        tasksDone = tasks.tasks.filter(t => t.status === 'done' || t.completedAt).length;
+      }
+    } catch (err) {}
+  }
+
+  const tasksRequired = 2;
+  document.getElementById('task-badge').innerText = tasksDone >= tasksRequired ? 'Met' : 'Required';
+  setProgress('task-progress-bar', 'task-progress-text', Math.min(tasksDone, tasksRequired), tasksRequired, (v, t) => `${v} / ${t} Tasks Completed (${Math.round((v / t) * 100)}%)`);
+
+  // 5. Practice Questions Uploads Check
+  let mySets = [];
+  try {
+    const res = await fetchJSON('/api/exam-set/mine');
+    mySets = Array.isArray(res) ? res : (res.examSets || res.data || []);
+  } catch (err) {}
+
+  const uploadCount = mySets.length;
+  const uploadTarget = 3;
+  document.getElementById('upload-badge').innerText = uploadCount >= 2 ? 'Met (min)' : 'Required';
+  setProgress('upload-progress-bar', 'upload-progress-text', Math.min(uploadCount, uploadTarget), uploadTarget, (v, t) => `${v} / ${t} Exam Sets (${Math.round((v / t) * 100)}%)`);
+
+  // 6. Student Engagement Check
+  let engagement = 0;
+  if (mySets.length > 0) {
+    for (const s of mySets) {
+      if (s.attemptSummary && typeof s.attemptSummary.attempts === 'number') {
+        engagement += s.attemptSummary.attempts;
+      } else if (s._id) {
         try {
-          user = await fetchJSON(ep);
-          if (user) break;
-        } catch (err) {}
-      }
-
-      if (!user) {
-        document.getElementById('plan-badge').innerText = 'Sign in';
-        document.getElementById('ref-badge').innerText = 'Sign in';
-        document.getElementById('task-badge').innerText = 'Sign in';
-        document.getElementById('upload-badge').innerText = 'Sign in';
-        document.getElementById('engage-badge').innerText = 'Sign in';
-
-        setProgress('plan-progress-bar', 'plan-progress-text', 0, 1, () => 'Sign in to check');
-        setProgress('ref-progress-bar', 'ref-progress-text', 0, 10, () => 'Sign in to check');
-        setProgress('task-progress-bar', 'task-progress-text', 0, 2, () => 'Sign in to check');
-        setProgress('upload-progress-bar', 'upload-progress-text', 0, 3, () => 'Sign in to check');
-        setProgress('engage-progress-bar', 'engage-progress-text', 0, 500, () => 'Sign in to check');
-        return;
-      }
-
-      currentUser = user;
-      const userId = user._id || user.id || user.userId || user.user?.id;
-
-      let premium = false;
-      if (user.isPremium || user.premium === true) premium = true;
-      if (!premium && user.plan) {
-        if (String(user.plan).toLowerCase().includes('premium')) premium = true;
-        if (user.planName && String(user.planName).toLowerCase().includes('premium')) premium = true;
-      }
-      if (!premium && user.subscription && (user.subscription.status === 'active' || user.subscription.plan === 'premium')) premium = true;
-      
-      document.getElementById('plan-badge').innerText = premium ? 'Active' : 'Not active';
-      setProgress('plan-progress-bar', 'plan-progress-text', premium ? 1 : 0, 1, (v, t) => `${v} / ${t} ${premium ? '(100%)' : '(0%)'}`);
-
-      let verifiedReferrals = 0;
-      if (typeof user.verifiedReferralsCount === 'number') {
-        verifiedReferrals = user.verifiedReferralsCount;
-      } else if (Array.isArray(user.verifiedReferrals)) {
-        verifiedReferrals = user.verifiedReferrals.length;
-      } else if (Array.isArray(user.referrals)) {
-        verifiedReferrals = user.referrals.filter(r => r && (r.verified === true || r.status === 'verified' || r.paid === true)).length;
-      } else if (typeof user.totalVerifiedReferrals === 'number') {
-        verifiedReferrals = user.totalVerifiedReferrals;
-      } else if (userId) {
-        try {
-          const refData = await fetchJSON(`/api/users/${userId}/referrals`);
-          if (Array.isArray(refData)) {
-            verifiedReferrals = refData.filter(r => r && (r.verified || r.paid)).length;
-          } else if (refData.total) {
-            verifiedReferrals = Number(refData.total) || 0;
+          const reportData = await fetchJSON(`/api/exam-reports/exam-set/${encodeURIComponent(s._id)}`);
+          if (reportData && reportData.stats && typeof reportData.stats.totalAttempts === 'number') {
+            engagement += reportData.stats.totalAttempts;
           }
         } catch (err) {}
       }
-      const refTarget = 10;
-      document.getElementById('ref-badge').innerText = verifiedReferrals >= refTarget ? 'Met' : 'Required';
-      setProgress('ref-progress-bar', 'ref-progress-text', Math.min(verifiedReferrals, refTarget), refTarget, (v, t) => `${v} / ${t} Referrals (${Math.round((v / t) * 100)}%)`);
-
-      let tasksDone = 0;
-      if (typeof user.totalTasksDone === 'number') {
-        tasksDone = user.totalTasksDone;
-      } else if (user.rewardStats && typeof user.rewardStats.tasks === 'number') {
-        tasksDone = user.rewardStats.tasks;
-      } else if (userId) {
-        try {
-          const tasks = await fetchJSON(`/api/tasks/user/${encodeURIComponent(userId)}`);
-          if (Array.isArray(tasks)) {
-            tasksDone = tasks.filter(t => t.status === 'done' || t.completedAt).length;
-          } else if (Array.isArray(tasks.tasks)) {
-            tasksDone = tasks.tasks.filter(t => t.status === 'done' || t.completedAt).length;
-          }
-        } catch (err) {}
-      }
-      const tasksRequired = 2;
-      document.getElementById('task-badge').innerText = tasksDone >= tasksRequired ? 'Met' : 'Required';
-      setProgress('task-progress-bar', 'task-progress-text', Math.min(tasksDone, tasksRequired), tasksRequired, (v, t) => `${v} / ${t} Tasks Completed (${Math.round((v / t) * 100)}%)`);
-
-      let mySets = [];
-      try {
-        const res = await fetchJSON('/api/exam-set/mine');
-        mySets = Array.isArray(res) ? res : (res.examSets || res.data || []);
-      } catch (err) {}
-
-      const uploadCount = mySets.length;
-      const uploadTarget = 3;
-      document.getElementById('upload-badge').innerText = uploadCount >= 2 ? 'Met (min)' : 'Required';
-      setProgress('upload-progress-bar', 'upload-progress-text', Math.min(uploadCount, uploadTarget), uploadTarget, (v, t) => `${v} / ${t} Exam Sets (${Math.round((v / t) * 100)}%)`);
-
-      let engagement = 0;
-      if (mySets.length > 0) {
-        for (const s of mySets) {
-          if (s.attemptSummary && typeof s.attemptSummary.attempts === 'number') {
-            engagement += s.attemptSummary.attempts;
-          } else if (s._id) {
-            try {
-              const reportData = await fetchJSON(`/api/exam-reports/exam-set/${encodeURIComponent(s._id)}`);
-              if (reportData && reportData.stats && typeof reportData.stats.totalAttempts === 'number') {
-                engagement += reportData.stats.totalAttempts;
-              }
-            } catch (err) {}
-          }
-        }
-      }
-
-      const engagementTarget = 500;
-      document.getElementById('engage-badge').innerText = engagement >= engagementTarget ? 'Met' : 'Required';
-      setProgress('engage-progress-bar', 'engage-progress-text', Math.min(engagement, engagementTarget), engagementTarget, (v, t) => `${v} / ${t} Students (${Math.round((v / t) * 100)}%)`);
     }
+  }
 
+  const engagementTarget = 500;
+  document.getElementById('engage-badge').innerText = engagement >= engagementTarget ? 'Met' : 'Required';
+  setProgress('engage-progress-bar', 'engage-progress-text', Math.min(engagement, engagementTarget), engagementTarget, (v, t) => `${v} / ${t} Students (${Math.round((v / t) * 100)}%)`);
+}
+
+        
     function toggleReferralInfo() {
       const box = document.getElementById('referral-info-box');
       if (box) box.classList.toggle('hidden');
