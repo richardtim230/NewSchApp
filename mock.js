@@ -1,20 +1,41 @@
+// ====== HELPER: ROBUST URL PARAMETER EXTRACTION ======
+function getQueryParam(name) {
+    try {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has(name)) return urlParams.get(name);
+
+        // Fallback: Check hash or query parameters inside hash
+        const hash = window.location.hash;
+        if (hash.includes('?')) {
+            const hashParams = new URLSearchParams(hash.substring(hash.indexOf('?')));
+            if (hashParams.has(name)) return hashParams.get(name);
+        }
+
+        // Fallback: Regex extraction directly from window.location.href
+        const regex = new RegExp('[?&]' + name + '=([^&#]*)', 'i');
+        const match = regex.exec(window.location.href);
+        return match ? decodeURIComponent(match[1]) : null;
+    } catch (e) {
+        console.warn('Error reading URL parameters:', e);
+        return null;
+    }
+}
+
+// Immediate capture of referral code from URL into localStorage
 (function() {
-    const params = new URLSearchParams(window.location.search);
-    const ref = params.get('ref');
+    const ref = getQueryParam('ref');
     if (ref) {
-        localStorage.setItem('pendingReferral', ref);
+        try {
+            localStorage.setItem('pendingReferral', ref);
+        } catch (e) {
+            console.warn('LocalStorage error:', e);
+        }
     }
 })();
 
 // ====== REDIRECT HELPER ======
 function handleAuthSuccess(defaultUrl = "loader") {
-
-    const params = new URLSearchParams(window.location.search);
-
-    const redirectTo =
-        params.get("redirect") ||
-        sessionStorage.getItem("authRedirect");
-
+    const redirectTo = getQueryParam("redirect") || sessionStorage.getItem("authRedirect");
     sessionStorage.removeItem("authRedirect");
 
     if (redirectTo) {
@@ -31,12 +52,14 @@ let departmentList = [];
 
 // Helper: show a loading spinner inside a <select>
 function showSelectSpinner(selectElem, text = "Loading...") {
+    if (!selectElem) return;
     selectElem.innerHTML = `<option value="" disabled selected>${text} &#x21bb;</option>`;
     selectElem.disabled = true;
 }
 
 // Fetch faculties on page load
 async function fetchFaculties() {
+    if (!facultySelect) return;
     showSelectSpinner(facultySelect, "Loading faculties");
     facultyList = [];
     try {
@@ -45,7 +68,7 @@ async function fetchFaculties() {
         facultySelect.innerHTML = `<option value="">Select Faculty</option>`;
         facultyList.forEach(fac => {
             const opt = document.createElement("option");
-            opt.value = fac._id; // use ObjectId
+            opt.value = fac._id;
             opt.textContent = fac.name;
             facultySelect.appendChild(opt);
         });
@@ -57,6 +80,7 @@ async function fetchFaculties() {
 }
 
 async function fetchDepartments(facultyId) {
+    if (!deptSelect) return;
     showSelectSpinner(deptSelect, "Loading departments");
     departmentList = [];
     if (!facultyId) {
@@ -70,7 +94,7 @@ async function fetchDepartments(facultyId) {
         deptSelect.innerHTML = `<option value="">Select Department</option>`;
         departmentList.forEach(dept => {
             const opt = document.createElement("option");
-            opt.value = dept._id; // use ObjectId
+            opt.value = dept._id;
             opt.textContent = dept.name;
             deptSelect.appendChild(opt);
         });
@@ -81,11 +105,13 @@ async function fetchDepartments(facultyId) {
     }
 }
 
-facultySelect.addEventListener('change', function() {
-    fetchDepartments(this.value);
-});
+if (facultySelect) {
+    facultySelect.addEventListener('change', function() {
+        fetchDepartments(this.value);
+    });
+}
 
-// ====== Tab switching ======
+// ====== Tab switching and DOM initialization ======
 const tabBtns = document.querySelectorAll('.tab-btn');
 const forms = {
     login: document.getElementById('loginForm'),
@@ -93,71 +119,80 @@ const forms = {
 };
 const messageBox = document.getElementById('messageBox');
 
-document.addEventListener('DOMContentLoaded', function() {
+function initApp() {
     fetchFaculties();
-    showSelectSpinner(deptSelect, "Select faculty first");
-    deptSelect.disabled = true;
+    if (deptSelect) {
+        showSelectSpinner(deptSelect, "Select faculty first");
+        deptSelect.disabled = true;
+    }
 
-    // If URL contains ref param, ensure pendingReferral is stored (defensive)
-    const params = new URLSearchParams(window.location.search);
-    const urlRef = params.get('ref');
+    const urlRef = getQueryParam('ref');
+    const tabParam = getQueryParam('tab');
+
+    // Store in localStorage if URL contains ref
     if (urlRef) {
-      try {
-        localStorage.setItem('pendingReferral', urlRef);
-      } catch (e) {
-        // ignore storage errors
-      }
+        try {
+            localStorage.setItem('pendingReferral', urlRef);
+        } catch (e) {}
     }
 
-    // Auto-fill and lock referral input if referral present in URL
+    // Auto-fill and lock referral input
     try {
-      const refInput = document.getElementById('reg-referral');
-      const pending = localStorage.getItem('pendingReferral');
-      if (refInput && pending) {
-        refInput.value = pending;
-        // Lock only when referral is explicitly provided in the URL
-        if (urlRef) {
-          refInput.setAttribute('readonly', 'readonly');
-          refInput.setAttribute('title', 'Referral code locked from link');
-          refInput.classList.add('locked-referral');
-        } else {
-          // pre-fill from localStorage but keep editable
-          refInput.removeAttribute('readonly');
-          refInput.removeAttribute('title');
-          refInput.classList.remove('locked-referral');
+        const refInput = document.getElementById('reg-referral');
+        const pendingRef = urlRef || localStorage.getItem('pendingReferral');
+
+        if (refInput && pendingRef) {
+            refInput.value = pendingRef;
+            if (urlRef) {
+                refInput.readOnly = true;
+                refInput.setAttribute('readonly', 'readonly');
+                refInput.setAttribute('title', 'Referral code locked from link');
+                refInput.classList.add('locked-referral');
+            } else {
+                refInput.readOnly = false;
+                refInput.removeAttribute('readonly');
+                refInput.removeAttribute('title');
+                refInput.classList.remove('locked-referral');
+            }
         }
-      }
     } catch (e) {
-      // ignore DOM errors
-      console.warn('Could not auto-fill referral input:', e);
+        console.warn('Could not auto-fill referral input:', e);
     }
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const tab = urlParams.get('tab');
-    if (tab === 'register') {
+    // Switch tab to 'register' if tab=register OR if referral code present in URL
+    if (tabParam === 'register' || urlRef) {
         tabBtns.forEach(b => b.classList.remove('active'));
-        forms.login.classList.remove('active');
-        forms.register.classList.add('active');
+        if (forms.login) forms.login.classList.remove('active');
+        if (forms.register) forms.register.classList.add('active');
         tabBtns.forEach(btn => { if (btn.dataset.tab === 'register') btn.classList.add('active'); });
-        messageBox.innerHTML = '';
-    } else if (tab === 'login') {
+        if (messageBox) messageBox.innerHTML = '';
+    } else if (tabParam === 'login') {
         tabBtns.forEach(b => b.classList.remove('active'));
-        forms.register.classList.remove('active');
-        forms.login.classList.add('active');
+        if (forms.register) forms.register.classList.remove('active');
+        if (forms.login) forms.login.classList.add('active');
         tabBtns.forEach(btn => { if (btn.dataset.tab === 'login') btn.classList.add('active'); });
-        messageBox.innerHTML = '';
+        if (messageBox) messageBox.innerHTML = '';
     }
-});
+}
+
+// Failsafe execution check for DOM loading
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    initApp();
+}
 
 tabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
         tabBtns.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        for (const k in forms) forms[k].classList.remove('active');
-        forms[btn.dataset.tab].classList.add('active');
-        messageBox.innerHTML = '';
+        for (const k in forms) {
+            if (forms[k]) forms[k].classList.remove('active');
+        }
+        if (forms[btn.dataset.tab]) forms[btn.dataset.tab].classList.add('active');
+        if (messageBox) messageBox.innerHTML = '';
 
-        if (btn.dataset.tab === 'register') {
+        if (btn.dataset.tab === 'register' && forms.register) {
             forms.register.style.display = '';
         }
     });
@@ -167,12 +202,14 @@ tabBtns.forEach(btn => {
 document.querySelectorAll('.toggle-visibility').forEach(span => {
     span.addEventListener('click', function() {
         const input = document.getElementById(this.dataset.target);
-        if (input.type === 'password') {
-            input.type = 'text';
-            this.innerHTML = '<i class="bi bi-eye-slash"></i>';
-        } else {
-            input.type = 'password';
-            this.innerHTML = '<i class="bi bi-eye"></i>';
+        if (input) {
+            if (input.type === 'password') {
+                input.type = 'text';
+                this.innerHTML = '<i class="bi bi-eye-slash"></i>';
+            } else {
+                input.type = 'password';
+                this.innerHTML = '<i class="bi bi-eye"></i>';
+            }
         }
     });
 });
@@ -184,22 +221,23 @@ const modalContent = document.getElementById('modalContent');
 const closeModalBtn = document.getElementById('closeModalBtn');
 
 function openModal(contentHtml, allowClose = false) {
+    if (!modalContent || !modalBackdrop) return;
     modalContent.innerHTML = contentHtml;
     modalBackdrop.classList.add('show');
-    if (allowClose) {
-        closeModalBtn.style.display = 'block';
-    } else {
-        closeModalBtn.style.display = 'none';
+    if (closeModalBtn) {
+        closeModalBtn.style.display = allowClose ? 'block' : 'none';
     }
 }
 function closeModal() {
-    modalBackdrop.classList.remove('show');
-    modalContent.innerHTML = '';
+    if (modalBackdrop) modalBackdrop.classList.remove('show');
+    if (modalContent) modalContent.innerHTML = '';
 }
-closeModalBtn.onclick = closeModal;
-modalBackdrop.addEventListener('click', function(e){
-    if(e.target === modalBackdrop && closeModalBtn.style.display === 'block') closeModal();
-});
+if (closeModalBtn) closeModalBtn.onclick = closeModal;
+if (modalBackdrop) {
+    modalBackdrop.addEventListener('click', function(e){
+        if(e.target === modalBackdrop && closeModalBtn && closeModalBtn.style.display === 'block') closeModal();
+    });
+}
 
 function showLoadingModal(message="Please wait...", subMsg="Processing your request...") {
     openModal(`
@@ -244,398 +282,290 @@ const loginBtn = document.getElementById('loginBtn');
 const loginBtnText = document.getElementById('loginBtnText');
 const loginSpinner = document.getElementById('loginSpinner');
 async function setLoginLoading(isLoading) {
+    if (!loginBtn) return;
     if (isLoading) {
         loginBtn.setAttribute("disabled", "disabled");
-        loginSpinner.style.display = "inline-block";
-        loginBtnText.style.display = "none";
+        if (loginSpinner) loginSpinner.style.display = "inline-block";
+        if (loginBtnText) loginBtnText.style.display = "none";
     } else {
         loginBtn.removeAttribute("disabled");
-        loginSpinner.style.display = "none";
-        loginBtnText.style.display = "inline";
+        if (loginSpinner) loginSpinner.style.display = "none";
+        if (loginBtnText) loginBtnText.style.display = "inline";
     }
 }
 const registerBtn = document.getElementById('registerBtn');
 const registerBtnText = document.getElementById('registerBtnText');
 const registerSpinner = document.getElementById('registerSpinner');
 async function setRegLoading(isLoading) {
+    if (!registerBtn) return;
     if (isLoading) {
         registerBtn.setAttribute("disabled", "disabled");
-        registerSpinner.style.display = "inline-block";
-        registerBtnText.style.display = "none";
+        if (registerSpinner) registerSpinner.style.display = "inline-block";
+        if (registerBtnText) registerBtnText.style.display = "none";
     } else {
         registerBtn.removeAttribute("disabled");
-        registerSpinner.style.display = "none";
-        registerBtnText.style.display = "inline";
+        if (registerSpinner) registerSpinner.style.display = "none";
+        if (registerBtnText) registerBtnText.style.display = "inline";
     }
 }
 
 // ====== LOGIN HANDLING ======
-forms.login.addEventListener('submit', async function(e) {
-    e.preventDefault();
-    const username = document.getElementById('login-username').value.trim();
-    const password = document.getElementById('login-password').value;
-    if (!validateUsername(username) || !password) {
-        showStatusModal("error","Login Error","Both fields are required!");
-        return;
-    }
-    showLoadingModal("Logging in...","Please wait while we log you in.");
-    await setLoginLoading(true);
+if (forms.login) {
+    forms.login.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const username = document.getElementById('login-username').value.trim();
+        const password = document.getElementById('login-password').value;
+        if (!validateUsername(username) || !password) {
+            showStatusModal("error","Login Error","Both fields are required!");
+            return;
+        }
+        showLoadingModal("Logging in...","Please wait while we log you in.");
+        await setLoginLoading(true);
 
-    try {
-        let loginResponse = await fetch("https://examguide.onrender.com/api/auth/login", {
-            method: "POST",
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({username, password})
-        });
-        let loginData = await loginResponse.json();
+        try {
+            let loginResponse = await fetch("https://examguide.onrender.com/api/auth/login", {
+                method: "POST",
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({username, password})
+            });
+            let loginData = await loginResponse.json();
 
-        if (loginResponse.ok) {
-            // Save token using both keys
-            localStorage.setItem('student_jwt_token', loginData.token);
-            localStorage.setItem('token', loginData.token);
+            if (loginResponse.ok) {
+                localStorage.setItem('student_jwt_token', loginData.token);
+                localStorage.setItem('token', loginData.token);
 
-            // Optionally save user data if returned
-            if (loginData.user) {
-                localStorage.setItem('studentData', JSON.stringify(loginData.user));
-            }
+                if (loginData.user) {
+                    localStorage.setItem('studentData', JSON.stringify(loginData.user));
+                }
 
-            // Get user role and redirect accordingly
-            try {
-                let profileResp = await fetch("https://examguide.onrender.com/api/auth/me", {
-                    headers: {
-                        'Authorization': 'Bearer ' + loginData.token
+                try {
+                    let profileResp = await fetch("https://examguide.onrender.com/api/auth/me", {
+                        headers: {
+                            'Authorization': 'Bearer ' + loginData.token
+                        }
+                    });
+
+                    let profileData = await profileResp.json();
+
+                    if (profileResp.ok && profileData.user) {
+                        const user = profileData.user;
+                        localStorage.setItem('studentData', JSON.stringify(user));
+
+                        const role = user.role;
+                        let roleMsg = "Welcome!";
+
+                        switch (role) {
+                            case 'superadmin': roleMsg = "Welcome, Superadmin!"; break;
+                            case 'admin': roleMsg = "Welcome, Admin!"; break;
+                            case 'tutor': roleMsg = "Welcome, User!"; break;
+                            case 'uploader': roleMsg = "Welcome, Uploader!"; break;
+                            case 'pq-uploader': roleMsg = "Welcome, PQ-Uploader!"; break;
+                            case 'blogger': roleMsg = "Welcome, Blogger!"; break;
+                            default: roleMsg = "Welcome, Student!";
+                        }
+
+                        showStatusModal("success", "Login Successful", roleMsg, false);
+
+                        setTimeout(() => {
+                            const defaultTarget = role === 'superadmin' ? "supaadmin.html" : "s-dashboard";
+                            handleAuthSuccess(defaultTarget);
+                        }, 1300);
+
+                        await setLoginLoading(false);
+                        return;
                     }
+                } catch (err) {
+                    console.error(err);
+                    showStatusModal("success", "Login Successful", "You have been logged in!", false);
+                    setTimeout(() => {
+                        handleAuthSuccess("s-dashboard");
+                    }, 1200);
+                }
+
+                await setLoginLoading(false);
+                return;
+            }
+            showStatusModal("error","Login Failed",loginData.message || "Login failed");
+        } catch (err) {
+            showStatusModal("error","Network Error","Network or server error. Please try again.");
+        }
+        await setLoginLoading(false);
+    });
+}
+
+// ====== REGISTRATION HANDLING (with confirmation modal) ======
+if (forms.register) {
+    forms.register.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const fullName = document.getElementById('reg-fullname').value.trim();
+        const username = document.getElementById('reg-username').value.trim();
+        const password = document.getElementById('reg-password').value;
+        const email = document.getElementById('reg-email').value.trim();
+        const facultyId = document.getElementById('reg-faculty').value;
+        const departmentId = document.getElementById('reg-department').value;
+        const level = document.getElementById('reg-level').value;
+        const phone = document.getElementById('reg-phone').value.trim();
+
+        const institutionId = document.getElementById('reg-institution') ? document.getElementById('reg-institution').value : "OAU";
+        const userType = document.getElementById('reg-user-type') ? document.getElementById('reg-user-type').value : "student";
+
+        const manualReferral = document.getElementById('reg-referral')?.value.trim() || "";
+        const profilePic = document.getElementById('reg-profile-pic')?.files[0] || null;
+
+        const facultyText = facultyId
+            ? document.querySelector(`#reg-faculty option[value="${facultyId}"]`)?.textContent || ""
+            : "";
+
+        const departmentText = departmentId
+            ? document.querySelector(`#reg-department option[value="${departmentId}"]`)?.textContent || ""
+            : "";
+
+        const institutionText = institutionId || "OAU";
+
+        const userTypeText = userType
+            ? (document.querySelector(`#reg-user-type option[value="${userType}"]`)?.textContent || userType)
+            : "";
+
+        if (
+            !fullName ||
+            !username ||
+            !password ||
+            !email ||
+            !institutionId ||
+            !facultyId ||
+            !departmentId ||
+            !level ||
+            !phone ||
+            !userType
+        ) {
+            showStatusModal("error", "Registration Error", "All required fields must be completed.");
+            return;
+        }
+
+        const urlRef = getQueryParam('ref');
+        const referralCode = urlRef || localStorage.getItem('pendingReferral') || manualReferral || "";
+
+        showConfirmationModal({
+            "Full Name": fullName,
+            "Username": username,
+            "Email": email,
+            "Institution": institutionText,
+            "Faculty": facultyText,
+            "Department": departmentText,
+            "Account Type": userTypeText,
+            "Level": level,
+            "Phone": phone,
+            ...(referralCode ? { "Referral ID": referralCode } : {}),
+            ...(profilePic ? { "Profile Picture": profilePic.name } : {})
+        }, async function proceedReg() {
+
+            showLoadingModal("Registering...", "Please wait while we create your account.");
+            await setRegLoading(true);
+
+            try {
+                const formData = new FormData();
+                formData.append("fullname", fullName);
+                formData.append("username", username);
+                formData.append("password", password);
+                formData.append("email", email);
+                formData.append("faculty", facultyId);
+                formData.append("department", departmentId);
+                formData.append("level", level);
+                formData.append("phone", phone);
+
+                if (institutionId) formData.append("institution", institutionId);
+                if (userType) formData.append("userType", userType);
+                if (referralCode) formData.append("ref", referralCode);
+                if (profilePic) formData.append("profilePic", profilePic);
+
+                const registerResponse = await fetch("https://examguide.onrender.com/api/auth/register", {
+                    method: "POST",
+                    body: formData
                 });
 
-                let profileData = await profileResp.json();
+                const result = await registerResponse.json();
+                await setRegLoading(false);
 
-                if (profileResp.ok && profileData.user) {
-                    const user = profileData.user;
-
-                    // Save full profile for later use
-                    localStorage.setItem('studentData', JSON.stringify(user));
-
-                    const role = user.role;
-                    let roleMsg = "Welcome!";
-
-                    switch (role) {
-                        case 'superadmin':
-                            roleMsg = "Welcome, Superadmin!";
-                            break;
-                        case 'admin':
-                            roleMsg = "Welcome, Admin!";
-                            break;
-                        case 'tutor':
-                            roleMsg = "Welcome, User!";
-                            break;
-                        case 'uploader':
-                            roleMsg = "Welcome, Uploader!";
-                            break;
-                        case 'pq-uploader':
-                            roleMsg = "Welcome, PQ-Uploader!";
-                            break;
-                        case 'blogger':
-                            roleMsg = "Welcome, Blogger!";
-                            break;
-                        default:
-                            roleMsg = "Welcome, Student!";
-                    }
-
-                    showStatusModal(
-                        "success",
-                        "Login Successful",
-                        roleMsg,
-                        false
-                    );
+                if (registerResponse.ok) {
+                    localStorage.removeItem("pendingReferral");
+                    showStatusModal("success", "Registration Successful", result.message || "Account created successfully.", false);
 
                     setTimeout(() => {
-                        const defaultTarget = role === 'superadmin' ? "supaadmin.html" : "s-dashboard";
-                        handleAuthSuccess(defaultTarget);
-                    }, 1300);
-
-                    await setLoginLoading(false);
-                    return;
+                        closeModal();
+                        if (forms.login && forms.register) {
+                            forms.login.classList.add('active');
+                            forms.register.classList.remove('active');
+                        }
+                        const loginTabBtn = document.querySelector('[data-tab="login"]');
+                        if (loginTabBtn) loginTabBtn.click();
+                    }, 1800);
+                } else {
+                    showStatusModal("error", "Registration Failed", result.message || "Could not register.");
                 }
             } catch (err) {
                 console.error(err);
-
-                showStatusModal(
-                    "success",
-                    "Login Successful",
-                    "You have been logged in!",
-                    false
-                );
-
-                setTimeout(() => {
-                    handleAuthSuccess("s-dashboard");
-                }, 1200);
+                await setRegLoading(false);
+                showStatusModal("error", "Network Error", "Could not connect to server.");
             }
-
-            await setLoginLoading(false);
-            return;
-        }
-        showStatusModal("error","Login Failed",loginData.message || "Login failed");
-    } catch (err) {
-        showStatusModal("error","Network Error","Network or server error. Please try again.");
-    }
-    await setLoginLoading(false);
-});
-
-// ====== REGISTRATION HANDLING (with confirmation modal) ======
-forms.register.addEventListener('submit', async function(e) {
-    e.preventDefault();
-
-    const fullName = document.getElementById('reg-fullname').value.trim();
-    const username = document.getElementById('reg-username').value.trim();
-    const password = document.getElementById('reg-password').value;
-    const email = document.getElementById('reg-email').value.trim();
-    const facultyId = document.getElementById('reg-faculty').value;
-    const departmentId = document.getElementById('reg-department').value;
-    const level = document.getElementById('reg-level').value;
-    const phone = document.getElementById('reg-phone').value.trim();
-
-    // DEFAULT institution value (hidden input) — will be "OAU"
-    const institutionId = document.getElementById('reg-institution') ? document.getElementById('reg-institution').value : "OAU";
-    const userType = document.getElementById('reg-user-type') ? document.getElementById('reg-user-type').value : "student";
-
-    const manualReferral =
-        document.getElementById('reg-referral')?.value.trim() || "";
-
-    const profilePic =
-        document.getElementById('reg-profile-pic')?.files[0] || null;
-
-    const facultyText = facultyId
-        ? document.querySelector(`#reg-faculty option[value="${facultyId}"]`).textContent
-        : "";
-
-    const departmentText = departmentId
-        ? document.querySelector(`#reg-department option[value="${departmentId}"]`).textContent
-        : "";
-
-    const institutionText = institutionId || "OAU";
-
-    const userTypeText = userType
-        ? (document.querySelector(`#reg-user-type option[value="${userType}"]`)?.textContent || userType)
-        : "";
-
-    if (
-        !fullName ||
-        !username ||
-        !password ||
-        !email ||
-        !institutionId || // required
-        !facultyId ||
-        !departmentId ||
-        !level ||
-        !phone ||
-        !userType
-    ) {
-        showStatusModal(
-            "error",
-            "Registration Error",
-            "All required fields must be completed."
-        );
-        return;
-    }
-
-    // URL referral takes priority
-    const referralCode =
-        localStorage.getItem('pendingReferral') ||
-        manualReferral ||
-        "";
-
-    showConfirmationModal({
-        "Full Name": fullName,
-        "Username": username,
-        "Email": email,
-        "Institution": institutionText,
-        "Faculty": facultyText,
-        "Department": departmentText,
-        "Account Type": userTypeText,
-        "Level": level,
-        "Phone": phone,
-        ...(referralCode
-            ? { "Referral ID": referralCode }
-            : {}),
-        ...(profilePic
-            ? { "Profile Picture": profilePic.name }
-            : {})
-    }, async function proceedReg() {
-
-        showLoadingModal(
-            "Registering...",
-            "Please wait while we create your account."
-        );
-
-        await setRegLoading(true);
-
-        try {
-
-            const formData = new FormData();
-
-            formData.append("fullname", fullName);
-            formData.append("username", username);
-            formData.append("password", password);
-            formData.append("email", email);
-            formData.append("faculty", facultyId);
-            formData.append("department", departmentId);
-            formData.append("level", level);
-            formData.append("phone", phone);
-
-            // send institution (string "OAU")
-            if (institutionId) {
-                formData.append("institution", institutionId);
-            }
-            if (userType) {
-                formData.append("userType", userType);
-            }
-
-            if (referralCode) {
-                formData.append("ref", referralCode);
-            }
-
-            if (profilePic) {
-                formData.append("profilePic", profilePic);
-            }
-
-            const registerResponse = await fetch(
-                "https://examguide.onrender.com/api/auth/register",
-                {
-                    method: "POST",
-                    body: formData
-                }
-            );
-
-            const result = await registerResponse.json();
-
-            await setRegLoading(false);
-
-            if (registerResponse.ok) {
-
-                localStorage.removeItem("pendingReferral");
-
-                showStatusModal(
-                    "success",
-                    "Registration Successful",
-                    result.message ||
-                    "Account created successfully.",
-                    false
-                );
-
-                setTimeout(() => {
-
-                    closeModal();
-
-                    forms.login.classList.add('active');
-                    forms.register.classList.remove('active');
-
-                    document
-                        .querySelector('[data-tab="login"]')
-                        .click();
-
-                }, 1800);
-
-            } else {
-
-                showStatusModal(
-                    "error",
-                    "Registration Failed",
-                    result.message ||
-                    "Could not register."
-                );
-
-            }
-
-        } catch (err) {
-
-            console.error(err);
-
-            await setRegLoading(false);
-
-            showStatusModal(
-                "error",
-                "Network Error",
-                "Could not connect to server."
-            );
-
-        }
-
+        });
     });
+}
 
-});
-
-// ====== Guest login (no backend) ======
+// ====== Guest login ======
 (function setupGuestLogin() {
-  // Create button
-  const guestBtn = document.createElement('button');
-  guestBtn.type = 'button';
-  guestBtn.id = 'guestLoginBtn';
-  guestBtn.textContent = 'Continue as Guest';
-  // Use existing primary styles but make it visually distinct
-  guestBtn.className = 'btn-primary';
-  guestBtn.style.background = '#fff';
-  guestBtn.style.color = 'var(--primary)';
-  guestBtn.style.border = '1.5px solid rgba(39,110,241,0.12)';
-  guestBtn.style.marginTop = '8px';
+    const guestBtn = document.createElement('button');
+    guestBtn.type = 'button';
+    guestBtn.id = 'guestLoginBtn';
+    guestBtn.textContent = 'Continue as Guest';
+    guestBtn.className = 'btn-primary';
+    guestBtn.style.background = '#fff';
+    guestBtn.style.color = 'var(--primary)';
+    guestBtn.style.border = '1.5px solid rgba(39,110,241,0.12)';
+    guestBtn.style.marginTop = '8px';
 
-  // Insert after the login button
-  const loginBtn = document.getElementById('loginBtn');
-  if (loginBtn && loginBtn.parentNode) {
-    loginBtn.parentNode.insertBefore(guestBtn, loginBtn.nextSibling);
-  }
+    const loginBtnElem = document.getElementById('loginBtn');
+    if (loginBtnElem && loginBtnElem.parentNode) {
+        loginBtnElem.parentNode.insertBefore(guestBtn, loginBtnElem.nextSibling);
+    }
 
-  // Handler: set a guest session in localStorage and redirect
-  guestBtn.addEventListener('click', function () {
-    const guestUser = {
-      _id: 'guest_' + Date.now(),
-      username: 'guest',
-      fullname: 'Guest User',
-      email: '',
-      role: 'guest',
-      referralCode: '',
-      creditPoints: 0,
-      verified: false,
-      createdAt: new Date().toISOString()
-    };
+    guestBtn.addEventListener('click', function () {
+        const guestUser = {
+            _id: 'guest_' + Date.now(),
+            username: 'guest',
+            fullname: 'Guest User',
+            email: '',
+            role: 'guest',
+            referralCode: '',
+            creditPoints: 0,
+            verified: false,
+            createdAt: new Date().toISOString()
+        };
 
-    // Save tokens/data locally (no backend)
-    localStorage.setItem('student_jwt_token', 'guest_token');
-    localStorage.setItem('token', 'guest_token');
-    localStorage.setItem('studentData', JSON.stringify(guestUser));
+        localStorage.setItem('student_jwt_token', 'guest_token');
+        localStorage.setItem('token', 'guest_token');
+        localStorage.setItem('studentData', JSON.stringify(guestUser));
 
-    // Inform the user and redirect to dashboard or target page
-    showStatusModal('success', 'Guest Login', 'You are now signed in as a guest. Some features may be limited.', false);
+        showStatusModal('success', 'Guest Login', 'You are now signed in as a guest. Some features may be limited.', false);
 
-    // Short delay so user sees the modal, then navigate
-    setTimeout(() => {
-      // close modal if present
-      try { closeModal(); } catch (e) {}
-      // redirect using handleAuthSuccess
-      handleAuthSuccess('loader');
-    }, 1200);
-  });
+        setTimeout(() => {
+            try { closeModal(); } catch (e) {}
+            handleAuthSuccess('loader');
+        }, 1200);
+    });
 })();
 
 document.querySelectorAll('.social-btn').forEach(btn => {
     btn.addEventListener('click', function() {
         const platform = btn.classList.contains('google') ? "Google" : "Facebook";
-        showStatusModal(
-            "success",
-            `${platform} Login`,
-            `Login with ${platform} is coming soon!`,
-            true
-        );
+        showStatusModal("success", `${platform} Login`, `Login with ${platform} is coming soon!`, true);
     });
 });
+
 // --- PWA Detection & Configuration ---
-    const isPWA = window.matchMedia("(display-mode: standalone)").matches ||
-                  window.navigator.standalone === true;
-
-    if (isPWA) {
-        // Disable pull-to-refresh
-        document.documentElement.style.overscrollBehavior = "none";
-        document.body.style.overscrollBehavior = "none";
-
-        // Force mobile layout
-        document.documentElement.classList.add("pwa-mobile");
-    }
+const isPWA = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+if (isPWA) {
+    document.documentElement.style.overscrollBehavior = "none";
+    document.body.style.overscrollBehavior = "none";
+    document.documentElement.classList.add("pwa-mobile");
+}
