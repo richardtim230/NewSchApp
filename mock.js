@@ -98,6 +98,40 @@ document.addEventListener('DOMContentLoaded', function() {
     showSelectSpinner(deptSelect, "Select faculty first");
     deptSelect.disabled = true;
 
+    // If URL contains ref param, ensure pendingReferral is stored (defensive)
+    const params = new URLSearchParams(window.location.search);
+    const urlRef = params.get('ref');
+    if (urlRef) {
+      try {
+        localStorage.setItem('pendingReferral', urlRef);
+      } catch (e) {
+        // ignore storage errors
+      }
+    }
+
+    // Auto-fill and lock referral input if referral present in URL
+    try {
+      const refInput = document.getElementById('reg-referral');
+      const pending = localStorage.getItem('pendingReferral');
+      if (refInput && pending) {
+        refInput.value = pending;
+        // Lock only when referral is explicitly provided in the URL
+        if (urlRef) {
+          refInput.setAttribute('readonly', 'readonly');
+          refInput.setAttribute('title', 'Referral code locked from link');
+          refInput.classList.add('locked-referral');
+        } else {
+          // pre-fill from localStorage but keep editable
+          refInput.removeAttribute('readonly');
+          refInput.removeAttribute('title');
+          refInput.classList.remove('locked-referral');
+        }
+      }
+    } catch (e) {
+      // ignore DOM errors
+      console.warn('Could not auto-fill referral input:', e);
+    }
+
     const urlParams = new URLSearchParams(window.location.search);
     const tab = urlParams.get('tab');
     if (tab === 'register') {
