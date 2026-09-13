@@ -1157,22 +1157,71 @@
     </div>
 
     <!-- 3. ATTENDANCE MODAL -->
-    <div id="attendance-modal" tabindex="-1" aria-hidden="true" class="hidden overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 justify-center items-end w-full md:inset-0 h-full bg-slate-900/50 backdrop-blur-xs">
-        <div class="animate-bottom-sheet relative p-4 w-full max-w-lg bg-white rounded-t-3xl shadow-2xl">
-            <div class="flex items-center justify-between p-4 border-b border-slate-100">
-                <h3 class="text-base font-bold text-slate-900">Service Check-In</h3>
-                <button type="button" data-modal-hide="attendance-modal" class="text-slate-400 hover:text-slate-900 rounded-lg text-sm w-8 h-8 flex justify-center items-center">✕</button>
-            </div>
-            <div class="p-6 text-center space-y-4">
-                <div class="w-16 h-16 bg-teal-100 text-teal-700 rounded-full flex items-center justify-center mx-auto">
-                    <svg class="w-8 h-8" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                </div>
-                <h4 class="text-sm font-bold text-slate-900">Check in for Today's Service</h4>
-                <p class="text-xs text-slate-500">Record your physical or online attendance with Rehoboth Mega Cathedral.</p>
-                <button onclick="recordAttendance()" class="w-full py-3 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs rounded-xl transition-all">Confirm Check-In</button>
-            </div>
+    <div id="attendance-modal"
+     tabindex="-1"
+     aria-hidden="true"
+     class="hidden overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 justify-center items-end w-full md:inset-0 h-full bg-slate-900/50 backdrop-blur-xs">
+
+    <div class="animate-bottom-sheet relative p-4 w-full max-w-lg bg-white rounded-t-3xl shadow-2xl">
+
+        <div class="flex items-center justify-between p-4 border-b border-slate-100">
+
+            <h3 class="text-base font-bold text-slate-900">
+                Service Check-In
+            </h3>
+
+            <button
+                type="button"
+                data-modal-hide="attendance-modal"
+                class="text-slate-400 hover:text-slate-900 rounded-lg text-sm w-8 h-8 flex justify-center items-center">
+                ✕
+            </button>
+
         </div>
+
+        <div class="p-6 text-center space-y-4">
+
+            <div class="w-16 h-16 bg-teal-100 text-teal-700 rounded-full flex items-center justify-center mx-auto">
+
+                <svg
+                    class="w-8 h-8"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    viewBox="0 0 24 24">
+
+                    <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z">
+                    </path>
+
+                </svg>
+
+            </div>
+
+            <h4 class="text-sm font-bold text-slate-900">
+                Check in for Today's Service
+            </h4>
+
+            <p class="text-xs text-slate-500">
+                Record your physical or online attendance with
+                Rehoboth Mega Cathedral.
+            </p>
+
+            <button
+                type="button"
+                onclick="recordAttendance()"
+                class="w-full py-3 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs rounded-xl transition-all">
+
+                Confirm Check-In
+
+            </button>
+
+        </div>
+
     </div>
+</div>
 
     <!-- 4. SUNDAY SCHOOL MODAL -->
     <div id="sundayschool-modal" tabindex="-1" aria-hidden="true" class="hidden overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 justify-center items-end w-full md:inset-0 h-full bg-slate-900/50 backdrop-blur-xs">
@@ -2144,25 +2193,37 @@ async function handlePrayerSubmit(e) {
 async function recordAttendance() {
     try {
         const token = getAuthToken();
+
         if (!token) {
             redirectToLogin("Session expired. Please log in again.");
             return;
         }
 
-        const eventId = document.getElementById("attendance-select-event")?.value;
-        
-        if (!eventId) {
-            showToast("Please select an event");
-            return;
-        }
+        const eventId =
+            document.getElementById("attendance-select-event")?.value || null;
 
-        const res = await fetch(`${BACKEND_BASE_URL}/register-event/${eventId}`, {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${token}`,
-                "Content-Type": "application/json"
+        const eventName =
+            document.getElementById("attendance-select-event")
+                ?.selectedOptions?.[0]?.text || "Today's Service";
+
+        const res = await fetch(
+            `${BACKEND_BASE_URL}/attendance/check-in`,
+            {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${token}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    eventId,
+                    eventName,
+                    serviceType: "Sunday Service",
+                    attendanceType: "physical"
+                })
             }
-        });
+        );
+
+        const data = await res.json().catch(() => ({}));
 
         if (res.status === 401) {
             redirectToLogin("Session expired. Please log in again.");
@@ -2170,28 +2231,61 @@ async function recordAttendance() {
         }
 
         if (res.ok) {
-            showToast("Attendance successfully checked in!");
-            
+
+            showToast(
+                data.message || "Attendance successfully checked in!"
+            );
+
+            // Update local dashboard data
             if (currentUserData) {
-                currentUserData.attendanceRecords = currentUserData.attendanceRecords || [];
-                currentUserData.attendanceRecords.push({
-                    eventId,
-                    date: new Date().toISOString(),
-                    checkedIn: true
-                });
+
+                currentUserData.attendanceRecords =
+                    currentUserData.attendanceRecords || [];
+
+                if (data.attendance) {
+                    currentUserData.attendanceRecords.push(
+                        data.attendance
+                    );
+                }
+
                 saveUserData(currentUserData);
                 renderUserData(currentUserData);
             }
-            
-            const modal = document.getElementById("attendance-modal");
-            if (modal) modal.classList.add("hidden");
+
+            // Close attendance modal
+            const modal =
+                document.getElementById("attendance-modal");
+
+            if (modal) {
+                modal.classList.add("hidden");
+                modal.classList.remove("flex");
+            }
+
+        } else if (res.status === 409) {
+
+            showToast(
+                data.message ||
+                "You have already checked in for this service today."
+            );
+
         } else {
-            const error = await res.json().catch(()=>({}));
-            showToast(error.message || "Failed to record attendance");
+
+            showToast(
+                data.message ||
+                "Failed to record attendance"
+            );
         }
+
     } catch (err) {
-        console.error("Attendance recording error:", err);
-        showToast("Error recording attendance. Please try again.");
+
+        console.error(
+            "Attendance recording error:",
+            err
+        );
+
+        showToast(
+            "Error recording attendance. Please try again."
+        );
     }
 }
 
