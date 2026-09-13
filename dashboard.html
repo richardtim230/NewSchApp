@@ -1981,10 +1981,11 @@ async function fetchUserProfile() {
 // GIVING API INTEGRATION
 async function handleGivingSubmit(e) {
     e.preventDefault();
+
     const amountVal = document.getElementById("give-amount")?.value;
     const amount = amountVal ? parseFloat(amountVal) : 0;
-    const type = document.getElementById("give-type")?.value || 'General';
-    
+    const type = document.getElementById("give-type")?.value || "General";
+
     if (!amount || amount <= 0) {
         showToast("Please enter a valid amount");
         return;
@@ -1992,6 +1993,7 @@ async function handleGivingSubmit(e) {
 
     try {
         const token = getAuthToken();
+
         if (!token) {
             redirectToLogin("Session expired. Please log in again.");
             return;
@@ -2007,47 +2009,71 @@ async function handleGivingSubmit(e) {
                 type,
                 amount,
                 currency: "NGN",
-                method: "Dashboard",
+
+                // FIXED:
+                method: "online",
+
                 reference: `GIVING-${Date.now()}`,
                 description: `${type} offering`
             })
         });
 
+        // Only treat an actual authentication failure as a session problem
         if (res.status === 401) {
             redirectToLogin("Session expired. Please log in again.");
             return;
         }
 
-        if (res.ok) {
-            showToast(`Thank you! NGN ${amount.toLocaleString()} for ${type} recorded.`);
-            
+        const data = await res.json().catch(() => ({}));
+
+        if (res.ok && data.success) {
+            showToast(
+                `Thank you! NGN ${amount.toLocaleString()} for ${type} recorded.`
+            );
+
             if (currentUserData) {
-                currentUserData.totalGiving = (currentUserData.totalGiving || 0) + amount;
-                currentUserData.givingRecords = currentUserData.givingRecords || [];
+                currentUserData.totalGiving =
+                    (currentUserData.totalGiving || 0) + amount;
+
+                currentUserData.givingRecords =
+                    currentUserData.givingRecords || [];
+
                 currentUserData.givingRecords.push({
                     type,
                     amount,
                     currency: "NGN",
+                    method: "online",
+                    reference: data.givingRecord?.reference ||
+                               `GIVING-${Date.now()}`,
                     date: new Date().toISOString(),
                     confirmed: false
                 });
+
                 saveUserData(currentUserData);
                 renderUserData(currentUserData);
             }
-            
+
             const modal = document.getElementById("give-modal");
-            if (modal) modal.classList.add("hidden");
+
+            if (modal) {
+                modal.classList.add("hidden");
+            }
+
             e.target.reset();
+
         } else {
-            const error = await res.json().catch(()=>({}));
-            showToast(error.message || "Failed to record giving");
+            console.error("Giving API error:", data);
+
+            showToast(
+                data.message || "Failed to record giving"
+            );
         }
+
     } catch (err) {
         console.error("Giving submission error:", err);
         showToast("Error recording giving. Please try again.");
     }
 }
-
 // PRAYER REQUEST API INTEGRATION
 async function handlePrayerSubmit(e) {
     e.preventDefault();
