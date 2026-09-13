@@ -2191,7 +2191,9 @@ async function handlePrayerSubmit(e) {
 
 // ATTENDANCE MARKING API INTEGRATION
 async function recordAttendance() {
+
     try {
+
         const token = getAuthToken();
 
         if (!token) {
@@ -2199,82 +2201,108 @@ async function recordAttendance() {
             return;
         }
 
-        const eventId =
-            document.getElementById("attendance-select-event")?.value || null;
-
-        const eventName =
-            document.getElementById("attendance-select-event")
-                ?.selectedOptions?.[0]?.text || "Today's Service";
 
         const res = await fetch(
             `${BACKEND_BASE_URL}/attendance/check-in`,
             {
                 method: "POST",
+
                 headers: {
                     "Authorization": `Bearer ${token}`,
                     "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    eventId,
-                    eventName,
-                    serviceType: "Sunday Service",
-                    attendanceType: "physical"
-                })
+                }
             }
         );
 
+
         const data = await res.json().catch(() => ({}));
 
+
+        // Token problem
         if (res.status === 401) {
-            redirectToLogin("Session expired. Please log in again.");
+            redirectToLogin(
+                "Session expired. Please log in again."
+            );
             return;
         }
 
+
+        // Attendance outside allowed time
+        if (res.status === 403) {
+
+            showToast(
+                data.message ||
+                "Attendance is currently closed."
+            );
+
+            return;
+        }
+
+
+        // Already attended
+        if (res.status === 409) {
+
+            showToast(
+                data.message ||
+                "You have already marked attendance today."
+            );
+
+            return;
+        }
+
+
+        // Successful check-in
         if (res.ok) {
 
             showToast(
-                data.message || "Attendance successfully checked in!"
+                data.message ||
+                "Attendance successfully recorded!"
             );
 
-            // Update local dashboard data
+
             if (currentUserData) {
 
                 currentUserData.attendanceRecords =
                     currentUserData.attendanceRecords || [];
 
+
                 if (data.attendance) {
+
                     currentUserData.attendanceRecords.push(
                         data.attendance
                     );
+
                 }
 
+
                 saveUserData(currentUserData);
+
                 renderUserData(currentUserData);
+
             }
 
-            // Close attendance modal
+
+            // Close modal
             const modal =
                 document.getElementById("attendance-modal");
 
             if (modal) {
+
                 modal.classList.add("hidden");
                 modal.classList.remove("flex");
+
             }
 
-        } else if (res.status === 409) {
 
-            showToast(
-                data.message ||
-                "You have already checked in for this service today."
-            );
-
-        } else {
-
-            showToast(
-                data.message ||
-                "Failed to record attendance"
-            );
+            return;
         }
+
+
+        showToast(
+            data.message ||
+            "Failed to record attendance."
+        );
+
 
     } catch (err) {
 
@@ -2286,8 +2314,11 @@ async function recordAttendance() {
         showToast(
             "Error recording attendance. Please try again."
         );
+
     }
 }
+
+        
 
 // SAVE/UNSAVE SERMON API INTEGRATION
 async function toggleSaveSermon(sermonId) {
