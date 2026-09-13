@@ -1217,238 +1217,320 @@
 
     <!-- FLOWBITE JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.js"></script>
-    <script>
-    const BACKEND_BASE_URL = "https://examguide.onrender.com/api/rccg/users";
+<script>
+const BACKEND_BASE_URL = "https://examguide.onrender.com/api/rccg/users";
 
-    let currentUserData = null;
-    let audioSermons = [];
-    let videoSermons = [];
-    let currentSermonIndex = 0;
-    let isAudioPlaying = false;
-    let playbackSpeeds = [1.0, 1.25, 1.5, 2.0];
-    let currentSpeedIndex = 0;
+let currentUserData = null;
+let audioSermons = [];
+let videoSermons = [];
+let currentSermonIndex = 0;
+let isAudioPlaying = false;
+let playbackSpeeds = [1.0, 1.25, 1.5, 2.0];
+let currentSpeedIndex = 0;
 
-    // TAB NAVIGATION SYSTEM (Home <-> Video Sermons)
-    function switchTab(tabName) {
-        const homeView = document.getElementById('home-view');
-        const sermonsView = document.getElementById('sermons-view');
-        const navHome = document.getElementById('nav-btn-home');
-        const navSermons = document.getElementById('nav-btn-sermons');
+// TAB NAVIGATION SYSTEM (Home <-> Video Sermons)
+function switchTab(tabName) {
+    const homeView = document.getElementById('home-view');
+    const sermonsView = document.getElementById('sermons-view');
+    const navHome = document.getElementById('nav-btn-home');
+    const navSermons = document.getElementById('nav-btn-sermons');
 
-        if (tabName === 'sermons') {
-            if (homeView) homeView.classList.add('hidden');
-            if (sermonsView) sermonsView.classList.remove('hidden');
-            
-            if (navHome) {
-                navHome.classList.remove('text-rccg-blue');
-                navHome.classList.add('text-slate-400');
-            }
-            if (navSermons) {
-                navSermons.classList.remove('text-slate-400');
-                navSermons.classList.add('text-rccg-blue');
-            }
-            
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (tabName === 'sermons') {
+        if (homeView) homeView.classList.add('hidden');
+        if (sermonsView) sermonsView.classList.remove('hidden');
+        
+        if (navHome) {
+            navHome.classList.remove('text-rccg-blue');
+            navHome.classList.add('text-slate-400');
+        }
+        if (navSermons) {
+            navSermons.classList.remove('text-slate-400');
+            navSermons.classList.add('text-rccg-blue');
+        }
+        
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+        if (sermonsView) sermonsView.classList.add('hidden');
+        if (homeView) homeView.classList.remove('hidden');
+        
+        if (navSermons) {
+            navSermons.classList.remove('text-rccg-blue');
+            navSermons.classList.add('text-slate-400');
+        }
+        if (navHome) {
+            navHome.classList.remove('text-slate-400');
+            navHome.classList.add('text-rccg-blue');
+        }
+        
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+}
+
+function scrollToSection(sectionId) {
+    setTimeout(() => {
+        const el = document.getElementById(sectionId);
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+}
+
+// VIDEO SERMONS TAB FUNCTIONS
+function playVideoInFeatured(videoSrc, title, speaker, dateTag, sermonId) {
+    const iframe = document.getElementById('main-video-iframe');
+    const titleEl = document.getElementById('featured-sermon-title');
+    const speakerEl = document.getElementById('featured-sermon-speaker');
+    const dateEl = document.getElementById('featured-sermon-date');
+
+    if (iframe) iframe.src = videoSrc;
+    if (titleEl) titleEl.textContent = title;
+    if (speakerEl) speakerEl.textContent = speaker;
+    if (dateEl) dateEl.textContent = dateTag;
+
+    const sermonsView = document.getElementById('sermons-view');
+    if (sermonsView) sermonsView.scrollIntoView({ behavior: 'smooth' });
+
+    showToast(`Playing video: ${title}`);
+}
+
+function filterSermonCategory(category) {
+    const cards = document.querySelectorAll('.video-sermon-card');
+    const chips = document.querySelectorAll('.sermon-cat-chip');
+    let visibleCount = 0;
+
+    chips.forEach(chip => {
+        chip.classList.remove('bg-rccg-blue', 'text-white');
+        chip.classList.add('bg-slate-100', 'text-slate-700');
+    });
+
+    if (event && event.target) {
+        event.target.classList.remove('bg-slate-100', 'text-slate-700');
+        event.target.classList.add('bg-rccg-blue', 'text-white');
+    }
+
+    cards.forEach(card => {
+        const cardCat = card.getAttribute('data-category');
+        if (category === 'all' || cardCat === category) {
+            card.classList.remove('hidden');
+            visibleCount++;
         } else {
-            if (sermonsView) sermonsView.classList.add('hidden');
-            if (homeView) homeView.classList.remove('hidden');
-            
-            if (navSermons) {
-                navSermons.classList.remove('text-rccg-blue');
-                navSermons.classList.add('text-slate-400');
-            }
-            if (navHome) {
-                navHome.classList.remove('text-slate-400');
-                navHome.classList.add('text-rccg-blue');
-            }
-            
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-    }
-
-    function scrollToSection(sectionId) {
-        setTimeout(() => {
-            const el = document.getElementById(sectionId);
-            if (el) el.scrollIntoView({ behavior: 'smooth' });
-        }, 100);
-    }
-
-    // VIDEO SERMONS TAB FUNCTIONS
-    function playVideoInFeatured(videoSrc, title, speaker, dateTag, sermonId) {
-        const iframe = document.getElementById('main-video-iframe');
-        const titleEl = document.getElementById('featured-sermon-title');
-        const speakerEl = document.getElementById('featured-sermon-speaker');
-        const dateEl = document.getElementById('featured-sermon-date');
-
-        if (iframe) iframe.src = videoSrc;
-        if (titleEl) titleEl.textContent = title;
-        if (speakerEl) speakerEl.textContent = speaker;
-        if (dateEl) dateEl.textContent = dateTag;
-
-        const sermonsView = document.getElementById('sermons-view');
-        if (sermonsView) sermonsView.scrollIntoView({ behavior: 'smooth' });
-
-        showToast(`Playing video: ${title}`);
-    }
-
-    function filterSermonCategory(category) {
-        const cards = document.querySelectorAll('.video-sermon-card');
-        const chips = document.querySelectorAll('.sermon-cat-chip');
-        let visibleCount = 0;
-
-        chips.forEach(chip => {
-            chip.classList.remove('bg-rccg-blue', 'text-white');
-            chip.classList.add('bg-slate-100', 'text-slate-700');
-        });
-
-        if (event && event.target) {
-            event.target.classList.remove('bg-slate-100', 'text-slate-700');
-            event.target.classList.add('bg-rccg-blue', 'text-white');
-        }
-
-        cards.forEach(card => {
-            const cardCat = card.getAttribute('data-category');
-            if (category === 'all' || cardCat === category) {
-                card.classList.remove('hidden');
-                visibleCount++;
-            } else {
-                card.classList.add('hidden');
-            }
-        });
-
-        const countLabel = document.getElementById('sermon-count-label');
-        if (countLabel) countLabel.textContent = `${visibleCount} Videos`;
-    }
-
-    function filterVideoSermons() {
-        const query = document.getElementById('sermon-search-input').value.toLowerCase().trim();
-        const cards = document.querySelectorAll('.video-sermon-card');
-        let visibleCount = 0;
-
-        cards.forEach(card => {
-            const title = card.getAttribute('data-title') || '';
-            const speaker = card.getAttribute('data-speaker') || '';
-
-            if (title.includes(query) || speaker.includes(query)) {
-                card.classList.remove('hidden');
-                visibleCount++;
-            } else {
-                card.classList.add('hidden');
-            }
-        });
-
-        const countLabel = document.getElementById('sermon-count-label');
-        if (countLabel) countLabel.textContent = `${visibleCount} Videos`;
-    }
-
-    function shareSermon(title) {
-        if (navigator.share) {
-            navigator.share({
-                title: title,
-                text: `Watch ${title} on Rehoboth Mega Cathedral Dashboard`,
-                url: window.location.href
-            }).catch(() => {});
-        } else {
-            navigator.clipboard.writeText(window.location.href);
-            showToast('Sermon link copied to clipboard!');
-        }
-    }
-
-    // RETRIEVE AUTH TOKEN - FIXED VERSION
-    function getAuthToken() {
-        let token = localStorage.getItem("rccgToken") 
-            || localStorage.getItem("rccg_token") 
-            || localStorage.getItem("token") 
-            || localStorage.getItem("authToken");
-        
-        if (!token) {
-            console.error("No auth token found");
-            return null;
-        }
-        
-        // Remove 'Bearer ' prefix if it exists
-        if (token.startsWith('Bearer ')) {
-            token = token.substring(7);
-        }
-        
-        console.log("Token found, length:", token.length);
-        return token;
-    }
-
-    // STORE AUTH TOKEN AFTER LOGIN
-    function storeAuthToken(token) {
-        if (!token) return;
-        
-        // Remove Bearer prefix if present
-        let cleanToken = token.startsWith('Bearer ') ? token.substring(7) : token;
-        
-        localStorage.setItem("rccgToken", cleanToken);
-        localStorage.setItem("rccg_token", cleanToken);
-        localStorage.setItem("token", cleanToken);
-        localStorage.setItem("authToken", cleanToken);
-        
-        console.log("Token stored successfully");
-    }
-
-    // RETRIEVE USER DATA FROM LOCALSTORAGE
-    function getStoredUser() {
-        const rawUser = localStorage.getItem("rccgUser") || localStorage.getItem("rccg_user");
-        if (rawUser) {
-            try {
-                return JSON.parse(rawUser);
-            } catch (e) {
-                console.error("Failed to parse cached user:", e);
-            }
-        }
-        return null;
-    }
-
-    // SAVE USER DATA
-    function saveUserData(user) {
-        currentUserData = user;
-        localStorage.setItem("rccgUser", JSON.stringify(user));
-        localStorage.setItem("rccg_user", JSON.stringify(user));
-    }
-
-    // HANDLE REDIRECT TO LOGIN WITH MESSAGE
-    function redirectToLogin(message) {
-        showToast(message || "Session expired. Please log in again.");
-        localStorage.removeItem("rccgToken");
-        localStorage.removeItem("rccg_token");
-        localStorage.removeItem("token");
-        localStorage.removeItem("authToken");
-        localStorage.removeItem("rccgUser");
-        localStorage.removeItem("rccg_user");
-        setTimeout(() => window.location.href = "/login", 1500);
-    }
-
-    // INITIALIZE APPLICATION
-    document.addEventListener("DOMContentLoaded", function() {
-        const token = getAuthToken();
-        if (token) {
-            console.log("Token exists, initializing dashboard...");
-            const storedUser = getStoredUser();
-            if (storedUser) {
-                currentUserData = storedUser;
-                renderUserData(storedUser);
-            }
-            
-            // Delay to ensure token is available
-            setTimeout(() => {
-                fetchUserProfile();
-                initAudioPlayer();
-                loadAudioSermons();
-                loadVideoSermons();
-            }, 500);
-        } else {
-            console.warn("No token found, redirecting to login");
-            showToast("Please log in first");
-            setTimeout(() => window.location.href = "/login", 1500);
+            card.classList.add('hidden');
         }
     });
 
-    // ============ VIDEO SERMONS FUNCTIONS ============
-    async function loadVideoSermons() {
+    const countLabel = document.getElementById('sermon-count-label');
+    if (countLabel) countLabel.textContent = `${visibleCount} Videos`;
+}
+
+function filterVideoSermons() {
+    const input = document.getElementById('sermon-search-input');
+    const query = (input && input.value) ? input.value.toLowerCase().trim() : '';
+    const cards = document.querySelectorAll('.video-sermon-card');
+    let visibleCount = 0;
+
+    cards.forEach(card => {
+        const title = (card.getAttribute('data-title') || '').toLowerCase();
+        const speaker = (card.getAttribute('data-speaker') || '').toLowerCase();
+
+        if (!query || title.includes(query) || speaker.includes(query)) {
+            card.classList.remove('hidden');
+            visibleCount++;
+        } else {
+            card.classList.add('hidden');
+        }
+    });
+
+    const countLabel = document.getElementById('sermon-count-label');
+    if (countLabel) countLabel.textContent = `${visibleCount} Videos`;
+}
+
+function shareSermon(title) {
+    if (navigator.share) {
+        navigator.share({
+            title: title,
+            text: `Watch ${title} on Rehoboth Mega Cathedral Dashboard`,
+            url: window.location.href
+        }).catch(() => {});
+    } else {
+        navigator.clipboard.writeText(window.location.href).then(() => {
+            showToast('Sermon link copied to clipboard!');
+        }).catch(() => {
+            showToast('Unable to copy link');
+        });
+    }
+}
+
+// Robust token & storage helpers
+function getAuthToken() {
+    const keysToCheck = ["rccgToken", "rccg_token", "token", "authToken"];
+    const storages = [localStorage, sessionStorage];
+
+    for (const storage of storages) {
+        for (const key of keysToCheck) {
+            try {
+                let raw = storage.getItem(key);
+                if (!raw || raw === "null") continue;
+                raw = raw.trim();
+
+                // If looks like JSON, try to parse and extract token
+                if (raw.startsWith("{") || raw.startsWith("[")) {
+                    try {
+                        const parsed = JSON.parse(raw);
+                        const candidates = [
+                            parsed?.token, parsed?.authToken, parsed?.accessToken, parsed?.access_token,
+                            parsed?.data?.token, parsed?.data?.authToken, parsed?.data?.accessToken
+                        ];
+                        const found = candidates.find(v => v && typeof v === "string");
+                        if (found) {
+                            raw = found.trim();
+                        } else if (typeof parsed === "string") {
+                            raw = parsed.trim();
+                        } else {
+                            continue;
+                        }
+                    } catch (e) {
+                        // If parsing fails, proceed treating raw as string
+                    }
+                }
+
+                // Remove Bearer prefix if present (case-insensitive)
+                if (/^Bearer\s+/i.test(raw)) {
+                    raw = raw.replace(/^Bearer\s+/i, "").trim();
+                }
+
+                if (raw.length > 0) {
+                    console.log("Token found in storage key:", key, "len:", raw.length);
+                    return raw;
+                }
+            } catch (err) {
+                console.warn("Error reading token from storage", key, err);
+                continue;
+            }
+        }
+    }
+
+    console.warn("No auth token found in storage");
+    return null;
+}
+
+function storeAuthToken(token) {
+    if (!token) return;
+
+    let cleanToken = token;
+
+    if (typeof token === "object") {
+        cleanToken = token.token || token.authToken || token.accessToken || token.access_token || JSON.stringify(token);
+    }
+
+    if (typeof cleanToken !== "string") cleanToken = String(cleanToken);
+
+    cleanToken = cleanToken.trim();
+    if (/^Bearer\s+/i.test(cleanToken)) {
+        cleanToken = cleanToken.replace(/^Bearer\s+/i, "").trim();
+    }
+
+    const keys = ["rccgToken", "rccg_token", "token", "authToken"];
+    keys.forEach(k => {
+        try {
+            localStorage.setItem(k, cleanToken);
+        } catch (e) {
+            console.warn("Failed to write token to localStorage:", e);
+        }
+        try {
+            sessionStorage.setItem(k, cleanToken);
+        } catch (e) {
+            // ignore sessionStorage write errors
+        }
+    });
+
+    console.log("Token stored successfully");
+}
+
+// Retrieve & save user
+function getStoredUser() {
+    const rawUser = localStorage.getItem("rccgUser") || localStorage.getItem("rccg_user") || sessionStorage.getItem("rccgUser") || sessionStorage.getItem("rccg_user");
+    if (rawUser) {
+        try {
+            return JSON.parse(rawUser);
+        } catch (e) {
+            console.error("Failed to parse cached user:", e);
+        }
+    }
+    return null;
+}
+
+function saveUserData(user) {
+    currentUserData = user;
+    try {
+        const str = JSON.stringify(user);
+        localStorage.setItem("rccgUser", str);
+        localStorage.setItem("rccg_user", str);
+        sessionStorage.setItem("rccgUser", str);
+        sessionStorage.setItem("rccg_user", str);
+    } catch (e) {
+        console.warn("Failed to save user data to storage:", e);
+    }
+}
+
+// Redirect to login & clear storage
+function redirectToLogin(message) {
+    showToast(message || "Session expired. Please log in again.");
+    try {
+        ["rccgToken", "rccg_token", "token", "authToken", "rccgUser", "rccg_user"].forEach(k => {
+            localStorage.removeItem(k);
+            sessionStorage.removeItem(k);
+        });
+    } catch (e) {
+        console.warn("Error clearing storage on redirect:", e);
+    }
+    setTimeout(() => window.location.href = "/login", 1500);
+}
+
+// INITIALIZE APPLICATION
+document.addEventListener("DOMContentLoaded", function() {
+    let token = getAuthToken();
+    if (token) {
+        console.log("Token exists, initializing dashboard...");
+        const storedUser = getStoredUser();
+        if (storedUser) {
+            currentUserData = storedUser;
+            renderUserData(storedUser);
+        }
+        
+        // Delay to ensure token is available
+        setTimeout(() => {
+            fetchUserProfile();
+            initAudioPlayer();
+            loadAudioSermons();
+            loadVideoSermons();
+        }, 500);
+    } else {
+        // Avoid immediate redirect — give short grace window for token to be set (login redirect race)
+        console.warn("No token found on initial load, retrying shortly...");
+        showToast("Please log in first");
+        setTimeout(() => {
+            const retryToken = getAuthToken();
+            if (retryToken) {
+                console.log("Token detected on retry, proceeding...");
+                const storedUser = getStoredUser();
+                if (storedUser) {
+                    currentUserData = storedUser;
+                    renderUserData(storedUser);
+                }
+                setTimeout(() => {
+                    fetchUserProfile();
+                    initAudioPlayer();
+                    loadAudioSermons();
+                    loadVideoSermons();
+                }, 300);
+            } else {
+                console.warn("Still no token after retry — redirecting to login");
+                setTimeout(() => window.location.href = "/login", 500);
+            }
+        }, 900);
+    }
+});
+
+// ============ VIDEO SERMONS FUNCTIONS ============
+async function loadVideoSermons() {
     try {
         const token = getAuthToken();
         if (!token) {
@@ -1510,108 +1592,106 @@
     }
 }
 
+function renderFeaturedSermon() {
+    if (videoSermons.length === 0) return;
 
+    const featured = videoSermons[0];
+    const titleEl = document.getElementById('featured-sermon-title');
+    const descEl = document.getElementById('featured-sermon-desc');
+    const speakerEl = document.getElementById('featured-sermon-speaker');
+    const dateEl = document.getElementById('featured-sermon-date');
+    const tagEl = document.getElementById('featured-sermon-tag');
+    const iframe = document.getElementById('main-video-iframe');
 
-    function renderFeaturedSermon() {
-        if (videoSermons.length === 0) return;
+    if (titleEl) titleEl.textContent = featured.title || 'Featured Sermon';
+    if (descEl) descEl.textContent = featured.description || 'Experience a powerful message from Rehoboth Mega Cathedral.';
+    if (speakerEl) speakerEl.textContent = featured.pastor || 'Unknown Pastor';
+    if (dateEl) dateEl.textContent = featured.eventType || 'Sunday Service';
+    if (tagEl) tagEl.textContent = (featured.category || 'FEATURED').toUpperCase();
+    if (iframe) iframe.src = featured.videoUrl || '';
+}
 
-        const featured = videoSermons[0];
-        const titleEl = document.getElementById('featured-sermon-title');
-        const descEl = document.getElementById('featured-sermon-desc');
-        const speakerEl = document.getElementById('featured-sermon-speaker');
-        const dateEl = document.getElementById('featured-sermon-date');
-        const tagEl = document.getElementById('featured-sermon-tag');
-        const iframe = document.getElementById('main-video-iframe');
+function renderVideoSermonsGrid() {
+    const grid = document.getElementById('video-sermons-grid');
+    if (!grid) return;
 
-        if (titleEl) titleEl.textContent = featured.title || 'Featured Sermon';
-        if (descEl) descEl.textContent = featured.description || 'Experience a powerful message from Rehoboth Mega Cathedral.';
-        if (speakerEl) speakerEl.textContent = featured.pastor || 'Unknown Pastor';
-        if (dateEl) dateEl.textContent = featured.eventType || 'Sunday Service';
-        if (tagEl) tagEl.textContent = featured.category?.toUpperCase() || 'FEATURED';
-        if (iframe) iframe.src = featured.videoUrl || '';
-    }
-
-    function renderVideoSermonsGrid() {
-        const grid = document.getElementById('video-sermons-grid');
-        if (!grid) return;
-
-        grid.innerHTML = videoSermons.map((sermon, idx) => `
-            <div class="video-sermon-card bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all group flex flex-col justify-between" data-category="${sermon.category || 'all'}" data-title="${sermon.title || ''}" data-speaker="${sermon.pastor || ''}">
-                <div onclick="playVideoInFeatured('${sermon.videoUrl || ''}', '${(sermon.title || '').replace(/'/g, "\\'")}', '${(sermon.pastor || '').replace(/'/g, "\\'")}', '${sermon.eventType || ''}', '${sermon._id || ''}')" class="cursor-pointer">
-                    <div class="relative h-40 w-full bg-slate-900 overflow-hidden">
-                        <img src="${sermon.thumbnailUrl || 'https://via.placeholder.com/600x400?text=Sermon'}" alt="${sermon.title || 'Sermon'}" class="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                        <div class="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                            <div class="w-10 h-10 rounded-full bg-rccg-blue/90 text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
-                                <svg class="w-5 h-5 fill-current ml-0.5" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                            </div>
-                        </div>
-                        <div class="absolute bottom-2 right-2 bg-black/80 text-white text-[10px] font-bold px-1.5 py-0.5 rounded backdrop-blur-sm">
-                            ${sermon.duration || '00:00'}
+    grid.innerHTML = videoSermons.map((sermon, idx) => `
+        <div class="video-sermon-card bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all group flex flex-col justify-between" data-category="${sermon.category || 'all'}" data-title="${(sermon.title || '').replace(/"/g, '&quot;')}" data-speaker="${(sermon.pastor || '').replace(/"/g, '&quot;')}">
+            <div onclick="playVideoInFeatured('${(sermon.videoUrl || '').replace(/'/g, "\\'")}', '${(sermon.title || '').replace(/'/g, "\\'")}', '${(sermon.pastor || '').replace(/'/g, "\\'")}', '${(sermon.eventType || '')}', '${(sermon._id || '')}')" class="cursor-pointer">
+                <div class="relative h-40 w-full bg-slate-900 overflow-hidden">
+                    <img src="${sermon.thumbnailUrl || 'https://via.placeholder.com/600x400?text=Sermon'}" alt="${(sermon.title || 'Sermon').replace(/"/g, '&quot;')}" class="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                    <div class="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                        <div class="w-10 h-10 rounded-full bg-rccg-blue/90 text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                            <svg class="w-5 h-5 fill-current ml-0.5" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
                         </div>
                     </div>
-                    <div class="p-3.5">
-                        <span class="text-[9px] font-bold ${getCategoryBadgeColor(sermon.category)} px-2 py-0.5 rounded uppercase">${sermon.category || 'General'}</span>
-                        <h4 class="text-xs font-bold text-slate-900 group-hover:text-rccg-royal transition-colors mt-1.5 line-clamp-2">${sermon.title || 'Untitled Sermon'}</h4>
-                        <p class="text-[11px] text-slate-500 mt-1">${sermon.pastor || 'Unknown Pastor'}</p>
+                    <div class="absolute bottom-2 right-2 bg-black/80 text-white text-[10px] font-bold px-1.5 py-0.5 rounded backdrop-blur-sm">
+                        ${sermon.duration || '00:00'}
                     </div>
                 </div>
-                <div class="p-3.5 pt-0 flex items-center justify-between border-t border-slate-50 mt-1">
-                    <span class="text-[10px] text-slate-400">${sermon.views || 0} views</span>
-                    <button onclick="toggleSaveSermon('${sermon._id || ''}')" id="btn-save-${sermon._id || ''}" class="text-xs text-rccg-royal font-bold hover:underline">
-                        ${currentUserData?.savedSermons?.includes(sermon._id) ? 'Saved' : 'Bookmark'}
-                    </button>
+                <div class="p-3.5">
+                    <span class="text-[9px] font-bold ${getCategoryBadgeColor(sermon.category)} px-2 py-0.5 rounded uppercase">${sermon.category || 'General'}</span>
+                    <h4 class="text-xs font-bold text-slate-900 group-hover:text-rccg-royal transition-colors mt-1.5 line-clamp-2">${sermon.title || 'Untitled Sermon'}</h4>
+                    <p class="text-[11px] text-slate-500 mt-1">${sermon.pastor || 'Unknown Pastor'}</p>
                 </div>
             </div>
-        `).join('');
+            <div class="p-3.5 pt-0 flex items-center justify-between border-t border-slate-50 mt-1">
+                <span class="text-[10px] text-slate-400">${sermon.views || 0} views</span>
+                <button onclick="toggleSaveSermon('${sermon._id || ''}')" id="btn-save-${sermon._id || ''}" class="text-xs text-rccg-royal font-bold hover:underline">
+                    ${currentUserData?.savedSermons?.includes(sermon._id) ? 'Saved' : 'Bookmark'}
+                </button>
+            </div>
+        </div>
+    `).join('');
 
-        const countLabel = document.getElementById('sermon-count-label');
-        if (countLabel) countLabel.textContent = `${videoSermons.length} Videos`;
-    }
+    const countLabel = document.getElementById('sermon-count-label');
+    if (countLabel) countLabel.textContent = `${videoSermons.length} Videos`;
+}
 
-    function getCategoryBadgeColor(category) {
-        const colorMap = {
-            'sunday': 'text-rccg-royal bg-blue-50',
-            'digging': 'text-amber-700 bg-amber-50',
-            'youth': 'text-purple-700 bg-purple-50',
-            'special': 'text-emerald-700 bg-emerald-50',
-            'holy-ghost': 'text-emerald-700 bg-emerald-50',
-            'general': 'text-slate-700 bg-slate-50'
-        };
-        return colorMap[category?.toLowerCase()] || 'text-slate-700 bg-slate-50';
-    }
+function getCategoryBadgeColor(category) {
+    const colorMap = {
+        'sunday': 'text-rccg-royal bg-blue-50',
+        'digging': 'text-amber-700 bg-amber-50',
+        'youth': 'text-purple-700 bg-purple-50',
+        'special': 'text-emerald-700 bg-emerald-50',
+        'holy-ghost': 'text-emerald-700 bg-emerald-50',
+        'general': 'text-slate-700 bg-slate-50'
+    };
+    return colorMap[(category || '').toLowerCase()] || 'text-slate-700 bg-slate-50';
+}
 
-    // AUDIO PLAYER LOGIC
-    function initAudioPlayer() {
-        const player = document.getElementById("main-audio-player");
-        if (!player) return;
+// AUDIO PLAYER LOGIC
+function initAudioPlayer() {
+    const player = document.getElementById("main-audio-player");
+    if (!player) return;
 
-        player.addEventListener("timeupdate", function() {
-            const cur = player.currentTime;
-            const dur = player.duration;
-            
-            const curTimeEl = document.getElementById("audio-current-time");
-            const progressBar = document.getElementById("audio-progress-bar");
-            
-            if (curTimeEl) curTimeEl.textContent = formatTime(cur);
-            if (progressBar && dur) {
-                progressBar.value = (cur / dur) * 100;
-            }
-        });
+    player.addEventListener("timeupdate", function() {
+        const cur = player.currentTime;
+        const dur = player.duration;
+        
+        const curTimeEl = document.getElementById("audio-current-time");
+        const progressBar = document.getElementById("audio-progress-bar");
+        
+        if (curTimeEl) curTimeEl.textContent = formatTime(cur);
+        if (progressBar && dur) {
+            progressBar.value = (cur / dur) * 100;
+        }
+    });
 
-        player.addEventListener("ended", function() {
-            isAudioPlaying = false;
-            updateAudioUIControls();
-        });
-    }
+    player.addEventListener("ended", function() {
+        isAudioPlaying = false;
+        updateAudioUIControls();
+    });
+}
 
-    function formatTime(seconds) {
-        if (isNaN(seconds)) return "00:00";
-        const mins = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
-        return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
-    }
+function formatTime(seconds) {
+    if (isNaN(seconds)) return "00:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+}
 
-    async function loadAudioSermons() {
+async function loadAudioSermons() {
     try {
         const token = getAuthToken();
         if (!token) {
@@ -1672,752 +1752,762 @@
         showToast("Network error loading audio sermons. Please check your connection.");
     }
 }
-    function renderAudioPlaylist() {
-        const playlistContainer = document.getElementById("audio-playlist-container");
-        if (!playlistContainer) return;
 
-        playlistContainer.innerHTML = audioSermons.map((sermon, idx) => `
-            <div class="sermon-playlist-item bg-white border border-slate-100 rounded-xl p-3 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors" onclick="selectAndPlaySermon(${idx})">
-                <div class="flex items-center space-x-3 min-w-0">
-                    <div class="w-9 h-9 rounded-xl bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12 0c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z" />
-                        </svg>
-                    </div>
-                    <div class="min-w-0">
-                        <h4 class="text-xs font-bold text-slate-900 truncate">${sermon.title || 'Audio Sermon'}</h4>
-                        <p class="text-[10px] text-slate-500 truncate">${sermon.pastor || 'Unknown Pastor'}</p>
-                    </div>
+function renderAudioPlaylist() {
+    const playlistContainer = document.getElementById("audio-playlist-container");
+    if (!playlistContainer) return;
+
+    playlistContainer.innerHTML = audioSermons.map((sermon, idx) => `
+        <div class="sermon-playlist-item bg-white border border-slate-100 rounded-xl p-3 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors" onclick="selectAndPlaySermon(${idx})">
+            <div class="flex items-center space-x-3 min-w-0">
+                <div class="w-9 h-9 rounded-xl bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12 0c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z" />
+                    </svg>
                 </div>
-                <span class="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-md shrink-0">Play</span>
+                <div class="min-w-0">
+                    <h4 class="text-xs font-bold text-slate-900 truncate">${sermon.title || 'Audio Sermon'}</h4>
+                    <p class="text-[10px] text-slate-500 truncate">${sermon.pastor || 'Unknown Pastor'}</p>
+                </div>
             </div>
-        `).join('');
-    }
+            <span class="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-md shrink-0">Play</span>
+        </div>
+    `).join('');
+}
 
-    function selectAndPlaySermon(index) {
-        if (index < 0 || index >= audioSermons.length) return;
-        currentSermonIndex = index;
-        loadSermonInPlayer(index);
-    }
+function selectAndPlaySermon(index) {
+    if (index < 0 || index >= audioSermons.length) return;
+    currentSermonIndex = index;
+    loadSermonInPlayer(index);
+}
 
-    function loadSermonInPlayer(index) {
-        if (index < 0 || index >= audioSermons.length) return;
+function loadSermonInPlayer(index) {
+    if (index < 0 || index >= audioSermons.length) return;
 
-        const sermon = audioSermons[index];
-        const player = document.getElementById("main-audio-player");
-        const titleEl = document.getElementById("audio-player-title");
-        const pastorEl = document.getElementById("audio-player-pastor");
-        const durTimeEl = document.getElementById("audio-duration-time");
+    const sermon = audioSermons[index];
+    const player = document.getElementById("main-audio-player");
+    const titleEl = document.getElementById("audio-player-title");
+    const pastorEl = document.getElementById("audio-player-pastor");
+    const durTimeEl = document.getElementById("audio-duration-time");
 
-        if (titleEl) titleEl.textContent = sermon.title || 'Audio Sermon';
-        if (pastorEl) pastorEl.textContent = sermon.pastor || 'Unknown Pastor';
-        if (durTimeEl) durTimeEl.textContent = sermon.duration || '00:00';
+    if (titleEl) titleEl.textContent = sermon.title || 'Audio Sermon';
+    if (pastorEl) pastorEl.textContent = sermon.pastor || 'Unknown Pastor';
+    if (durTimeEl) durTimeEl.textContent = sermon.duration || '00:00';
 
-        if (player && sermon.audioUrl) {
-            player.src = sermon.audioUrl;
-            player.play();
-            isAudioPlaying = true;
-            updateAudioUIControls();
-        }
-
-        updatePlaylistUI(index);
-        showToast(`Now Playing: ${sermon.title || 'Audio Sermon'}`);
-    }
-
-    function updatePlaylistUI(activeIndex) {
-        const listItems = document.querySelectorAll('.sermon-playlist-item');
-        listItems.forEach((item, idx) => {
-            const btnTag = item.querySelector('span');
-            const iconBox = item.querySelector('div > div');
-            if (idx === activeIndex) {
-                item.classList.add('bg-indigo-50/80', 'border-indigo-200');
-                if (btnTag) {
-                    btnTag.textContent = "Playing";
-                    btnTag.className = "text-[10px] font-bold text-white bg-indigo-600 px-2 py-1 rounded-md shrink-0";
-                }
-                if (iconBox) {
-                    iconBox.className = "w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm";
-                }
-            } else {
-                item.classList.remove('bg-indigo-50/80', 'border-indigo-200');
-                if (btnTag) {
-                    btnTag.textContent = "Play";
-                    btnTag.className = "text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-md shrink-0";
-                }
-                if (iconBox) {
-                    iconBox.className = "w-9 h-9 rounded-xl bg-slate-200 text-slate-700 flex items-center justify-center shrink-0";
-                }
-            }
+    if (player && sermon.audioUrl) {
+        player.src = sermon.audioUrl;
+        player.play().catch(() => {
+            // Autoplay may be blocked; update state but do not throw
+            isAudioPlaying = !player.paused && player.currentTime > 0;
         });
-    }
-
-    function toggleAudioPlay() {
-        const player = document.getElementById("main-audio-player");
-        if (!player) return;
-
-        if (player.paused) {
-            player.play();
-            isAudioPlaying = true;
-        } else {
-            player.pause();
-            isAudioPlaying = false;
-        }
+        isAudioPlaying = true;
         updateAudioUIControls();
     }
 
-    function updateAudioUIControls() {
-        const playIcon = document.getElementById("icon-audio-play");
-        const pauseIcon = document.getElementById("icon-audio-pause");
-        
-        if (isAudioPlaying) {
-            if (playIcon) playIcon.classList.add("hidden");
-            if (pauseIcon) pauseIcon.classList.remove("hidden");
+    updatePlaylistUI(index);
+    showToast(`Now Playing: ${sermon.title || 'Audio Sermon'}`);
+}
+
+function updatePlaylistUI(activeIndex) {
+    const listItems = document.querySelectorAll('.sermon-playlist-item');
+    listItems.forEach((item, idx) => {
+        const btnTag = item.querySelector('span');
+        const iconBox = item.querySelector('div > div');
+        if (idx === activeIndex) {
+            item.classList.add('bg-indigo-50/80', 'border-indigo-200');
+            if (btnTag) {
+                btnTag.textContent = "Playing";
+                btnTag.className = "text-[10px] font-bold text-white bg-indigo-600 px-2 py-1 rounded-md shrink-0";
+            }
+            if (iconBox) {
+                iconBox.className = "w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm";
+            }
         } else {
-            if (playIcon) playIcon.classList.remove("hidden");
-            if (pauseIcon) pauseIcon.classList.add("hidden");
-        }
-    }
-
-    function seekAudio(value) {
-        const player = document.getElementById("main-audio-player");
-        if (player && player.duration) {
-            player.currentTime = (value / 100) * player.duration;
-        }
-    }
-
-    function skipAudio(seconds) {
-        const player = document.getElementById("main-audio-player");
-        if (player && player.duration) {
-            player.currentTime = Math.max(0, Math.min(player.duration, player.currentTime + seconds));
-        }
-    }
-
-    function toggleAudioMute() {
-        const player = document.getElementById("main-audio-player");
-        if (player) {
-            player.muted = !player.muted;
-            const muteBtn = document.getElementById("btn-audio-mute");
-            if (muteBtn) {
-                muteBtn.classList.toggle("text-rccg-red", player.muted);
+            item.classList.remove('bg-indigo-50/80', 'border-indigo-200');
+            if (btnTag) {
+                btnTag.textContent = "Play";
+                btnTag.className = "text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-md shrink-0";
+            }
+            if (iconBox) {
+                iconBox.className = "w-9 h-9 rounded-xl bg-slate-200 text-slate-700 flex items-center justify-center shrink-0";
             }
         }
+    });
+}
+
+function toggleAudioPlay() {
+    const player = document.getElementById("main-audio-player");
+    if (!player) return;
+
+    if (player.paused) {
+        player.play().catch(() => {});
+        isAudioPlaying = true;
+    } else {
+        player.pause();
+        isAudioPlaying = false;
     }
+    updateAudioUIControls();
+}
 
-    function changePlaybackSpeed() {
-        const player = document.getElementById("main-audio-player");
-        currentSpeedIndex = (currentSpeedIndex + 1) % playbackSpeeds.length;
-        const speed = playbackSpeeds[currentSpeedIndex];
-        if (player) player.playbackRate = speed;
-        const speedBtn = document.getElementById("btn-audio-speed");
-        if (speedBtn) speedBtn.textContent = speed.toFixed(1) + "x";
+function updateAudioUIControls() {
+    const playIcon = document.getElementById("icon-audio-play");
+    const pauseIcon = document.getElementById("icon-audio-pause");
+    
+    if (isAudioPlaying) {
+        if (playIcon) playIcon.classList.add("hidden");
+        if (pauseIcon) pauseIcon.classList.remove("hidden");
+    } else {
+        if (playIcon) playIcon.classList.remove("hidden");
+        if (pauseIcon) pauseIcon.classList.add("hidden");
     }
+}
 
-    // USER DATA RENDERING & API
-    function renderUserData(user) {
-        if (!user) return;
-        
-        const greeting = document.getElementById("hero-greeting");
-        if (greeting && user.fullName) {
-            const firstName = user.fullName.split(" ")[0];
-            greeting.textContent = `Welcome back, ${firstName}`;
-        }
-        
-        const avatar = document.getElementById("header-user-avatar");
-        if (avatar && user.fullName) {
-            avatar.src = user.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName)}&background=003366&color=fff`;
-        }
-        
-        const headerFirstName = document.getElementById("header-user-firstname");
-        if (headerFirstName && user.fullName) {
-            headerFirstName.textContent = user.fullName.split(" ")[0];
-        }
-        
-        const dropName = document.getElementById("dropdown-user-fullname");
-        if (dropName) dropName.textContent = user.fullName || "User";
-        
-        const dropEmail = document.getElementById("dropdown-user-email");
-        if (dropEmail) dropEmail.textContent = user.email || "";
-
-        const givingStat = document.getElementById("stat-total-giving");
-        if (givingStat) givingStat.textContent = `₦${(user.totalGiving || 0).toLocaleString()}`;
-
-        const eventsStat = document.getElementById("stat-events-count");
-        if (eventsStat) eventsStat.textContent = (user.registeredEvents || []).length;
-
-        const sermonsStat = document.getElementById("stat-sermons-count");
-        if (sermonsStat) sermonsStat.textContent = (user.savedSermons || []).length;
-
-        const prayersStat = document.getElementById("stat-prayers-count");
-        if (prayersStat) prayersStat.textContent = (user.prayerRequests || []).length;
+function seekAudio(value) {
+    const player = document.getElementById("main-audio-player");
+    if (player && player.duration) {
+        player.currentTime = (value / 100) * player.duration;
     }
+}
 
-    async function fetchUserProfile() {
-        try {
-            const token = getAuthToken();
-            if (!token) {
-                console.error("No token available for profile fetch");
-                return;
-            }
+function skipAudio(seconds) {
+    const player = document.getElementById("main-audio-player");
+    if (player && player.duration) {
+        player.currentTime = Math.max(0, Math.min(player.duration, player.currentTime + seconds));
+    }
+}
 
-            console.log("Fetching user profile with token...");
-
-            const res = await fetch(`${BACKEND_BASE_URL}/profile`, {
-                method: "GET",
-                headers: {
-                    "Authorization": `Bearer ${token}`,
-                    "Content-Type": "application/json"
-                }
-            });
-
-            console.log("Profile response status:", res.status);
-
-            if (res.status === 401) {
-                console.error("401 Unauthorized - Token invalid or expired");
-                redirectToLogin("Your session has expired. Please log in again.");
-                return;
-            }
-            
-            if (res.ok) {
-                const data = await res.json();
-                const user = data.user || data.data;
-                if (user) {
-                    saveUserData(user);
-                    renderUserData(user);
-                    console.log("Profile loaded successfully");
-                }
-            } else {
-                const error = await res.json();
-                console.error("Profile fetch error:", error);
-            }
-        } catch (err) {
-            console.error("Fetch user profile error:", err);
+function toggleAudioMute() {
+    const player = document.getElementById("main-audio-player");
+    if (player) {
+        player.muted = !player.muted;
+        const muteBtn = document.getElementById("btn-audio-mute");
+        if (muteBtn) {
+            muteBtn.classList.toggle("text-rccg-red", player.muted);
         }
     }
+}
 
-    // GIVING API INTEGRATION
-    async function handleGivingSubmit(e) {
-        e.preventDefault();
-        const amount = parseFloat(document.getElementById("give-amount").value);
-        const type = document.getElementById("give-type").value;
-        
-        if (!amount || amount <= 0) {
-            showToast("Please enter a valid amount");
+function changePlaybackSpeed() {
+    const player = document.getElementById("main-audio-player");
+    currentSpeedIndex = (currentSpeedIndex + 1) % playbackSpeeds.length;
+    const speed = playbackSpeeds[currentSpeedIndex];
+    if (player) player.playbackRate = speed;
+    const speedBtn = document.getElementById("btn-audio-speed");
+    if (speedBtn) speedBtn.textContent = speed.toFixed(1) + "x";
+}
+
+// USER DATA RENDERING & API
+function renderUserData(user) {
+    if (!user) return;
+    
+    const greeting = document.getElementById("hero-greeting");
+    if (greeting && user.fullName) {
+        const firstName = user.fullName.split(" ")[0];
+        greeting.textContent = `Welcome back, ${firstName}`;
+    }
+    
+    const avatar = document.getElementById("header-user-avatar");
+    if (avatar && user.fullName) {
+        avatar.src = user.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName)}&background=003366&color=fff`;
+    }
+    
+    const headerFirstName = document.getElementById("header-user-firstname");
+    if (headerFirstName && user.fullName) {
+        headerFirstName.textContent = user.fullName.split(" ")[0];
+    }
+    
+    const dropName = document.getElementById("dropdown-user-fullname");
+    if (dropName) dropName.textContent = user.fullName || "User";
+    
+    const dropEmail = document.getElementById("dropdown-user-email");
+    if (dropEmail) dropEmail.textContent = user.email || "";
+
+    const givingStat = document.getElementById("stat-total-giving");
+    if (givingStat) givingStat.textContent = `₦${(user.totalGiving || 0).toLocaleString()}`;
+
+    const eventsStat = document.getElementById("stat-events-count");
+    if (eventsStat) eventsStat.textContent = (user.registeredEvents || []).length;
+
+    const sermonsStat = document.getElementById("stat-sermons-count");
+    if (sermonsStat) sermonsStat.textContent = (user.savedSermons || []).length;
+
+    const prayersStat = document.getElementById("stat-prayers-count");
+    if (prayersStat) prayersStat.textContent = (user.prayerRequests || []).length;
+}
+
+async function fetchUserProfile() {
+    try {
+        const token = getAuthToken();
+        if (!token) {
+            console.error("No token available for profile fetch");
             return;
         }
 
-        try {
-            const token = getAuthToken();
-            if (!token) {
-                redirectToLogin("Session expired. Please log in again.");
-                return;
-            }
+        console.log("Fetching user profile with token...");
 
-            const res = await fetch(`${BACKEND_BASE_URL}/giving`, {
-                method: "POST",
-                headers: {
-                    "Authorization": `Bearer ${token}`,
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
+        const res = await fetch(`${BACKEND_BASE_URL}/profile`, {
+            method: "GET",
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json"
+            }
+        });
+
+        console.log("Profile response status:", res.status);
+
+        if (res.status === 401) {
+            console.error("401 Unauthorized - Token invalid or expired");
+            redirectToLogin("Your session has expired. Please log in again.");
+            return;
+        }
+        
+        if (res.ok) {
+            const data = await res.json();
+            const user = data.user || data.data;
+            if (user) {
+                saveUserData(user);
+                renderUserData(user);
+                console.log("Profile loaded successfully");
+            }
+        } else {
+            const error = await res.json().catch(()=>({}));
+            console.error("Profile fetch error:", error);
+        }
+    } catch (err) {
+        console.error("Fetch user profile error:", err);
+    }
+}
+
+// GIVING API INTEGRATION
+async function handleGivingSubmit(e) {
+    e.preventDefault();
+    const amountVal = document.getElementById("give-amount")?.value;
+    const amount = amountVal ? parseFloat(amountVal) : 0;
+    const type = document.getElementById("give-type")?.value || 'General';
+    
+    if (!amount || amount <= 0) {
+        showToast("Please enter a valid amount");
+        return;
+    }
+
+    try {
+        const token = getAuthToken();
+        if (!token) {
+            redirectToLogin("Session expired. Please log in again.");
+            return;
+        }
+
+        const res = await fetch(`${BACKEND_BASE_URL}/giving`, {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                type,
+                amount,
+                currency: "NGN",
+                method: "Dashboard",
+                reference: `GIVING-${Date.now()}`,
+                description: `${type} offering`
+            })
+        });
+
+        if (res.status === 401) {
+            redirectToLogin("Session expired. Please log in again.");
+            return;
+        }
+
+        if (res.ok) {
+            showToast(`Thank you! NGN ${amount.toLocaleString()} for ${type} recorded.`);
+            
+            if (currentUserData) {
+                currentUserData.totalGiving = (currentUserData.totalGiving || 0) + amount;
+                currentUserData.givingRecords = currentUserData.givingRecords || [];
+                currentUserData.givingRecords.push({
                     type,
                     amount,
                     currency: "NGN",
-                    method: "Dashboard",
-                    reference: `GIVING-${Date.now()}`,
-                    description: `${type} offering`
-                })
-            });
-
-            if (res.status === 401) {
-                redirectToLogin("Session expired. Please log in again.");
-                return;
+                    date: new Date().toISOString(),
+                    confirmed: false
+                });
+                saveUserData(currentUserData);
+                renderUserData(currentUserData);
             }
-
-            if (res.ok) {
-                showToast(`Thank you! NGN ${amount.toLocaleString()} for ${type} recorded.`);
-                
-                if (currentUserData) {
-                    currentUserData.totalGiving = (currentUserData.totalGiving || 0) + amount;
-                    currentUserData.givingRecords = currentUserData.givingRecords || [];
-                    currentUserData.givingRecords.push({
-                        type,
-                        amount,
-                        currency: "NGN",
-                        date: new Date().toISOString(),
-                        confirmed: false
-                    });
-                    saveUserData(currentUserData);
-                    renderUserData(currentUserData);
-                }
-                
-                const modal = document.getElementById("give-modal");
-                if (modal) modal.classList.add("hidden");
-                e.target.reset();
-            } else {
-                const error = await res.json();
-                showToast(error.message || "Failed to record giving");
-            }
-        } catch (err) {
-            console.error("Giving submission error:", err);
-            showToast("Error recording giving. Please try again.");
+            
+            const modal = document.getElementById("give-modal");
+            if (modal) modal.classList.add("hidden");
+            e.target.reset();
+        } else {
+            const error = await res.json().catch(()=>({}));
+            showToast(error.message || "Failed to record giving");
         }
+    } catch (err) {
+        console.error("Giving submission error:", err);
+        showToast("Error recording giving. Please try again.");
+    }
+}
+
+// PRAYER REQUEST API INTEGRATION
+async function handlePrayerSubmit(e) {
+    e.preventDefault();
+    const title = document.getElementById("prayer-title")?.value || '';
+    const description = document.getElementById("prayer-description")?.value || '';
+    const isConfidential = document.getElementById("prayer-confidential")?.checked ?? true;
+    
+    if (!title || !description) {
+        showToast("Please fill in all prayer request fields");
+        return;
     }
 
-    // PRAYER REQUEST API INTEGRATION
-    async function handlePrayerSubmit(e) {
-        e.preventDefault();
-        const title = document.getElementById("prayer-title").value;
-        const description = document.getElementById("prayer-description").value;
-        const isConfidential = document.getElementById("prayer-confidential")?.checked || true;
-        
-        if (!title || !description) {
-            showToast("Please fill in all prayer request fields");
+    try {
+        const token = getAuthToken();
+        if (!token) {
+            redirectToLogin("Session expired. Please log in again.");
             return;
         }
 
-        try {
-            const token = getAuthToken();
-            if (!token) {
-                redirectToLogin("Session expired. Please log in again.");
-                return;
-            }
+        const res = await fetch(`${BACKEND_BASE_URL}/prayer-request`, {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                title,
+                description,
+                category: "general",
+                isConfidential
+            })
+        });
 
-            const res = await fetch(`${BACKEND_BASE_URL}/prayer-request`, {
-                method: "POST",
-                headers: {
-                    "Authorization": `Bearer ${token}`,
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
+        if (res.status === 401) {
+            redirectToLogin("Session expired. Please log in again.");
+            return;
+        }
+
+        if (res.ok) {
+            showToast(`Prayer request "${title}" submitted successfully!`);
+            
+            if (currentUserData) {
+                currentUserData.prayerRequests = currentUserData.prayerRequests || [];
+                currentUserData.prayerRequests.push({
                     title,
                     description,
-                    category: "general",
-                    isConfidential
-                })
-            });
-
-            if (res.status === 401) {
-                redirectToLogin("Session expired. Please log in again.");
-                return;
-            }
-
-            if (res.ok) {
-                showToast(`Prayer request "${title}" submitted successfully!`);
-                
-                if (currentUserData) {
-                    currentUserData.prayerRequests = currentUserData.prayerRequests || [];
-                    currentUserData.prayerRequests.push({
-                        title,
-                        description,
-                        isConfidential,
-                        date: new Date().toISOString()
-                    });
-                    saveUserData(currentUserData);
-                    renderUserData(currentUserData);
-                }
-                
-                const modal = document.getElementById("prayer-modal");
-                if (modal) modal.classList.add("hidden");
-                e.target.reset();
-            } else {
-                const error = await res.json();
-                showToast(error.message || "Failed to submit prayer request");
-            }
-        } catch (err) {
-            console.error("Prayer request error:", err);
-            showToast("Error submitting prayer request. Please try again.");
-        }
-    }
-
-    // ATTENDANCE MARKING API INTEGRATION
-    async function recordAttendance() {
-        try {
-            const token = getAuthToken();
-            if (!token) {
-                redirectToLogin("Session expired. Please log in again.");
-                return;
-            }
-
-            const eventId = document.getElementById("attendance-select-event")?.value;
-            
-            if (!eventId) {
-                showToast("Please select an event");
-                return;
-            }
-
-            const res = await fetch(`${BACKEND_BASE_URL}/register-event/${eventId}`, {
-                method: "POST",
-                headers: {
-                    "Authorization": `Bearer ${token}`,
-                    "Content-Type": "application/json"
-                }
-            });
-
-            if (res.status === 401) {
-                redirectToLogin("Session expired. Please log in again.");
-                return;
-            }
-
-            if (res.ok) {
-                showToast("Attendance successfully checked in!");
-                
-                if (currentUserData) {
-                    currentUserData.attendanceRecords = currentUserData.attendanceRecords || [];
-                    currentUserData.attendanceRecords.push({
-                        eventId,
-                        date: new Date().toISOString(),
-                        checkedIn: true
-                    });
-                    saveUserData(currentUserData);
-                    renderUserData(currentUserData);
-                }
-                
-                const modal = document.getElementById("attendance-modal");
-                if (modal) modal.classList.add("hidden");
-            } else {
-                const error = await res.json();
-                showToast(error.message || "Failed to record attendance");
-            }
-        } catch (err) {
-            console.error("Attendance recording error:", err);
-            showToast("Error recording attendance. Please try again.");
-        }
-    }
-
-    // SAVE/UNSAVE SERMON API INTEGRATION
-    async function toggleSaveSermon(sermonId) {
-        if (!currentUserData) return;
-        
-        const isSaved = currentUserData.savedSermons && currentUserData.savedSermons.includes(sermonId);
-        
-        try {
-            const token = getAuthToken();
-            if (!token) {
-                redirectToLogin("Session expired. Please log in again.");
-                return;
-            }
-
-            const endpoint = isSaved ? `unsave-sermon/${sermonId}` : `save-sermon/${sermonId}`;
-            const method = isSaved ? "DELETE" : "POST";
-            
-            const res = await fetch(`${BACKEND_BASE_URL}/${endpoint}`, {
-                method,
-                headers: {
-                    "Authorization": `Bearer ${token}`,
-                    "Content-Type": "application/json"
-                }
-            });
-
-            if (res.status === 401) {
-                redirectToLogin("Session expired. Please log in again.");
-                return;
-            }
-
-            if (res.ok) {
-                currentUserData.savedSermons = currentUserData.savedSermons || [];
-                
-                if (isSaved) {
-                    const index = currentUserData.savedSermons.indexOf(sermonId);
-                    if (index > -1) currentUserData.savedSermons.splice(index, 1);
-                    showToast("Sermon removed from saved list");
-                    
-                    const btn = document.getElementById(`btn-save-${sermonId}`);
-                    if (btn) btn.textContent = "Bookmark";
-                } else {
-                    currentUserData.savedSermons.push(sermonId);
-                    showToast("Sermon saved successfully!");
-                    
-                    const btn = document.getElementById(`btn-save-${sermonId}`);
-                    if (btn) btn.textContent = "Saved";
-                }
-                
+                    isConfidential,
+                    date: new Date().toISOString()
+                });
                 saveUserData(currentUserData);
                 renderUserData(currentUserData);
-            } else {
-                const error = await res.json();
-                showToast(error.message || "Failed to update sermon");
             }
-        } catch (err) {
-            console.error("Save sermon error:", err);
-            showToast("Error updating sermon. Please try again.");
-        }
-    }
-
-    // REGISTER/UNREGISTER EVENT API INTEGRATION
-    async function toggleEventRegister(eventId) {
-        if (!currentUserData) return;
-        
-        const isRegistered = currentUserData.registeredEvents && currentUserData.registeredEvents.includes(eventId);
-        
-        try {
-            const token = getAuthToken();
-            if (!token) {
-                redirectToLogin("Session expired. Please log in again.");
-                return;
-            }
-
-            const endpoint = isRegistered ? `unregister-event/${eventId}` : `register-event/${eventId}`;
-            const method = isRegistered ? "DELETE" : "POST";
             
-            const res = await fetch(`${BACKEND_BASE_URL}/${endpoint}`, {
-                method,
-                headers: {
-                    "Authorization": `Bearer ${token}`,
-                    "Content-Type": "application/json"
-                }
-            });
+            const modal = document.getElementById("prayer-modal");
+            if (modal) modal.classList.add("hidden");
+            e.target.reset();
+        } else {
+            const error = await res.json().catch(()=>({}));
+            showToast(error.message || "Failed to submit prayer request");
+        }
+    } catch (err) {
+        console.error("Prayer request error:", err);
+        showToast("Error submitting prayer request. Please try again.");
+    }
+}
 
-            if (res.status === 401) {
-                redirectToLogin("Session expired. Please log in again.");
-                return;
+// ATTENDANCE MARKING API INTEGRATION
+async function recordAttendance() {
+    try {
+        const token = getAuthToken();
+        if (!token) {
+            redirectToLogin("Session expired. Please log in again.");
+            return;
+        }
+
+        const eventId = document.getElementById("attendance-select-event")?.value;
+        
+        if (!eventId) {
+            showToast("Please select an event");
+            return;
+        }
+
+        const res = await fetch(`${BACKEND_BASE_URL}/register-event/${eventId}`, {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json"
             }
+        });
 
-            if (res.ok) {
-                currentUserData.registeredEvents = currentUserData.registeredEvents || [];
-                const btn = document.getElementById(`btn-${eventId}`);
-                
-                if (isRegistered) {
-                    const index = currentUserData.registeredEvents.indexOf(eventId);
-                    if (index > -1) currentUserData.registeredEvents.splice(index, 1);
-                    showToast("Unregistered from event");
-                    
-                    if (btn) {
-                        btn.textContent = "Register";
-                        btn.className = "bg-blue-100/70 hover:bg-rccg-blue hover:text-white text-rccg-royal text-[11px] font-bold px-3 py-1.5 rounded-full transition-all";
-                    }
-                } else {
-                    currentUserData.registeredEvents.push(eventId);
-                    showToast("Registered for event successfully!");
-                    
-                    if (btn) {
-                        btn.textContent = "Registered";
-                        btn.className = "bg-emerald-600 text-white text-[11px] font-bold px-3 py-1.5 rounded-full transition-all";
-                    }
-                }
-                
+        if (res.status === 401) {
+            redirectToLogin("Session expired. Please log in again.");
+            return;
+        }
+
+        if (res.ok) {
+            showToast("Attendance successfully checked in!");
+            
+            if (currentUserData) {
+                currentUserData.attendanceRecords = currentUserData.attendanceRecords || [];
+                currentUserData.attendanceRecords.push({
+                    eventId,
+                    date: new Date().toISOString(),
+                    checkedIn: true
+                });
                 saveUserData(currentUserData);
                 renderUserData(currentUserData);
-            } else {
-                const error = await res.json();
-                showToast(error.message || "Failed to update event registration");
             }
-        } catch (err) {
-            console.error("Event registration error:", err);
-            showToast("Error updating event registration. Please try again.");
-        }
-    }
-
-    // UPDATE USER PROFILE API INTEGRATION
-    async function updateUserProfile(profileData) {
-        try {
-            const token = getAuthToken();
-            if (!token) {
-                redirectToLogin("Session expired. Please log in again.");
-                return false;
-            }
-
-            const res = await fetch(`${BACKEND_BASE_URL}/profile`, {
-                method: "PUT",
-                headers: {
-                    "Authorization": `Bearer ${token}`,
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(profileData)
-            });
-
-            if (res.status === 401) {
-                redirectToLogin("Session expired. Please log in again.");
-                return false;
-            }
-
-            if (res.ok) {
-                const data = await res.json();
-                const updatedUser = data.user || data.data;
-                saveUserData(updatedUser);
-                renderUserData(updatedUser);
-                showToast("Profile updated successfully!");
-                return true;
-            } else {
-                const error = await res.json();
-                showToast(error.message || "Failed to update profile");
-                return false;
-            }
-        } catch (err) {
-            console.error("Profile update error:", err);
-            showToast("Error updating profile. Please try again.");
-            return false;
-        }
-    }
-
-    // UPLOAD PROFILE IMAGE API INTEGRATION
-    async function uploadProfileImage(file) {
-        try {
-            if (!file) {
-                showToast("Please select an image");
-                return false;
-            }
-
-            const token = getAuthToken();
-            if (!token) {
-                redirectToLogin("Session expired. Please log in again.");
-                return false;
-            }
-
-            const formData = new FormData();
-            formData.append("profileImage", file);
-
-            const res = await fetch(`${BACKEND_BASE_URL}/profile-image`, {
-                method: "POST",
-                headers: {
-                    "Authorization": `Bearer ${token}`
-                },
-                body: formData
-            });
-
-            if (res.status === 401) {
-                redirectToLogin("Session expired. Please log in again.");
-                return false;
-            }
-
-            if (res.ok) {
-                const data = await res.json();
-                const updatedUser = data.user || data.data;
-                saveUserData(updatedUser);
-                renderUserData(updatedUser);
-                showToast("Profile image updated successfully!");
-                return true;
-            } else {
-                const error = await res.json();
-                showToast(error.message || "Failed to upload image");
-                return false;
-            }
-        } catch (err) {
-            console.error("Image upload error:", err);
-            showToast("Error uploading image. Please try again.");
-            return false;
-        }
-    }
-
-    // FETCH USER GIVING HISTORY
-    async function fetchGivingHistory() {
-        try {
-            const token = getAuthToken();
-            if (!token) return [];
-
-            const res = await fetch(`${BACKEND_BASE_URL}/giving`, {
-                method: "GET",
-                headers: {
-                    "Authorization": `Bearer ${token}`,
-                    "Content-Type": "application/json"
-                }
-            });
-
-            if (res.status === 401) {
-                redirectToLogin("Session expired. Please log in again.");
-                return [];
-            }
-
-            if (res.ok) {
-                const data = await res.json();
-                return data.givingRecords || [];
-            }
-        } catch (err) {
-            console.error("Fetch giving history error:", err);
-        }
-        return [];
-    }
-
-    // FETCH USER PRAYER REQUESTS
-    async function fetchPrayerRequests() {
-        try {
-            const token = getAuthToken();
-            if (!token) return [];
-
-            const res = await fetch(`${BACKEND_BASE_URL}/prayer-requests`, {
-                method: "GET",
-                headers: {
-                    "Authorization": `Bearer ${token}`,
-                    "Content-Type": "application/json"
-                }
-            });
-
-            if (res.status === 401) {
-                redirectToLogin("Session expired. Please log in again.");
-                return [];
-            }
-
-            if (res.ok) {
-                const data = await res.json();
-                return data.prayerRequests || [];
-            }
-        } catch (err) {
-            console.error("Fetch prayer requests error:", err);
-        }
-        return [];
-    }
-
-    // FETCH USER ATTENDANCE
-    async function fetchAttendanceHistory() {
-        try {
-            const token = getAuthToken();
-            if (!token) return [];
-
-            const res = await fetch(`${BACKEND_BASE_URL}/attendance`, {
-                method: "GET",
-                headers: {
-                    "Authorization": `Bearer ${token}`,
-                    "Content-Type": "application/json"
-                }
-            });
-
-            if (res.status === 401) {
-                redirectToLogin("Session expired. Please log in again.");
-                return [];
-            }
-
-            if (res.ok) {
-                const data = await res.json();
-                return data.attendance || [];
-            }
-        } catch (err) {
-            console.error("Fetch attendance error:", err);
-        }
-        return [];
-    }
-
-    // LOGOUT USER
-    async function logoutUser() {
-        try {
-            localStorage.removeItem("rccgToken");
-            localStorage.removeItem("rccg_token");
-            localStorage.removeItem("token");
-            localStorage.removeItem("authToken");
-            localStorage.removeItem("rccgUser");
-            localStorage.removeItem("rccg_user");
             
-            showToast("Signed out successfully.");
-            setTimeout(() => window.location.href = "/login", 1000);
-        } catch (err) {
-            console.error("Logout error:", err);
-            window.location.href = "/login";
+            const modal = document.getElementById("attendance-modal");
+            if (modal) modal.classList.add("hidden");
+        } else {
+            const error = await res.json().catch(()=>({}));
+            showToast(error.message || "Failed to record attendance");
         }
+    } catch (err) {
+        console.error("Attendance recording error:", err);
+        showToast("Error recording attendance. Please try again.");
     }
+}
 
-    // TOAST NOTIFICATIONS
-    function showToast(message) {
-        const toast = document.getElementById("toast-notification");
-        const toastMsg = document.getElementById("toast-message");
-        if (toast && toastMsg) {
-            toastMsg.textContent = message;
-            toast.classList.remove("hidden");
-            setTimeout(() => hideToast(), 4000);
+// SAVE/UNSAVE SERMON API INTEGRATION
+async function toggleSaveSermon(sermonId) {
+    if (!currentUserData) return;
+    
+    const isSaved = currentUserData.savedSermons && currentUserData.savedSermons.includes(sermonId);
+    
+    try {
+        const token = getAuthToken();
+        if (!token) {
+            redirectToLogin("Session expired. Please log in again.");
+            return;
         }
-    }
 
-    function hideToast() {
-        const toast = document.getElementById("toast-notification");
-        if (toast) toast.classList.add("hidden");
+        const endpoint = isSaved ? `unsave-sermon/${sermonId}` : `save-sermon/${sermonId}`;
+        const method = isSaved ? "DELETE" : "POST";
+        
+        const res = await fetch(`${BACKEND_BASE_URL}/${endpoint}`, {
+            method,
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json"
+            }
+        });
+
+        if (res.status === 401) {
+            redirectToLogin("Session expired. Please log in again.");
+            return;
+        }
+
+        if (res.ok) {
+            currentUserData.savedSermons = currentUserData.savedSermons || [];
+            
+            if (isSaved) {
+                const index = currentUserData.savedSermons.indexOf(sermonId);
+                if (index > -1) currentUserData.savedSermons.splice(index, 1);
+                showToast("Sermon removed from saved list");
+                
+                const btn = document.getElementById(`btn-save-${sermonId}`);
+                if (btn) btn.textContent = "Bookmark";
+            } else {
+                currentUserData.savedSermons.push(sermonId);
+                showToast("Sermon saved successfully!");
+                
+                const btn = document.getElementById(`btn-save-${sermonId}`);
+                if (btn) btn.textContent = "Saved";
+            }
+            
+            saveUserData(currentUserData);
+            renderUserData(currentUserData);
+        } else {
+            const error = await res.json().catch(()=>({}));
+            showToast(error.message || "Failed to update sermon");
+        }
+    } catch (err) {
+        console.error("Save sermon error:", err);
+        showToast("Error updating sermon. Please try again.");
     }
+}
+
+// REGISTER/UNREGISTER EVENT API INTEGRATION
+async function toggleEventRegister(eventId) {
+    if (!currentUserData) return;
+    
+    const isRegistered = currentUserData.registeredEvents && currentUserData.registeredEvents.includes(eventId);
+    
+    try {
+        const token = getAuthToken();
+        if (!token) {
+            redirectToLogin("Session expired. Please log in again.");
+            return;
+        }
+
+        const endpoint = isRegistered ? `unregister-event/${eventId}` : `register-event/${eventId}`;
+        const method = isRegistered ? "DELETE" : "POST";
+        
+        const res = await fetch(`${BACKEND_BASE_URL}/${endpoint}`, {
+            method,
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json"
+            }
+        });
+
+        if (res.status === 401) {
+            redirectToLogin("Session expired. Please log in again.");
+            return;
+        }
+
+        if (res.ok) {
+            currentUserData.registeredEvents = currentUserData.registeredEvents || [];
+            const btn = document.getElementById(`btn-${eventId}`);
+            
+            if (isRegistered) {
+                const index = currentUserData.registeredEvents.indexOf(eventId);
+                if (index > -1) currentUserData.registeredEvents.splice(index, 1);
+                showToast("Unregistered from event");
+                
+                if (btn) {
+                    btn.textContent = "Register";
+                    btn.className = "bg-blue-100/70 hover:bg-rccg-blue hover:text-white text-rccg-royal text-[11px] font-bold px-3 py-1.5 rounded-full transition-all";
+                }
+            } else {
+                currentUserData.registeredEvents.push(eventId);
+                showToast("Registered for event successfully!");
+                
+                if (btn) {
+                    btn.textContent = "Registered";
+                    btn.className = "bg-emerald-600 text-white text-[11px] font-bold px-3 py-1.5 rounded-full transition-all";
+                }
+            }
+            
+            saveUserData(currentUserData);
+            renderUserData(currentUserData);
+        } else {
+            const error = await res.json().catch(()=>({}));
+            showToast(error.message || "Failed to update event registration");
+        }
+    } catch (err) {
+        console.error("Event registration error:", err);
+        showToast("Error updating event registration. Please try again.");
+    }
+}
+
+// UPDATE USER PROFILE API INTEGRATION
+async function updateUserProfile(profileData) {
+    try {
+        const token = getAuthToken();
+        if (!token) {
+            redirectToLogin("Session expired. Please log in again.");
+            return false;
+        }
+
+        const res = await fetch(`${BACKEND_BASE_URL}/profile`, {
+            method: "PUT",
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(profileData)
+        });
+
+        if (res.status === 401) {
+            redirectToLogin("Session expired. Please log in again.");
+            return false;
+        }
+
+        if (res.ok) {
+            const data = await res.json();
+            const updatedUser = data.user || data.data;
+            if (updatedUser) {
+                saveUserData(updatedUser);
+                renderUserData(updatedUser);
+            }
+            showToast("Profile updated successfully!");
+            return true;
+        } else {
+            const error = await res.json().catch(()=>({}));
+            showToast(error.message || "Failed to update profile");
+            return false;
+        }
+    } catch (err) {
+        console.error("Profile update error:", err);
+        showToast("Error updating profile. Please try again.");
+        return false;
+    }
+}
+
+// UPLOAD PROFILE IMAGE API INTEGRATION
+async function uploadProfileImage(file) {
+    try {
+        if (!file) {
+            showToast("Please select an image");
+            return false;
+        }
+
+        const token = getAuthToken();
+        if (!token) {
+            redirectToLogin("Session expired. Please log in again.");
+            return false;
+        }
+
+        const formData = new FormData();
+        formData.append("profileImage", file);
+
+        const res = await fetch(`${BACKEND_BASE_URL}/profile-image`, {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${token}`
+            },
+            body: formData
+        });
+
+        if (res.status === 401) {
+            redirectToLogin("Session expired. Please log in again.");
+            return false;
+        }
+
+        if (res.ok) {
+            const data = await res.json();
+            const updatedUser = data.user || data.data;
+            if (updatedUser) {
+                saveUserData(updatedUser);
+                renderUserData(updatedUser);
+            }
+            showToast("Profile image updated successfully!");
+            return true;
+        } else {
+            const error = await res.json().catch(()=>({}));
+            showToast(error.message || "Failed to upload image");
+            return false;
+        }
+    } catch (err) {
+        console.error("Image upload error:", err);
+        showToast("Error uploading image. Please try again.");
+        return false;
+    }
+}
+
+// FETCH USER GIVING HISTORY
+async function fetchGivingHistory() {
+    try {
+        const token = getAuthToken();
+        if (!token) return [];
+
+        const res = await fetch(`${BACKEND_BASE_URL}/giving`, {
+            method: "GET",
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json"
+            }
+        });
+
+        if (res.status === 401) {
+            redirectToLogin("Session expired. Please log in again.");
+            return [];
+        }
+
+        if (res.ok) {
+            const data = await res.json();
+            return data.givingRecords || [];
+        }
+    } catch (err) {
+        console.error("Fetch giving history error:", err);
+    }
+    return [];
+}
+
+// FETCH USER PRAYER REQUESTS
+async function fetchPrayerRequests() {
+    try {
+        const token = getAuthToken();
+        if (!token) return [];
+
+        const res = await fetch(`${BACKEND_BASE_URL}/prayer-requests`, {
+            method: "GET",
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json"
+            }
+        });
+
+        if (res.status === 401) {
+            redirectToLogin("Session expired. Please log in again.");
+            return [];
+        }
+
+        if (res.ok) {
+            const data = await res.json();
+            return data.prayerRequests || [];
+        }
+    } catch (err) {
+        console.error("Fetch prayer requests error:", err);
+    }
+    return [];
+}
+
+// FETCH USER ATTENDANCE
+async function fetchAttendanceHistory() {
+    try {
+        const token = getAuthToken();
+        if (!token) return [];
+
+        const res = await fetch(`${BACKEND_BASE_URL}/attendance`, {
+            method: "GET",
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json"
+            }
+        });
+
+        if (res.status === 401) {
+            redirectToLogin("Session expired. Please log in again.");
+            return [];
+        }
+
+        if (res.ok) {
+            const data = await res.json();
+            return data.attendance || [];
+        }
+    } catch (err) {
+        console.error("Fetch attendance error:", err);
+    }
+    return [];
+}
+
+// LOGOUT USER
+async function logoutUser() {
+    try {
+        ["rccgToken", "rccg_token", "token", "authToken", "rccgUser", "rccg_user"].forEach(k => {
+            localStorage.removeItem(k);
+            sessionStorage.removeItem(k);
+        });
+        
+        showToast("Signed out successfully.");
+        setTimeout(() => window.location.href = "/login", 1000);
+    } catch (err) {
+        console.error("Logout error:", err);
+        window.location.href = "/login";
+    }
+}
+
+// TOAST NOTIFICATIONS
+function showToast(message) {
+    const toast = document.getElementById("toast-notification");
+    const toastMsg = document.getElementById("toast-message");
+    if (toast && toastMsg) {
+        toastMsg.textContent = message;
+        toast.classList.remove("hidden");
+        setTimeout(() => hideToast(), 4000);
+    } else {
+        // fallback to console for headless/testing
+        console.log("TOAST:", message);
+    }
+}
+
+function hideToast() {
+    const toast = document.getElementById("toast-notification");
+    if (toast) toast.classList.add("hidden");
+}
 </script>
 </body>
 </html>
