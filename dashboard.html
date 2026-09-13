@@ -2512,11 +2512,13 @@ async function handleGivingSubmit(e) {
 async function handlePrayerSubmit(e) {
     e.preventDefault();
 
+    const form = e.target;
+
     const title =
-        document.getElementById("prayer-title")?.value || '';
+        document.getElementById("prayer-title")?.value?.trim() || "";
 
     const description =
-        document.getElementById("prayer-description")?.value || '';
+        document.getElementById("prayer-description")?.value?.trim() || "";
 
     const isConfidential =
         document.getElementById("prayer-confidential")?.checked ?? true;
@@ -2524,8 +2526,14 @@ async function handlePrayerSubmit(e) {
     const submitButton =
         document.getElementById("prayer-submit-btn");
 
+    // Validate fields
     if (!title || !description) {
         showToast("Please fill in all prayer request fields");
+        return;
+    }
+
+    // Prevent double submission
+    if (submitButton?.disabled) {
         return;
     }
 
@@ -2537,7 +2545,7 @@ async function handlePrayerSubmit(e) {
             return;
         }
 
-        // Start spinner
+        // START SPINNER
         setButtonLoading(
             submitButton,
             true,
@@ -2563,6 +2571,7 @@ async function handlePrayerSubmit(e) {
             }
         );
 
+        // Authentication failure only
         if (res.status === 401) {
             redirectToLogin(
                 "Session expired. Please log in again."
@@ -2574,10 +2583,16 @@ async function handlePrayerSubmit(e) {
 
         if (res.ok && data.success) {
 
+            /*
+             * SUCCESS
+             */
             showToast(
                 `Prayer request "${title}" submitted successfully!`
             );
 
+            /*
+             * Update local dashboard data
+             */
             if (currentUserData) {
 
                 currentUserData.prayerRequests =
@@ -2591,20 +2606,34 @@ async function handlePrayerSubmit(e) {
                 });
 
                 saveUserData(currentUserData);
+
                 renderUserData(currentUserData);
             }
 
-            const modal =
-                document.getElementById("prayer-modal");
+            /*
+             * Reset form
+             */
+            form.reset();
 
-            if (modal) {
-                modal.classList.add("hidden");
+            /*
+             * Properly close modal + remove backdrop
+             */
+            try {
+                closeDashboardModal("prayer-modal");
+            } catch (modalError) {
+                console.error(
+                    "Prayer modal closing error:",
+                    modalError
+                );
             }
 
-            e.target.reset();
+            return;
 
         } else {
 
+            /*
+             * API returned an actual failure
+             */
             console.error(
                 "Prayer request API error:",
                 data
@@ -2624,18 +2653,21 @@ async function handlePrayerSubmit(e) {
         );
 
         showToast(
-            "Error submitting prayer request. Please try again."
+            "Unable to complete the request. Please check your prayer requests before trying again."
         );
 
     } finally {
 
-        // Always restore the button
+        /*
+         * ALWAYS STOP SPINNER
+         * AND RE-ENABLE BUTTON
+         */
         setButtonLoading(
             submitButton,
             false
         );
     }
-}
+}        
 
 // ATTENDANCE MARKING API INTEGRATION
 async function recordAttendance() {
