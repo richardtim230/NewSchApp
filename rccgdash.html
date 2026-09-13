@@ -1221,44 +1221,9 @@
 <script>
     const BACKEND_BASE_URL = "https://examguide.onrender.com/api/rccg/users";
 
-    // Preloaded Auth Token and Initial User Object
-    const DEFAULT_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhYTU4MTZiZDViMWNlMTU5NDQ2YWU3YSIsImVtYWlsIjoicmljaGFyZHJva2liYXRAZ21haWwuY29tIiwidXNlclR5cGUiOiJtZW1iZXIiLCJpYXQiOjE3ODkyMzE1NzMsImV4cCI6MTc4OTgzNjM3M30.hQt5h-JnV6TwA4fdInMLttAo75DxbKXPPn41mMyp4pk";
-    const DEFAULT_USER = {"bankDetails":{"accountName":"","accountNumber":"","bankName":"","accountType":""},"notificationPreferences":{"emailNotifications":true,"smsNotifications":true,"whatsappNotifications":true,"eventReminders":true,"sermonUpdates":true,"announcementUpdates":true,"givingUpdates":false,"prayerUpdates":false},"_id":"6aa5816bd5b1ce159446ae7a","fullName":"Richard Ochuko Timothy","email":"richardrokibat@gmail.com","phone":"+2348100585991","dateOfBirth":"2000-09-12T00:00:00.000Z","gender":null,"emailVerified":true,"membershipStatus":"visitor","joinDate":null,"transferFrom":"","maritalStatus":null,"address":"","city":"","state":"Osun","country":"Nigeria","zipCode":"","profileImage":"","profileImagePublicId":null,"bio":"","designation":"","profession":"","departments":[],"ministries":[],"primaryMinistry":null,"roles":[],"totalGiving":0,"registeredEvents":[],"referredBy":null,"referrals":[],"totalReferrals":0,"verified":false,"twoFactorEnabled":false,"userType":"member","isActive":true,"isApproved":false,"approvedBy":null,"approvalDate":null,"lastLogin":"2026-09-12T16:46:13.099Z","lastActivityAt":"2026-09-12T16:46:13.099Z","savedSermons":[],"savedAnnouncements":[],"socialMedia":{"facebook":"","twitter":"","instagram":"","tiktok":"","youtube":"","whatsapp":"","telegram":"","website":""},"notes":"","internalTags":[],"deletedAt":null,"givingRecords":[],"attendanceRecords":[],"prayerRequests":[],"createdAt":"2026-09-12T16:44:27.761Z","updatedAt":"2026-09-12T16:46:13.100Z","membershipNumber":"RCCG-2026-00004","referralCode":"RCCG4B9226C2FFAA","displayName":"Richard Ochuko Timothy","isStaff":false,"isAdmin":false,"id":"6aa5816bd5b1ce159446ae7a"};
-
     let currentUserData = null;
-
-    // Sample Audio Sermons Data List
-    const audioSermons = [
-        {
-            title: "The Power of Unshakable Faith",
-            pastor: "Pastor E.A. Adeboye",
-            duration: "46:32",
-            durationSec: 2792,
-            src: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
-        },
-        {
-            title: "Walking in Daily Divine Victory",
-            pastor: "Ministerial Team",
-            duration: "42:15",
-            durationSec: 2535,
-            src: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"
-        },
-        {
-            title: "Understanding God's Destiny for You",
-            pastor: "Resident Pastor",
-            duration: "38:47",
-            durationSec: 2327,
-            src: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3"
-        },
-        {
-            title: "Kingdom Stewardship & Blessings",
-            pastor: "Pastor Regional Overseer",
-            duration: "51:04",
-            durationSec: 3064,
-            src: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3"
-        }
-    ];
-
+    let audioSermons = [];
+    let videoSermons = [];
     let currentSermonIndex = 0;
     let isAudioPlaying = false;
     let playbackSpeeds = [1.0, 1.25, 1.5, 2.0];
@@ -1310,7 +1275,7 @@
     }
 
     // VIDEO SERMONS TAB FUNCTIONS
-    function playVideoInFeatured(videoSrc, title, speaker, dateTag) {
+    function playVideoInFeatured(videoSrc, title, speaker, dateTag, sermonId) {
         const iframe = document.getElementById('main-video-iframe');
         const titleEl = document.getElementById('featured-sermon-title');
         const speakerEl = document.getElementById('featured-sermon-speaker');
@@ -1394,14 +1359,14 @@
     function getAuthToken() {
         let token = localStorage.getItem("rccgToken") || localStorage.getItem("rccg_token") || localStorage.getItem("token") || localStorage.getItem("authToken");
         if (!token) {
-            token = DEFAULT_TOKEN;
-            localStorage.setItem("rccgToken", DEFAULT_TOKEN);
-            localStorage.setItem("rccg_token", DEFAULT_TOKEN);
+            showToast("Authentication token not found. Please log in.");
+            window.location.href = "/login";
+            return null;
         }
         return token;
     }
 
-    // RETRIEVE USER DATA
+    // RETRIEVE USER DATA FROM LOCALSTORAGE
     function getStoredUser() {
         const rawUser = localStorage.getItem("rccgUser") || localStorage.getItem("rccg_user");
         if (rawUser) {
@@ -1411,9 +1376,7 @@
                 console.error("Failed to parse cached user:", e);
             }
         }
-        localStorage.setItem("rccgUser", JSON.stringify(DEFAULT_USER));
-        localStorage.setItem("rccg_user", JSON.stringify(DEFAULT_USER));
-        return DEFAULT_USER;
+        return null;
     }
 
     // SAVE USER DATA
@@ -1425,24 +1388,123 @@
 
     // INITIALIZE APPLICATION
     document.addEventListener("DOMContentLoaded", function() {
-        getAuthToken();
-        const initialUser = getStoredUser();
-        currentUserData = initialUser;
-        renderUserData(initialUser);
-        fetchUserProfile();
-        initAudioPlayer();
+        const token = getAuthToken();
+        if (token) {
+            const storedUser = getStoredUser();
+            if (storedUser) {
+                currentUserData = storedUser;
+                renderUserData(storedUser);
+            }
+            fetchUserProfile();
+            initAudioPlayer();
+            loadAudioSermons();
+            loadVideoSermons();
+        }
     });
+
+    // ============ VIDEO SERMONS FUNCTIONS ============
+    async function loadVideoSermons() {
+        try {
+            const token = getAuthToken();
+            if (!token) return;
+
+            const res = await fetch(`${BACKEND_BASE_URL}/video-sermons`, {
+                headers: {
+                    "Authorization": `Bearer ${token}`,
+                    "Content-Type": "application/json"
+                }
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                videoSermons = data.videoSermons || [];
+                
+                if (videoSermons.length > 0) {
+                    renderFeaturedSermon();
+                    renderVideoSermonsGrid();
+                }
+            }
+        } catch (err) {
+            console.error("Load video sermons error:", err);
+        }
+    }
+
+    function renderFeaturedSermon() {
+        if (videoSermons.length === 0) return;
+
+        const featured = videoSermons[0];
+        const titleEl = document.getElementById('featured-sermon-title');
+        const descEl = document.getElementById('featured-sermon-desc');
+        const speakerEl = document.getElementById('featured-sermon-speaker');
+        const dateEl = document.getElementById('featured-sermon-date');
+        const tagEl = document.getElementById('featured-sermon-tag');
+        const iframe = document.getElementById('main-video-iframe');
+
+        if (titleEl) titleEl.textContent = featured.title || 'Featured Sermon';
+        if (descEl) descEl.textContent = featured.description || 'Experience a powerful message from Rehoboth Mega Cathedral.';
+        if (speakerEl) speakerEl.textContent = featured.pastor || 'Unknown Pastor';
+        if (dateEl) dateEl.textContent = featured.eventType || 'Sunday Service';
+        if (tagEl) tagEl.textContent = featured.category?.toUpperCase() || 'FEATURED';
+        if (iframe) iframe.src = featured.videoUrl || '';
+    }
+
+    function renderVideoSermonsGrid() {
+        const grid = document.getElementById('video-sermons-grid');
+        if (!grid) return;
+
+        grid.innerHTML = videoSermons.map((sermon, idx) => `
+            <div class="video-sermon-card bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all group flex flex-col justify-between" data-category="${sermon.category || 'all'}" data-title="${sermon.title || ''}" data-speaker="${sermon.pastor || ''}">
+                <div onclick="playVideoInFeatured('${sermon.videoUrl || ''}', '${(sermon.title || '').replace(/'/g, "\\'")}', '${(sermon.pastor || '').replace(/'/g, "\\'")}', '${sermon.eventType || ''}', '${sermon._id || ''}')" class="cursor-pointer">
+                    <div class="relative h-40 w-full bg-slate-900 overflow-hidden">
+                        <img src="${sermon.thumbnailUrl || 'https://via.placeholder.com/600x400?text=Sermon'}" alt="${sermon.title || 'Sermon'}" class="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                        <div class="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                            <div class="w-10 h-10 rounded-full bg-rccg-blue/90 text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                                <svg class="w-5 h-5 fill-current ml-0.5" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                            </div>
+                        </div>
+                        <div class="absolute bottom-2 right-2 bg-black/80 text-white text-[10px] font-bold px-1.5 py-0.5 rounded backdrop-blur-sm">
+                            ${sermon.duration || '00:00'}
+                        </div>
+                    </div>
+                    <div class="p-3.5">
+                        <span class="text-[9px] font-bold ${getCategoryBadgeColor(sermon.category)} px-2 py-0.5 rounded uppercase">${sermon.category || 'General'}</span>
+                        <h4 class="text-xs font-bold text-slate-900 group-hover:text-rccg-royal transition-colors mt-1.5 line-clamp-2">${sermon.title || 'Untitled Sermon'}</h4>
+                        <p class="text-[11px] text-slate-500 mt-1">${sermon.pastor || 'Unknown Pastor'}</p>
+                    </div>
+                </div>
+                <div class="p-3.5 pt-0 flex items-center justify-between border-t border-slate-50 mt-1">
+                    <span class="text-[10px] text-slate-400">${sermon.views || 0} views</span>
+                    <button onclick="toggleSaveSermon('${sermon._id || ''}')" id="btn-save-${sermon._id || ''}" class="text-xs text-rccg-royal font-bold hover:underline">
+                        ${currentUserData?.savedSermons?.includes(sermon._id) ? 'Saved' : 'Bookmark'}
+                    </button>
+                </div>
+            </div>
+        `).join('');
+
+        const countLabel = document.getElementById('sermon-count-label');
+        if (countLabel) countLabel.textContent = `${videoSermons.length} Videos`;
+    }
+
+    function getCategoryBadgeColor(category) {
+        const colorMap = {
+            'sunday': 'text-rccg-royal bg-blue-50',
+            'digging': 'text-amber-700 bg-amber-50',
+            'youth': 'text-purple-700 bg-purple-50',
+            'special': 'text-emerald-700 bg-emerald-50',
+            'holy-ghost': 'text-emerald-700 bg-emerald-50',
+            'general': 'text-slate-700 bg-slate-50'
+        };
+        return colorMap[category?.toLowerCase()] || 'text-slate-700 bg-slate-50';
+    }
 
     // AUDIO PLAYER LOGIC
     function initAudioPlayer() {
         const player = document.getElementById("main-audio-player");
         if (!player) return;
 
-        player.src = audioSermons[0].src;
-
         player.addEventListener("timeupdate", function() {
             const cur = player.currentTime;
-            const dur = player.duration || audioSermons[currentSermonIndex].durationSec;
+            const dur = player.duration;
             
             const curTimeEl = document.getElementById("audio-current-time");
             const progressBar = document.getElementById("audio-progress-bar");
@@ -1460,14 +1522,67 @@
     }
 
     function formatTime(seconds) {
+        if (isNaN(seconds)) return "00:00";
         const mins = Math.floor(seconds / 60);
         const secs = Math.floor(seconds % 60);
         return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
     }
 
+    async function loadAudioSermons() {
+        try {
+            const token = getAuthToken();
+            if (!token) return;
+
+            const res = await fetch(`${BACKEND_BASE_URL}/audio-sermons`, {
+                headers: {
+                    "Authorization": `Bearer ${token}`,
+                    "Content-Type": "application/json"
+                }
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                audioSermons = data.audioSermons || [];
+                if (audioSermons.length > 0) {
+                    loadSermonInPlayer(0);
+                    renderAudioPlaylist();
+                }
+            }
+        } catch (err) {
+            console.error("Load audio sermons error:", err);
+        }
+    }
+
+    function renderAudioPlaylist() {
+        const playlistContainer = document.getElementById("audio-playlist-container");
+        if (!playlistContainer) return;
+
+        playlistContainer.innerHTML = audioSermons.map((sermon, idx) => `
+            <div class="sermon-playlist-item bg-white border border-slate-100 rounded-xl p-3 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors" onclick="selectAndPlaySermon(${idx})">
+                <div class="flex items-center space-x-3 min-w-0">
+                    <div class="w-9 h-9 rounded-xl bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12 0c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z" />
+                        </svg>
+                    </div>
+                    <div class="min-w-0">
+                        <h4 class="text-xs font-bold text-slate-900 truncate">${sermon.title || 'Audio Sermon'}</h4>
+                        <p class="text-[10px] text-slate-500 truncate">${sermon.pastor || 'Unknown Pastor'}</p>
+                    </div>
+                </div>
+                <span class="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-md shrink-0">Play</span>
+            </div>
+        `).join('');
+    }
+
     function selectAndPlaySermon(index) {
         if (index < 0 || index >= audioSermons.length) return;
         currentSermonIndex = index;
+        loadSermonInPlayer(index);
+    }
+
+    function loadSermonInPlayer(index) {
+        if (index < 0 || index >= audioSermons.length) return;
 
         const sermon = audioSermons[index];
         const player = document.getElementById("main-audio-player");
@@ -1475,26 +1590,31 @@
         const pastorEl = document.getElementById("audio-player-pastor");
         const durTimeEl = document.getElementById("audio-duration-time");
 
-        if (titleEl) titleEl.textContent = sermon.title;
-        if (pastorEl) pastorEl.textContent = sermon.pastor;
-        if (durTimeEl) durTimeEl.textContent = sermon.duration;
+        if (titleEl) titleEl.textContent = sermon.title || 'Audio Sermon';
+        if (pastorEl) pastorEl.textContent = sermon.pastor || 'Unknown Pastor';
+        if (durTimeEl) durTimeEl.textContent = sermon.duration || '00:00';
 
-        if (player) {
-            player.src = sermon.src;
+        if (player && sermon.audioUrl) {
+            player.src = sermon.audioUrl;
             player.play();
             isAudioPlaying = true;
             updateAudioUIControls();
         }
 
+        updatePlaylistUI(index);
+        showToast(`Now Playing: ${sermon.title || 'Audio Sermon'}`);
+    }
+
+    function updatePlaylistUI(activeIndex) {
         const listItems = document.querySelectorAll('.sermon-playlist-item');
         listItems.forEach((item, idx) => {
             const btnTag = item.querySelector('span');
             const iconBox = item.querySelector('div > div');
-            if (idx === index) {
+            if (idx === activeIndex) {
                 item.classList.add('bg-indigo-50/80', 'border-indigo-200');
                 if (btnTag) {
                     btnTag.textContent = "Playing";
-                    btnTag.className = "text-[10px] font-bold text-white bg-indigo-600 px-2 py-1 rounded-md";
+                    btnTag.className = "text-[10px] font-bold text-white bg-indigo-600 px-2 py-1 rounded-md shrink-0";
                 }
                 if (iconBox) {
                     iconBox.className = "w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm";
@@ -1503,15 +1623,13 @@
                 item.classList.remove('bg-indigo-50/80', 'border-indigo-200');
                 if (btnTag) {
                     btnTag.textContent = "Play";
-                    btnTag.className = "text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-md";
+                    btnTag.className = "text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-md shrink-0";
                 }
                 if (iconBox) {
                     iconBox.className = "w-9 h-9 rounded-xl bg-slate-200 text-slate-700 flex items-center justify-center shrink-0";
                 }
             }
         });
-
-        showToast(`Now Playing Audio: ${sermon.title}`);
     }
 
     function toggleAudioPlay() {
@@ -1578,21 +1696,26 @@
     // USER DATA RENDERING & API
     function renderUserData(user) {
         if (!user) return;
+        
         const greeting = document.getElementById("hero-greeting");
         if (greeting && user.fullName) {
             const firstName = user.fullName.split(" ")[0];
             greeting.textContent = `Welcome back, ${firstName}`;
         }
+        
         const avatar = document.getElementById("header-user-avatar");
         if (avatar && user.fullName) {
             avatar.src = user.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName)}&background=003366&color=fff`;
         }
+        
         const headerFirstName = document.getElementById("header-user-firstname");
         if (headerFirstName && user.fullName) {
             headerFirstName.textContent = user.fullName.split(" ")[0];
         }
+        
         const dropName = document.getElementById("dropdown-user-fullname");
         if (dropName) dropName.textContent = user.fullName || "User";
+        
         const dropEmail = document.getElementById("dropdown-user-email");
         if (dropEmail) dropEmail.textContent = user.email || "";
 
@@ -1612,22 +1735,25 @@
     async function fetchUserProfile() {
         try {
             const token = getAuthToken();
+            if (!token) return;
+
             const res = await fetch(`${BACKEND_BASE_URL}/profile`, {
                 headers: {
                     "Authorization": `Bearer ${token}`,
                     "Content-Type": "application/json"
                 }
             });
+            
             if (res.ok) {
                 const data = await res.json();
-                if (data.user || data.data) {
-                    const user = data.user || data.data;
+                const user = data.user || data.data;
+                if (user) {
                     saveUserData(user);
                     renderUserData(user);
                 }
             }
         } catch (err) {
-            console.warn("Using offline user data:", err);
+            console.warn("Fetch user profile error:", err);
         }
     }
 
@@ -1644,6 +1770,8 @@
 
         try {
             const token = getAuthToken();
+            if (!token) return;
+
             const res = await fetch(`${BACKEND_BASE_URL}/giving`, {
                 method: "POST",
                 headers: {
@@ -1663,7 +1791,6 @@
             if (res.ok) {
                 showToast(`Thank you! NGN ${amount.toLocaleString()} for ${type} recorded.`);
                 
-                // Update local data
                 if (currentUserData) {
                     currentUserData.totalGiving = (currentUserData.totalGiving || 0) + amount;
                     currentUserData.givingRecords = currentUserData.givingRecords || [];
@@ -1678,11 +1805,8 @@
                     renderUserData(currentUserData);
                 }
                 
-                // Close modal
                 const modal = document.getElementById("give-modal");
                 if (modal) modal.classList.add("hidden");
-                
-                // Reset form
                 e.target.reset();
             } else {
                 const error = await res.json();
@@ -1699,7 +1823,7 @@
         e.preventDefault();
         const title = document.getElementById("prayer-title").value;
         const description = document.getElementById("prayer-description").value;
-        const isConfidential = document.getElementById("prayer-confidential").checked;
+        const isConfidential = document.getElementById("prayer-confidential")?.checked || true;
         
         if (!title || !description) {
             showToast("Please fill in all prayer request fields");
@@ -1708,6 +1832,8 @@
 
         try {
             const token = getAuthToken();
+            if (!token) return;
+
             const res = await fetch(`${BACKEND_BASE_URL}/prayer-request`, {
                 method: "POST",
                 headers: {
@@ -1725,7 +1851,6 @@
             if (res.ok) {
                 showToast(`Prayer request "${title}" submitted successfully!`);
                 
-                // Update local data
                 if (currentUserData) {
                     currentUserData.prayerRequests = currentUserData.prayerRequests || [];
                     currentUserData.prayerRequests.push({
@@ -1738,11 +1863,8 @@
                     renderUserData(currentUserData);
                 }
                 
-                // Close modal
                 const modal = document.getElementById("prayer-modal");
                 if (modal) modal.classList.add("hidden");
-                
-                // Reset form
                 e.target.reset();
             } else {
                 const error = await res.json();
@@ -1758,7 +1880,9 @@
     async function recordAttendance() {
         try {
             const token = getAuthToken();
-            const eventId = document.getElementById("attendance-select-event").value;
+            if (!token) return;
+
+            const eventId = document.getElementById("attendance-select-event")?.value;
             
             if (!eventId) {
                 showToast("Please select an event");
@@ -1776,7 +1900,6 @@
             if (res.ok) {
                 showToast("Attendance successfully checked in!");
                 
-                // Update local data
                 if (currentUserData) {
                     currentUserData.attendanceRecords = currentUserData.attendanceRecords || [];
                     currentUserData.attendanceRecords.push({
@@ -1788,7 +1911,6 @@
                     renderUserData(currentUserData);
                 }
                 
-                // Close modal
                 const modal = document.getElementById("attendance-modal");
                 if (modal) modal.classList.add("hidden");
             } else {
@@ -1809,6 +1931,8 @@
         
         try {
             const token = getAuthToken();
+            if (!token) return;
+
             const endpoint = isSaved ? `unsave-sermon/${sermonId}` : `save-sermon/${sermonId}`;
             const method = isSaved ? "DELETE" : "POST";
             
@@ -1821,7 +1945,6 @@
             });
 
             if (res.ok) {
-                // Update local data
                 currentUserData.savedSermons = currentUserData.savedSermons || [];
                 
                 if (isSaved) {
@@ -1829,16 +1952,14 @@
                     if (index > -1) currentUserData.savedSermons.splice(index, 1);
                     showToast("Sermon removed from saved list");
                     
-                    // Update all buttons for this sermon
-                    const btns = document.querySelectorAll(`[onclick*="toggleSaveSermon('${sermonId}')"]`);
-                    btns.forEach(btn => btn.textContent = "Bookmark");
+                    const btn = document.getElementById(`btn-save-${sermonId}`);
+                    if (btn) btn.textContent = "Bookmark";
                 } else {
                     currentUserData.savedSermons.push(sermonId);
                     showToast("Sermon saved successfully!");
                     
-                    // Update all buttons for this sermon
-                    const btns = document.querySelectorAll(`[onclick*="toggleSaveSermon('${sermonId}')"]`);
-                    btns.forEach(btn => btn.textContent = "Saved");
+                    const btn = document.getElementById(`btn-save-${sermonId}`);
+                    if (btn) btn.textContent = "Saved";
                 }
                 
                 saveUserData(currentUserData);
@@ -1861,6 +1982,8 @@
         
         try {
             const token = getAuthToken();
+            if (!token) return;
+
             const endpoint = isRegistered ? `unregister-event/${eventId}` : `register-event/${eventId}`;
             const method = isRegistered ? "DELETE" : "POST";
             
@@ -1873,7 +1996,6 @@
             });
 
             if (res.ok) {
-                // Update local data
                 currentUserData.registeredEvents = currentUserData.registeredEvents || [];
                 const btn = document.getElementById(`btn-${eventId}`);
                 
@@ -1912,6 +2034,8 @@
     async function updateUserProfile(profileData) {
         try {
             const token = getAuthToken();
+            if (!token) return false;
+
             const res = await fetch(`${BACKEND_BASE_URL}/profile`, {
                 method: "PUT",
                 headers: {
@@ -1948,10 +2072,12 @@
                 return false;
             }
 
+            const token = getAuthToken();
+            if (!token) return false;
+
             const formData = new FormData();
             formData.append("profileImage", file);
 
-            const token = getAuthToken();
             const res = await fetch(`${BACKEND_BASE_URL}/profile-image`, {
                 method: "POST",
                 headers: {
@@ -1979,44 +2105,12 @@
         }
     }
 
-    // OPEN MODALS
-    function openGiveModal() {
-        const modal = document.getElementById("give-modal");
-        if (modal) modal.classList.remove("hidden");
-    }
-
-    function openPrayerModal() {
-        const modal = document.getElementById("prayer-modal");
-        if (modal) modal.classList.remove("hidden");
-    }
-
-    function openAttendanceModal() {
-        const modal = document.getElementById("attendance-modal");
-        if (modal) modal.classList.remove("hidden");
-    }
-
-    // LOGOUT USER
-    async function logoutUser() {
-        try {
-            localStorage.removeItem("rccgToken");
-            localStorage.removeItem("rccg_token");
-            localStorage.removeItem("token");
-            localStorage.removeItem("authToken");
-            localStorage.removeItem("rccgUser");
-            localStorage.removeItem("rccg_user");
-            
-            showToast("Signed out successfully.");
-            setTimeout(() => window.location.href = "/login", 1000);
-        } catch (err) {
-            console.error("Logout error:", err);
-            window.location.href = "/login";
-        }
-    }
-
     // FETCH USER GIVING HISTORY
     async function fetchGivingHistory() {
         try {
             const token = getAuthToken();
+            if (!token) return [];
+
             const res = await fetch(`${BACKEND_BASE_URL}/giving`, {
                 headers: {
                     "Authorization": `Bearer ${token}`,
@@ -2038,6 +2132,8 @@
     async function fetchPrayerRequests() {
         try {
             const token = getAuthToken();
+            if (!token) return [];
+
             const res = await fetch(`${BACKEND_BASE_URL}/prayer-requests`, {
                 headers: {
                     "Authorization": `Bearer ${token}`,
@@ -2059,6 +2155,8 @@
     async function fetchAttendanceHistory() {
         try {
             const token = getAuthToken();
+            if (!token) return [];
+
             const res = await fetch(`${BACKEND_BASE_URL}/attendance`, {
                 headers: {
                     "Authorization": `Bearer ${token}`,
@@ -2074,6 +2172,24 @@
             console.error("Fetch attendance error:", err);
         }
         return [];
+    }
+
+    // LOGOUT USER
+    async function logoutUser() {
+        try {
+            localStorage.removeItem("rccgToken");
+            localStorage.removeItem("rccg_token");
+            localStorage.removeItem("token");
+            localStorage.removeItem("authToken");
+            localStorage.removeItem("rccgUser");
+            localStorage.removeItem("rccg_user");
+            
+            showToast("Signed out successfully.");
+            setTimeout(() => window.location.href = "/login", 1000);
+        } catch (err) {
+            console.error("Logout error:", err);
+            window.location.href = "/login";
+        }
     }
 
     // TOAST NOTIFICATIONS
