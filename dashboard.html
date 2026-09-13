@@ -582,6 +582,38 @@
                     </div>
                 </div>
 
+                <style>
+    /* =========================
+       ACTION BUTTON SPINNER
+       ========================= */
+
+    .btn-spinner {
+        width: 14px;
+        height: 14px;
+        border: 2px solid currentColor;
+        border-right-color: transparent;
+        border-radius: 50%;
+        display: inline-block;
+        animation: btnSpin 0.65s linear infinite;
+        flex-shrink: 0;
+    }
+
+    @keyframes btnSpin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    .action-loading {
+        pointer-events: none;
+        opacity: 0.75;
+        cursor: wait;
+    }
+
+    .action-loading .btn-spinner {
+        display: inline-block;
+    }
+                </style>
                 <div id="events-container" class="space-y-3">
                     <!-- Event Item 1 -->
                     <div class="bg-white border border-slate-100 rounded-2xl p-3.5 sm:p-4 flex items-center justify-between shadow-sm hover:shadow transition-shadow">
@@ -1292,8 +1324,13 @@
                     <label class="block text-xs font-bold text-slate-700 mb-1">Description / Note (Optional)</label>
                     <input type="text" id="give-description" placeholder="e.g. Sunday Service Offering" class="w-full text-xs rounded-xl border-slate-200 focus:ring-rccg-blue focus:border-rccg-blue p-2.5" />
                 </div>
-                <button type="submit" id="give-submit-btn" class="w-full py-3 bg-rccg-green hover:bg-rccg-greenHover text-white font-bold text-xs rounded-xl transition-all">Submit Record</button>
-            </form>
+                <button
+    type="submit"
+    id="give-submit-btn"
+    class="w-full py-3 bg-rccg-green hover:bg-rccg-greenHover text-white font-bold text-xs rounded-xl transition-all inline-flex items-center justify-center gap-2"
+>
+    <span>Submit Record</span>
+</button>            </form>
         </div>
     </div>
 
@@ -1327,8 +1364,13 @@
                     <input type="checkbox" id="prayer-confidential" checked class="rounded text-rccg-blue focus:ring-rccg-blue" />
                     <label for="prayer-confidential" class="text-xs text-slate-600">Keep request confidential with Pastoral Care team</label>
                 </div>
-                <button type="submit" id="prayer-submit-btn" class="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl transition-all">Submit Request</button>
-            </form>
+                <button
+    type="submit"
+    id="prayer-submit-btn"
+    class="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl transition-all inline-flex items-center justify-center gap-2"
+>
+    <span>Submit Request</span>
+</button>            </form>
         </div>
     </div>
 
@@ -1488,6 +1530,38 @@ function switchTab(tabName) {
         }
         
         window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+}
+
+    function setButtonLoading(button, loading, loadingText = "Please wait...") {
+    if (!button) return;
+
+    if (loading) {
+        // Save original button content
+        if (!button.dataset.originalContent) {
+            button.dataset.originalContent = button.innerHTML;
+        }
+
+        // Save original disabled state
+        button.dataset.originalDisabled = button.disabled ? "true" : "false";
+
+        button.disabled = true;
+        button.classList.add("action-loading");
+
+        button.innerHTML = `
+            <span class="btn-spinner"></span>
+            <span>${loadingText}</span>
+        `;
+    } else {
+        button.disabled = button.dataset.originalDisabled === "true";
+        button.classList.remove("action-loading");
+
+        if (button.dataset.originalContent) {
+            button.innerHTML = button.dataset.originalContent;
+            delete button.dataset.originalContent;
+        }
+
+        delete button.dataset.originalDisabled;
     }
 }
 
@@ -2207,9 +2281,21 @@ async function fetchUserProfile() {
 async function handleGivingSubmit(e) {
     e.preventDefault();
 
+    const form = e.target;
+    const submitButton = document.getElementById("give-submit-btn");
+
     const amountVal = document.getElementById("give-amount")?.value;
     const amount = amountVal ? parseFloat(amountVal) : 0;
-    const type = document.getElementById("give-type")?.value || "General";
+
+    const type =
+        document.getElementById("give-type")?.value || "General";
+
+    const method =
+        document.getElementById("give-method")?.value || "online";
+
+    const description =
+        document.getElementById("give-description")?.value?.trim() ||
+        `${type} offering`;
 
     if (!amount || amount <= 0) {
         showToast("Please enter a valid amount");
@@ -2224,39 +2310,57 @@ async function handleGivingSubmit(e) {
             return;
         }
 
-        const res = await fetch(`${BACKEND_BASE_URL}/giving`, {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${token}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                type,
-                amount,
-                currency: "NGN",
+        // START SPINNER
+        setButtonLoading(
+            submitButton,
+            true,
+            "Recording..."
+        );
 
-                // FIXED:
-                method: "online",
+        const reference = `GIVING-${Date.now()}`;
 
-                reference: `GIVING-${Date.now()}`,
-                description: `${type} offering`
-            })
-        });
+        const res = await fetch(
+            `${BACKEND_BASE_URL}/giving`,
+            {
+                method: "POST",
 
-        // Only treat an actual authentication failure as a session problem
+                headers: {
+                    "Authorization": `Bearer ${token}`,
+                    "Content-Type": "application/json"
+                },
+
+                body: JSON.stringify({
+                    type,
+                    amount,
+                    currency: "NGN",
+                    method,
+                    reference,
+                    description
+                })
+            }
+        );
+
+        // Authentication failure only
         if (res.status === 401) {
-            redirectToLogin("Session expired. Please log in again.");
+            redirectToLogin(
+                "Session expired. Please log in again."
+            );
             return;
         }
 
         const data = await res.json().catch(() => ({}));
 
         if (res.ok && data.success) {
+
             showToast(
                 `Thank you! NGN ${amount.toLocaleString()} for ${type} recorded.`
             );
 
+            /*
+             * Update local dashboard data
+             */
             if (currentUserData) {
+
                 currentUserData.totalGiving =
                     (currentUserData.totalGiving || 0) + amount;
 
@@ -2267,18 +2371,156 @@ async function handleGivingSubmit(e) {
                     type,
                     amount,
                     currency: "NGN",
-                    method: "online",
-                    reference: data.givingRecord?.reference ||
-                               `GIVING-${Date.now()}`,
+                    method,
+                    reference:
+                        data.givingRecord?.reference ||
+                        reference,
+                    description,
                     date: new Date().toISOString(),
                     confirmed: false
+                });
+
+                saveUserData(currentUserData);
+
+                renderUserData(currentUserData);
+            }
+
+            /*
+             * Close modal
+             */
+            const modal =
+                document.getElementById("give-modal");
+
+            if (modal) {
+                modal.classList.add("hidden");
+            }
+
+            /*
+             * Reset form
+             */
+            form.reset();
+
+        } else {
+
+            console.error(
+                "Giving API error:",
+                data
+            );
+
+            showToast(
+                data.message ||
+                "Failed to record giving"
+            );
+        }
+
+    } catch (err) {
+
+        console.error(
+            "Giving submission error:",
+            err
+        );
+
+        showToast(
+            "Error recording giving. Please try again."
+        );
+
+    } finally {
+
+        // ALWAYS STOP SPINNER
+        setButtonLoading(
+            submitButton,
+            false
+        );
+    }
+}
+// PRAYER REQUEST API INTEGRATION
+async function handlePrayerSubmit(e) {
+    e.preventDefault();
+
+    const title =
+        document.getElementById("prayer-title")?.value || '';
+
+    const description =
+        document.getElementById("prayer-description")?.value || '';
+
+    const isConfidential =
+        document.getElementById("prayer-confidential")?.checked ?? true;
+
+    const submitButton =
+        document.getElementById("prayer-submit-btn");
+
+    if (!title || !description) {
+        showToast("Please fill in all prayer request fields");
+        return;
+    }
+
+    try {
+        const token = getAuthToken();
+
+        if (!token) {
+            redirectToLogin("Session expired. Please log in again.");
+            return;
+        }
+
+        // Start spinner
+        setButtonLoading(
+            submitButton,
+            true,
+            "Submitting..."
+        );
+
+        const res = await fetch(
+            `${BACKEND_BASE_URL}/prayer-request`,
+            {
+                method: "POST",
+
+                headers: {
+                    "Authorization": `Bearer ${token}`,
+                    "Content-Type": "application/json"
+                },
+
+                body: JSON.stringify({
+                    title,
+                    description,
+                    category: "general",
+                    isConfidential
+                })
+            }
+        );
+
+        if (res.status === 401) {
+            redirectToLogin(
+                "Session expired. Please log in again."
+            );
+            return;
+        }
+
+        const data = await res.json().catch(() => ({}));
+
+        if (res.ok && data.success) {
+
+            showToast(
+                `Prayer request "${title}" submitted successfully!`
+            );
+
+            if (currentUserData) {
+
+                currentUserData.prayerRequests =
+                    currentUserData.prayerRequests || [];
+
+                currentUserData.prayerRequests.push({
+                    title,
+                    description,
+                    isConfidential,
+                    date: new Date().toISOString()
                 });
 
                 saveUserData(currentUserData);
                 renderUserData(currentUserData);
             }
 
-            const modal = document.getElementById("give-modal");
+            const modal =
+                document.getElementById("prayer-modal");
 
             if (modal) {
                 modal.classList.add("hidden");
@@ -2287,81 +2529,36 @@ async function handleGivingSubmit(e) {
             e.target.reset();
 
         } else {
-            console.error("Giving API error:", data);
+
+            console.error(
+                "Prayer request API error:",
+                data
+            );
 
             showToast(
-                data.message || "Failed to record giving"
+                data.message ||
+                "Failed to submit prayer request"
             );
         }
 
     } catch (err) {
-        console.error("Giving submission error:", err);
-        showToast("Error recording giving. Please try again.");
-    }
-}
-// PRAYER REQUEST API INTEGRATION
-async function handlePrayerSubmit(e) {
-    e.preventDefault();
-    const title = document.getElementById("prayer-title")?.value || '';
-    const description = document.getElementById("prayer-description")?.value || '';
-    const isConfidential = document.getElementById("prayer-confidential")?.checked ?? true;
-    
-    if (!title || !description) {
-        showToast("Please fill in all prayer request fields");
-        return;
-    }
 
-    try {
-        const token = getAuthToken();
-        if (!token) {
-            redirectToLogin("Session expired. Please log in again.");
-            return;
-        }
+        console.error(
+            "Prayer request error:",
+            err
+        );
 
-        const res = await fetch(`${BACKEND_BASE_URL}/prayer-request`, {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${token}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                title,
-                description,
-                category: "general",
-                isConfidential
-            })
-        });
+        showToast(
+            "Error submitting prayer request. Please try again."
+        );
 
-        if (res.status === 401) {
-            redirectToLogin("Session expired. Please log in again.");
-            return;
-        }
+    } finally {
 
-        if (res.ok) {
-            showToast(`Prayer request "${title}" submitted successfully!`);
-            
-            if (currentUserData) {
-                currentUserData.prayerRequests = currentUserData.prayerRequests || [];
-                currentUserData.prayerRequests.push({
-                    title,
-                    description,
-                    isConfidential,
-                    date: new Date().toISOString()
-                });
-                saveUserData(currentUserData);
-                renderUserData(currentUserData);
-            }
-            
-            const modal = document.getElementById("prayer-modal");
-            if (modal) modal.classList.add("hidden");
-            e.target.reset();
-        } else {
-            const error = await res.json().catch(()=>({}));
-            showToast(error.message || "Failed to submit prayer request");
-        }
-    } catch (err) {
-        console.error("Prayer request error:", err);
-        showToast("Error submitting prayer request. Please try again.");
+        // Always restore the button
+        setButtonLoading(
+            submitButton,
+            false
+        );
     }
 }
 
