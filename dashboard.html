@@ -1217,7 +1217,7 @@
 
     <!-- FLOWBITE JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.js"></script>
-<script>
+    <script>
     const BACKEND_BASE_URL = "https://examguide.onrender.com/api/rccg/users";
 
     let currentUserData = null;
@@ -1354,7 +1354,7 @@
         }
     }
 
-    // RETRIEVE AUTH TOKEN - IMPROVED VERSION
+    // RETRIEVE AUTH TOKEN - FIXED VERSION
     function getAuthToken() {
         let token = localStorage.getItem("rccgToken") 
             || localStorage.getItem("rccg_token") 
@@ -1363,8 +1363,6 @@
         
         if (!token) {
             console.error("No auth token found");
-            showToast("Please log in first");
-            setTimeout(() => window.location.href = "/login", 1500);
             return null;
         }
         
@@ -1373,7 +1371,23 @@
             token = token.substring(7);
         }
         
+        console.log("Token found, length:", token.length);
         return token;
+    }
+
+    // STORE AUTH TOKEN AFTER LOGIN
+    function storeAuthToken(token) {
+        if (!token) return;
+        
+        // Remove Bearer prefix if present
+        let cleanToken = token.startsWith('Bearer ') ? token.substring(7) : token;
+        
+        localStorage.setItem("rccgToken", cleanToken);
+        localStorage.setItem("rccg_token", cleanToken);
+        localStorage.setItem("token", cleanToken);
+        localStorage.setItem("authToken", cleanToken);
+        
+        console.log("Token stored successfully");
     }
 
     // RETRIEVE USER DATA FROM LOCALSTORAGE
@@ -1396,19 +1410,40 @@
         localStorage.setItem("rccg_user", JSON.stringify(user));
     }
 
+    // HANDLE REDIRECT TO LOGIN WITH MESSAGE
+    function redirectToLogin(message) {
+        showToast(message || "Session expired. Please log in again.");
+        localStorage.removeItem("rccgToken");
+        localStorage.removeItem("rccg_token");
+        localStorage.removeItem("token");
+        localStorage.removeItem("authToken");
+        localStorage.removeItem("rccgUser");
+        localStorage.removeItem("rccg_user");
+        setTimeout(() => window.location.href = "/login", 1500);
+    }
+
     // INITIALIZE APPLICATION
     document.addEventListener("DOMContentLoaded", function() {
         const token = getAuthToken();
         if (token) {
+            console.log("Token exists, initializing dashboard...");
             const storedUser = getStoredUser();
             if (storedUser) {
                 currentUserData = storedUser;
                 renderUserData(storedUser);
             }
-            fetchUserProfile();
-            initAudioPlayer();
-            loadAudioSermons();
-            loadVideoSermons();
+            
+            // Delay to ensure token is available
+            setTimeout(() => {
+                fetchUserProfile();
+                initAudioPlayer();
+                loadAudioSermons();
+                loadVideoSermons();
+            }, 500);
+        } else {
+            console.warn("No token found, redirecting to login");
+            showToast("Please log in first");
+            setTimeout(() => window.location.href = "/login", 1500);
         }
     });
 
@@ -1416,8 +1451,13 @@
     async function loadVideoSermons() {
         try {
             const token = getAuthToken();
-            if (!token) return;
+            if (!token) {
+                console.error("No token available");
+                return;
+            }
 
+            console.log("Fetching video sermons with token...");
+            
             const res = await fetch(`${BACKEND_BASE_URL}/video-sermons`, {
                 method: "GET",
                 headers: {
@@ -1426,27 +1466,26 @@
                 }
             });
 
+            console.log("Video sermons response status:", res.status);
+
             if (res.status === 401) {
-                console.error("Token expired or invalid");
-                localStorage.removeItem("rccgToken");
-                localStorage.removeItem("rccg_token");
-                localStorage.removeItem("token");
-                localStorage.removeItem("authToken");
-                showToast("Session expired. Please log in again.");
-                setTimeout(() => window.location.href = "/login", 1500);
+                console.error("401 Unauthorized - Token invalid or expired");
+                redirectToLogin("Your session has expired. Please log in again.");
                 return;
             }
 
             if (res.ok) {
                 const data = await res.json();
                 videoSermons = data.videoSermons || [];
+                console.log("Video sermons loaded:", videoSermons.length);
                 
                 if (videoSermons.length > 0) {
                     renderFeaturedSermon();
                     renderVideoSermonsGrid();
                 }
             } else {
-                console.error("Failed to load video sermons:", res.status);
+                const error = await res.json();
+                console.error("Failed to load video sermons:", error);
                 showToast("Failed to load video sermons");
             }
         } catch (err) {
@@ -1557,8 +1596,13 @@
     async function loadAudioSermons() {
         try {
             const token = getAuthToken();
-            if (!token) return;
+            if (!token) {
+                console.error("No token available");
+                return;
+            }
 
+            console.log("Fetching audio sermons with token...");
+            
             const res = await fetch(`${BACKEND_BASE_URL}/audio-sermons`, {
                 method: "GET",
                 headers: {
@@ -1567,26 +1611,26 @@
                 }
             });
 
+            console.log("Audio sermons response status:", res.status);
+
             if (res.status === 401) {
-                console.error("Token expired or invalid");
-                localStorage.removeItem("rccgToken");
-                localStorage.removeItem("rccg_token");
-                localStorage.removeItem("token");
-                localStorage.removeItem("authToken");
-                showToast("Session expired. Please log in again.");
-                setTimeout(() => window.location.href = "/login", 1500);
+                console.error("401 Unauthorized - Token invalid or expired");
+                redirectToLogin("Your session has expired. Please log in again.");
                 return;
             }
 
             if (res.ok) {
                 const data = await res.json();
                 audioSermons = data.audioSermons || [];
+                console.log("Audio sermons loaded:", audioSermons.length);
+                
                 if (audioSermons.length > 0) {
                     loadSermonInPlayer(0);
                     renderAudioPlaylist();
                 }
             } else {
-                console.error("Failed to load audio sermons:", res.status);
+                const error = await res.json();
+                console.error("Failed to load audio sermons:", error);
             }
         } catch (err) {
             console.error("Load audio sermons error:", err);
@@ -1775,7 +1819,12 @@
     async function fetchUserProfile() {
         try {
             const token = getAuthToken();
-            if (!token) return;
+            if (!token) {
+                console.error("No token available for profile fetch");
+                return;
+            }
+
+            console.log("Fetching user profile with token...");
 
             const res = await fetch(`${BACKEND_BASE_URL}/profile`, {
                 method: "GET",
@@ -1785,14 +1834,11 @@
                 }
             });
 
+            console.log("Profile response status:", res.status);
+
             if (res.status === 401) {
-                console.error("Token expired or invalid");
-                localStorage.removeItem("rccgToken");
-                localStorage.removeItem("rccg_token");
-                localStorage.removeItem("token");
-                localStorage.removeItem("authToken");
-                showToast("Session expired. Please log in again.");
-                setTimeout(() => window.location.href = "/login", 1500);
+                console.error("401 Unauthorized - Token invalid or expired");
+                redirectToLogin("Your session has expired. Please log in again.");
                 return;
             }
             
@@ -1802,9 +1848,11 @@
                 if (user) {
                     saveUserData(user);
                     renderUserData(user);
+                    console.log("Profile loaded successfully");
                 }
             } else {
-                console.error("Profile fetch error:", res.status);
+                const error = await res.json();
+                console.error("Profile fetch error:", error);
             }
         } catch (err) {
             console.error("Fetch user profile error:", err);
@@ -1824,7 +1872,10 @@
 
         try {
             const token = getAuthToken();
-            if (!token) return;
+            if (!token) {
+                redirectToLogin("Session expired. Please log in again.");
+                return;
+            }
 
             const res = await fetch(`${BACKEND_BASE_URL}/giving`, {
                 method: "POST",
@@ -1843,10 +1894,7 @@
             });
 
             if (res.status === 401) {
-                localStorage.removeItem("rccgToken");
-                localStorage.removeItem("rccg_token");
-                showToast("Session expired. Please log in again.");
-                setTimeout(() => window.location.href = "/login", 1500);
+                redirectToLogin("Session expired. Please log in again.");
                 return;
             }
 
@@ -1894,7 +1942,10 @@
 
         try {
             const token = getAuthToken();
-            if (!token) return;
+            if (!token) {
+                redirectToLogin("Session expired. Please log in again.");
+                return;
+            }
 
             const res = await fetch(`${BACKEND_BASE_URL}/prayer-request`, {
                 method: "POST",
@@ -1911,10 +1962,7 @@
             });
 
             if (res.status === 401) {
-                localStorage.removeItem("rccgToken");
-                localStorage.removeItem("rccg_token");
-                showToast("Session expired. Please log in again.");
-                setTimeout(() => window.location.href = "/login", 1500);
+                redirectToLogin("Session expired. Please log in again.");
                 return;
             }
 
@@ -1950,7 +1998,10 @@
     async function recordAttendance() {
         try {
             const token = getAuthToken();
-            if (!token) return;
+            if (!token) {
+                redirectToLogin("Session expired. Please log in again.");
+                return;
+            }
 
             const eventId = document.getElementById("attendance-select-event")?.value;
             
@@ -1968,10 +2019,7 @@
             });
 
             if (res.status === 401) {
-                localStorage.removeItem("rccgToken");
-                localStorage.removeItem("rccg_token");
-                showToast("Session expired. Please log in again.");
-                setTimeout(() => window.location.href = "/login", 1500);
+                redirectToLogin("Session expired. Please log in again.");
                 return;
             }
 
@@ -2009,7 +2057,10 @@
         
         try {
             const token = getAuthToken();
-            if (!token) return;
+            if (!token) {
+                redirectToLogin("Session expired. Please log in again.");
+                return;
+            }
 
             const endpoint = isSaved ? `unsave-sermon/${sermonId}` : `save-sermon/${sermonId}`;
             const method = isSaved ? "DELETE" : "POST";
@@ -2023,10 +2074,7 @@
             });
 
             if (res.status === 401) {
-                localStorage.removeItem("rccgToken");
-                localStorage.removeItem("rccg_token");
-                showToast("Session expired. Please log in again.");
-                setTimeout(() => window.location.href = "/login", 1500);
+                redirectToLogin("Session expired. Please log in again.");
                 return;
             }
 
@@ -2068,7 +2116,10 @@
         
         try {
             const token = getAuthToken();
-            if (!token) return;
+            if (!token) {
+                redirectToLogin("Session expired. Please log in again.");
+                return;
+            }
 
             const endpoint = isRegistered ? `unregister-event/${eventId}` : `register-event/${eventId}`;
             const method = isRegistered ? "DELETE" : "POST";
@@ -2082,10 +2133,7 @@
             });
 
             if (res.status === 401) {
-                localStorage.removeItem("rccgToken");
-                localStorage.removeItem("rccg_token");
-                showToast("Session expired. Please log in again.");
-                setTimeout(() => window.location.href = "/login", 1500);
+                redirectToLogin("Session expired. Please log in again.");
                 return;
             }
 
@@ -2128,7 +2176,10 @@
     async function updateUserProfile(profileData) {
         try {
             const token = getAuthToken();
-            if (!token) return false;
+            if (!token) {
+                redirectToLogin("Session expired. Please log in again.");
+                return false;
+            }
 
             const res = await fetch(`${BACKEND_BASE_URL}/profile`, {
                 method: "PUT",
@@ -2140,10 +2191,7 @@
             });
 
             if (res.status === 401) {
-                localStorage.removeItem("rccgToken");
-                localStorage.removeItem("rccg_token");
-                showToast("Session expired. Please log in again.");
-                setTimeout(() => window.location.href = "/login", 1500);
+                redirectToLogin("Session expired. Please log in again.");
                 return false;
             }
 
@@ -2175,7 +2223,10 @@
             }
 
             const token = getAuthToken();
-            if (!token) return false;
+            if (!token) {
+                redirectToLogin("Session expired. Please log in again.");
+                return false;
+            }
 
             const formData = new FormData();
             formData.append("profileImage", file);
@@ -2189,10 +2240,7 @@
             });
 
             if (res.status === 401) {
-                localStorage.removeItem("rccgToken");
-                localStorage.removeItem("rccg_token");
-                showToast("Session expired. Please log in again.");
-                setTimeout(() => window.location.href = "/login", 1500);
+                redirectToLogin("Session expired. Please log in again.");
                 return false;
             }
 
@@ -2230,8 +2278,7 @@
             });
 
             if (res.status === 401) {
-                localStorage.removeItem("rccgToken");
-                localStorage.removeItem("rccg_token");
+                redirectToLogin("Session expired. Please log in again.");
                 return [];
             }
 
@@ -2260,8 +2307,7 @@
             });
 
             if (res.status === 401) {
-                localStorage.removeItem("rccgToken");
-                localStorage.removeItem("rccg_token");
+                redirectToLogin("Session expired. Please log in again.");
                 return [];
             }
 
@@ -2290,8 +2336,7 @@
             });
 
             if (res.status === 401) {
-                localStorage.removeItem("rccgToken");
-                localStorage.removeItem("rccg_token");
+                redirectToLogin("Session expired. Please log in again.");
                 return [];
             }
 
