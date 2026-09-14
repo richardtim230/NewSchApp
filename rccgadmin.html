@@ -703,279 +703,546 @@
 
   <!-- Flowbite JavaScript Library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.js"></script>
+<script>
+const API = {
+  baseUrl: '/api/rccg/users'
+};
 
-  <!-- BACKEND INTEGRATION & UI CONTROLLER SCRIPT -->
-  <script>
-    /**
-     * PRODUCTION BACKEND INTEGRATION CONFIGURATION
-     * Set your actual REST API or Supabase URL here.
-     */
-    const API_CONFIG = {
-      baseUrl: '/api/v1', // Replace with your production API endpoint (e.g. https://api.rehoboth.org/v1)
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`
+function getAuthToken() {
+  const keys = ["authToken","token","rccgToken","rccg_token"];
+  for (const k of keys) {
+    try {
+      const raw = localStorage.getItem(k);
+      if (!raw) continue;
+      let val = raw.trim();
+      if ((val.startsWith('{') || val.startsWith('['))) {
+        try {
+          const parsed = JSON.parse(val);
+          val = parsed?.token || parsed?.authToken || parsed?.accessToken || parsed?.access_token || '';
+        } catch (e) {}
       }
-    };
+      if (!val) continue;
+      val = val.replace(/^Bearer\s+/i,'').trim();
+      if (val) return val;
+    } catch (e) {}
+  }
+  return null;
+}
 
-    /**
-     * INITIALIZATION ON DOM LOAD
-     */
-    document.addEventListener('DOMContentLoaded', () => {
-      initUserProfile();
-      loadDashboardMetrics();
-      loadHomeActivityLog();
-      setupEventListeners();
+function storeAuthToken(token) {
+  if (!token) return;
+  let t = token;
+  if (typeof t === 'object') {
+    t = t.token || t.authToken || t.accessToken || t.access_token || JSON.stringify(t);
+  }
+  if (!t) return;
+  t = t.replace(/^Bearer\s+/i,'').trim();
+  try {
+    localStorage.setItem('authToken', t);
+    localStorage.setItem('token', t);
+    localStorage.setItem('rccgToken', t);
+    localStorage.setItem('rccg_token', t);
+  } catch(e) {}
+}
+
+async function authFetch(path, opts = {}) {
+  const token = getAuthToken();
+  const headers = Object.assign({}, opts.headers || {}, {
+    'Content-Type': opts.body instanceof FormData ? undefined : 'application/json'
+  });
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const cfg = Object.assign({}, opts, { headers });
+
+  try {
+    const res = await fetch(`${API.baseUrl}${path}`, cfg);
+    if (res.status === 401) {
+      showToast("Session expired. Redirecting to login...", 'error');
+      setTimeout(() => handleSignOut(), 800);
+      throw new Error('Unauthorized');
+    }
+    if (res.status === 403) {
+      showToast("Access denied (admin required).", 'error');
+      throw new Error('Forbidden');
+    }
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message || `Request failed (${res.status})`);
+      return json;
+    } else {
+      const text = await res.text();
+      if (!res.ok) throw new Error(text || `Request failed (${res.status})`);
+      return text;
+    }
+  } catch (err) {
+    console.error('authFetch error', err);
+    throw err;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  initUserProfile();
+  loadDashboardMetrics();
+  loadHomeActivityLog();
+  setupEventListeners();
+});
+
+function switchSection(sectionId) {
+  document.querySelectorAll('.dashboard-section').forEach(el => el.classList.add('hidden'));
+  const activeSection = document.getElementById(sectionId);
+  if (activeSection) activeSection.classList.remove('hidden');
+
+  document.querySelectorAll('.nav-item-sidebar').forEach(btn => {
+    if (btn.getAttribute('data-section') === sectionId) {
+      btn.classList.add('bg-rccg-blue', 'text-white', 'shadow-md');
+      btn.classList.remove('text-slate-300', 'hover:bg-white/10');
+    } else {
+      btn.classList.remove('bg-rccg-blue', 'text-white', 'shadow-md');
+      btn.classList.add('text-slate-300', 'hover:bg-white/10');
+    }
+  });
+
+  if (sectionId === 'section-members') loadMembersDirectory();
+  if (sectionId === 'section-attendance') loadAttendanceTracker();
+
+  closeSidebar();
+}
+
+function toggleSidebar() {
+  const sidebar = document.getElementById('logo-sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  sidebar.classList.toggle('-translate-x-full');
+  overlay.classList.toggle('hidden');
+}
+
+function closeSidebar() {
+  const sidebar = document.getElementById('logo-sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  sidebar.classList.add('-translate-x-full');
+  overlay.classList.add('hidden');
+}
+
+function triggerBtnSpinner(btn, loadingMsg, callback) {
+  const spinner = btn.querySelector('.btn-spinner');
+  const textSpan = btn.querySelector('.btn-text');
+  const icon = btn.querySelector('.btn-icon');
+
+  const originalText = textSpan ? textSpan.innerText : '';
+  if (spinner) spinner.classList.remove('hidden');
+  if (icon) icon.classList.add('hidden');
+  if (textSpan) textSpan.innerText = loadingMsg;
+  btn.disabled = true;
+
+  (async () => {
+    try {
+      await new Promise(r => setTimeout(r, 250));
+      if (callback) await callback();
+    } catch (e) {
+      console.error('triggerBtnSpinner callback error', e);
+      showToast(e.message || 'Action failed', 'error');
+    } finally {
+      if (spinner) spinner.classList.add('hidden');
+      if (icon) icon.classList.remove('hidden');
+      if (textSpan) textSpan.innerText = originalText;
+      btn.disabled = false;
+    }
+  })();
+}
+
+function showToast(message, type = 'success') {
+  const container = document.getElementById('toast-container');
+  if (!container) {
+    console.log('TOAST:', message);
+    return;
+  }
+  const toast = document.createElement('div');
+  const bgColor = type === 'success' ? 'bg-slate-900 text-white' : (type === 'info' ? 'bg-blue-600 text-white' : 'bg-red-600 text-white');
+
+  toast.className = `${bgColor} text-xs font-semibold px-4 py-3 rounded-2xl shadow-xl flex items-center space-x-2 pointer-events-auto transition-all duration-300 opacity-0 transform translate-y-2`;
+  toast.innerHTML = `
+    <svg class="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+    <span>${message}</span>
+  `;
+  container.appendChild(toast);
+  requestAnimationFrame(() => {
+    toast.style.opacity = '1';
+    toast.style.transform = 'none';
+  });
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(6px)';
+    setTimeout(() => toast.remove(), 300);
+  }, 3500);
+}
+
+function toggleAnalyticsTab(tab) {
+  const dailyContent = document.getElementById('daily-content');
+  const weeklyContent = document.getElementById('weekly-content');
+  const dailyTab = document.getElementById('daily-tab');
+  const weeklyTab = document.getElementById('weekly-tab');
+
+  if (tab === 'daily') {
+    dailyContent.classList.remove('hidden');
+    weeklyContent.classList.add('hidden');
+    dailyTab.classList.add('bg-white', 'text-rccg-navy', 'shadow-xs');
+    dailyTab.classList.remove('text-slate-500');
+    weeklyTab.classList.remove('bg-white', 'text-rccg-navy', 'shadow-xs');
+    weeklyTab.classList.add('text-slate-500');
+  } else {
+    dailyContent.classList.add('hidden');
+    weeklyContent.classList.remove('hidden');
+    weeklyTab.classList.add('bg-white', 'text-rccg-navy', 'shadow-xs');
+    weeklyTab.classList.remove('text-slate-500');
+    dailyTab.classList.remove('bg-white', 'text-rccg-navy', 'shadow-xs');
+    dailyTab.classList.add('text-slate-500');
+  }
+}
+
+async function initUserProfile() {
+  const cached = JSON.parse(localStorage.getItem('user') || 'null');
+  const fallback = cached || {
+    name: 'Church Administrator',
+    email: 'admin@rehoboth.org',
+    initials: 'AD'
+  };
+
+  setUserUIFromObj({
+    name: fallback.name,
+    email: fallback.email,
+    initials: fallback.initials || (fallback.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase())
+  });
+
+  try {
+    const data = await authFetch('/profile', { method: 'GET' });
+    if (data && data.user) {
+      const u = data.user;
+      const initials = (u.fullName || u.email || 'AU').split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
+      const userObj = {
+        name: u.fullName || u.displayName || 'Admin',
+        email: u.email || '',
+        initials
+      };
+      try { localStorage.setItem('user', JSON.stringify(userObj)); } catch(e){}
+      setUserUIFromObj(userObj);
+    }
+  } catch (err) {
+    console.warn('Could not fetch profile:', err.message || err);
+  }
+}
+
+function setUserUIFromObj(user) {
+  const first = (user.name || 'Admin').split(' ')[0];
+  const welcome = document.getElementById('welcome-heading');
+  if (welcome) welcome.innerText = `Welcome Back, ${first} 👋`;
+  const sidebarName = document.getElementById('sidebar-user-name');
+  const sidebarEmail = document.getElementById('sidebar-user-email');
+  const sidebarAvatar = document.getElementById('sidebar-user-avatar');
+  const headerAvatar = document.getElementById('header-user-avatar');
+  const dropdownTitle = document.getElementById('dropdown-user-title');
+  const dropdownEmail = document.getElementById('dropdown-user-email');
+
+  if (sidebarName) sidebarName.innerText = user.name || 'Admin';
+  if (sidebarEmail) sidebarEmail.innerText = user.email || '';
+  if (sidebarAvatar) sidebarAvatar.innerText = user.initials || user.name?.[0] || '--';
+  if (headerAvatar) headerAvatar.innerText = user.initials || user.name?.[0] || '--';
+  if (dropdownTitle) dropdownTitle.innerText = user.name || 'Admin';
+  if (dropdownEmail) dropdownEmail.innerText = user.email || '';
+}
+
+function handleSignOut() {
+  ['authToken','token','rccgToken','rccg_token','user'].forEach(k => {
+    try { localStorage.removeItem(k); } catch(e){}
+  });
+  showToast('Signing out...', 'info');
+  setTimeout(()=> {
+    window.location.href = '/login.html';
+  }, 800);
+}
+
+async function loadDashboardMetrics() {
+  const statusEl = document.getElementById('auto-refresh-status');
+  if (statusEl) statusEl.innerText = 'Syncing...';
+
+  try {
+    const limit = 500;
+    const page = 1;
+    const payload = await authFetch(`/admin/all?page=${page}&limit=${limit}`, { method: 'GET' });
+
+    const totalMembers = payload?.pagination?.total ?? (payload?.users?.length ?? 0);
+    const users = payload?.users || [];
+
+    let totalAttendance = 0;
+    let prayerRequests = 0;
+    users.forEach(u => {
+      if (Array.isArray(u.attendanceRecords)) totalAttendance += u.attendanceRecords.length;
+      if (Array.isArray(u.prayerRequests)) prayerRequests += u.prayerRequests.length;
     });
 
-    /**
-     * NAVIGATION & SPA SECTION SWITCHER
-     */
-    function switchSection(sectionId) {
-      document.querySelectorAll('.dashboard-section').forEach(el => el.classList.add('hidden'));
-      const activeSection = document.getElementById(sectionId);
-      if (activeSection) {
-        activeSection.classList.remove('hidden');
-      }
+    document.getElementById('stat-total-members').innerText = (totalMembers || 0).toLocaleString();
+    document.getElementById('badge-member-count').innerText = totalMembers || 0;
+    document.getElementById('stat-prayer-requests').innerText = (prayerRequests || 0).toLocaleString();
+    document.getElementById('badge-prayer-count').innerText = (prayerRequests || 0);
 
-      // Update sidebar active tab styles
-      document.querySelectorAll('.nav-item-sidebar').forEach(btn => {
-        if (btn.getAttribute('data-section') === sectionId) {
-          btn.classList.add('bg-rccg-blue', 'text-white', 'shadow-md');
-          btn.classList.remove('text-slate-300', 'hover:bg-white/10');
-        } else {
-          btn.classList.remove('bg-rccg-blue', 'text-white', 'shadow-md');
-          btn.classList.add('text-slate-300', 'hover:bg-white/10');
-        }
+    let sunday = 0, midweek = 0;
+    users.forEach(u => {
+      (u.attendanceRecords || []).forEach(a => {
+        if (a.eventType === 'sunday_service') sunday++;
+        else if (a.eventType === 'bible_study' || a.eventType === 'vigil') midweek++;
       });
+    });
+    document.getElementById('stat-sunday-attendance').innerText = (sunday || 0).toLocaleString();
+    document.getElementById('stat-midweek-attendance').innerText = (midweek || 0).toLocaleString();
 
-      // Lazy load section data on navigation
-      if (sectionId === 'section-members') loadMembersDirectory();
-      if (sectionId === 'section-attendance') loadAttendanceTracker();
-      
-      closeSidebar();
+    if (statusEl) statusEl.innerText = 'Live Synced Just Now';
+  } catch (err) {
+    console.error('loadDashboardMetrics error', err);
+    if (statusEl) statusEl.innerText = 'Sync Failed';
+    showToast('Failed to sync metrics. Ensure you are an admin and token is valid', 'error');
+  }
+}
+
+async function loadHomeActivityLog() {
+  const tbody = document.getElementById('home-activity-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-slate-400">Loading...</td></tr>`;
+
+  try {
+    const res = await authFetch(`/admin/all?page=1&limit=20`, { method: 'GET' });
+    const users = res.users || [];
+
+    if (!users.length) {
+      tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-slate-400">
+        <div class="flex flex-col items-center justify-center space-y-2">
+          <svg class="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7"/></svg>
+          <p class="text-xs font-medium">No recent activity records loaded.</p>
+        </div>
+      </td></tr>`;
+      return;
     }
 
-    /**
-     * SIDEBAR CONTROLS FOR MOBILE
-     */
-    function toggleSidebar() {
-      const sidebar = document.getElementById('logo-sidebar');
-      const overlay = document.getElementById('sidebar-overlay');
-      sidebar.classList.toggle('-translate-x-full');
-      overlay.classList.toggle('hidden');
-    }
+    const rows = users.map(u => {
+      const initials = (u.fullName || u.email || '').split(' ').map(p => p[0]).join('').slice(0,2).toUpperCase();
+      const date = formatDate(u.createdAt);
+      const status = (u.isApproved ? 'Approved' : 'Pending');
+      const statusBadgeClass = u.isApproved ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-50 text-amber-700';
+      const activity = u.membershipStatus ? `Registered (${u.membershipStatus})` : 'Profile Created';
 
-    function closeSidebar() {
-      const sidebar = document.getElementById('logo-sidebar');
-      const overlay = document.getElementById('sidebar-overlay');
-      sidebar.classList.add('-translate-x-full');
-      overlay.classList.add('hidden');
-    }
-
-    /**
-     * BUTTON LOADING SPINNER UTILITY
-     */
-    function triggerBtnSpinner(btn, loadingMsg, callback) {
-      const spinner = btn.querySelector('.btn-spinner');
-      const textSpan = btn.querySelector('.btn-text');
-      const icon = btn.querySelector('.btn-icon');
-      
-      const originalText = textSpan ? textSpan.innerText : '';
-      if (spinner) spinner.classList.remove('hidden');
-      if (icon) icon.classList.add('hidden');
-      if (textSpan) textSpan.innerText = loadingMsg;
-      btn.disabled = true;
-
-      setTimeout(async () => {
-        if (callback) await callback();
-        if (spinner) spinner.classList.add('hidden');
-        if (icon) icon.classList.remove('hidden');
-        if (textSpan) textSpan.innerText = originalText;
-        btn.disabled = false;
-      }, 500);
-    }
-
-    /**
-     * TOAST NOTIFICATION SYSTEM
-     */
-    function showToast(message, type = 'success') {
-      const container = document.getElementById('toast-container');
-      const toast = document.createElement('div');
-      
-      const bgColor = type === 'success' ? 'bg-slate-900 text-white' : 'bg-red-600 text-white';
-      
-      toast.className = `${bgColor} text-xs font-semibold px-4 py-3 rounded-2xl shadow-xl flex items-center space-x-2 pointer-events-auto transition-all duration-300 opacity-0 transform translate-y-2`;
-      toast.innerHTML = `
-        <svg class="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-        <span>${message}</span>
+      return `
+      <tr class="hover:bg-slate-50/80 transition">
+        <td class="px-6 py-4 flex items-center space-x-3">
+          <div class="w-8 h-8 rounded-full bg-blue-100 text-rccg-blue font-bold flex items-center justify-center text-xs shrink-0">${initials}</div>
+          <div>
+            <div class="font-bold text-rccg-navy text-xs">${escapeHtml(u.fullName || '—')}</div>
+            <div class="text-[10px] text-slate-400">${escapeHtml(u.email || '')}</div>
+          </div>
+        </td>
+        <td class="px-6 py-4">${escapeHtml(activity)}</td>
+        <td class="px-6 py-4"><span class="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-md font-semibold text-[11px]">${escapeHtml((u.primaryMinistry && u.primaryMinistry.name) || '—')}</span></td>
+        <td class="px-6 py-4 text-slate-500">${date}</td>
+        <td class="px-6 py-4">
+          <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold ${statusBadgeClass}">
+            ${status}
+          </span>
+        </td>
+        <td class="px-6 py-4 text-right">
+          <button type="button" onclick="showMemberDetails('${u._id}')" class="text-rccg-blue font-bold hover:underline">Details</button>
+        </td>
+      </tr>
       `;
-      
-      container.appendChild(toast);
-      setTimeout(() => toast.classList.remove('opacity-0', 'translate-y-2'), 10);
-      setTimeout(() => {
-        toast.classList.add('opacity-0', 'translate-y-2');
-        setTimeout(() => toast.remove(), 300);
-      }, 3500);
+    }).join('');
+
+    tbody.innerHTML = rows;
+  } catch (err) {
+    console.error('loadHomeActivityLog error', err);
+    tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-red-400">Failed to load activity log.</td></tr>`;
+    showToast('Failed to load activity log', 'error');
+  }
+}
+
+async function showMemberDetails(id) {
+  try {
+    const res = await authFetch(`/admin/all?page=1&limit=500`, { method: 'GET' });
+    const user = (res.users || []).find(u => u._id === id);
+    if (!user) {
+      showToast('Member not found in the current page. Try searching members directory.', 'info');
+      return;
     }
+    const details = `Name: ${user.fullName}\nEmail: ${user.email}\nPhone: ${user.phone}\nMember#: ${user.membershipNumber}\nJoined: ${formatDate(user.joinDate || user.createdAt)}`;
+    alert(details);
+  } catch (err) {
+    console.error('showMemberDetails error', err);
+    showToast('Failed to load member details', 'error');
+  }
+}
 
-    /**
-     * ANALYTICS TAB SWITCHER
-     */
-    function toggleAnalyticsTab(tab) {
-      const dailyContent = document.getElementById('daily-content');
-      const weeklyContent = document.getElementById('weekly-content');
-      const dailyTab = document.getElementById('daily-tab');
-      const weeklyTab = document.getElementById('weekly-tab');
+async function loadMembersDirectory(page = 1, limit = 50) {
+  try {
+    const container = document.getElementById('section-members');
+    if (!container) return;
 
-      if (tab === 'daily') {
-        dailyContent.classList.remove('hidden');
-        weeklyContent.classList.add('hidden');
-        dailyTab.classList.add('bg-white', 'text-rccg-navy', 'shadow-xs');
-        dailyTab.classList.remove('text-slate-500');
-        weeklyTab.classList.remove('bg-white', 'text-rccg-navy', 'shadow-xs');
-        weeklyTab.classList.add('text-slate-500');
-      } else {
-        dailyContent.classList.add('hidden');
-        weeklyContent.classList.remove('hidden');
-        weeklyTab.classList.add('bg-white', 'text-rccg-navy', 'shadow-xs');
-        weeklyTab.classList.remove('text-slate-500');
-        dailyTab.classList.remove('bg-white', 'text-rccg-navy', 'shadow-xs');
-        dailyTab.classList.add('text-slate-500');
-      }
+    container.querySelectorAll('.members-list-placeholder').forEach(n => n.remove());
+    const placeholder = document.createElement('div');
+    placeholder.className = 'members-list-placeholder p-6 bg-white rounded-2xl border border-slate-100';
+    placeholder.innerText = 'Loading members...';
+    container.prepend(placeholder);
+
+    const res = await authFetch(`/admin/all?page=${page}&limit=${limit}`, { method: 'GET' });
+    placeholder.remove();
+
+    const users = res.users || [];
+    let listHtml = `<div class="grid grid-cols-1 gap-3">`;
+    users.forEach(u => {
+      const initials = (u.fullName || u.email || '').split(' ').map(p => p[0]).join('').slice(0,2).toUpperCase();
+      listHtml += `
+        <div class="p-3 bg-white rounded-2xl flex items-center justify-between border">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center font-bold">${initials}</div>
+            <div>
+              <div class="font-bold">${escapeHtml(u.fullName || '—')}</div>
+              <div class="text-xs text-slate-400">${escapeHtml(u.email || '')}</div>
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="text-xs text-slate-500 mb-1">${escapeHtml(u.membershipNumber || '')}</div>
+            <button onclick="showMemberDetails('${u._id}')" class="text-xs font-bold text-rccg-blue">View</button>
+          </div>
+        </div>
+      `;
+    });
+    listHtml += `</div>`;
+
+    let listTarget = document.getElementById('members-list-target');
+    if (!listTarget) {
+      listTarget = document.createElement('div');
+      listTarget.id = 'members-list-target';
+      const sectionContent = container.querySelector('.bg-white.rounded-3xl') || container;
+      sectionContent.appendChild(listTarget);
     }
+    listTarget.innerHTML = listHtml;
+  } catch (err) {
+    console.error('loadMembersDirectory error', err);
+    showToast('Failed to load members', 'error');
+  }
+}
 
-    /**
-     * USER PROFILE & AUTH HANDLERS
-     */
-    function initUserProfile() {
-      // Fetch authenticated admin details from session storage or state
-      const user = JSON.parse(localStorage.getItem('user')) || {
-        name: 'Church Administrator',
-        email: 'admin@rehoboth.org',
-        role: 'Super Admin',
-        initials: 'AD'
-      };
+async function loadAttendanceTracker() {
+  try {
+    const target = document.getElementById('section-attendance');
+    if (!target) return;
 
-      document.getElementById('welcome-heading').innerText = `Welcome Back, ${user.name.split(' ')[0]} 👋`;
-      document.getElementById('sidebar-user-name').innerText = user.name;
-      document.getElementById('sidebar-user-email').innerText = user.email;
-      document.getElementById('sidebar-user-avatar').innerText = user.initials;
-      document.getElementById('header-user-avatar').innerText = user.initials;
-      document.getElementById('dropdown-user-title').innerText = user.name;
-      document.getElementById('dropdown-user-email').innerText = user.email;
-    }
+    target.querySelectorAll('.attendance-placeholder').forEach(n => n.remove());
+    const ph = document.createElement('div');
+    ph.className = 'attendance-placeholder p-6 bg-white rounded-2xl border';
+    ph.innerText = 'Loading attendance...';
+    target.prepend(ph);
 
-    function handleSignOut() {
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('user');
-      showToast('Signing out...', 'info');
-      setTimeout(() => {
-        window.location.href = '/login.html'; // Redirect to backend auth portal
-      }, 1000);
-    }
+    const res = await authFetch(`/admin/all?page=1&limit=500`, { method: 'GET' });
+    ph.remove();
 
-    /**
-     * API FETCH METHOD HELPERS FOR PRODUCTION BACKEND
-     */
-    async function loadDashboardMetrics() {
-      try {
-        const statusEl = document.getElementById('auto-refresh-status');
-        if (statusEl) statusEl.innerText = 'Syncing...';
+    const users = res.users || [];
+    const eventsMap = new Map();
 
-        /* UNCOMMENT AND CONNECT TO PRODUCTION BACKEND API:
-        const response = await fetch(`${API_CONFIG.baseUrl}/dashboard/metrics`, { headers: API_CONFIG.headers });
-        const data = await response.json();
-        
-        document.getElementById('stat-total-members').innerText = data.totalMembers.toLocaleString();
-        document.getElementById('stat-sunday-attendance').innerText = data.sundayAttendance.toLocaleString();
-        document.getElementById('stat-midweek-attendance').innerText = data.midweekAttendance.toLocaleString();
-        document.getElementById('stat-prayer-requests').innerText = data.prayerRequests.toLocaleString();
-        document.getElementById('badge-member-count').innerText = data.totalMembers;
-        document.getElementById('badge-prayer-count').innerText = data.prayerRequests;
-        */
-
-        if (statusEl) statusEl.innerText = 'Live Synced Just Now';
-      } catch (error) {
-        console.error('Failed to load dashboard metrics:', error);
-        document.getElementById('auto-refresh-status').innerText = 'Sync Failed';
-      }
-    }
-
-    async function loadHomeActivityLog() {
-      const tbody = document.getElementById('home-activity-tbody');
-      try {
-        /* UNCOMMENT AND CONNECT TO PRODUCTION BACKEND API:
-        const response = await fetch(`${API_CONFIG.baseUrl}/dashboard/activities`, { headers: API_CONFIG.headers });
-        const activities = await response.json();
-        
-        if (activities.length === 0) return;
-
-        tbody.innerHTML = activities.map(item => `
-          <tr class="hover:bg-slate-50/80 transition">
-            <td class="px-6 py-4 flex items-center space-x-3">
-              <div class="w-8 h-8 rounded-full bg-blue-100 text-rccg-blue font-bold flex items-center justify-center text-xs shrink-0">
-                ${item.initials}
-              </div>
-              <div>
-                <div class="font-bold text-rccg-navy text-xs">${item.name}</div>
-                <div class="text-[10px] text-slate-400">${item.email}</div>
-              </div>
-            </td>
-            <td class="px-6 py-4">${item.activity}</td>
-            <td class="px-6 py-4"><span class="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-md font-semibold text-[11px]">${item.department}</span></td>
-            <td class="px-6 py-4 text-slate-500">${item.date}</td>
-            <td class="px-6 py-4">
-              <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold ${item.statusBadgeClass}">
-                ${item.status}
-              </span>
-            </td>
-            <td class="px-6 py-4 text-right">
-              <button type="button" onclick="handleActivityAction('${item.id}')" class="text-rccg-blue font-bold hover:underline">Details</button>
-            </td>
-          </tr>
-        `).join('');
-        */
-      } catch (error) {
-        console.error('Failed to load activity log:', error);
-      }
-    }
-
-    async function loadMembersDirectory() {
-      // Connect to backend GET /api/v1/members
-    }
-
-    async function loadAttendanceTracker() {
-      // Connect to backend GET /api/v1/attendance
-    }
-
-    function reloadHomeTable() {
-      loadHomeActivityLog();
-      showToast('Activity log updated.');
-    }
-
-    function filterMemberDirectory(category) {
-      document.querySelectorAll('.member-tab-btn').forEach(btn => {
-        btn.classList.remove('bg-rccg-navy', 'text-white');
-        btn.classList.add('bg-slate-100', 'text-slate-600');
+    users.forEach(u => {
+      (u.attendanceRecords || []).forEach(a => {
+        const key = a.eventName || a.event || 'Unknown Event';
+        const arr = eventsMap.get(key) || [];
+        arr.push({ user: u.fullName, date: a.date || a.checkedInAt || a.submittedAt });
+        eventsMap.set(key, arr);
       });
-      event.currentTarget.classList.remove('bg-slate-100', 'text-slate-600');
-      event.currentTarget.classList.add('bg-rccg-navy', 'text-white');
-      
-      loadMembersDirectory();
-    }
+    });
 
-    function setupEventListeners() {
-      // Search input handler
-      const searchInput = document.getElementById('global-search-input');
-      if (searchInput) {
-        searchInput.addEventListener('keyup', (e) => {
-          if (e.key === 'Enter') {
-            showToast(`Searching for "${e.target.value}"...`);
+    let html = `<div class="grid grid-cols-1 gap-3">`;
+    if (eventsMap.size === 0) html += `<div class="p-4 text-slate-500">No attendance records found</div>`;
+    for (const [event, arr] of eventsMap.entries()) {
+      html += `
+        <div class="p-3 bg-white rounded-2xl border">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="font-bold">${escapeHtml(event)}</div>
+              <div class="text-xs text-slate-400">${arr.length} check-ins</div>
+            </div>
+            <div>
+              <button onclick="openAttendanceDetails('${encodeURIComponent(event)}')" class="text-xs font-bold text-rccg-blue">View</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    html += `</div>`;
+
+    let targetList = document.getElementById('attendance-list-target');
+    if (!targetList) {
+      targetList = document.createElement('div');
+      targetList.id = 'attendance-list-target';
+      const sectionContent = target.querySelector('.bg-white.rounded-3xl') || target;
+      sectionContent.appendChild(targetList);
+    }
+    targetList.innerHTML = html;
+  } catch (err) {
+    console.error('loadAttendanceTracker error', err);
+    showToast('Failed to load attendance', 'error');
+  }
+}
+
+function openAttendanceDetails(encodedEvent) {
+  const eventName = decodeURIComponent(encodedEvent);
+  (async () => {
+    try {
+      const res = await authFetch(`/admin/all?page=1&limit=500`, { method: 'GET' });
+      const users = res.users || [];
+      const rows = [];
+      users.forEach(u => {
+        (u.attendanceRecords || []).forEach(a => {
+          const key = a.eventName || a.event || 'Unknown Event';
+          if (key === eventName) {
+            rows.push(`<li class="py-1">${escapeHtml(u.fullName)} — ${formatDate(a.date || a.checkedInAt)}</li>`);
           }
         });
-      }
+      });
+      alert(`Attendance: ${eventName}\n\n${rows.length ? rows.join('') : 'No entries found.'}`);
+    } catch (err) {
+      console.error('openAttendanceDetails error', err);
+      showToast('Failed to fetch details', 'error');
     }
-  </script>
+  })();
+}
+
+function formatDate(input) {
+  if (!input) return '--';
+  const d = new Date(input);
+  if (isNaN(d)) return input;
+  return d.toLocaleString();
+}
+
+function escapeHtml(str='') {
+  return String(str)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function setupEventListeners() {
+  const searchInput = document.getElementById('global-search-input');
+  if (searchInput) {
+    searchInput.addEventListener('keyup', (e) => {
+      if (e.key === 'Enter') {
+        const q = e.target.value.trim();
+        if (!q) return showToast('Enter search term', 'info');
+        showToast(`Searching for "${q}"...`);
+        const list = document.getElementById('members-list-target');
+        if (list) {
+          const items = Array.from(list.querySelectorAll('div > div > div > .font-bold')).filter(Boolean);
+        }
+      }
+    });
+  }
+}
+</script>
+
 </body>
 </html>
