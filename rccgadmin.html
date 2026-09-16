@@ -1308,18 +1308,22 @@ async function loadAttendanceTracker() {
    Requires: authFetch(path, opts), triggerBtnSpinner(button, msg, cb), showToast(msg, type)
 */
 
+            
+          /* Audio / Video Manager JS
+   Requires: authFetch(path, opts), triggerBtnSpinner(button, msg, cb), showToast(msg, type)
+*/
+
 (() => {
   // flags
   let audioLoaded = false;
   let videoLoaded = false;
 
-  // Local storage keys for user-added items (fallback)
-  const LS_AUDIO_KEY = 'localAudioSermons';
-  const LS_VIDEO_KEY = 'localVideoSermons';
-
   // Cache lists
   let audioList = [];
   let videoList = [];
+  let currentAudioPage = 1;
+  let currentVideoPage = 1;
+  const ITEMS_PER_PAGE = 20;
 
   // Hook into switchSection lazy loading if present
   const origSwitch = window.switchSection;
@@ -1329,11 +1333,6 @@ async function loadAttendanceTracker() {
       if (sectionId === 'section-audio') initAudioSection();
       if (sectionId === 'section-video') initVideoSection();
     };
-  } else {
-    // no switchSection; initialize on DOMContentLoaded
-    document.addEventListener('DOMContentLoaded', () => {
-      // don't auto-load until user opens section
-    });
   }
 
   // PUBLIC: reload handlers
@@ -1358,6 +1357,7 @@ async function loadAttendanceTracker() {
       }
     });
 
+    currentAudioPage = 1;
     await loadAudioSermons();
   }
 
@@ -1366,354 +1366,561 @@ async function loadAttendanceTracker() {
     if (videoLoaded && !force) return;
     videoLoaded = true;
 
+    currentVideoPage = 1;
     await loadVideoSermons();
   }
 
-  // Load audio sermons from backend + local fallback
-  async function loadAudioSermons() {
+  // Load audio sermons from backend
+  async function loadAudioSermons(page = 1) {
     try {
-      // fetch backend audio sermons
-      const backend = await (typeof authFetch === 'function' ? authFetch('/audio-sermons?page=1&limit=100', { method: 'GET' }) : Promise.resolve(null));
-      const backendList = (backend && backend.audioSermons) ? backend.audioSermons : [];
+      if (typeof authFetch !== 'function') {
+        showToast('Authentication not available', 'error');
+        return;
+      }
 
-      // load any local adds
-      const local = JSON.parse(localStorage.getItem(LS_AUDIO_KEY) || '[]');
+      const response = await authFetch(`/rccg/users/audio-sermons?page=${page}&limit=${ITEMS_PER_PAGE}`, {
+        method: 'GET'
+      });
 
-      audioList = [...local, ...backendList];
+      if (!response || !response.success) {
+        showToast('Failed to load audio sermons', 'error');
+        return;
+      }
 
-      renderAudioPlaylist();
+      if (page === 1) {
+        audioList = response.audioSermons || [];
+      } else {
+        audioList = audioList.concat(response.audioSermons || []);
+      }
+
+      currentAudioPage = page;
+      renderAudioPlaylist(response.pagination);
     } catch (err) {
-      console.error('loadAudioSermons', err);
-      showToast('Could not load audio sermons; showing local ones', 'info');
-      audioList = JSON.parse(localStorage.getItem(LS_AUDIO_KEY) || '[]');
-      renderAudioPlaylist();
+      console.error('loadAudioSermons error:', err);
+      showToast('Could not load audio sermons', 'error');
     }
   }
 
-  function renderAudioPlaylist() {
+  function renderAudioPlaylist(pagination = {}) {
     const playlistEl = document.getElementById('audio-playlist');
     if (!playlistEl) return;
+
     if (!audioList.length) {
       playlistEl.innerHTML = `<div class="text-xs text-slate-400 py-6">No audio sermons available.</div>`;
       document.getElementById('audio-now-meta').textContent = 'No audio selected';
       return;
     }
 
-    playlistEl.innerHTML = audioList.map((a, idx) => {
-      const title = escapeHtml(a.title || a._id || 'Untitled');
-      const pastor = escapeHtml(a.pastor || a.pastor || '');
-      const srcPreview = a.audioUrl ? `(URL)` : (a._blob ? `(local file)` : '');
+    let html = audioList.map((a, idx) => {
+      const title = escapeHtml(a.title || 'Untitled');
+      const pastor = escapeHtml(a.pastor || 'Unknown Pastor');
+      const duration = escapeHtml(a.duration || '');
       return `
-        <div class="p-2 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between">
-          <div class="min-w-0">
+        <div class="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between hover:bg-slate-100 transition">
+          <div class="min-w-0 flex-1">
             <div class="font-bold text-sm truncate">${title}</div>
-            <div class="text-[11px] text-slate-500 truncate">${pastor} ${srcPreview}</div>
+            <div class="text-[11px] text-slate-500 truncate">${pastor}${duration ? ` • ${duration}` : ''}</div>
           </div>
-          <div class="flex items-center gap-2">
-            <button onclick="playAudio(${idx})" class="text-xs bg-blue-50 text-rccg-blue px-3 py-1 rounded-full font-bold">Play</button>
-            <button onclick="downloadAudio(${idx})" class="text-xs bg-slate-100 px-3 py-1 rounded-full">Download</button>
+          <div class="flex items-center gap-2 flex-shrink-0">
+            <button onclick="playAudio(${idx})" class="text-xs bg-blue-50 text-rccg-blue px-3 py-1.5 rounded-full font-bold hover:bg-rccg-blue hover:text-white transition">Play</button>
+            <button onclick="saveAudio('${escapeHtmlAttr(a._id)}')" class="text-xs bg-slate-100 px-3 py-1.5 rounded-full hover:bg-slate-200 transition">Save</button>
           </div>
         </div>
       `;
     }).join('');
+
+    // Add pagination controls if needed
+    if (pagination && pagination.pages > currentAudioPage) {
+      html += `
+        <div class="mt-4 text-center">
+          <button onclick="loadMoreAudio()" class="text-xs bg-slate-200 px-4 py-2 rounded-full hover:bg-slate-300 transition">
+            Load More
+          </button>
+        </div>
+      `;
+    }
+
+    playlistEl.innerHTML = html;
   }
 
   // Play audio by index
   window.playAudio = function(index) {
     const item = audioList[index];
-    if (!item) return;
-    const player = document.getElementById('audio-player');
-    const nowMeta = document.getElementById('audio-now-meta');
-
-    // determine source (prefer blob/local file over URL)
-    if (item._blob) {
-      const url = URL.createObjectURL(item._blob);
-      player.src = url;
-    } else if (item.audioUrl) {
-      player.src = item.audioUrl;
-    } else if (item._objectUrl) {
-      player.src = item._objectUrl;
-    } else {
+    if (!item || !item.audioUrl) {
       showToast('No audio source available', 'error');
       return;
     }
 
+    const player = document.getElementById('audio-player');
+    const nowMeta = document.getElementById('audio-now-meta');
+
+    player.src = item.audioUrl;
     player.dataset.index = index;
-    player.play().catch(()=>{});
-    nowMeta.textContent = `${item.title || 'Audio'} — ${item.pastor || ''}`;
+    player.play().catch((err) => {
+      console.error('Playback error:', err);
+      showToast('Could not play audio', 'error');
+    });
+
+    nowMeta.textContent = `${item.title || 'Audio'} — ${item.pastor || 'Unknown'}`;
   };
 
-  // Download audio (for local-created object)
-  window.downloadAudio = function(index) {
-    const item = audioList[index];
-    if (!item) return;
-    if (item._blob) {
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(item._blob);
-      a.download = `${(item.title || 'audio').replace(/\s+/g,'_')}.mp3`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    } else if (item.audioUrl) {
-      window.open(item.audioUrl, '_blank');
-    } else {
-      showToast('No downloadable source', 'info');
+  window.loadMoreAudio = async function() {
+    await loadAudioSermons(currentAudioPage + 1);
+  };
+
+  // Save audio sermon to profile
+  window.saveAudio = async function(sermonId) {
+    try {
+      if (typeof authFetch !== 'function') {
+        showToast('Authentication not available', 'error');
+        return;
+      }
+
+      const response = await authFetch(`/rccg/users/save-sermon/${sermonId}`, {
+        method: 'POST'
+      });
+
+      if (response && response.success) {
+        showToast('Sermon saved successfully', 'success');
+      } else {
+        showToast(response?.message || 'Failed to save sermon', 'error');
+      }
+    } catch (err) {
+      console.error('saveAudio error:', err);
+      showToast('Error saving sermon', 'error');
     }
   };
 
-  // Handle audio add form submit
+  // Handle audio upload form submit (Admin Only)
   window.handleAudioUpload = async function(e) {
     e.preventDefault();
     const btn = e.submitter || e.target.querySelector('button[type="submit"]');
-    return triggerBtnSpinner(btn, 'Adding...', async () => {
-      const title = document.getElementById('audio-title').value.trim();
-      const pastor = document.getElementById('audio-pastor').value.trim();
-      const category = document.getElementById('audio-category').value;
-      const url = document.getElementById('audio-url').value.trim();
+
+    return triggerBtnSpinner(btn, 'Uploading...', async () => {
+      const title = document.getElementById('audio-title')?.value.trim();
+      const pastor = document.getElementById('audio-pastor')?.value.trim();
+      const category = document.getElementById('audio-category')?.value || 'General';
+      const duration = document.getElementById('audio-duration')?.value.trim();
       const fileInput = document.getElementById('audio-file');
+      const description = document.getElementById('audio-description')?.value.trim();
 
-      if (!title) return showToast('Title is required', 'info');
-
-      // If file is provided, store as blob locally and add to list
-      if (fileInput && fileInput.files && fileInput.files[0]) {
-        const file = fileInput.files[0];
-        const entry = { title, pastor, category, _blob: file, createdAt: new Date().toISOString() };
-        // store to localStorage (we cannot persist blob there, but we store metadata and create objectUrl)
-        const local = JSON.parse(localStorage.getItem(LS_AUDIO_KEY) || '[]');
-        // create temporary object URL to allow immediate play
-        entry._objectUrl = URL.createObjectURL(file);
-        local.unshift(entry);
-        // Remove blobs before storing - store metadata only
-        const serializable = local.map(i => {
-          const { _blob, _objectUrl, ...rest } = i;
-          return rest;
-        });
-        localStorage.setItem(LS_AUDIO_KEY, JSON.stringify(serializable));
-        // Put in audioList with blob for immediate session use
-        audioList.unshift(entry);
-        renderAudioPlaylist();
-        showToast('Added audio locally (file).');
-        e.target.reset();
+      if (!title) {
+        showToast('Title is required', 'info');
         return;
       }
 
-      // If URL is provided, try to POST to backend upload endpoint if available
-      if (url) {
-        // first try backend upload endpoint (optional)
-        try {
-          if (typeof authFetch === 'function') {
-            // Try a POST to /media/audio (not guaranteed to exist) - server may accept it
-            const form = new FormData();
-            form.append('title', title);
-            form.append('pastor', pastor);
-            form.append('category', category);
-            form.append('audioUrl', url); // some servers accept URL field
-            // NOTE: authFetch expects JSON; call fetch directly so we can send FormData
-            const token = window.getAuthToken ? window.getAuthToken() : null;
-            const res = await fetch('/api/rccg/users/media/audio' , {
-              method: 'POST',
-              headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-              body: form
-            });
-            if (res.ok) {
-              const data = await res.json().catch(()=>null);
-              showToast('Uploaded audio to backend.');
-              // reload list from backend
-              await loadAudioSermons();
-              e.target.reset();
-              return;
-            }
-          }
-        } catch (err) {
-          console.warn('Backend audio upload not available', err);
+      if (!fileInput?.files?.length) {
+        showToast('Please select an audio file', 'info');
+        return;
+      }
+
+      try {
+        if (typeof authFetch !== 'function') {
+          showToast('Authentication not available', 'error');
+          return;
         }
 
-        // fallback: add to local list referencing the URL
-        const entry = { title, pastor, category, audioUrl: url, createdAt: new Date().toISOString() };
-        const local = JSON.parse(localStorage.getItem(LS_AUDIO_KEY) || '[]');
-        local.unshift(entry);
-        localStorage.setItem(LS_AUDIO_KEY, JSON.stringify(local));
-        audioList.unshift(entry);
-        renderAudioPlaylist();
-        showToast('Added audio (URL) locally.');
-        e.target.reset();
-        return;
-      }
+        const formData = new FormData();
+        formData.append('title', title);
+        formData.append('pastor', pastor || 'Unknown');
+        formData.append('category', category);
+        formData.append('description', description);
+        formData.append('duration', duration);
+        formData.append('type', 'audio');
+        formData.append('mediaFile', fileInput.files[0]);
 
-      showToast('Provide an MP3 URL or upload a file', 'info');
+        // Get auth token for direct fetch (FormData works better with direct fetch)
+        const token = window.getAuthToken?.();
+        const response = await fetch('/api/rccg/users/sermons/upload', {
+          method: 'POST',
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+          body: formData
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          showToast(data.message || 'Upload failed', 'error');
+          return;
+        }
+
+        showToast('Audio sermon uploaded successfully', 'success');
+        e.target.reset();
+        await loadAudioSermons(1); // reload first page
+      } catch (err) {
+        console.error('Audio upload error:', err);
+        showToast(err.message || 'Error uploading audio', 'error');
+      }
     });
   };
 
-  window.clearLocalAudio = function() {
-    localStorage.removeItem(LS_AUDIO_KEY);
-    showToast('Cleared local audio additions');
-    loadAudioSermons();
+  // Handle audio add via external link (Admin Only)
+  window.handleAudioLink = async function(e) {
+    e.preventDefault();
+    const btn = e.submitter || e.target.querySelector('button[type="submit"]');
+
+    return triggerBtnSpinner(btn, 'Adding...', async () => {
+      const title = document.getElementById('audio-link-title')?.value.trim();
+      const pastor = document.getElementById('audio-link-pastor')?.value.trim();
+      const category = document.getElementById('audio-link-category')?.value || 'General';
+      const mediaUrl = document.getElementById('audio-link-url')?.value.trim();
+      const duration = document.getElementById('audio-link-duration')?.value.trim();
+      const description = document.getElementById('audio-link-description')?.value.trim();
+
+      if (!title || !mediaUrl) {
+        showToast('Title and audio URL are required', 'info');
+        return;
+      }
+
+      try {
+        if (typeof authFetch !== 'function') {
+          showToast('Authentication not available', 'error');
+          return;
+        }
+
+        const response = await authFetch('/rccg/users/sermons/link', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title,
+            pastor: pastor || 'Unknown',
+            category,
+            description,
+            duration,
+            type: 'audio',
+            mediaUrl
+          })
+        });
+
+        if (!response || !response.success) {
+          showToast(response?.message || 'Failed to add audio', 'error');
+          return;
+        }
+
+        showToast('Audio sermon added successfully', 'success');
+        e.target.reset();
+        await loadAudioSermons(1);
+      } catch (err) {
+        console.error('Audio link error:', err);
+        showToast(err.message || 'Error adding audio', 'error');
+      }
+    });
   };
 
-  // ----------------- Video -----------------
+  // ----------- VIDEO SECTION -----------
 
-  async function loadVideoSermons() {
+  async function loadVideoSermons(page = 1) {
     try {
-      const backend = await (typeof authFetch === 'function' ? authFetch('/video-sermons?page=1&limit=100', { method: 'GET' }) : Promise.resolve(null));
-      const backendList = (backend && backend.videoSermons) ? backend.videoSermons : [];
-      const local = JSON.parse(localStorage.getItem(LS_VIDEO_KEY) || '[]');
-      videoList = [...local, ...backendList];
-      renderVideoGrid();
+      if (typeof authFetch !== 'function') {
+        showToast('Authentication not available', 'error');
+        return;
+      }
+
+      const response = await authFetch(`/rccg/users/video-sermons?page=${page}&limit=${ITEMS_PER_PAGE}`, {
+        method: 'GET'
+      });
+
+      if (!response || !response.success) {
+        showToast('Failed to load videos', 'error');
+        return;
+      }
+
+      if (page === 1) {
+        videoList = response.videoSermons || [];
+      } else {
+        videoList = videoList.concat(response.videoSermons || []);
+      }
+
+      currentVideoPage = page;
+      renderVideoGrid(response.pagination);
     } catch (err) {
-      console.error('loadVideoSermons', err);
-      showToast('Could not load video sermons; showing local ones', 'info');
-      videoList = JSON.parse(localStorage.getItem(LS_VIDEO_KEY) || '[]');
-      renderVideoGrid();
+      console.error('loadVideoSermons error:', err);
+      showToast('Could not load video sermons', 'error');
     }
   }
 
-  function renderVideoGrid() {
+  function renderVideoGrid(pagination = {}) {
     const grid = document.getElementById('video-grid');
     if (!grid) return;
+
     if (!videoList.length) {
-      grid.innerHTML = `<div class="text-xs text-slate-400 py-6">No videos available.</div>`;
+      grid.innerHTML = `<div class="text-xs text-slate-400 py-6 col-span-full">No videos available.</div>`;
       return;
     }
-    grid.innerHTML = videoList.map((v, idx) => {
-      const thumb = v.thumbnailUrl || v.thumbnail || 'https://via.placeholder.com/600x338?text=Video';
-      const title = escapeHtml(v.title || v._id || 'Untitled');
-      const pastor = escapeHtml(v.pastor || '');
-      const embed = getEmbedUrl(v.videoUrl || v.video || v.url || '');
+
+    let html = videoList.map((v, idx) => {
+      const thumb = v.thumbnailUrl || 'https://via.placeholder.com/600x338?text=Video';
+      const title = escapeHtml(v.title || 'Untitled');
+      const pastor = escapeHtml(v.pastor || 'Unknown');
       return `
-        <div class="p-2 bg-slate-50 border border-slate-100 rounded-xl">
-          <div class="relative pb-[56%] rounded overflow-hidden bg-black cursor-pointer" onclick="playVideoIndex(${idx})">
-            <img src="${thumb}" class="absolute inset-0 w-full h-full object-cover" alt="${title}" />
-            <div class="absolute inset-0 flex items-center justify-center">
-              <div class="w-10 h-10 rounded-full bg-rccg-blue/90 text-white flex items-center justify-center shadow-lg">
-                <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        <div class="p-2 bg-slate-50 border border-slate-100 rounded-xl overflow-hidden hover:border-slate-300 transition cursor-pointer" onclick="playVideoIndex(${idx})">
+          <div class="relative pb-[56.25%] rounded overflow-hidden bg-black">
+            <img src="${escapeHtmlAttr(thumb)}" class="absolute inset-0 w-full h-full object-cover" alt="${title}" loading="lazy" />
+            <div class="absolute inset-0 flex items-center justify-center hover:bg-black/20 transition">
+              <div class="w-12 h-12 rounded-full bg-rccg-blue/90 text-white flex items-center justify-center shadow-lg hover:bg-rccg-blue transition">
+                <svg class="w-5 h-5 fill-current ml-1" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
               </div>
             </div>
           </div>
-          <div class="mt-2">
+          <div class="mt-2 p-2">
             <div class="font-bold text-sm truncate">${title}</div>
             <div class="text-[11px] text-slate-500 truncate">${pastor}</div>
+          </div>
+          <div class="px-2 pb-2 flex gap-2">
+            <button onclick="event.stopPropagation(); saveVideo('${escapeHtmlAttr(v._id)}')" class="text-xs bg-slate-100 px-2 py-1 rounded flex-1 hover:bg-slate-200 transition">Save</button>
+            <button onclick="event.stopPropagation(); downloadVideo('${escapeHtmlAttr(v.videoUrl)}')" class="text-xs bg-slate-100 px-2 py-1 rounded flex-1 hover:bg-slate-200 transition">Share</button>
           </div>
         </div>
       `;
     }).join('');
+
+    // Add pagination controls if needed
+    if (pagination && pagination.pages > currentVideoPage) {
+      html += `
+        <div class="col-span-full mt-4 text-center">
+          <button onclick="loadMoreVideos()" class="text-xs bg-slate-200 px-4 py-2 rounded-full hover:bg-slate-300 transition">
+            Load More Videos
+          </button>
+        </div>
+      `;
+    }
+
+    grid.innerHTML = html;
   }
 
-  // convert various YouTube URL forms to embed URL if possible
+  // Convert various video URL formats to embed URL if possible
   function getEmbedUrl(url) {
     if (!url) return '';
     try {
       const u = new URL(url, location.origin);
-      if (u.hostname.includes('youtube.com')) {
-        if (u.pathname.startsWith('/watch')) {
-          const id = u.searchParams.get('v');
-          if (id) return `https://www.youtube.com/embed/${id}`;
+      if (u.hostname.includes('youtube.com') || u.hostname.includes('youtu.be')) {
+        let videoId = '';
+        if (u.hostname.includes('youtube.com') && u.pathname.startsWith('/watch')) {
+          videoId = u.searchParams.get('v');
+        } else if (u.hostname.includes('youtu.be')) {
+          videoId = u.pathname.slice(1).split('?')[0];
+        } else if (u.pathname.startsWith('/embed/')) {
+          return url;
         }
-        if (u.pathname.startsWith('/embed/')) return url;
-      }
-      if (u.hostname.includes('youtu.be')) {
-        const id = u.pathname.slice(1);
-        return `https://www.youtube.com/embed/${id}`;
+        if (videoId) return `https://www.youtube.com/embed/${videoId}`;
       }
     } catch (e) {
-      // not a valid absolute URL; if it already looks like embed, return as-is
-      if (url.includes('embed')) return url;
+      // not a valid URL
     }
+    // assume it's already an embed URL or direct video URL
     return url;
   }
 
-  // Play selected video index into featured iframe
+  // Play selected video index
   window.playVideoIndex = function(index) {
     const item = videoList[index];
-    if (!item) return;
+    if (!item || !item.videoUrl) {
+      showToast('No video source available', 'error');
+      return;
+    }
+
     const iframe = document.getElementById('featured-video-iframe');
     const titleEl = document.getElementById('featured-video-title');
     const metaEl = document.getElementById('featured-video-meta');
 
-    const embed = getEmbedUrl(item.videoUrl || item.video || item.url || '');
-    iframe.src = embed || (item.videoUrl || '');
+    if (!iframe || !titleEl || !metaEl) {
+      console.warn('Video player elements not found');
+      return;
+    }
+
+    const embed = getEmbedUrl(item.videoUrl);
+    iframe.src = embed;
     titleEl.textContent = item.title || 'Video';
-    metaEl.textContent = item.pastor || '';
+    metaEl.textContent = item.pastor || 'Unknown';
+
     // scroll into view if needed
     document.getElementById('video-featured')?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // handle video add form
-  window.handleVideoAdd = function(e) {
-    e.preventDefault();
-    const btn = e.submitter || e.target.querySelector('button[type="submit"]');
-    return triggerBtnSpinner(btn, 'Adding...', async () => {
-      const title = document.getElementById('video-title').value.trim();
-      const pastor = document.getElementById('video-pastor').value.trim();
-      const category = document.getElementById('video-category').value;
-      const url = document.getElementById('video-url').value.trim();
-      const thumb = document.getElementById('video-thumb').value.trim();
+  window.loadMoreVideos = async function() {
+    await loadVideoSermons(currentVideoPage + 1);
+  };
 
-      if (!title || !url) return showToast('Title and video URL required', 'info');
-
-      // try backend POST if available
-      try {
-        if (typeof authFetch === 'function') {
-          const token = window.getAuthToken ? window.getAuthToken() : null;
-          // attempt to call a likely endpoint - backend may not support it
-          const form = new FormData();
-          form.append('title', title);
-          form.append('pastor', pastor);
-          form.append('category', category);
-          form.append('videoUrl', url);
-          form.append('thumbnailUrl', thumb);
-
-          const res = await fetch('/api/rccg/users/media/video', {
-            method: 'POST',
-            headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-            body: form
-          });
-          if (res.ok) {
-            showToast('Uploaded video to backend');
-            await loadVideoSermons();
-            e.target.reset();
-            return;
-          }
-        }
-      } catch (err) {
-        console.warn('Backend video upload not available', err);
+  // Save video sermon to profile
+  window.saveVideo = async function(sermonId) {
+    try {
+      if (typeof authFetch !== 'function') {
+        showToast('Authentication not available', 'error');
+        return;
       }
 
-      // fallback: persist locally
-      const local = JSON.parse(localStorage.getItem(LS_VIDEO_KEY) || '[]');
-      const entry = { title, pastor, category, videoUrl: url, thumbnailUrl: thumb, createdAt: new Date().toISOString() };
-      local.unshift(entry);
-      localStorage.setItem(LS_VIDEO_KEY, JSON.stringify(local));
-      videoList.unshift(entry);
-      renderVideoGrid();
-      showToast('Added video locally');
-      e.target.reset();
+      const response = await authFetch(`/rccg/users/save-sermon/${sermonId}`, {
+        method: 'POST'
+      });
+
+      if (response && response.success) {
+        showToast('Video saved to your collection', 'success');
+      } else {
+        showToast(response?.message || 'Failed to save video', 'error');
+      }
+    } catch (err) {
+      console.error('saveVideo error:', err);
+      showToast('Error saving video', 'error');
+    }
+  };
+
+  // Download / share video
+  window.downloadVideo = function(videoUrl) {
+    if (!videoUrl) {
+      showToast('No video URL available', 'error');
+      return;
+    }
+    // For YouTube/embedded videos, open in new tab
+    window.open(videoUrl, '_blank');
+  };
+
+  // Handle video add form (Admin Only)
+  window.handleVideoUpload = async function(e) {
+    e.preventDefault();
+    const btn = e.submitter || e.target.querySelector('button[type="submit"]');
+
+    return triggerBtnSpinner(btn, 'Uploading...', async () => {
+      const title = document.getElementById('video-title')?.value.trim();
+      const pastor = document.getElementById('video-pastor')?.value.trim();
+      const category = document.getElementById('video-category')?.value || 'General';
+      const fileInput = document.getElementById('video-file');
+      const thumbnailInput = document.getElementById('video-thumbnail');
+      const duration = document.getElementById('video-duration')?.value.trim();
+      const description = document.getElementById('video-description')?.value.trim();
+
+      if (!title) {
+        showToast('Title is required', 'info');
+        return;
+      }
+
+      if (!fileInput?.files?.length) {
+        showToast('Please select a video file', 'info');
+        return;
+      }
+
+      try {
+        if (typeof authFetch !== 'function') {
+          showToast('Authentication not available', 'error');
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append('title', title);
+        formData.append('pastor', pastor || 'Unknown');
+        formData.append('category', category);
+        formData.append('description', description);
+        formData.append('duration', duration);
+        formData.append('type', 'video');
+        formData.append('mediaFile', fileInput.files[0]);
+
+        if (thumbnailInput?.files?.length) {
+          formData.append('thumbnailFile', thumbnailInput.files[0]);
+        }
+
+        const token = window.getAuthToken?.();
+        const response = await fetch('/api/rccg/users/sermons/upload', {
+          method: 'POST',
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+          body: formData
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          showToast(data.message || 'Upload failed', 'error');
+          return;
+        }
+
+        showToast('Video sermon uploaded successfully', 'success');
+        e.target.reset();
+        await loadVideoSermons(1);
+      } catch (err) {
+        console.error('Video upload error:', err);
+        showToast(err.message || 'Error uploading video', 'error');
+      }
     });
   };
 
-  window.clearLocalVideos = function() {
-    localStorage.removeItem(LS_VIDEO_KEY);
-    showToast('Cleared local video additions');
-    loadVideoSermons();
+  // Handle video add via external link (Admin Only)
+  window.handleVideoLink = async function(e) {
+    e.preventDefault();
+    const btn = e.submitter || e.target.querySelector('button[type="submit"]');
+
+    return triggerBtnSpinner(btn, 'Adding...', async () => {
+      const title = document.getElementById('video-link-title')?.value.trim();
+      const pastor = document.getElementById('video-link-pastor')?.value.trim();
+      const category = document.getElementById('video-link-category')?.value || 'General';
+      const mediaUrl = document.getElementById('video-link-url')?.value.trim();
+      const thumbnailUrl = document.getElementById('video-link-thumbnail')?.value.trim();
+      const duration = document.getElementById('video-link-duration')?.value.trim();
+      const description = document.getElementById('video-link-description')?.value.trim();
+
+      if (!title || !mediaUrl) {
+        showToast('Title and video URL are required', 'info');
+        return;
+      }
+
+      try {
+        if (typeof authFetch !== 'function') {
+          showToast('Authentication not available', 'error');
+          return;
+        }
+
+        const response = await authFetch('/rccg/users/sermons/link', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title,
+            pastor: pastor || 'Unknown',
+            category,
+            description,
+            duration,
+            type: 'video',
+            mediaUrl,
+            thumbnailUrl: thumbnailUrl || undefined
+          })
+        });
+
+        if (!response || !response.success) {
+          showToast(response?.message || 'Failed to add video', 'error');
+          return;
+        }
+
+        showToast('Video sermon added successfully', 'success');
+        e.target.reset();
+        await loadVideoSermons(1);
+      } catch (err) {
+        console.error('Video link error:', err);
+        showToast(err.message || 'Error adding video', 'error');
+      }
+    });
   };
 
-  // small helpers
-  function escapeHtml(str='') {
+  // ----------- HELPERS -----------
+
+  function escapeHtml(str = '') {
     return String(str)
-      .replace(/&/g,'&amp;')
-      .replace(/</g,'&lt;')
-      .replace(/>/g,'&gt;')
-      .replace(/"/g,'&quot;')
-      .replace(/'/g,'&#39;');
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
-  // expose some functions for debugging
+  function escapeHtmlAttr(str = '') {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // Public debugging
   window._audioManager = { loadAudioSermons, renderAudioPlaylist, audioList };
   window._videoManager = { loadVideoSermons, renderVideoGrid, videoList };
-
-  // Expose init triggers in case the switchSection override didn't run
   window.initAudioSection = initAudioSection;
   window.initVideoSection = initVideoSection;
 })();
+
 function openAttendanceDetails(encodedEvent) {
   const eventName = decodeURIComponent(encodedEvent);
   (async () => {
