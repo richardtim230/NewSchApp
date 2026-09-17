@@ -737,30 +737,30 @@
       <div class="col-span-1 bg-slate-50 border border-slate-100 rounded-2xl p-4">
         <h3 class="text-sm font-bold mb-2">Add Video (YouTube)</h3>
         <form id="video-upload-form" class="space-y-3" onsubmit="handleVideoAdd(event)">
-          <input id="video-title" class="w-full px-3 py-2 border rounded-md text-sm" placeholder="Title (required)" required />
-          <input id="video-pastor" class="w-full px-3 py-2 border rounded-md text-sm" placeholder="Speaker / Pastor" />
-          <select id="video-category" class="w-full px-3 py-2 border rounded-md text-sm">
-            <option value="sunday">Sunday</option>
-            <option value="digging">Digging</option>
-            <option value="youth">Youth</option>
-            <option value="special">Special</option>
-            <option value="general">General</option>
-          </select>
-          <input id="video-url" type="url" class="w-full px-3 py-2 border rounded-md text-sm" placeholder="YouTube embed or watch URL (required)" required />
-          <input id="video-thumb" type="url" class="w-full px-3 py-2 border rounded-md text-sm" placeholder="Thumbnail URL (optional)" />
+  <input id="video-title" class="w-full px-3 py-2 border rounded-md text-sm" placeholder="Title (required)" required />
+  <input id="video-pastor" class="w-full px-3 py-2 border rounded-md text-sm" placeholder="Speaker / Pastor" />
+  <select id="video-category" class="w-full px-3 py-2 border rounded-md text-sm">
+    <option value="sunday">Sunday</option>
+    <option value="digging">Digging</option>
+    <option value="youth">Youth</option>
+    <option value="special">Special</option>
+    <option value="general">General</option>
+  </select>
+  <input id="video-url" type="url" class="w-full px-3 py-2 border rounded-md text-sm" placeholder="YouTube embed or watch URL (required)" required />
+  <input id="video-thumb" type="url" class="w-full px-3 py-2 border rounded-md text-sm" placeholder="Thumbnail URL (optional)" />
 
-          <div class="flex items-center gap-2">
-            <button type="submit" class="action-btn inline-flex items-center px-4 py-2 bg-rccg-purple text-white rounded-xl">
-              <svg class="btn-spinner hidden w-4 h-4 mr-2 animate-spin text-white" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"></circle></svg>
-              <svg class="btn-icon w-4 h-4 mr-2 text-white" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
-              <span class="btn-text">Add Video</span>
-            </button>
+  <div class="flex items-center gap-2">
+    <button type="submit" class="action-btn inline-flex items-center px-4 py-2 bg-rccg-purple text-white rounded-xl">
+      <svg class="btn-spinner hidden w-4 h-4 mr-2 animate-spin text-white" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"></circle></svg>
+      <svg class="btn-icon w-4 h-4 mr-2 text-white" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+      <span class="btn-text">Add Video</span>
+    </button>
 
-            <button type="button" onclick="clearLocalVideos()" class="inline-flex items-center px-3 py-2 bg-amber-50 text-amber-700 rounded-xl text-xs font-bold">
-              Clear Local Adds
-            </button>
-          </div>
-        </form>
+    <button type="button" onclick="clearLocalVideos()" class="inline-flex items-center px-3 py-2 bg-amber-50 text-amber-700 rounded-xl text-xs font-bold">
+      Clear Local Adds
+    </button>
+  </div>
+</form>
 
         <div class="mt-4 text-xs text-slate-400">
           Tip: Use a YouTube embed URL (https://www.youtube.com/embed/...) for best playback.
@@ -1780,7 +1780,61 @@ if (!data || !data.success) {
     // For YouTube/embedded videos, open in new tab
     window.open(videoUrl, '_blank');
   };
+window.handleVideoAdd = async function(e) {
+  e.preventDefault();
 
+  const btn = e.submitter || e.target.querySelector('button[type="submit"]');
+
+  return triggerBtnSpinner(btn, 'Adding...', async () => {
+    const title = document.getElementById('video-title')?.value.trim();
+    const pastor = document.getElementById('video-pastor')?.value.trim();
+    const category = document.getElementById('video-category')?.value || 'General';
+    const mediaUrl = document.getElementById('video-url')?.value.trim();
+    const thumbnailUrl = document.getElementById('video-thumb')?.value.trim();
+
+    if (!title || !mediaUrl) {
+      showToast('Title and video URL are required', 'info');
+      return;
+    }
+
+    try {
+      if (typeof authFetch !== 'function') {
+        showToast('Authentication not available', 'error');
+        return;
+      }
+
+      const response = await authFetch('/sermons/link', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          title,
+          pastor: pastor || 'Unknown',
+          category,
+          description: '',
+          duration: '',
+          type: 'video',
+          mediaUrl,
+          thumbnailUrl: thumbnailUrl || undefined
+        })
+      });
+
+      if (!response || !response.success) {
+        showToast(response?.message || 'Failed to add video', 'error');
+        return;
+      }
+
+      showToast('Video sermon added successfully', 'success');
+      e.target.reset();
+      await loadVideoSermons(1);
+
+    } catch (err) {
+      console.error('Video add error:', err);
+      showToast(err.message || 'Error adding video', 'error');
+    }
+  });
+};
   // Handle video add form (Admin Only)
   window.handleVideoUpload = async function(e) {
     e.preventDefault();
