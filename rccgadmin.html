@@ -865,38 +865,47 @@ function storeAuthToken(token) {
 
 async function authFetch(path, opts = {}) {
   const token = getAuthToken();
-  const headers = Object.assign({}, opts.headers || {}, {
-    'Content-Type': opts.body instanceof FormData ? undefined : 'application/json'
-  });
+  const headers = new Headers(opts.headers || {});
   if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+    headers.set('Authorization', `Bearer ${token}`);
   }
-
-  const cfg = Object.assign({}, opts, { headers });
-
+  if (opts.body instanceof FormData) {
+    headers.delete('Content-Type');
+  } else {
+    if (!headers.has('Content-Type')) {
+      headers.set('Content-Type', 'application/json');
+    }
+  }
+  const cfg = {
+    ...opts,
+    headers
+  };
   try {
     const res = await fetch(`${API.baseUrl}${path}`, cfg);
     if (res.status === 401) {
-      showToast("Session expired. Redirecting to login...", 'error');
+      showToast("Session expired. Redirecting to login...", "error");
       setTimeout(() => handleSignOut(), 800);
-      throw new Error('Unauthorized');
+      throw new Error("Unauthorized");
     }
     if (res.status === 403) {
-      showToast("Access denied (admin required).", 'error');
-      throw new Error('Forbidden');
+      showToast("Access denied (admin required).", "error");
+      throw new Error("Forbidden");
     }
-    const contentType = res.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
+    const contentType = res.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
       const json = await res.json();
-      if (!res.ok) throw new Error(json.message || `Request failed (${res.status})`);
+      if (!res.ok) {
+        throw new Error(json.message || `Request failed (${res.status})`);
+      }
       return json;
-    } else {
-      const text = await res.text();
-      if (!res.ok) throw new Error(text || `Request failed (${res.status})`);
-      return text;
     }
+    const text = await res.text();
+    if (!res.ok) {
+      throw new Error(text || `Request failed (${res.status})`);
+    }
+    return text;
   } catch (err) {
-    console.error('authFetch error', err);
+    console.error("authFetch error:", err);
     throw err;
   }
 }
