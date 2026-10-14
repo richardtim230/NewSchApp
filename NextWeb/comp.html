@@ -534,7 +534,36 @@ select:focus-visible {
 }
 
 .reader-content {
+  position: relative;
   overscroll-behavior: contain;
+}
+
+.reader-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px;
+  background: rgba(248, 250, 252, .97);
+  color: #334155;
+  text-align: center;
+}
+
+.reader-loading[hidden] {
+  display: none !important;
+}
+
+.reader-loading .reader-spinner {
+  width: 44px;
+  height: 44px;
+  border: 4px solid #dbeafe;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: spin .75s linear infinite;
 }
 
 select {
@@ -685,11 +714,11 @@ select {
   <div class="mt-8 rounded-2xl border border-blue-100 bg-blue-50 p-4">
     <span class="mb-3 grid h-9 w-9 place-items-center rounded-xl bg-white text-blue-700 shadow-sm"><i class="fa-solid fa-unlock-keyhole"></i></span>
     <h3 class="text-sm font-bold text-slate-800">Open access first</h3>
-    <p class="mt-2 text-xs leading-5 text-slate-600">Discover materials available for reading or download through their respective providers.</p>
+    <p class="mt-2 text-xs leading-5 text-slate-600">Search open textbooks, scholarly books, research articles and public-domain ebooks, with provider links for reading and downloads.</p>
   </div>
 
   <div class="mt-auto pt-8">
-    <p class="text-xs leading-5 text-slate-400">Powered by public academic repositories.</p>
+    <p class="text-xs leading-5 text-slate-400">Open textbooks · Open-access books · Research articles · Public-domain ebooks</p>
   </div>
 </aside>
 
@@ -726,7 +755,7 @@ select {
   </div>
 
   <div class="border-t border-slate-100 px-5 py-4">
-    <p class="text-[10px] leading-5 text-slate-400">Open Library · Internet Archive · Crossref · DOAJ · Project Gutenberg</p>
+    <p class="text-[10px] leading-5 text-slate-400">OpenStax · DOAB · DOAJ · Project Gutenberg · Internet Archive · Open Library</p>
   </div>
 </aside>
 
@@ -845,18 +874,20 @@ select {
           </div>
 
           <h2 id="results-title" class="text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">Explore academic resources</h2>
-          <p id="results-subtitle" class="mt-2 text-xs leading-5 text-slate-500">Search across multiple public catalogs to discover relevant resources.</p>
+          <p id="results-subtitle" class="mt-2 text-xs leading-5 text-slate-500">Search across open textbook libraries, open-access book directories, article indexes and public-domain collections.</p>
         </div>
 
         <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
           <label class="sr-only" for="source-filter">Filter by source</label>
           <select id="source-filter" class="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
             <option value="all">All sources</option>
-            <option value="Open Library">Open Library</option>
+            <option value="OpenStax">OpenStax Textbooks</option>
+            <option value="DOAB">Open Access Books (DOAB)</option>
+            <option value="Project Gutenberg">Project Gutenberg</option>
             <option value="Internet Archive">Internet Archive</option>
-            <option value="Crossref">Crossref</option>
-            <option value="DOAJ">DOAJ</option>
-            <option value="Gutendex">Project Gutenberg</option>
+            <option value="Open Library">Open Library</option>
+            <option value="DOAJ">DOAJ Articles</option>
+            <option value="Crossref">Crossref Metadata</option>
           </select>
 
           <label class="sr-only" for="sort-filter">Sort results</label>
@@ -894,7 +925,7 @@ select {
         <div>
           <h3 class="text-sm font-bold text-amber-950">A note about access and downloads</h3>
           <p class="mt-1 text-xs leading-6 text-amber-900/80">
-            Search results may include openly accessible resources, borrowing options and catalog records without full text. Reading and download availability is determined by each provider. UniLibrary does not bypass paywalls, lending restrictions or copyright controls.
+            UniLibrary prioritizes openly accessible books and papers. Some records are discovery-only, and some books may require borrowing or have publisher restrictions. Downloads are offered only where the provider exposes an accessible file; UniLibrary does not bypass paywalls, lending restrictions or copyright controls.
           </p>
         </div>
       </div>
@@ -1023,7 +1054,12 @@ select {
     <div id="reader-message" class="hidden p-5 text-sm leading-6 text-slate-600 sm:p-8"></div>
 
     <div class="reader-content min-h-0 flex-1 overflow-auto">
-      <iframe id="reader-frame" title="Academic resource reader" loading="lazy" referrerpolicy="no-referrer"></iframe>
+      <div id="reader-loading" class="reader-loading" role="status" aria-live="polite">
+        <span class="reader-spinner" aria-hidden="true"></span>
+        <strong id="reader-loading-title" class="text-sm font-bold">Preparing your resource…</strong>
+        <span id="reader-loading-detail" class="max-w-sm text-xs leading-5 text-slate-500">The original repository is loading. This may take a few moments.</span>
+      </div>
+      <iframe id="reader-frame" title="Academic resource reader" loading="eager" referrerpolicy="no-referrer"></iframe>
     </div>
 
     <footer class="flex items-center justify-between gap-3 border-t border-slate-100 bg-white px-4 py-3 sm:px-6">
@@ -1178,7 +1214,7 @@ function enc(s) {
 /* OPEN LIBRARY */
 async function openLibrary(q, page = 1, signal) {
   const d = await fetchJSON(
-    `https://openlibrary.org/search.json?q=${enc(q)}&page=${page}&limit=${pageSize}&fields=key,title,author_name,first_publish_year,cover_i,subject,edition_count,ia,isbn,description`,
+    `https://openlibrary.org/search.json?q=${enc(q)}&page=${page}&limit=${pageSize * 2}&fields=key,title,author_name,first_publish_year,cover_i,subject,edition_count,ia,isbn,description`,
     { signal }
   );
 
@@ -1205,7 +1241,7 @@ async function openLibrary(q, page = 1, signal) {
 /* INTERNET ARCHIVE */
 async function internetArchive(q, page = 1, signal) {
   const d = await fetchJSON(
-    `https://archive.org/advancedsearch.php?q=${enc(`(${q}) AND mediatype:texts`)}&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=year&fl[]=description&fl[]=mediatype&rows=${pageSize}&page=${page}&output=json&sort[]=downloads desc`,
+    `https://archive.org/advancedsearch.php?q=${enc(`(${q}) AND mediatype:texts`)}&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=year&fl[]=description&fl[]=mediatype&rows=${pageSize * 2}&page=${page}&output=json&sort[]=downloads desc`,
     { signal }
   );
 
@@ -1219,7 +1255,117 @@ async function internetArchive(q, page = 1, signal) {
     source: "Internet Archive",
     type: "book",
     url: `https://archive.org/details/${encodeURIComponent(x.identifier)}`,
-    readUrl: `https://archive.org/metadata/${encodeURIComponent(x.identifier)}`
+    readUrl: `https://archive.org/details/${encodeURIComponent(x.identifier)}`,
+    downloadUrl: ""
+  }));
+}
+
+/* OPEN ACCESS BOOKS (DOAB) */
+async function doab(q, page = 1, signal) {
+  const url = `https://directory.doabooks.org/rest/search?query=${enc(q)}&expand=metadata,bitstreams&limit=${pageSize}&offset=${(page - 1) * pageSize}`;
+  const d = await fetchJSON(url, { signal });
+  const records = Array.isArray(d) ? d : (d.items || d.results || d.searchResults || []);
+  const readMeta = (item, keys) => {
+    const meta = item.metadata || item.indexableObject?.metadata || {};
+    for (const key of keys) {
+      const value = meta[key] ?? meta[key.replace(/^dc\./, "dc.")];
+      if (Array.isArray(value) && value.length) {
+        const first = value[0];
+        return typeof first === "string" ? first : (first.value || first.authority || "");
+      }
+      if (typeof value === "string") return value;
+    }
+    return "";
+  };
+  return records.map((x, i) => {
+    const meta = x.metadata || x.indexableObject?.metadata || {};
+    const title = readMeta(x, ["dc.title", "title"]) || x.name || x.title || "Open access book";
+    const authorsRaw = meta["dc.contributor.author"] || meta["dc.creator"] || [];
+    const authors = (Array.isArray(authorsRaw) ? authorsRaw : [authorsRaw]).map(a =>
+      typeof a === "string" ? a : (a.value || "")
+    ).filter(Boolean);
+    const bitstreams = x.bitstreams || x.indexableObject?.bitstreams || [];
+    const files = Array.isArray(bitstreams) ? bitstreams : [];
+    const file = files.find(b => /\.pdf$/i.test(b.name || b.bundleName || b.originalName || "")) || files[0];
+    const handle = x.handle || readMeta(x, ["dc.identifier.uri"]) || "";
+    const itemUrl = handle.startsWith("http")
+      ? handle
+      : `https://directory.doabooks.org/handle/${handle || x.uuid || ""}`;
+    let downloadUrl = "";
+    if (file) {
+      const uuid = file.uuid || file.id || file.bitstreamId;
+      if (uuid) downloadUrl = `https://directory.doabooks.org/server/api/core/bitstreams/${encodeURIComponent(uuid)}/content`;
+      else if (file.retrieveLink) downloadUrl = file.retrieveLink.startsWith("http") ? file.retrieveLink : `https://directory.doabooks.org${file.retrieveLink}`;
+    }
+    const date = readMeta(x, ["dc.date.issued", "dc.date.accessioned"]);
+    return normalize({
+      id: x.uuid || handle || `${title}-${i}`,
+      title,
+      authors,
+      year: date.match(/\b(19|20)\d{2}\b/)?.[0],
+      description: readMeta(x, ["dc.description.abstract", "dc.description"]) || "Open-access scholarly book. Check the publisher record for available full-text formats and licence.",
+      source: "DOAB",
+      type: "book",
+      url: itemUrl,
+      readUrl: downloadUrl || itemUrl,
+      downloadUrl,
+      license: readMeta(x, ["dc.rights", "dc.rights.uri"])
+    });
+  }).filter(x => x.title);
+}
+
+/*
+ * OpenStax does not expose a general-purpose public book-search API.
+ * This curated catalogue links to the official complete online books and
+ * their official PDF download options rather than scraping or mirroring files.
+ */
+const OPENSTAX_BOOKS = [
+  ["Biology 2e","biology-2e","biology, life science, cells, genetics, evolution"],
+  ["Chemistry 2e","chemistry-2e","chemistry, organic chemistry, inorganic chemistry, atoms"],
+  ["College Physics 2e","college-physics-2e","physics, mechanics, electricity, waves"],
+  ["University Physics Volume 1","university-physics-volume-1","physics, mechanics, motion"],
+  ["University Physics Volume 2","university-physics-volume-2","physics, thermodynamics, waves"],
+  ["University Physics Volume 3","university-physics-volume-3","physics, electromagnetism, optics"],
+  ["Precalculus 2e","precalculus-2e","mathematics, algebra, functions, trigonometry"],
+  ["Calculus Volume 1","calculus-volume-1","mathematics, calculus, limits, derivatives"],
+  ["Calculus Volume 2","calculus-volume-2","mathematics, calculus, integration"],
+  ["Calculus Volume 3","calculus-volume-3","mathematics, calculus, multivariable"],
+  ["Statistics","introductory-statistics","statistics, probability, data analysis"],
+  ["Microbiology","microbiology","biology, microbiology, infectious disease"],
+  ["Anatomy and Physiology 2e","anatomy-and-physiology-2e","biology, anatomy, physiology, medicine"],
+  ["Psychology 2e","psychology-2e","psychology, behavior, mental processes"],
+  ["Introduction to Sociology 3e","introduction-sociology-3e","sociology, society, social science"],
+  ["Principles of Economics 3e","principles-economics-3e","economics, microeconomics, macroeconomics"],
+  ["Principles of Finance","principles-finance","finance, business, accounting"],
+  ["Principles of Management","principles-management","management, business, leadership"],
+  ["Introduction to Business","introduction-business","business, entrepreneurship, management"],
+  ["American Government 3e","american-government-3e","political science, government"],
+  ["U.S. History","united-states-history","history, american history"],
+  ["English Composition","writing-guide","writing, english, composition"],
+  ["Computer Science","computer-science","computer science, programming, computing"],
+  ["Nursing: A Concept-Based Approach to Learning","nursing","nursing, health sciences, medicine"]
+];
+
+async function openStax(q, page = 1, signal) {
+  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+  const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const matches = OPENSTAX_BOOKS.map(([title, slug, subjects]) => ({
+    title, slug, subjects,
+    score: terms.reduce((n, term) => n + ((title + " " + subjects).toLowerCase().includes(term) ? 1 : 0), 0)
+  })).filter(x => x.score > 0)
+    .sort((a,b) => b.score - a.score || a.title.localeCompare(b.title));
+  const start = (page - 1) * pageSize;
+  return matches.slice(start, start + pageSize).map(x => normalize({
+    id: `openstax:${x.slug}`,
+    title: x.title,
+    authors: ["OpenStax"],
+    description: `Free, peer-reviewed textbook. Subjects: ${x.subjects}. The official book page provides online reading and available PDF downloads.`,
+    source: "OpenStax",
+    type: "book",
+    url: `https://openstax.org/details/books/${x.slug}`,
+    readUrl: `https://openstax.org/books/${x.slug}/pages/1-introduction`,
+    downloadUrl: `https://openstax.org/details/books/${x.slug}`,
+    license: "Check the book's Creative Commons licence; OpenStax generally uses CC BY-NC-SA."
   }));
 }
 
@@ -1309,7 +1455,7 @@ async function gutenberg(q, page = 1, signal) {
       year: null,
       description: (x.subjects || []).slice(0, 5).join(", "),
       cover: fmt["image/jpeg"] || null,
-      source: "Gutendex",
+      source: "Project Gutenberg",
       type: "ebook",
       url: `https://www.gutenberg.org/ebooks/${x.id}`,
       readUrl: read,
@@ -1320,16 +1466,18 @@ async function gutenberg(q, page = 1, signal) {
 }
 
 const sourceFetchers = {
-  "Open Library": openLibrary,
   "Internet Archive": internetArchive,
-  "Crossref": crossref,
+  "Open Library": openLibrary,
+  "OpenStax": openStax,
+  "DOAB": doab,
+  "Project Gutenberg": gutenberg,
   "DOAJ": doaj,
-  "Gutendex": gutenberg
+  "Crossref": crossref
 };
 
 function sourcesForType(type) {
   if (type === "books") {
-    return ["Open Library", "Internet Archive"];
+    return ["Internet Archive", "Open Library", "OpenStax", "DOAB"];
   }
 
   if (type === "papers") {
@@ -1341,7 +1489,7 @@ function sourcesForType(type) {
   }
 
   if (type === "ebooks") {
-    return ["Gutendex", "Internet Archive"];
+    return ["Internet Archive", "Open Library", "Project Gutenberg", "OpenStax", "DOAB"];
   }
 
   return Object.keys(sourceFetchers);
@@ -1351,7 +1499,9 @@ function matchesType(item, type) {
   if (type === "all") return true;
 
   if (type === "books") {
-    return item.source === "Open Library"
+    return item.source === "OpenStax"
+      || item.source === "DOAB"
+      || item.source === "Open Library"
       || item.source === "Internet Archive";
   }
 
@@ -1365,7 +1515,9 @@ function matchesType(item, type) {
   }
 
   if (type === "ebooks") {
-    return item.source === "Gutendex"
+    return item.source === "Project Gutenberg"
+      || item.source === "OpenStax"
+      || item.source === "DOAB"
       || item.source === "Internet Archive";
   }
 
@@ -1389,6 +1541,21 @@ function unique(items) {
 
 function sortResults(items) {
   const out = [...items];
+  const sourcePriority = {
+    "Internet Archive": 0,
+    "Open Library": 1,
+    "OpenStax": 2,
+    "DOAB": 3,
+    "Project Gutenberg": 4,
+    "DOAJ": 5,
+    "Crossref": 6
+  };
+
+  if (state.sort === "relevance") {
+    out.sort((a, b) =>
+      (sourcePriority[a.source] ?? 99) - (sourcePriority[b.source] ?? 99)
+    );
+  }
 
   if (state.sort === "year") {
     out.sort((a, b) => (b.year || 0) - (a.year || 0));
@@ -1414,7 +1581,7 @@ function createCover(item) {
     "absolute left-2 top-2 z-10 rounded-md bg-white/95 px-2 py-1 text-[9px] font-extrabold tracking-wide text-slate-700 shadow-sm";
 
   label.textContent =
-    item.source === "Gutendex" ? "EBOOK"
+    item.source === "Project Gutenberg" ? "EBOOK"
     : item.source === "Crossref" || item.source === "DOAJ" ? "PAPER"
     : "BOOK";
 
@@ -1536,9 +1703,63 @@ function renderCard(item, index) {
     download.className =
       "mt-2 flex items-center justify-center gap-1.5 rounded-lg bg-emerald-50 px-2 py-2 text-[10px] font-bold text-emerald-700 transition hover:bg-emerald-100";
 
-    download.innerHTML =
-      '<i class="fa-solid fa-download"></i> Download / ebook';
+    download.innerHTML = item.source === "OpenStax"
+      ? '<i class="fa-solid fa-file-pdf"></i> Online / PDF options'
+      : '<i class="fa-solid fa-download"></i> Download / ebook';
 
+    body.appendChild(download);
+  } else if (item.source === "Internet Archive") {
+    const download = document.createElement("button");
+    download.type = "button";
+    download.className =
+      "mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-50 px-2 py-2 text-[10px] font-bold text-emerald-700 transition hover:bg-emerald-100";
+    download.innerHTML = '<i class="fa-solid fa-download"></i> Find available downloads';
+    download.addEventListener("click", async () => {
+      const old = download.innerHTML;
+      download.disabled = true;
+      download.innerHTML = '<span class="spinner"></span> Checking formats…';
+      try {
+        const match = item.url.match(/archive\.org\/details\/([^/?#]+)/);
+        if (!match) throw new Error("Archive identifier unavailable");
+        const identifier = decodeURIComponent(match[1]);
+        const metadata = await fetchJSON(
+          `https://archive.org/metadata/${encodeURIComponent(identifier)}`,
+          {}
+        );
+        const files = (metadata.files || []).filter(file => {
+          const name = String(file.name || "");
+          return /\.(pdf|epub|txt|djvu|mobi)$/i.test(name)
+            && !file.private
+            && !/\.meta\.txt$/i.test(name);
+        }).slice(0, 8);
+        if (!files.length) {
+          download.outerHTML = '<a class="mt-2 flex items-center justify-center gap-1.5 rounded-lg bg-slate-100 px-2 py-2 text-[10px] font-bold text-slate-600" href="' +
+            esc(item.url) + '" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-arrow-up-right-from-square"></i> Check access options</a>';
+          return;
+        }
+        const list = document.createElement("div");
+        list.className = "mt-2 space-y-1";
+        files.forEach(file => {
+          const link = document.createElement("a");
+          link.href = `https://archive.org/download/${encodeURIComponent(identifier)}/${file.name.split("/").map(encodeURIComponent).join("/")}`;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.className = "flex items-center justify-between gap-2 rounded-lg bg-emerald-50 px-2 py-2 text-[10px] font-bold text-emerald-800 hover:bg-emerald-100";
+          const format = file.name.split(".").pop().toUpperCase();
+          const label = document.createElement("span");
+          label.textContent = format + (file.size ? ` · ${Math.max(1, Math.round(Number(file.size) / 1048576 * 10) / 10)} MB` : "");
+          const icon = document.createElement("i");
+          icon.className = "fa-solid fa-download";
+          link.append(label, icon);
+          list.appendChild(link);
+        });
+        download.replaceWith(list);
+      } catch (error) {
+        download.disabled = false;
+        download.innerHTML = old;
+        setStatus("Could not retrieve download formats from Internet Archive. Open the source record to check availability.", "warn");
+      }
+    });
     body.appendChild(download);
   }
 
@@ -2071,87 +2292,120 @@ function showReader(item) {
   const modal = $("reader-modal");
   const frame = $("reader-frame");
   const message = $("reader-message");
+  const loader = $("reader-loading");
+  const loaderTitle = $("reader-loading-title");
+  const loaderDetail = $("reader-loading-detail");
 
   $("reader-title").textContent = item.title;
-
   $("reader-source").textContent =
     `${item.source}${item.authors.length ? " · " + item.authors.join(", ") : ""}`;
 
   const itemUrl = safeHttpUrl(item.url);
   const readUrl = safeHttpUrl(item.readUrl);
-
   $("reader-open").href = itemUrl || readUrl || "#";
   $("reader-open").classList.toggle("hidden", !itemUrl && !readUrl);
 
+  if (window.__uniReaderTimer) clearTimeout(window.__uniReaderTimer);
+  frame.onload = null;
   frame.src = "about:blank";
   frame.classList.remove("hidden");
-
   message.replaceChildren();
   message.classList.add("hidden");
+  loader.hidden = false;
+  loaderTitle.textContent = "Preparing your resource…";
+  loaderDetail.textContent = "The original repository is loading. This may take a few moments.";
+
+  function hideLoader() {
+    loader.hidden = true;
+    if (window.__uniReaderTimer) {
+      clearTimeout(window.__uniReaderTimer);
+      window.__uniReaderTimer = null;
+    }
+  }
 
   function showMessage(content) {
+    hideLoader();
     frame.classList.add("hidden");
     message.classList.remove("hidden");
     message.innerHTML = content;
   }
 
-  const url = item.readUrl || item.url || "";
+  function loadFrame(url, title = "Loading resource…", detail = "Waiting for the provider to render the content.") {
+    if (!url) {
+      showMessage('This resource does not provide an embeddable reader. Use <strong>Open source</strong> to view it on the original repository.');
+      return;
+    }
+
+    loader.hidden = false;
+    loaderTitle.textContent = title;
+    loaderDetail.textContent = detail;
+    frame.onload = () => hideLoader();
+    frame.src = url;
+
+    // Some repositories block embedding or never finish loading. Keep the
+    // modal usable and provide a clear route to the original source.
+    window.__uniReaderTimer = setTimeout(() => {
+      if (!loader.hidden) {
+        showMessage('The resource is taking longer than expected to display here. It may block embedded viewing. Choose <strong>Open source</strong> to continue on the provider’s website.');
+      }
+    }, 14000);
+  }
+
+  const url = readUrl || itemUrl || "";
   const lower = url.toLowerCase();
 
   if (item.source === "Internet Archive") {
-    /*
-     * Prefer the public reader route. Metadata API URLs return JSON
-     * and are not themselves a reader page.
-     */
     let identifier = "";
-
     try {
-      const parsed = new URL(item.url);
+      const parsed = new URL(itemUrl || "");
       const match = parsed.pathname.match(/^\/details\/([^/]+)/);
       if (match) identifier = decodeURIComponent(match[1]);
     } catch {}
 
     if (identifier) {
-      frame.src =
-        `https://archive.org/stream/${encodeURIComponent(identifier)}`;
-
-      frame.addEventListener("error", () => {
-        showMessage(
-          'Open this item at Internet Archive to check its available reading options.'
-        );
-      }, { once: true });
-    } else {
-      showMessage(
-        'Open this item at Internet Archive to check its available reading options.'
-      );
-    }
-  } else if (item.source === "Gutendex" && url && /^https?:/.test(url)) {
-    if (lower.includes(".epub") || lower.includes(".zip")) {
-      showMessage(
-        'This ebook format may need a dedicated ebook reader. Use <strong>Open source</strong> or the download link on the resource card.'
+      loadFrame(
+        `https://archive.org/stream/${encodeURIComponent(identifier)}`,
+        "Opening Internet Archive…",
+        "Loading the item’s available reading view. Borrowing or access restrictions still apply."
       );
     } else {
-      frame.src = url;
+      showMessage('Open this item at Internet Archive to check its available reading and download options.');
     }
   } else if (item.source === "Open Library" && item.readUrl) {
-    frame.src = url;
-  } else {
-    showMessage(
-      'This record may contain an abstract or full-text link on the provider’s website. Use <strong>Open source</strong> to access it. Some publishers and repositories do not permit embedded viewing.'
+    // Prefer the Internet Archive reader for editions linked to an IA item;
+    // otherwise load the official Open Library work/edition page.
+    loadFrame(
+      safeHttpUrl(item.readUrl) || itemUrl,
+      "Opening Open Library…",
+      "Loading book details and any available read or borrow options."
     );
+  } else if (item.source === "Project Gutenberg" && url && /^https?:/.test(url)) {
+    if (lower.includes(".epub") || lower.includes(".zip")) {
+      showMessage('This ebook format may need a dedicated ebook reader. Use <strong>Open source</strong> or the download link on the resource card.');
+    } else {
+      loadFrame(url, "Opening ebook…", "Loading the public-domain text from Project Gutenberg.");
+    }
+  } else if (item.source === "OpenStax") {
+    showMessage('OpenStax provides the complete textbook and PDF options on its official book page. Choose <strong>Open source</strong> to read or download from OpenStax.');
+  } else if (item.source === "DOAB" && item.readUrl && item.readUrl !== item.url) {
+    loadFrame(safeHttpUrl(item.readUrl), "Opening open-access book…");
+  } else {
+    showMessage('This record may contain an abstract or full-text link on the provider’s website. Use <strong>Open source</strong> to access it. Some publishers and repositories do not permit embedded viewing.');
   }
 
   closeDrawer();
   closeSidebar();
-
   modal.classList.remove("hidden");
   modal.classList.add("flex");
   document.body.style.overflow = "hidden";
-
   $("reader-close").focus();
 }
 
 function closeReader() {
+  if (window.__uniReaderTimer) {
+    clearTimeout(window.__uniReaderTimer);
+    window.__uniReaderTimer = null;
+  }
   const modal = $("reader-modal");
 
   if (modal.classList.contains("hidden")) return;
