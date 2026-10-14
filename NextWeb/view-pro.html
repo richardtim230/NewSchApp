@@ -15,13 +15,13 @@
                     fontFamily: { sans: ['Inter', 'sans-serif'] },
                     colors: {
                         brand: {
-                            dark: '#1e3a8a',
-                            active: '#2563eb',
-                            accent: '#3b82f6',
-                            light: '#f8fafc',
+                            dark: '#1e3a8a',   // Sidebar background
+                            active: '#2563eb', // Active states
+                            accent: '#3b82f6', // Lighter blue
+                            light: '#f8fafc',  // Main background
                             blue: '#1a6cfb',
                             button: '#0d5dff',
-                            warm: '#f59e0b'
+                            warm: '#f59e0b'    // Lively amber for community vibe
                         }
                     },
                     boxShadow: {
@@ -1004,6 +1004,11 @@
     }
     async function handleSavePersonal(event) {
       event.preventDefault();
+      const form = event.currentTarget;
+      if (busyForms.has(form)) return;
+      busyForms.add(form);
+      const submitButton = form.querySelector('button[type="submit"], button:not([type])');
+      setButtonLoading(submitButton, true, "Saving...");
       const fullname = document.getElementById("input-fullname").value.trim();
       const username = document.getElementById("input-username").value.trim();
       const email = document.getElementById("input-email").value.trim();
@@ -1011,7 +1016,7 @@
       const bio = document.getElementById("input-bio").value.trim();
       if (!fullname || !username || !email) {
         showToast("Please fill in all required fields", "error");
-        return;
+        busyForms.delete(form); setButtonLoading(submitButton, false); return;
       }
       try {
         const token = localStorage.getItem("token");
@@ -1047,9 +1052,16 @@
         console.error("Error saving personal info:", err);
         showToast(err.message || "Failed to save changes", "error");
       }
+      busyForms.delete(form);
+      setButtonLoading(submitButton, false);
     }
     async function handleSaveAcademic(event) {
       event.preventDefault();
+      const form = event.currentTarget;
+      if (busyForms.has(form)) return;
+      busyForms.add(form);
+      const submitButton = form.querySelector('button[type="submit"], button:not([type])');
+      setButtonLoading(submitButton, true, "Saving...");
       const faculty = document.getElementById("input-faculty").value;
       const department = document.getElementById("input-dept").value;
       const level = document.getElementById("input-level").value;
@@ -1091,23 +1103,30 @@
         console.error("Error saving academic info:", err);
         showToast(err.message || "Failed to save changes", "error");
       }
+      busyForms.delete(form);
+      setButtonLoading(submitButton, false);
     }
     async function handleChangePassword(event) {
       event.preventDefault();
+      const form = event.currentTarget;
+      if (busyForms.has(form)) return;
+      busyForms.add(form);
+      const submitButton = form.querySelector('button[type="submit"], button:not([type])');
+      setButtonLoading(submitButton, true, "Saving...");
       const currentPass = document.getElementById("pass-current").value;
       const newPass = document.getElementById("pass-new").value;
       const confirmPass = document.getElementById("pass-confirm").value;
       if (!currentPass || !newPass || !confirmPass) {
         showToast("Please fill in all password fields", "error");
-        return;
+        busyForms.delete(form); setButtonLoading(submitButton, false); return;
       }
       if (newPass !== confirmPass) {
         showToast("New passwords do not match", "error");
-        return;
+        busyForms.delete(form); setButtonLoading(submitButton, false); return;
       }
       if (newPass.length < 6) {
         showToast("New password must be at least 6 characters", "error");
-        return;
+        busyForms.delete(form); setButtonLoading(submitButton, false); return;
       }
       try {
         const token = localStorage.getItem("token");
@@ -1134,6 +1153,8 @@
         console.error("Error changing password:", err);
         showToast(err.message || "Failed to change password", "error");
       }
+      busyForms.delete(form);
+      setButtonLoading(submitButton, false);
     }
     function triggerPhotoUpload() {
       document.getElementById("avatar-file-input").click();
@@ -1275,6 +1296,49 @@
       showToast("Support ticket submitted successfully!", "success");
       closeModal("support-modal");
     }
+    const busyForms = new WeakSet();
+    const busyButtons = new WeakSet();
+    function setButtonLoading(button, loading, label) {
+      if (!button) return;
+      if (loading) {
+        if (busyButtons.has(button)) return;
+        busyButtons.add(button);
+        button.dataset.originalHtml = button.innerHTML;
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        button.classList.add("opacity-70", "cursor-not-allowed");
+        button.innerHTML = `<svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="opacity-25"></circle><path fill="currentColor" class="opacity-75" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg><span>${label || "Please wait..."}</span>`;
+      } else {
+        busyButtons.delete(button);
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+        button.classList.remove("opacity-70", "cursor-not-allowed");
+        if (button.dataset.originalHtml !== undefined) {
+          button.innerHTML = button.dataset.originalHtml;
+          delete button.dataset.originalHtml;
+        }
+      }
+    }
+    document.addEventListener("click", event => {
+      const button = event.target.closest("button");
+      if (!button || button.type === "submit" || button.disabled) return;
+      if (button.dataset.noLoader !== undefined || button.closest("[role='dialog']")?.dataset.noLoader !== undefined) return;
+      if (button.closest("form")) return;
+      const original = button.innerHTML;
+      button.dataset.originalHtml = original;
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+      button.classList.add("opacity-70", "cursor-not-allowed");
+      button.innerHTML = `<svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="opacity-25"></circle><path fill="currentColor" class="opacity-75" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg><span>${original.replace(/<[^>]*>/g, "").trim() || "Please wait..."}</span>`;
+      window.setTimeout(() => {
+        if (!button.isConnected) return;
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+        button.classList.remove("opacity-70", "cursor-not-allowed");
+        button.innerHTML = button.dataset.originalHtml || original;
+        delete button.dataset.originalHtml;
+      }, 800);
+    }, true);
     function setupEventListeners() {
       const personalForm = document.querySelector('#personal-form form');
       const academicForm = document.querySelector('#academic-form form');
@@ -1283,34 +1347,7 @@
       if (academicForm) academicForm.onsubmit = handleSaveAcademic;
       if (passwordForm) passwordForm.onsubmit = handleChangePassword;
     }
-    
-document.addEventListener("submit",function(event){
-const form=event.target;
-if(!(form instanceof HTMLFormElement))return;
-if(form.dataset.submitting==="true"){event.preventDefault();return;}
-const button=event.submitter||form.querySelector('button[type="submit"],button:not([type])');
-if(!button)return;
-form.dataset.submitting="true";
-button.dataset.originalHtml=button.innerHTML;
-button.disabled=true;
-button.setAttribute("aria-busy","true");
-button.classList.add("opacity-70","cursor-not-allowed");
-button.innerHTML='<span class="inline-flex items-center justify-center gap-2"><svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" opacity=".25"></circle><path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" stroke-width="4" stroke-linecap="round"></path></svg>Processing...</span>';
-const restore=()=>{if(!button.isConnected)return;button.disabled=false;button.removeAttribute("aria-busy");button.classList.remove("opacity-70","cursor-not-allowed");button.innerHTML=button.dataset.originalHtml||button.innerHTML;delete form.dataset.submitting;};
-form.addEventListener("submit:complete",restore,{once:true});
-setTimeout(restore,30000);
-});
-document.addEventListener("click",function(event){
-const button=event.target.closest("button[data-loading]");
-if(!button||button.disabled)return;
-button.disabled=true;
-button.dataset.originalHtml=button.innerHTML;
-button.setAttribute("aria-busy","true");
-button.classList.add("opacity-70","cursor-not-allowed");
-button.innerHTML='<span class="inline-flex items-center justify-center gap-2"><svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" opacity=".25"></circle><path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" stroke-width="4" stroke-linecap="round"></path></svg>Loading...</span>';
-});
-
-document.addEventListener("DOMContentLoaded", initPage);
+    document.addEventListener("DOMContentLoaded", initPage);
   </script>
 </body>
 </html>
