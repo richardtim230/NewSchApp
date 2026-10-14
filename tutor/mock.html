@@ -1085,22 +1085,43 @@ async function fetchTheoryQuestions(examSetId, token) {
 }
 
 async function deductCredit(accessCode, token) {
-    try {
-        if (!accessCode || !token) throw new Error("Missing params");
-        const res = await fetch(`${API_BASE}/api/student/exam-set/use-credit-v2`, {
+    if (!accessCode || !token) {
+        throw new Error("Missing exam access code or authentication token.");
+    }
+    const response = await fetch(
+        `${API_BASE}/api/student/exam-set/use-credit-v2`,
+        {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": "Bearer " + token
+                "Authorization": `Bearer ${token}`
             },
             body: JSON.stringify({ accessCode })
-        });
-        return await res.json();
-    } catch (err) {
-        console.error("Credit deduction error:", err);
-        return null;
+        }
+    );
+    let data;
+    try {
+        data = await response.json();
+    } catch {
+        throw new Error("The server returned an invalid response.");
     }
+    if (!response.ok) {
+        throw new Error(
+            data.message || `Credit deduction failed (HTTP ${response.status}).`
+        );
+    }
+    if (
+        Number(data.deductedCredits) !== 20 ||
+        !Number.isFinite(Number(data.creditPoints)) ||
+        Number(data.creditPoints) < 0
+    ) {
+        throw new Error(
+            "The server did not confirm a valid 20-credit deduction."
+        );
+    }
+    return data;
 }
+
 
 function determineExamType(cbtCount, theoryCount) {
     if (cbtCount > 0 && theoryCount > 0) return 'hybrid';
@@ -1347,45 +1368,78 @@ accessForm?.addEventListener('submit', async function(e) {
 
         // Helper function to handle credit deduction and launching exam session
         const executeDeductionAndLaunch = async () => {
-            try {
-                showLoadingOverlay(true, "Processing your exam access...");
-                const creditResponse = await deductCredit(accessCode, token);
-                showLoadingOverlay(false);
+    try {
+        errorElem.classList.add("hidden");
+        setBtnSpinner(accessBtn, true);
 
-                if (!creditResponse || creditResponse.error) {
-                    errorElem.textContent = `❌ ${creditResponse?.message || "Unable to access exam. Please try again."}`;
-                    errorElem.classList.remove("hidden");
-                    setBtnSpinner(accessBtn, false);
-                    return;
-                }
+        showLoadingOverlay(true, "Processing your exam access...");
 
-                localStorage.setItem("exam_access_code", accessCode);
-                localStorage.setItem("exam_course_code", courseCode);
-                localStorage.setItem("exam_type", examType);
-                localStorage.setItem("cbt_count", cbtCount);
-                localStorage.setItem("theory_count", theoryCount);
-                
-                if (creditResponse.creditPoints !== undefined) {
-                    studentCreditElem.innerText = creditResponse.creditPoints;
-                    currentUser.creditPoints = creditResponse.creditPoints;
-                }
+        const creditResponse = await deductCredit(accessCode, token);
 
-                setBtnSpinner(accessBtn, false);
-                const creditMsg = document.getElementById("credit-message");
-                creditMsg.textContent = `✓ ${CREDIT_COST_PER_EXAM} credits deducted. Remaining: ${creditResponse.creditPoints || 0} credits`;
-                creditMsg.classList.remove("hidden");
+        showLoadingOverlay(false);
 
-                setTimeout(() => {
-                    window.location.href = "exam-in-session";
-                }, 1000);
-            } catch (err) {
-                console.error("Deduction error:", err);
-                showLoadingOverlay(false);
-                errorElem.textContent = "❌ An error occurred during credit deduction. Please try again.";
-                errorElem.classList.remove("hidden");
-                setBtnSpinner(accessBtn, false);
-            }
-        };
+        // Validate the response before proceeding.
+        if (
+            !creditResponse ||
+            creditResponse.error ||
+            Number(creditResponse.deductedCredits) !== CREDIT_COST_PER_EXAM ||
+            !Number.isFinite(Number(creditResponse.creditPoints)) ||
+            Number(creditResponse.creditPoints) < 0
+        ) {
+            throw new Error(
+                creditResponse?.message ||
+                "The server did not confirm the credit deduction."
+            );
+        }
+
+        // Save exam details only after the deduction is confirmed.
+        localStorage.setItem("exam_access_code", accessCode);
+        localStorage.setItem("exam_course_code", courseCode);
+        localStorage.setItem("exam_type", examType);
+        localStorage.setItem("cbt_count", cbtCount);
+        localStorage.setItem("theory_count", theoryCount);
+
+        // Update the displayed balance using the server's balance.
+        const remainingCredits = Number(creditResponse.creditPoints);
+
+        if (studentCreditElem) {
+            studentCreditElem.innerText = remainingCredits;
+        }
+
+        if (currentUser) {
+            currentUser.creditPoints = remainingCredits;
+        }
+
+        // Display the confirmed deduction.
+        const creditMsg = document.getElementById("credit-message");
+
+        if (creditMsg) {
+            creditMsg.textContent =
+                `✓ ${Number(creditResponse.deductedCredits)} credits deducted. ` +
+                `Remaining: ${remainingCredits} credits`;
+
+            creditMsg.classList.remove("hidden");
+        }
+
+        setBtnSpinner(accessBtn, false);
+
+        // Launch only after the server confirms the deduction.
+        setTimeout(() => {
+            window.location.href = "exam-in-session";
+        }, 1000);
+
+    } catch (err) {
+        console.error("Credit deduction error:", err);
+
+        showLoadingOverlay(false);
+        setBtnSpinner(accessBtn, false);
+
+        errorElem.textContent =
+            `❌ ${err.message || "Credit deduction failed. Please try again."}`;
+
+        errorElem.classList.remove("hidden");
+    }
+};
 
         // Ensure installed-state detection completed before deciding to show modal
         await detectInstalledState();
