@@ -1,0 +1,1602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=0.85">
+    <title>Reader</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+
+    <!-- pdf.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        serif: ['Source Serif 4', 'Georgia', 'serif'],
+                        titleSerif: ['Playfair Display', 'Georgia', 'serif']
+                    },
+                    colors: {
+                        readerBg: '#FFFFFF',
+                        readerText: '#1A1816',
+                        readerBlue: '#2563EB',
+                        readerMuted: '#6B7280',
+                        readerHighlight: '#FEF08A'
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #FFFFFF;
+            color: #1A1816;
+            font-family: 'Source Serif 4', Georgia, serif;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+
+        input[type=range]:focus { outline: none; }
+
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 3px;
+            cursor: pointer;
+            background: #E5E0D8;
+            border-radius: 2px;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #2563EB;
+            cursor: pointer;
+            -webkit-appearance: none;
+            margin-top: -6.5px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+        }
+
+        .decorative-line { display: flex; align-items: center; justify-content: center; gap: 12px; }
+        .decorative-line::before, .decorative-line::after { content: ""; height: 1px; width: 60px; background-color: #E2DACD; }
+        .notes-modal, .appearance-modal, .contents-modal { display: flex; align-items: center; justify-content: center; }
+        .notes-modal.hidden, .appearance-modal.hidden, .contents-modal.hidden,
+        #searchModal.hidden, #brightnessModal.hidden, #settingsModal.hidden { display: none !important; }
+
+        /* PDF viewer area styling */
+        #pdfViewerArea { background: #f7f7f7; padding: 18px; overflow:auto; height:60vh; border-radius:8px; border:1px solid #e6e6e6; }
+        .pdf-page-wrapper { width:100%; max-width:900px; background:white; border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,0.08); overflow:hidden; }
+        .pdf-placeholder { height:420px; display:flex; align-items:center; justify-content:center; color:#9CA3AF; font-size:14px; }
+        .pdf-controls { display:flex; gap:8px; align-items:center; }
+        .zoom-btn { padding:6px 8px; background:#fff; border:1px solid #e5e7eb; border-radius:6px; cursor:pointer; }
+        .top-right-controls { position:relative; }
+
+        body.reader-dark { background:#0B1220 !important; color:#E6EEF8 !important; }
+        body.reader-dark .sticky, body.reader-dark footer { background:rgba(11,18,32,.96) !important; border-color:#263244 !important; }
+        body.reader-dark #readerArticle, body.reader-dark .chapter-body { color:#E6EEF8 !important; }
+        body.reader-dark .chapter-body h1, body.reader-dark .chapter-body h2, body.reader-dark .chapter-body h3,
+        body.reader-dark #readerArticle h1, body.reader-dark #readerArticle h2, body.reader-dark #readerArticle h3 { color:#F8FAFC !important; }
+        body.reader-dark #pdfViewerArea { background:#111827; border-color:#374151; }
+        body.reader-dark .pdf-page-wrapper { background:#fff; }
+        body.reader-dark .reader-controls, body.reader-dark header, body.reader-dark footer nav { color:#E6EEF8; }
+        body.reader-dark .text-readerText { color:#E6EEF8 !important; }
+        body.reader-dark .text-readerMuted { color:#AAB6C8 !important; }
+        .reader-popover { position:absolute; right:1rem; top:calc(100% - 2px); width:220px; background:#fff; border:1px solid #e5e7eb; border-radius:14px; box-shadow:0 16px 40px rgba(15,23,42,.16); padding:8px; z-index:50; }
+        .reader-popover button { display:flex; width:100%; align-items:center; gap:10px; padding:10px 12px; border-radius:9px; text-align:left; font:500 13px Inter,sans-serif; color:#1f2937; }
+        .reader-popover button:hover { background:#f3f4f6; }
+        .reader-search-hit { background:#fde68a !important; color:#111827 !important; border-radius:2px; }
+        .reader-search-current { outline:2px solid #2563eb; }
+        #readerBrightnessOverlay { position:fixed; inset:0; pointer-events:none; z-index:10; background:#000; opacity:0; }
+        @media (max-width: 480px) {
+          #readerContainer { padding-left:1.1rem; padding-right:1.1rem; }
+          header { padding-left:1rem !important; padding-right:1rem !important; }
+          #bookTitle { max-width:42vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+          #pdfViewerArea { padding:8px; height:62vh; }
+          .pdf-page-wrapper { padding:8px !important; }
+        }
+
+
+        /* =========================================================
+           Rich Text & WYSIWYG Content Formatting Rules
+           Overrides Tailwind Preflight resets inside reading containers
+           ========================================================= */
+        .chapter-body, #readerArticle {
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+
+        /* Headings */
+        .chapter-body h1, #readerArticle h1 { font-size: 1.85em; font-weight: 700; margin-top: 1.25em; margin-bottom: 0.5em; line-height: 1.25; font-family: 'Playfair Display', Georgia, serif; }
+        .chapter-body h2, #readerArticle h2 { font-size: 1.5em; font-weight: 700; margin-top: 1.15em; margin-bottom: 0.4em; line-height: 1.3; font-family: 'Playfair Display', Georgia, serif; }
+        .chapter-body h3, #readerArticle h3 { font-size: 1.25em; font-weight: 600; margin-top: 1em; margin-bottom: 0.4em; line-height: 1.35; }
+        .chapter-body h4, #readerArticle h4 { font-size: 1.1em; font-weight: 600; margin-top: 0.8em; margin-bottom: 0.3em; }
+        .chapter-body h5, #readerArticle h5 { font-size: 1em; font-weight: 600; margin-top: 0.8em; margin-bottom: 0.3em; }
+        .chapter-body h6, #readerArticle h6 { font-size: 0.875em; font-weight: 600; margin-top: 0.8em; margin-bottom: 0.3em; text-transform: uppercase; letter-spacing: 0.05em; }
+
+        /* Paragraphs */
+        .chapter-body p, #readerArticle p { margin-bottom: 1em; }
+        .chapter-body p:last-child, #readerArticle p:last-child { margin-bottom: 0; }
+
+        /* Text Formatting & Inline Elements */
+        .chapter-body strong, .chapter-body b, #readerArticle strong, #readerArticle b { font-weight: 700; }
+        .chapter-body em, .chapter-body i, #readerArticle em, #readerArticle i { font-style: italic; }
+        .chapter-body u, #readerArticle u { text-decoration: underline; }
+        .chapter-body s, .chapter-body strike, .chapter-body del, #readerArticle s, #readerArticle strike, #readerArticle del { text-decoration: line-through; }
+        .chapter-body sub, #readerArticle sub { vertical-align: sub; font-size: 0.75em; }
+        .chapter-body sup, #readerArticle sup { vertical-align: super; font-size: 0.75em; }
+        .chapter-body a, #readerArticle a { color: #2563EB; text-decoration: underline; text-underline-offset: 2px; }
+        .chapter-body mark, #readerArticle mark { background-color: #FEF08A; padding: 0.1em 0.2em; border-radius: 2px; }
+
+        /* Lists (Unordered & Ordered) */
+        .chapter-body ul, #readerArticle ul { list-style-type: disc !important; margin-top: 0.5em; margin-bottom: 1em; padding-left: 1.75em !important; }
+        .chapter-body ol, #readerArticle ol { list-style-type: decimal !important; margin-top: 0.5em; margin-bottom: 1em; padding-left: 1.75em !important; }
+        .chapter-body li, #readerArticle li { margin-bottom: 0.35em; display: list-item !important; }
+        .chapter-body ul ul, #readerArticle ul ul,
+        .chapter-body ol ul, #readerArticle ol ul { list-style-type: circle !important; margin-top: 0.25em; margin-bottom: 0.25em; }
+        .chapter-body ol ol, #readerArticle ol ol,
+        .chapter-body ul ol, #readerArticle ul ol { list-style-type: lower-alpha !important; margin-top: 0.25em; margin-bottom: 0.25em; }
+
+        /* Text Alignment (Inline styles, HTML attributes & Editor CSS classes) */
+        .chapter-body [style*="text-align: center"], #readerArticle [style*="text-align: center"],
+        .chapter-body .text-center, #readerArticle .text-center,
+        .chapter-body .ql-align-center, #readerArticle .ql-align-center,
+        .chapter-body center, #readerArticle center,
+        .chapter-body [align="center"], #readerArticle [align="center"] { text-align: center !important; }
+
+        .chapter-body [style*="text-align: right"], #readerArticle [style*="text-align: right"],
+        .chapter-body .text-right, #readerArticle .text-right,
+        .chapter-body .ql-align-right, #readerArticle .ql-align-right,
+        .chapter-body [align="right"], #readerArticle [align="right"] { text-align: right !important; }
+
+        .chapter-body [style*="text-align: justify"], #readerArticle [style*="text-align: justify"],
+        .chapter-body .text-justify, #readerArticle .text-justify,
+        .chapter-body .ql-align-justify, #readerArticle .ql-align-justify,
+        .chapter-body [align="justify"], #readerArticle [align="justify"] { text-align: justify !important; }
+
+        .chapter-body [style*="text-align: left"], #readerArticle [style*="text-align: left"],
+        .chapter-body .text-left, #readerArticle .text-left,
+        .chapter-body .ql-align-left, #readerArticle .ql-align-left,
+        .chapter-body [align="left"], #readerArticle [align="left"] { text-align: left !important; }
+
+        /* Blockquotes & Code */
+        .chapter-body blockquote, #readerArticle blockquote {
+            border-left: 4px solid #2563EB;
+            padding-left: 1rem;
+            margin: 1.2em 0;
+            font-style: italic;
+            opacity: 0.9;
+        }
+        .chapter-body code, #readerArticle code {
+            font-family: monospace;
+            background-color: rgba(0,0,0,0.06);
+            padding: 0.15em 0.35em;
+            border-radius: 4px;
+            font-size: 0.88em;
+        }
+        .chapter-body pre, #readerArticle pre {
+            font-family: monospace;
+            background-color: #2D3748;
+            color: #F7FAFC;
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1.2em 0;
+            font-size: 0.88em;
+            line-height: 1.5;
+        }
+        .chapter-body pre code, #readerArticle pre code {
+            background: transparent;
+            padding: 0;
+            color: inherit;
+        }
+
+        /* Media & Figures */
+        .chapter-body img, #readerArticle img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            margin: 1.2em auto;
+            display: block;
+        }
+        .chapter-body figure, #readerArticle figure {
+            margin: 1.2em 0;
+            text-align: center;
+        }
+        .chapter-body figcaption, #readerArticle figcaption {
+            font-size: 0.85em;
+            color: #6B7280;
+            margin-top: 0.5em;
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* Tables */
+        .chapter-body table, #readerArticle table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.2em 0;
+            font-size: 0.95em;
+        }
+        .chapter-body th, .chapter-body td, #readerArticle th, #readerArticle td {
+            border: 1px solid #E2DACD;
+            padding: 0.6em 0.8em;
+            text-align: left;
+        }
+        .chapter-body th, #readerArticle th {
+            background-color: rgba(0,0,0,0.04);
+            font-weight: 600;
+        }
+
+        /* Divider */
+        .chapter-body hr, #readerArticle hr {
+            border: 0;
+            border-top: 1px solid #E2DACD;
+            margin: 2em 0;
+        }
+
+        /* Editor Indentation Classes (e.g. Quill) */
+        .chapter-body .ql-indent-1, #readerArticle .ql-indent-1 { padding-left: 2em; }
+        .chapter-body .ql-indent-2, #readerArticle .ql-indent-2 { padding-left: 4em; }
+        .chapter-body .ql-indent-3, #readerArticle .ql-indent-3 { padding-left: 6em; }
+        .chapter-body .ql-indent-4, #readerArticle .ql-indent-4 { padding-left: 8em; }
+    </style>
+</head>
+<body class="w-full min-h-screen flex flex-col justify-between bg-readerBg">
+
+    <div class="sticky top-0 w-full bg-readerBg/90 backdrop-blur-sm z-20">
+        <div class="flex justify-between items-center px-6 pt-3 pb-1 text-xs font-semibold text-readerText">
+            <div id="topFlash" class="text-sm"></div>
+        </div>
+
+        <header class="flex items-center justify-between px-5 py-3 w-full">
+            <div class="flex items-center gap-3">
+                <button id="backBtn" class="text-readerText hover:opacity-70 transition-opacity p-1" title="Back">
+                    <i class="fa-solid fa-arrow-left text-[18px]"></i>
+                </button>
+                <div class="top-right-controls hidden md:flex items-center gap-2" id="liveDownloadStatus">
+                    <!-- populated dynamically -->
+                </div>
+            </div>
+
+            <div class="text-center flex flex-col items-center">
+                <h1 class="font-sans font-bold text-[15px] text-readerText leading-tight" id="bookTitle">Loading…</h1>
+                <p class="font-sans text-[12px] text-readerMuted font-medium" id="bookAuthor">—</p>
+            </div>
+
+            <div class="flex items-center gap-4 text-readerText">
+                <button id="searchBtn" class="hover:opacity-70 transition-opacity p-1" title="Search in book">
+                    <i class="fa-solid fa-magnifying-glass text-[17px]"></i>
+                </button>
+                <button id="bookmarkBtn" class="hover:opacity-70 transition-opacity p-1" title="Bookmark">
+                    <i id="bookmarkIcon" class="fa-regular fa-bookmark text-[18px]"></i>
+                </button>
+                <button id="menuBtn" class="hover:opacity-70 transition-opacity p-1" title="Menu">
+                    <i class="fa-solid fa-ellipsis-vertical text-[18px]"></i>
+                </button>
+            </div>
+        </header>
+    </div>
+
+    <main id="readerContainer" class="flex-1 max-w-xl w-full mx-auto px-6 pt-6 pb-12 flex flex-col">
+        <!-- Text article -->
+        <article id="readerArticle" class="text-[18px] leading-[1.65] text-[#22201D]">
+            <p id="loadingText" class="text-center text-gray-500 font-sans">Loading book content…</p>
+        </article>
+
+        <!-- PDF viewer area (rendered canvases) -->
+        <div id="pdfViewerArea" class="hidden mt-4">
+            <div id="pdfPageStack" class="flex flex-col items-center gap-6"></div>
+        </div>
+
+        <!-- Hidden controls row for pdf zoom and navigation -->
+        <div id="pdfControlsRow" class="hidden mt-4 flex items-center justify-between">
+            <div class="pdf-controls">
+                <button id="pdfZoomOut" class="zoom-btn">-</button>
+                <button id="pdfZoomIn" class="zoom-btn">+</button>
+                <span id="pdfScaleLabel" class="text-sm text-gray-600 ml-3">100%</span>
+            </div>
+            <div class="flex items-center gap-3">
+                <button id="pdfPrev" class="px-3 py-1 rounded border bg-white">Prev</button>
+                <button id="pdfNext" class="px-3 py-1 rounded border bg-white">Next</button>
+            </div>
+        </div>
+    </main>
+
+    <footer id="readerFooter" class="sticky bottom-0 w-full bg-readerBg/95 backdrop-blur-md border-t border-[#EAE3D9] pt-2 pb-5 z-20">
+        <div class="max-w-xl mx-auto px-6 mb-3">
+            <div class="text-center font-sans text-[12px] font-medium text-readerMuted mb-2 reader-controls">
+                Chapter <span id="currentPage">1</span> of <span id="totalPages">1</span>
+            </div>
+
+            <div class="flex items-center gap-3 reader-controls">
+                <div class="relative flex-1 flex items-center">
+                    <div id="progressBar" class="absolute left-0 h-[3px] bg-readerBlue rounded-l-full z-10" style="width: 0%;"></div>
+                    <input id="pageSlider" type="range" min="1" max="1" value="1" class="w-full relative z-20">
+                </div>
+                <span id="percentageDisplay" class="font-sans text-[12px] font-semibold text-readerText min-w-[32px] text-right">
+                    0%
+                </span>
+            </div>
+        </div>
+
+        <nav class="max-w-xl mx-auto px-4 flex justify-around items-center pt-2 pb-2">
+            <button id="contentsBtn" class="flex flex-col items-center gap-1 text-readerText hover:text-readerBlue transition-colors px-3 py-1">
+                <i class="fa-solid fa-list-ul text-[18px]"></i>
+                <span class="font-sans text-[11px] font-medium text-readerMuted">Contents</span>
+            </button>
+            <button id="appearanceBtn" class="flex flex-col items-center gap-1 text-readerText hover:text-readerBlue transition-colors px-3 py-1">
+                <span class="font-titleSerif text-[17px] font-bold leading-none mb-0.5">Aa</span>
+                <span class="font-sans text-[11px] font-medium text-readerMuted">Appearance</span>
+            </button>
+            <button id="brightnessBtn" class="flex flex-col items-center gap-1 text-readerText hover:text-readerBlue transition-colors px-3 py-1">
+                <i class="fa-regular fa-sun text-[18px]"></i>
+                <span class="font-sans text-[11px] font-medium text-readerMuted">Brightness</span>
+            </button>
+            <button id="notesBtn" class="flex flex-col items-center gap-1 text-readerText hover:text-readerBlue transition-colors px-3 py-1">
+                <i class="fa-regular fa-note-sticky text-[18px]"></i>
+                <span class="font-sans text-[11px] font-medium text-readerMuted">Notes</span>
+            </button>
+            <button id="settingsBtn" class="flex flex-col items-center gap-1 text-readerText hover:text-readerBlue transition-colors px-3 py-1">
+                <i class="fa-solid fa-gear text-[18px]"></i>
+                <span class="font-sans text-[11px] font-medium text-readerMuted">Settings</span>
+            </button>
+        </nav>
+    </footer>
+
+    <!-- Contents Modal -->
+    <div id="contentsModal" class="fixed inset-0 z-[999999] hidden contents-modal p-4 bg-black/40">
+        <div class="relative bg-white rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col" style="box-shadow: 0 20px 50px rgba(0,0,0,0.35);">
+            <div class="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-200">
+                <h2 class="font-sans font-bold text-lg text-readerText">Table of Contents</h2>
+                <button id="contentsClose" class="text-gray-500 hover:text-gray-700 transition-colors p-1">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+
+            <div id="contentsList" class="flex-1 overflow-y-auto p-4 space-y-2">
+                <!-- Chapters render here dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Notes Modal -->
+    <div id="notesModal" class="fixed inset-0 z-[999999] hidden notes-modal p-4 bg-black/40">
+        <div class="relative bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col" style="box-shadow: 0 20px 50px rgba(0,0,0,0.35);">
+            <div class="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-200">
+                <h2 class="font-sans font-bold text-lg text-readerText">My Notes</h2>
+                <button id="notesClose" class="text-gray-500 hover:text-gray-700 transition-colors p-1">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+
+            <div id="notesList" class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+                <div class="text-center py-8">
+                    <i class="fa-regular fa-note-sticky text-4xl text-gray-300 mb-3 block"></i>
+                    <p class="text-sm text-gray-500 font-sans">No notes yet</p>
+                    <p class="text-xs text-gray-400 font-sans mt-1">Highlight text and add notes while reading</p>
+                </div>
+            </div>
+
+            <div class="px-6 py-3 border-t border-gray-200 flex gap-2 justify-end">
+                <button id="notesExport" class="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors font-sans">
+                    Export
+                </button>
+                <button id="notesClear" class="px-4 py-2 rounded-lg bg-red-50 text-red-600 text-sm font-medium hover:bg-red-100 transition-colors font-sans">
+                    Clear All
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Appearance Modal -->
+    <div id="appearanceModal" class="fixed inset-0 z-[999999] hidden appearance-modal p-4 bg-black/40">
+        <div class="relative bg-white rounded-2xl w-full max-w-md" style="box-shadow: 0 20px 50px rgba(0,0,0,0.35);">
+            <div class="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-200">
+                <h2 class="font-sans font-bold text-lg text-readerText">Appearance</h2>
+                <button id="appearanceClose" class="text-gray-500 hover:text-gray-700 transition-colors p-1">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+
+            <div class="px-6 py-5 space-y-5">
+                <div>
+                    <label class="block font-sans text-sm font-semibold text-readerText mb-3">Font Size</label>
+                    <div class="flex items-center gap-3">
+                        <i class="fa-solid fa-a text-lg text-gray-400"></i>
+                        <input id="fontSizeSlider" type="range" min="14" max="30" value="18" class="flex-1">
+                        <i class="fa-solid fa-a text-2xl text-gray-400"></i>
+                    </div>
+                    <p class="font-sans text-xs text-gray-500 mt-2">Current: <span id="fontSizeValue">18</span>px</p>
+                </div>
+
+                <div>
+                    <label class="block font-sans text-sm font-semibold text-readerText mb-3">Line Height</label>
+                    <div class="space-y-2">
+                        <button id="lineCompact" class="w-full text-left px-3 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 font-serif text-sm leading-[1.5] transition-colors">Compact</button>
+                        <button id="lineDefault" class="w-full text-left px-3 py-2 rounded-lg border border-blue-500 bg-blue-50 font-serif text-sm leading-[1.65] font-semibold transition-colors">Default</button>
+                        <button id="lineComfort" class="w-full text-left px-3 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 font-serif text-sm leading-[1.85] transition-colors">Comfortable</button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block font-sans text-sm font-semibold text-readerText mb-3">Reading Theme</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button id="themeLight" class="h-20 rounded-lg border-2 border-gray-300 hover:border-gray-400 bg-white flex items-center justify-center gap-2 transition-all group">
+                            <i class="fa-solid fa-sun text-amber-500 text-lg group-hover:scale-110 transition-transform"></i>
+                            <span class="font-sans text-xs font-medium text-gray-700">Light</span>
+                        </button>
+                        <button id="themeDark" class="h-20 rounded-lg border-2 border-gray-300 hover:border-gray-400 bg-gray-900 flex items-center justify-center gap-2 transition-all group">
+                            <i class="fa-solid fa-moon text-blue-300 text-lg group-hover:scale-110 transition-transform"></i>
+                            <span class="font-sans text-xs font-medium text-gray-200">Dark</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-6 py-3 border-t border-gray-200 flex gap-2 justify-end">
+                <button id="appearanceReset" class="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors font-sans">Reset</button>
+                <button id="appearanceApply" class="px-4 py-2 rounded-lg bg-readerBlue text-white text-sm font-medium hover:bg-blue-600 transition-colors font-sans">Apply</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Search in book -->
+    <div id="searchModal" class="fixed inset-0 z-[999999] hidden items-start justify-center p-4 pt-20 bg-black/40">
+      <div class="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden">
+        <div class="flex items-center gap-3 p-4 border-b border-gray-200">
+          <i class="fa-solid fa-magnifying-glass text-gray-400"></i>
+          <input id="readerSearchInput" type="search" class="flex-1 outline-none text-sm text-gray-800" placeholder="Search words in this book…" autocomplete="off">
+          <button id="searchClose" class="p-1 text-gray-500" aria-label="Close search"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+        <div class="px-4 py-3 flex items-center justify-between text-xs text-gray-500 font-sans">
+          <span id="searchResultCount">Enter a word or phrase</span>
+          <div class="flex gap-2"><button id="searchPrev" class="border rounded-md px-3 py-1 hover:bg-gray-50">Previous</button><button id="searchNext" class="border rounded-md px-3 py-1 hover:bg-gray-50">Next</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Brightness control -->
+    <div id="brightnessModal" class="fixed inset-0 z-[999999] hidden items-end sm:items-center justify-center p-4 bg-black/40">
+      <div class="w-full max-w-sm rounded-2xl bg-white shadow-2xl">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+          <h2 class="font-sans font-bold text-lg text-gray-900">Reading brightness</h2>
+          <button id="brightnessClose" class="p-1 text-gray-500" aria-label="Close brightness"><i class="fa-solid fa-xmark text-xl"></i></button>
+        </div>
+        <div class="px-5 py-6">
+          <div class="flex items-center justify-between text-sm text-gray-600 font-sans mb-3"><span><i class="fa-regular fa-sun mr-2"></i>Dim</span><strong id="brightnessValue">100%</strong><span><i class="fa-solid fa-sun mr-2"></i>Bright</span></div>
+          <input id="brightnessSlider" type="range" min="55" max="120" value="100" class="w-full">
+          <p class="font-sans text-xs text-gray-500 mt-3">Adjusts the reading page without changing your device brightness.</p>
+          <button id="brightnessReset" class="mt-4 w-full rounded-lg border border-gray-300 px-4 py-2 text-sm font-sans font-semibold hover:bg-gray-50">Reset brightness</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Reader settings -->
+    <div id="settingsModal" class="fixed inset-0 z-[999999] hidden items-center justify-center p-4 bg-black/40">
+      <div class="w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+          <h2 class="font-sans font-bold text-lg text-gray-900">Reader settings</h2>
+          <button id="settingsClose" class="p-1 text-gray-500" aria-label="Close settings"><i class="fa-solid fa-xmark text-xl"></i></button>
+        </div>
+        <div class="p-5 space-y-3 font-sans">
+          <button id="settingResetProgress" class="w-full text-left rounded-xl border border-gray-200 p-4 hover:bg-gray-50"><span class="font-semibold text-sm text-gray-800 block">Reset reading progress</span><span class="text-xs text-gray-500">Start again from the first chapter or page.</span></button>
+          <button id="settingResetAppearance" class="w-full text-left rounded-xl border border-gray-200 p-4 hover:bg-gray-50"><span class="font-semibold text-sm text-gray-800 block">Reset appearance</span><span class="text-xs text-gray-500">Restore the default font, spacing, theme and brightness.</span></button>
+          <button id="settingCopyLink" class="w-full text-left rounded-xl border border-gray-200 p-4 hover:bg-gray-50"><span class="font-semibold text-sm text-gray-800 block">Copy reading link</span><span class="text-xs text-gray-500">Copy a link to this resource.</span></button>
+        </div>
+      </div>
+    </div>
+
+    <div id="readerMenu" class="reader-popover hidden">
+      <button id="menuCopyLink"><i class="fa-solid fa-link w-4"></i>Copy reading link</button>
+      <button id="menuDownload"><i class="fa-solid fa-download w-4"></i>Download source file</button>
+      <button id="menuResetProgress"><i class="fa-solid fa-rotate-left w-4"></i>Reset reading progress</button>
+    </div>
+
+    <div id="readerBrightnessOverlay" aria-hidden="true"></div>
+
+<script>
+/* ---------------------------
+   Helpers: API + URL helpers & Storage Caching
+   --------------------------- */
+const API_BASE = "https://examguide.onrender.com";
+
+function normalizeUrl(u){
+    if(!u) return null;
+    if(u.startsWith("http://")||u.startsWith("https://")) return u;
+    if(u.startsWith("/")) return API_BASE + u;
+    return API_BASE + (u.startsWith("uploads/") ? "/" + u : "/" + u);
+}
+async function tryFetch(url, opts){
+    try { const res = await fetch(url, opts); if(!res.ok) throw res; const ct = res.headers.get('content-type') || ''; if(ct.includes('application/json')) return await res.json(); return res; } catch (e) { return null; }
+}
+function qsParam(name){ const params = new URLSearchParams(window.location.search); return params.get(name); }
+
+function escapeHtml(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, ch => ({
+        '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+    }[ch]));
+}
+
+
+/* Cache storage helpers */
+function getCachedData(key) {
+    try {
+        const item = localStorage.getItem(key);
+        return item ? JSON.parse(item) : null;
+    } catch(e) { return null; }
+}
+function setCachedData(key, value) {
+    try {
+        localStorage.setItem(key, JSON.stringify(value));
+    } catch(e) { console.warn('Cache quota exceeded or disabled', e); }
+}
+
+async function fetchResourceById(id){
+  if(!id) return null;
+  const candidates = [`${API_BASE}/api/resource/${encodeURIComponent(id)}`];
+  for(const url of candidates){
+    const j = await tryFetch(url, { credentials: 'include' });
+    if(!j) continue;
+    if(j.resource) return j.resource;
+    if(j.data) return j.data;
+    if(j._id || j.id) return j;
+    if(j.item) return j.item;
+  }
+  return null;
+}
+
+/* ---------------------------
+   IndexedDB small wrapper
+   --------------------------- */
+function openIdb(){
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('reader-store', 1);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if(!db.objectStoreNames.contains('files')) db.createObjectStore('files');
+    };
+    req.onsuccess = (e) => resolve(e.target.result);
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+async function idbPut(key, value){
+  if (!('indexedDB' in window)) throw new Error('IndexedDB is unavailable in this browser');
+  const db = await openIdb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('files', 'readwrite');
+    const store = tx.objectStore('files');
+    const req = store.put(value, key);
+    req.onsuccess = () => resolve(true);
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+async function idbGet(key){
+  if (!('indexedDB' in window)) throw new Error('IndexedDB is unavailable in this browser');
+  const db = await openIdb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('files', 'readonly');
+    const store = tx.objectStore('files');
+    const req = store.get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+/* ---------------------------
+   pdf.js setup & rendering
+   --------------------------- */
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+let pdfDoc = null;
+let pdfScale = 1.0;
+let renderingPages = new Set();
+const pdfViewerArea = document.getElementById('pdfViewerArea');
+const pdfPageStack = document.getElementById('pdfPageStack');
+const pdfControlsRow = document.getElementById('pdfControlsRow');
+const pdfZoomIn = document.getElementById('pdfZoomIn');
+const pdfZoomOut = document.getElementById('pdfZoomOut');
+const pdfScaleLabel = document.getElementById('pdfScaleLabel');
+const pdfPrev = document.getElementById('pdfPrev');
+const pdfNext = document.getElementById('pdfNext');
+
+async function renderPageToCanvas(pdfDocument, pageNumber, canvasEl, zoomMultiplier = 1){
+  try {
+    const page = await pdfDocument.getPage(pageNumber);
+    const viewport = page.getViewport({ scale: 1 });
+    const wrapper = canvasEl.parentElement;
+    const availableWidth = Math.min(wrapper.clientWidth, 1100);
+    const scale = (availableWidth / viewport.width) * zoomMultiplier;
+    const scaledViewport = page.getViewport({ scale });
+    canvasEl.width = Math.floor(scaledViewport.width);
+    canvasEl.height = Math.floor(scaledViewport.height);
+    canvasEl.style.width = canvasEl.width + 'px';
+    canvasEl.style.height = canvasEl.height + 'px';
+    const ctx = canvasEl.getContext('2d');
+    const renderContext = { canvasContext: ctx, viewport: scaledViewport };
+    const renderTask = page.render(renderContext);
+    await renderTask.promise;
+  } catch (err) {
+    console.error('Error rendering page', pageNumber, err);
+  }
+}
+
+function clearPdfViewer(){
+  pdfPageStack.innerHTML = '';
+  if(pdfDoc && pdfDoc.destroy) pdfDoc.destroy().catch(()=>{});
+  pdfDoc = null;
+  renderingPages.clear();
+  pdfScale = 1;
+  pdfScaleLabel.textContent = '100%';
+  pdfControlsRow.classList.add('hidden');
+  pdfViewerArea.classList.add('hidden');
+}
+
+function setupPdfViewer(pdfDocument){
+  pdfDoc = pdfDocument;
+  const total = pdfDoc.numPages || 1;
+  document.getElementById('totalPages').textContent = total;
+  const saved = Number(localStorage.getItem(`readerCurrentPage:${resourceId}`) || 1);
+  const startPage = Math.min(Math.max(1, saved), total);
+  document.getElementById('pageSlider').max = total;
+  document.getElementById('pageSlider').value = startPage;
+  document.getElementById('currentPage').textContent = startPage;
+
+  pdfPageStack.innerHTML = '';
+  for(let p=1;p<=total;p++){
+    const wrapper = document.createElement('div');
+    wrapper.className = 'pdf-page-wrapper w-full flex justify-center';
+    wrapper.style.padding = '18px';
+    wrapper.dataset.page = p;
+    const canvas = document.createElement('canvas');
+    canvas.dataset.page = p;
+    canvas.style.display = 'block';
+    canvas.style.width = '100%';
+    canvas.style.height = 'auto';
+    const placeholder = document.createElement('div');
+    placeholder.className = 'pdf-placeholder';
+    placeholder.textContent = `Page ${p}`;
+    wrapper.appendChild(placeholder);
+    wrapper.appendChild(canvas);
+    pdfPageStack.appendChild(wrapper);
+  }
+
+  pdfControlsRow.classList.remove('hidden');
+  pdfViewerArea.classList.remove('hidden');
+
+  for(let p=1;p<=Math.min(2, total);p++){
+    renderPageIfNeeded(p);
+  }
+
+  let scrollTimer = null;
+  pdfViewerArea.addEventListener('scroll', () => {
+    if (scrollTimer) clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(() => {
+      const wrappers = Array.from(pdfPageStack.children);
+      const rect = pdfViewerArea.getBoundingClientRect();
+      wrappers.forEach(w => {
+        const r = w.getBoundingClientRect();
+        if (r.top < rect.bottom + 200 && r.bottom > rect.top - 200) {
+          const p = Number(w.dataset.page);
+          renderPageIfNeeded(p);
+        }
+      });
+    }, 120);
+  });
+
+  pdfPrev.onclick = () => {
+    const cur = Number(document.getElementById('pageSlider').value || 1);
+    const prev = Math.max(1, cur - 1);
+    jumpToPage(prev);
+  };
+  pdfNext.onclick = () => {
+    const cur = Number(document.getElementById('pageSlider').value || 1);
+    const totalN = Number(document.getElementById('pageSlider').max || 1);
+    const nxt = Math.min(totalN, cur + 1);
+    jumpToPage(nxt);
+  };
+  pdfZoomIn.onclick = async () => {
+    pdfScale = Math.min(3.0, pdfScale + 0.25);
+    pdfScaleLabel.textContent = Math.round(pdfScale*100) + '%';
+    await rerenderVisiblePages();
+  };
+  pdfZoomOut.onclick = async () => {
+    pdfScale = Math.max(0.4, pdfScale - 0.25);
+    pdfScaleLabel.textContent = Math.round(pdfScale*100) + '%';
+    await rerenderVisiblePages();
+  };
+
+  setTimeout(() => {
+    jumpToPage(startPage);
+  }, 80);
+}
+
+async function renderPageIfNeeded(pageNumber){
+  if (!pdfDoc) return;
+  if (renderingPages.has(pageNumber)) return;
+  const wrapper = pdfPageStack.querySelector(`[data-page="${pageNumber}"]`);
+  if(!wrapper) return;
+  const canvas = wrapper.querySelector('canvas');
+  const placeholder = wrapper.querySelector('.pdf-placeholder');
+  renderingPages.add(pageNumber);
+  try {
+    await renderPageToCanvas(pdfDoc, pageNumber, canvas, pdfScale);
+    if (placeholder) placeholder.remove();
+  } finally {
+    renderingPages.delete(pageNumber);
+  }
+}
+
+async function rerenderVisiblePages(){
+  const canvases = Array.from(pdfPageStack.querySelectorAll('canvas'));
+  for(const c of canvases){
+    const pageNum = Number(c.dataset.page);
+    const r = c.parentElement.getBoundingClientRect();
+    const rect = pdfViewerArea.getBoundingClientRect();
+    if (r.top < rect.bottom + 300 && r.bottom > rect.top - 300) {
+      await renderPageToCanvas(pdfDoc, pageNum, c, pdfScale);
+    }
+  }
+}
+
+function jumpToPage(n){
+  const total = Number(document.getElementById('pageSlider').max || 1);
+  const page = Math.min(Math.max(1, n), total);
+  document.getElementById('pageSlider').value = page;
+  document.getElementById('currentPage').textContent = page;
+  const percent = Math.round((page/total)*100);
+  document.getElementById('percentageDisplay').textContent = percent + '%';
+  document.getElementById('progressBar').style.width = percent + '%';
+  localStorage.setItem(`readerCurrentPage:${resourceId}`, page);
+  const wrapper = pdfPageStack.querySelector(`[data-page="${page}"]`);
+  if (wrapper) wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  renderPageIfNeeded(page);
+}
+
+/* ---------------------------
+   Download with progress
+   --------------------------- */
+async function fetchWithProgressToBlob(url, onProgress) {
+    const options = {};
+    if (!url.includes("supabase.co")) {
+        options.credentials = "include";
+    }
+
+    const res = await fetch(url, options);
+    if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+
+    const contentLength = res.headers.get("Content-Length");
+    const total = contentLength ? Number(contentLength) : null;
+
+    const reader = res.body.getReader();
+    const chunks = [];
+    let received = 0;
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        if (onProgress && total) {
+            onProgress(received, total);
+        }
+    }
+
+    return new Blob(chunks);
+}
+
+/* ---------------------------
+   Basic HTML sanitizer (preserves formatting and clean content)
+   --------------------------- */
+function sanitizeHtml(htmlString){
+    if(!htmlString) return '';
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(htmlString, 'text/html');
+    doc.querySelectorAll('script, style').forEach(n => n.remove());
+    const elements = doc.querySelectorAll('*');
+    elements.forEach(el => {
+        [...el.attributes].forEach(attr => {
+            if(attr.name.startsWith('on')) el.removeAttribute(attr.name);
+            if((attr.name === 'href' || attr.name === 'src') && attr.value && attr.value.trim().toLowerCase().startsWith('javascript:')) el.removeAttribute(attr.name);
+        });
+    });
+    return doc.body.innerHTML;
+}
+
+/* ---------------------------
+   Reader state and UI wiring
+   --------------------------- */
+let resource = null;
+let publishedChapters = [];
+let currentChapter = null;
+let chapterObserver = null;
+const resourceId = qsParam('id');
+
+const bookTitleEl = document.getElementById('bookTitle');
+const bookAuthorEl = document.getElementById('bookAuthor');
+const readerArticle = document.getElementById('readerArticle');
+const pageSlider = document.getElementById('pageSlider');
+const currentPage = document.getElementById('currentPage');
+const totalPages = document.getElementById('totalPages');
+const percentageDisplay = document.getElementById('percentageDisplay');
+const progressBar = document.getElementById('progressBar');
+const topFlash = document.getElementById('topFlash');
+const liveDownloadStatus = document.getElementById('liveDownloadStatus');
+
+function showTopFlash(msg, timeout=2500){
+    if(!topFlash) return;
+    topFlash.textContent = msg;
+    setTimeout(()=> { if(topFlash.textContent === msg) topFlash.textContent = ''; }, timeout);
+}
+
+/* Notes & Bookmarks */
+let notes = [];
+function notesKey(){ return `readerNotes:${resourceId || 'unknown'}`; }
+function loadNotes(){ try { const value = JSON.parse(localStorage.getItem(notesKey()) || '[]'); notes = Array.isArray(value) ? value : []; } catch (_) { notes = []; } }
+function saveNotes(){ try { localStorage.setItem(notesKey(), JSON.stringify(notes)); } catch (err) { console.warn('Unable to save notes', err); showTopFlash('Could not save notes on this device'); } }
+function renderNotes() {
+    const notesList = document.getElementById('notesList');
+    if (!notes || notes.length === 0) {
+        notesList.innerHTML = `
+            <div class="text-center py-8">
+                <i class="fa-regular fa-note-sticky text-4xl text-gray-300 mb-3 block"></i>
+                <p class="text-sm text-gray-500 font-sans">No notes yet</p>
+                <p class="text-xs text-gray-400 font-sans mt-1">Highlight text and add notes while reading</p>
+            </div>
+        `;
+    } else {
+        notesList.innerHTML = notes.map((note, idx) => `
+            <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                <div class="flex items-start justify-between gap-3 mb-2">
+                    <p class="font-sans text-xs font-semibold text-gray-500">Chapter ${note.page}</p>
+                    <button onclick="deleteNote(${idx})" class="text-gray-400 hover:text-red-600 transition-colors">
+                        <i class="fa-solid fa-trash text-sm"></i>
+                    </button>
+                </div>
+                <p class="font-serif text-sm leading-relaxed text-gray-700 mb-2 italic">"${escapeHtml(note.highlight)}"</p>
+                <p class="font-sans text-sm text-gray-600">${escapeHtml(note.text)}</p>
+                <p class="font-sans text-xs text-gray-400 mt-2">${new Date(note.timestamp).toLocaleString()}</p>
+            </div>
+        `).join('');
+    }
+}
+window.deleteNote = function(idx){ notes.splice(idx,1); saveNotes(); renderNotes(); }
+function addNote(highlightedText, noteText){
+    notes.push({ page: currentPage.textContent || 1, highlight: highlightedText, text: noteText, timestamp: new Date().toISOString() });
+    saveNotes(); renderNotes();
+}
+
+const bookmarkBtn = document.getElementById('bookmarkBtn');
+const bookmarkIcon = document.getElementById('bookmarkIcon');
+function bookmarkKey(){ return `readerBookmarked:${resourceId || 'unknown'}`; }
+function updateBookmarkUI(){ const is = localStorage.getItem(bookmarkKey()); bookmarkIcon.className = is ? 'fa-solid fa-bookmark text-[18px]' : 'fa-regular fa-bookmark text-[18px]'; }
+bookmarkBtn.addEventListener('click', () => {
+    const k = bookmarkKey();
+    if(localStorage.getItem(k)) localStorage.removeItem(k); else localStorage.setItem(k,'1');
+    updateBookmarkUI();
+});
+
+/* Appearance wiring */
+const appearanceBtn = document.getElementById('appearanceBtn');
+const appearanceModal = document.getElementById('appearanceModal');
+const appearanceClose = document.getElementById('appearanceClose');
+const fontSizeSlider = document.getElementById('fontSizeSlider');
+const fontSizeValue = document.getElementById('fontSizeValue');
+const appearanceApply = document.getElementById('appearanceApply');
+const appearanceReset = document.getElementById('appearanceReset');
+appearanceBtn.addEventListener('click', ()=>{ appearanceModal.classList.remove('hidden'); document.body.style.overflow='hidden'; });
+appearanceClose.addEventListener('click', ()=>{ appearanceModal.classList.add('hidden'); document.body.style.overflow=''; });
+fontSizeSlider.addEventListener('input', (e)=> fontSizeValue.textContent = e.target.value);
+appearanceApply.addEventListener('click', ()=> {
+    const fontSize = fontSizeSlider.value;
+    if (readerArticle) readerArticle.style.fontSize = fontSize + 'px';
+    localStorage.setItem(`readerFontSize:${resourceId || 'global'}`, fontSize);
+    appearanceModal.classList.add('hidden'); document.body.style.overflow='';
+});
+appearanceReset.addEventListener('click', ()=> {
+    fontSizeSlider.value = 18; fontSizeValue.textContent = '18';
+    if(readerArticle) readerArticle.style.fontSize = '18px';
+    localStorage.removeItem(`readerFontSize:${resourceId || 'global'}`);
+});
+document.getElementById('lineCompact').addEventListener('click', ()=> { if (readerArticle) readerArticle.style.lineHeight='1.5'; });
+document.getElementById('lineDefault').addEventListener('click', ()=> { if (readerArticle) readerArticle.style.lineHeight='1.65'; });
+document.getElementById('lineComfort').addEventListener('click', ()=> { if (readerArticle) readerArticle.style.lineHeight='1.85'; });
+document.getElementById('themeLight').addEventListener('click', ()=> {
+    document.body.classList.remove('reader-dark');
+    document.body.style.background = '#FFFFFF';
+    document.body.style.color = '#1A1816';
+    localStorage.setItem(`readerTheme:${resourceId || 'global'}`, 'light');
+});
+document.getElementById('themeDark').addEventListener('click', ()=> {
+    document.body.classList.add('reader-dark');
+    document.body.style.background = '#0B1220';
+    document.body.style.color = '#E6EEF8';
+    localStorage.setItem(`readerTheme:${resourceId || 'global'}`, 'dark');
+});
+
+/* Notes modal wiring */
+const notesBtn = document.getElementById('notesBtn');
+const notesModal = document.getElementById('notesModal');
+const notesClose = document.getElementById('notesClose');
+const notesExport = document.getElementById('notesExport');
+const notesClear = document.getElementById('notesClear');
+
+notesBtn.addEventListener('click', ()=>{ loadNotes(); renderNotes(); notesModal.classList.remove('hidden'); document.body.style.overflow='hidden'; });
+notesClose.addEventListener('click', ()=>{ notesModal.classList.add('hidden'); document.body.style.overflow=''; });
+notesExport.addEventListener('click', ()=> {
+    if(!notes || notes.length === 0) { alert('No notes to export'); return; }
+    const text = notes.map(n=> `Chapter ${n.page}\n"${n.highlight}"\n${n.text}\n---`).join('\n\n');
+    const blob = new Blob([text], { type:'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url;
+    a.download = (resource && (resource.title || resource.name) ? (resource.title.replace(/\s+/g,'_')) : 'notes') + '.txt';
+    a.click(); URL.revokeObjectURL(url);
+});
+notesClear.addEventListener('click', ()=> { if(confirm('Delete all notes? This cannot be undone.')){ notes=[]; saveNotes(); renderNotes(); } });
+
+/* Double click to add note from selection */
+readerArticle.addEventListener('dblclick', () => {
+    const sel = window.getSelection(); if(!sel || sel.isCollapsed) return;
+    const text = sel.toString().trim(); if(!text) return;
+    const noteText = prompt('Add a note for the selected text:', '');
+    if(noteText !== null){ addNote(text, noteText || ''); showTopFlash('Note saved'); window.getSelection().removeAllRanges(); }
+});
+
+/* Contents Modal Wiring */
+const contentsBtn = document.getElementById('contentsBtn');
+const contentsModal = document.getElementById('contentsModal');
+const contentsClose = document.getElementById('contentsClose');
+const contentsList = document.getElementById('contentsList');
+
+contentsBtn.addEventListener('click', () => {
+    renderContentsList();
+    contentsModal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+});
+
+contentsClose.addEventListener('click', () => {
+    contentsModal.classList.add('hidden');
+    document.body.style.overflow = '';
+});
+
+contentsModal.addEventListener('click', (e) => {
+    if (e.target.id === 'contentsModal') {
+        contentsModal.classList.add('hidden');
+        document.body.style.overflow = '';
+    }
+});
+
+function renderContentsList() {
+    if (!publishedChapters || publishedChapters.length === 0) {
+        contentsList.innerHTML = `<div class="text-center py-8 text-gray-500 font-sans">No chapters available for this resource.</div>`;
+        return;
+    }
+
+    contentsList.innerHTML = '';
+    publishedChapters.forEach((chapter, idx) => {
+        const item = document.createElement("button");
+        const isCurrent = currentChapter && ((currentChapter._id && currentChapter._id === chapter._id) || currentChapter.chapterNumber === chapter.chapterNumber);
+        item.className = `w-full text-left p-4 hover:bg-gray-100 rounded-lg transition-colors border-b border-gray-100 last:border-none flex items-center justify-between ${isCurrent ? 'bg-blue-50/60 border-l-4 border-l-readerBlue' : ''}`;
+
+        item.innerHTML = `
+            <div>
+                <div class="font-semibold text-readerText font-sans">
+                    Chapter ${chapter.chapterNumber}
+                </div>
+                <div class="text-sm text-gray-600 font-serif">
+                    ${chapter.title || 'Untitled Chapter'}
+                </div>
+            </div>
+            ${chapter.locked ? '<i class="fa-solid fa-lock text-gray-400 text-sm"></i>' : ''}
+        `;
+
+        item.onclick = () => {
+            scrollToChapter(idx);
+            contentsModal.classList.add('hidden');
+            document.body.style.overflow = '';
+        };
+
+        contentsList.appendChild(item);
+    });
+}
+
+/* Slider navigation */
+pageSlider.addEventListener('input', (e) => {
+    const val = Number(e.target.value);
+    if (publishedChapters.length > 0) {
+        scrollToChapter(val - 1);
+    } else if (pdfDoc) {
+        jumpToPage(val);
+    }
+});
+
+/* Background download */
+async function downloadAndStoreResourceFile(fileUrl, idbKey){
+    try {
+        const existing = await idbGet(idbKey);
+        if (existing) return existing;
+    } catch (cacheError) {
+        console.warn('Offline cache unavailable; continuing with network download.', cacheError);
+    }
+    try {
+        if (liveDownloadStatus) {
+            liveDownloadStatus.innerHTML = `<div class="text-xs text-gray-600">Downloading… <span id="dlPct">0%</span></div>`;
+        }
+        const blob = await fetchWithProgressToBlob(fileUrl, (received, total) => {
+            if (!total) return;
+            const pct = Math.round((received/total)*100);
+            const el = document.getElementById('dlPct');
+            if(el) el.textContent = pct + '%';
+        });
+        await idbPut(idbKey, blob);
+        if (liveDownloadStatus) liveDownloadStatus.innerHTML = `<div class="text-xs text-emerald-600">Downloaded</div>`;
+        return blob;
+    } catch (err) {
+        console.error('Download/store failed', err);
+        if (liveDownloadStatus) liveDownloadStatus.innerHTML = `<div class="text-xs text-red-500">Download failed</div>`;
+        throw err;
+    }
+}
+
+/* ---------------------------
+   Continuous Chapter Scroll & Observer
+   --------------------------- */
+function updateActiveChapterUI(idx) {
+    if (idx < 0 || idx >= publishedChapters.length) return;
+    currentChapter = publishedChapters[idx];
+    const pageNum = idx + 1;
+    const total = publishedChapters.length;
+
+    pageSlider.value = pageNum;
+    currentPage.textContent = pageNum;
+    const percent = Math.round((pageNum / total) * 100);
+    percentageDisplay.textContent = percent + '%';
+    progressBar.style.width = percent + '%';
+
+    localStorage.setItem(`readerCurrentChapterIdx:${resourceId}`, idx);
+}
+
+function initChapterObserver() {
+    if (chapterObserver) chapterObserver.disconnect();
+
+    const options = {
+        root: null,
+        rootMargin: '-15% 0px -65% 0px',
+        threshold: 0
+    };
+
+    chapterObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const idx = Number(entry.target.dataset.chapterIdx);
+                if (!isNaN(idx) && publishedChapters[idx]) {
+                    updateActiveChapterUI(idx);
+                }
+            }
+        });
+    }, options);
+
+    document.querySelectorAll('.chapter-section').forEach(sec => {
+        chapterObserver.observe(sec);
+    });
+}
+
+function scrollToChapter(idx, smooth = true) {
+    if (idx < 0 || idx >= publishedChapters.length) return;
+    const target = document.getElementById(`chapter-section-${idx}`);
+    if (target) {
+        target.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
+        updateActiveChapterUI(idx);
+    }
+}
+
+/* ---------------------------
+   Mode Setup Handlers
+   --------------------------- */
+function setupBookMode(chapters) {
+    clearPdfViewer();
+    const total = chapters.length;
+    totalPages.textContent = total;
+    pageSlider.max = total;
+
+    // Render all chapters continuously
+    readerArticle.innerHTML = chapters.map((chapter, idx) => {
+        const isLocked = chapter.locked;
+        const rawContent = chapter.contentHtml || chapter.content || "";
+        const contentHtml = isLocked ? `
+            <div class="text-center py-12 bg-gray-50/50 rounded-xl border border-gray-200/60 my-6">
+                <i class="fa-solid fa-lock text-4xl text-gray-400 mb-3 block"></i>
+                <h3 class="text-lg font-semibold text-readerText font-sans">Chapter Locked</h3>
+                <p class="text-sm text-gray-500 mt-1 font-sans">Unlock this chapter to continue reading.</p>
+            </div>
+        ` : sanitizeHtml(rawContent);
+
+        const divider = idx < total - 1 ? `
+            <div class="my-16 flex items-center justify-center gap-4 opacity-70">
+                <div class="h-[1px] w-20 bg-[#E2DACD]"></div>
+                <span class="text-[#A89F91] text-[11px] font-sans font-semibold tracking-widest uppercase">End of Chapter ${chapter.chapterNumber}</span>
+                <div class="h-[1px] w-20 bg-[#E2DACD]"></div>
+            </div>
+        ` : '';
+
+        return `
+            <section id="chapter-section-${idx}" data-chapter-idx="${idx}" class="chapter-section pb-4">
+                <div class="text-center mb-8 pt-4">
+                    <span class="font-sans text-[11px] uppercase tracking-[0.2em] font-semibold text-readerBlue">CHAPTER ${chapter.chapterNumber}</span>
+                    <h2 class="font-titleSerif text-[32px] font-bold text-readerText mt-1 mb-3 tracking-tight">${escapeHtml(chapter.title || '')}</h2>
+                    <div class="decorative-line my-4">
+                        <svg width="24" height="12" viewBox="0 0 24 12" fill="none" xmlns="http://www.w3.org/2000/svg" class="text-[#D3C7B5]">
+                            <path d="M2 6C5 2 7 2 10 6C13 10 15 10 18 6C20 3.33 21.5 3.33 22 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            <path d="M2 6C2.5 8.67 4 8.67 6 6C9 2 11 2 14 6C17 10 19 10 22 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="chapter-body font-serif text-[18px] leading-[1.65] text-[#22201D]">
+                    ${contentHtml}
+                </div>
+                ${divider}
+            </section>
+        `;
+    }).join('');
+
+    initChapterObserver();
+
+    const savedIdx = Math.max(0, Math.min(total - 1, Number(localStorage.getItem(`readerCurrentChapterIdx:${resourceId}`) || 0)));
+    setTimeout(() => {
+        scrollToChapter(savedIdx, false);
+    }, 100);
+}
+
+async function setupDocumentMode(res) {
+    const pagesCount = Number(res.pages) || (res.files && res.files[0] && res.files[0].pages) || 1;
+    const total = Math.max(1, Math.floor(pagesCount));
+    totalPages.textContent = total;
+    pageSlider.max = total;
+
+    const savedPage = Number(localStorage.getItem(`readerCurrentPage:${resourceId}`) || 1);
+    const startPage = Math.min(Math.max(1, savedPage), total);
+    pageSlider.value = startPage;
+    currentPage.textContent = startPage;
+    const startPercent = Math.round((startPage/total)*100);
+    percentageDisplay.textContent = startPercent + '%';
+    progressBar.style.width = startPercent + '%';
+
+    const mainFile = (res.files && res.files[0]) || res.file || null;
+    const fileUrl = mainFile && (mainFile.url || mainFile.path) ? normalizeUrl(mainFile.url || mainFile.path) : null;
+    const previewUrl = res.previewUrl ? normalizeUrl(res.previewUrl) : (res.readOnlineUrl ? normalizeUrl(res.readOnlineUrl) : null);
+
+    if (res.contentHtml) {
+        const sanitized = sanitizeHtml(res.contentHtml);
+        readerArticle.innerHTML = sanitized || '<p class="text-gray-600 font-sans">No readable content available.</p>';
+    } else if (res.description || res.summary) {
+        const text = res.description || res.summary || '';
+        const paragraphs = text.split(/\n{2,}/).filter(Boolean).map(p => `<p class="mb-4">${escapeHtml(p).replace(/\n/g, '<br>')}</p>`).join('\n');
+        readerArticle.innerHTML = paragraphs || '<p class="text-gray-600 font-sans">No readable content is available for this resource.</p>';
+    } else {
+        readerArticle.innerHTML = '<p class="text-center text-gray-500 font-sans">This resource has no readable text. If a source file is attached, it will open below.</p>';
+    }
+
+    const candidateUrl = previewUrl || fileUrl;
+    const isPdf = candidateUrl ? (/\.pdf($|\?)/i.test(candidateUrl) || (mainFile && (mainFile.mimeType||mainFile.mimetype) && /pdf/i.test(mainFile.mimeType||mainFile.mimetype))) : false;
+
+    if (candidateUrl && isPdf) {
+        document.getElementById('pdfViewerArea').classList.remove('hidden');
+        document.getElementById('pdfControlsRow').classList.remove('hidden');
+
+        const idbKey = `pdfblob:${resourceId}`;
+        try {
+            const existingBlob = await idbGet(idbKey);
+            if (existingBlob) {
+                const arrayBuffer = await existingBlob.arrayBuffer();
+                const pdfDocObj = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                setupPdfViewer(pdfDocObj);
+            } else {
+                readerArticle.innerHTML = '<p class="text-center text-gray-500 font-sans">Preparing document for reading…</p>';
+            }
+
+            (async () => {
+                try {
+                    const blob = await downloadAndStoreResourceFile(candidateUrl, idbKey);
+                    if (blob) {
+                        const arrayBuffer = await blob.arrayBuffer();
+                        if (pdfDoc && pdfDoc.destroy) { try { await pdfDoc.destroy(); } catch(_){} pdfDoc = null; }
+                        const pdfDocObj = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                        setupPdfViewer(pdfDocObj);
+                    }
+                } catch (err) {
+                    console.warn('Background download failed', err);
+                    showTopFlash('Could not download document for offline reading', 3000);
+                }
+            })();
+
+        } catch (err) {
+            console.error('Error opening PDF from storage or download', err);
+            readerArticle.innerHTML = '<p class="text-center text-gray-500 font-sans">Could not open PDF document.</p>';
+        }
+    } else if (candidateUrl && !isPdf) {
+        try {
+            const resFetch = await fetch(candidateUrl, { credentials: 'include' });
+            if (resFetch && resFetch.ok) {
+                const blob = await resFetch.blob();
+                const url = URL.createObjectURL(blob);
+                const iframe = document.createElement('iframe');
+                iframe.src = url; iframe.style.width='100%'; iframe.style.height='60vh'; iframe.frameBorder='0';
+                document.getElementById('pdfViewerArea').innerHTML = '';
+                document.getElementById('pdfViewerArea').appendChild(iframe);
+                document.getElementById('pdfViewerArea').classList.remove('hidden');
+                readerArticle.innerHTML = '<p class="text-center text-gray-500 font-sans">Document embedded below.</p>';
+            } else {
+                readerArticle.innerHTML = '<p class="text-center text-gray-500 font-sans">Cannot embed the selected document.</p>';
+            }
+        } catch (err) {
+            console.error('Embed fetch failed', err);
+            readerArticle.innerHTML = '<p class="text-center text-gray-500 font-sans">Cannot embed the selected document.</p>';
+        }
+    }
+}
+
+/* ---------------------------
+   Main initialization flow (Stale-While-Revalidate)
+   --------------------------- */
+function applyResourceMetadata(res) {
+    resource = res;
+    document.title = `${res.title || res.name || 'Resource'} — Reader`;
+    bookTitleEl.textContent = res.title || res.name || 'Untitled';
+    const authors = Array.isArray(res.authors) ? res.authors.join(', ') : (res.authors || res.author || '');
+    bookAuthorEl.textContent = authors || (res.uploader && (res.uploader.fullname || res.uploader.username)) || '';
+}
+
+async function initReader(){
+    if(!resourceId){
+        document.title = 'Resource not found';
+        bookTitleEl.textContent = 'Resource not found';
+        readerArticle.innerHTML = '<p class="text-center text-gray-500 font-sans">No resource id provided in the URL.</p>';
+        return;
+    }
+
+    const savedFont = localStorage.getItem(`readerFontSize:${resourceId}`) || localStorage.getItem(`readerFontSize:global`);
+    if(savedFont && readerArticle){
+        readerArticle.style.fontSize = savedFont + 'px';
+        fontSizeSlider.value = savedFont; fontSizeValue.textContent = savedFont;
+    }
+
+    updateBookmarkUI();
+    loadNotes();
+    renderNotes();
+    const savedTheme = localStorage.getItem(`readerTheme:${resourceId}`) || localStorage.getItem('readerTheme:global') || 'light';
+    if (savedTheme === 'dark') {
+        document.body.classList.add('reader-dark');
+        document.body.style.background = '#0B1220';
+        document.body.style.color = '#E6EEF8';
+    } else {
+        document.body.classList.remove('reader-dark');
+        document.body.style.background = '#FFFFFF';
+        document.body.style.color = '#1A1816';
+    }
+    const savedBrightness = Number(localStorage.getItem(`readerBrightness:${resourceId}`) || 100);
+    applyReaderBrightness(savedBrightness);
+
+    // Cache keys
+    const cacheKeyResource = `cache_resource:${resourceId}`;
+    const cacheKeyChapters = `cache_chapters:${resourceId}`;
+
+    // Load from LocalStorage Cache First
+    const cachedRes = getCachedData(cacheKeyResource);
+    const cachedChaptersData = getCachedData(cacheKeyChapters);
+
+    let hasLoadedFromCache = false;
+
+    if (cachedRes) {
+        applyResourceMetadata(cachedRes);
+        if (cachedChaptersData) {
+            const rawChapters = cachedChaptersData.chapters || cachedChaptersData.data || (Array.isArray(cachedChaptersData) ? cachedChaptersData : []);
+            publishedChapters = rawChapters
+                .filter(chapter => chapter.status === "published")
+                .sort((a, b) => a.chapterNumber - b.chapterNumber);
+        }
+        
+        if (publishedChapters.length > 0) {
+            setupBookMode(publishedChapters);
+        } else {
+            setupDocumentMode(cachedRes);
+        }
+        hasLoadedFromCache = true;
+    }
+
+    if (!hasLoadedFromCache) {
+        document.title = 'Loading…';
+    }
+
+    // Revalidate in background from backend API
+    (async () => {
+        try {
+            const freshRes = await fetchResourceById(resourceId);
+            if (freshRes) {
+                setCachedData(cacheKeyResource, freshRes);
+                applyResourceMetadata(freshRes);
+            }
+
+            const freshChaptersData = await tryFetch(`${API_BASE}/api/resource/${resourceId}/chapters`, { credentials: "include" });
+            if (freshChaptersData) {
+                setCachedData(cacheKeyChapters, freshChaptersData);
+                const rawChapters = freshChaptersData.chapters || freshChaptersData.data || (Array.isArray(freshChaptersData) ? freshChaptersData : []);
+                publishedChapters = rawChapters
+                    .filter(chapter => chapter.status === "published")
+                    .sort((a, b) => a.chapterNumber - b.chapterNumber);
+            }
+
+            const activeResource = freshRes || cachedRes;
+            if (!activeResource && !freshRes) {
+                if (!hasLoadedFromCache) {
+                    document.title = 'Resource not found';
+                    bookTitleEl.textContent = 'Resource not found';
+                    readerArticle.innerHTML = '<p class="text-center text-gray-500 font-sans">Could not load the selected resource.</p>';
+                }
+                return;
+            }
+
+            // Update UI with latest backend state
+            if (publishedChapters.length > 0) {
+                setupBookMode(publishedChapters);
+            } else {
+                await setupDocumentMode(activeResource);
+            }
+        } catch (err) {
+            console.warn('Revalidation background update failed:', err);
+        }
+    })();
+}
+
+/* ---------------------------
+   Bootstrap & Controls
+   --------------------------- */
+document.getElementById('backBtn').addEventListener('click', () => {
+    if (history.length > 1) history.back();
+    else window.location.href = 'book.html' + (resourceId ? `?id=${encodeURIComponent(resourceId)}` : '');
+});
+
+const searchModal = document.getElementById('searchModal');
+const searchInput = document.getElementById('readerSearchInput');
+const searchResultCount = document.getElementById('searchResultCount');
+const brightnessModal = document.getElementById('brightnessModal');
+const brightnessSlider = document.getElementById('brightnessSlider');
+const brightnessValue = document.getElementById('brightnessValue');
+const settingsModal = document.getElementById('settingsModal');
+const readerMenu = document.getElementById('readerMenu');
+let searchMatches = [];
+let activeSearchMatch = -1;
+let pdfSearchPages = [];
+let pdfSearchToken = 0;
+
+function openModal(el) {
+    el.classList.remove('hidden');
+    el.classList.add('flex');
+    document.body.style.overflow = 'hidden';
+}
+function closeModal(el) {
+    el.classList.add('hidden');
+    el.classList.remove('flex');
+    document.body.style.overflow = '';
+}
+function clearSearchHighlights() {
+    readerArticle.querySelectorAll('mark.reader-search-hit').forEach(mark => {
+        const parent = mark.parentNode;
+        parent.replaceChild(document.createTextNode(mark.textContent), mark);
+        parent.normalize();
+    });
+    searchMatches = [];
+    activeSearchMatch = -1;
+}
+async function runReaderSearch() {
+    clearSearchHighlights();
+    const query = searchInput.value.trim();
+    if (!query) { pdfSearchPages = []; searchResultCount.textContent = 'Enter a word or phrase'; return; }
+    if (pdfDoc) {
+        const token = ++pdfSearchToken;
+        pdfSearchPages = [];
+        searchResultCount.textContent = 'Searching document…';
+        const q = query.toLocaleLowerCase();
+        try {
+            for (let pageNo = 1; pageNo <= pdfDoc.numPages; pageNo++) {
+                if (token !== pdfSearchToken) return;
+                const page = await pdfDoc.getPage(pageNo);
+                const content = await page.getTextContent();
+                const text = content.items.map(item => item.str || '').join(' ');
+                let count = 0, from = 0, at;
+                const lower = text.toLocaleLowerCase();
+                while ((at = lower.indexOf(q, from)) !== -1) { count++; from = at + q.length; }
+                if (count) pdfSearchPages.push({ page: pageNo, count });
+            }
+            if (token !== pdfSearchToken) return;
+            const totalMatches = pdfSearchPages.reduce((sum, item) => sum + item.count, 0);
+            searchResultCount.textContent = totalMatches ? `${totalMatches} match${totalMatches === 1 ? '' : 'es'} across ${pdfSearchPages.length} page${pdfSearchPages.length === 1 ? '' : 's'}` : 'No matches found';
+            if (pdfSearchPages.length) focusSearchMatch(0);
+        } catch (err) {
+            console.error('PDF search failed', err);
+            searchResultCount.textContent = 'Could not search this document';
+        }
+        return;
+    }
+    pdfSearchPages = [];
+    const walker = document.createTreeWalker(readerArticle, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+            if (!node.nodeValue.trim() || node.parentElement.closest('script,style,mark,button,iframe')) return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
+        }
+    });
+    const textNodes = [];
+    while (walker.nextNode()) textNodes.push(walker.currentNode);
+    const q = query.toLocaleLowerCase();
+    textNodes.forEach(node => {
+        const text = node.nodeValue;
+        const lower = text.toLocaleLowerCase();
+        let from = 0, index;
+        const frag = document.createDocumentFragment();
+        let found = false;
+        while ((index = lower.indexOf(q, from)) !== -1) {
+            found = true;
+            if (index > from) frag.appendChild(document.createTextNode(text.slice(from, index)));
+            const mark = document.createElement('mark');
+            mark.className = 'reader-search-hit';
+            mark.textContent = text.slice(index, index + query.length);
+            frag.appendChild(mark);
+            searchMatches.push(mark);
+            from = index + query.length;
+        }
+        if (found) {
+            if (from < text.length) frag.appendChild(document.createTextNode(text.slice(from)));
+            node.parentNode.replaceChild(frag, node);
+        }
+    });
+    searchResultCount.textContent = searchMatches.length ? `${searchMatches.length} match${searchMatches.length === 1 ? '' : 'es'}` : 'No matches found';
+    if (searchMatches.length) focusSearchMatch(0);
+}
+function focusSearchMatch(index) {
+    if (pdfDoc && pdfSearchPages.length) {
+        const total = pdfSearchPages.reduce((sum, item) => sum + item.count, 0);
+        const targetIndex = (index + pdfSearchPages.length) % pdfSearchPages.length;
+        activeSearchMatch = targetIndex;
+        const target = pdfSearchPages[targetIndex];
+        jumpToPage(target.page);
+        searchResultCount.textContent = `Page ${target.page} · ${target.count} match${target.count === 1 ? '' : 'es'} (${targetIndex + 1} of ${pdfSearchPages.length} matching pages)`;
+        return;
+    }
+    if (!searchMatches.length) return;
+    searchMatches.forEach(m => m.classList.remove('reader-search-current'));
+    activeSearchMatch = (index + searchMatches.length) % searchMatches.length;
+    const match = searchMatches[activeSearchMatch];
+    match.classList.add('reader-search-current');
+    match.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    searchResultCount.textContent = `${activeSearchMatch + 1} of ${searchMatches.length} matches`;
+}
+document.getElementById('searchBtn').addEventListener('click', () => {
+    openModal(searchModal);
+    searchInput.focus();
+});
+document.getElementById('searchClose').addEventListener('click', () => { clearSearchHighlights(); closeModal(searchModal); });
+searchModal.addEventListener('click', e => { if (e.target === searchModal) { clearSearchHighlights(); closeModal(searchModal); } });
+searchInput.addEventListener('input', runReaderSearch);
+searchInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); focusSearchMatch(activeSearchMatch + (e.shiftKey ? -1 : 1)); }
+});
+document.getElementById('searchPrev').addEventListener('click', () => focusSearchMatch(activeSearchMatch - 1));
+document.getElementById('searchNext').addEventListener('click', () => focusSearchMatch(activeSearchMatch + 1));
+
+function applyReaderBrightness(value) {
+    const v = Math.max(55, Math.min(120, Number(value) || 100));
+    brightnessValue.textContent = `${v}%`;
+    brightnessSlider.value = v;
+    readerArticle.style.filter = `brightness(${v / 100})`;
+    pdfViewerArea.style.filter = `brightness(${v / 100})`;
+    localStorage.setItem(`readerBrightness:${resourceId || 'global'}`, String(v));
+}
+document.getElementById('brightnessBtn').addEventListener('click', () => {
+    brightnessSlider.value = Number(localStorage.getItem(`readerBrightness:${resourceId || 'global'}`) || 100);
+    brightnessValue.textContent = `${brightnessSlider.value}%`;
+    openModal(brightnessModal);
+});
+document.getElementById('brightnessClose').addEventListener('click', () => closeModal(brightnessModal));
+brightnessModal.addEventListener('click', e => { if (e.target === brightnessModal) closeModal(brightnessModal); });
+brightnessSlider.addEventListener('input', () => applyReaderBrightness(brightnessSlider.value));
+document.getElementById('brightnessReset').addEventListener('click', () => applyReaderBrightness(100));
+
+document.getElementById('settingsBtn').addEventListener('click', () => openModal(settingsModal));
+document.getElementById('settingsClose').addEventListener('click', () => closeModal(settingsModal));
+settingsModal.addEventListener('click', e => { if (e.target === settingsModal) closeModal(settingsModal); });
+async function copyReadingLink() {
+    try {
+        await navigator.clipboard.writeText(window.location.href);
+        showTopFlash('Reading link copied');
+    } catch (_) {
+        const input = document.createElement('textarea');
+        input.value = window.location.href;
+        input.style.position = 'fixed'; input.style.opacity = '0';
+        document.body.appendChild(input); input.select();
+        const ok = document.execCommand('copy'); input.remove();
+        showTopFlash(ok ? 'Reading link copied' : 'Unable to copy link on this browser');
+    }
+}
+function resetReadingProgress() {
+    if (!confirm('Reset your reading progress for this resource?')) return;
+    localStorage.removeItem(`readerCurrentChapterIdx:${resourceId}`);
+    localStorage.removeItem(`readerCurrentPage:${resourceId}`);
+    if (publishedChapters.length) scrollToChapter(0);
+    else if (pdfDoc) jumpToPage(1);
+    else { pageSlider.value = 1; currentPage.textContent = '1'; percentageDisplay.textContent = '0%'; progressBar.style.width = '0%'; }
+    showTopFlash('Reading progress reset');
+}
+document.getElementById('settingResetProgress').addEventListener('click', () => { closeModal(settingsModal); resetReadingProgress(); });
+document.getElementById('menuResetProgress').addEventListener('click', () => { readerMenu.classList.add('hidden'); resetReadingProgress(); });
+document.getElementById('settingCopyLink').addEventListener('click', async () => { closeModal(settingsModal); await copyReadingLink(); });
+document.getElementById('menuCopyLink').addEventListener('click', async () => { readerMenu.classList.add('hidden'); await copyReadingLink(); });
+document.getElementById('settingResetAppearance').addEventListener('click', () => {
+    fontSizeSlider.value = 18; fontSizeValue.textContent = '18';
+    readerArticle.style.fontSize = '18px'; readerArticle.style.lineHeight = '1.65';
+    localStorage.removeItem(`readerFontSize:${resourceId || 'global'}`);
+    localStorage.removeItem(`readerTheme:${resourceId || 'global'}`);
+    applyReaderBrightness(100);
+    document.body.classList.remove('reader-dark');
+    document.body.style.background = '#FFFFFF'; document.body.style.color = '#1A1816';
+    closeModal(settingsModal); showTopFlash('Appearance reset');
+});
+document.getElementById('menuBtn').addEventListener('click', e => {
+    e.stopPropagation();
+    readerMenu.classList.toggle('hidden');
+});
+document.addEventListener('click', e => {
+    if (!readerMenu.contains(e.target) && !document.getElementById('menuBtn').contains(e.target)) readerMenu.classList.add('hidden');
+});
+document.getElementById('menuDownload').addEventListener('click', async () => {
+    readerMenu.classList.add('hidden');
+    const mainFile = resource && ((resource.files && resource.files[0]) || resource.file);
+    const fileUrl = mainFile && (mainFile.url || mainFile.path) ? normalizeUrl(mainFile.url || mainFile.path) : (resource && (resource.previewUrl || resource.readOnlineUrl) ? normalizeUrl(resource.previewUrl || resource.readOnlineUrl) : null);
+    if (!fileUrl) { showTopFlash('No downloadable source file is attached'); return; }
+    try {
+        const blob = await fetchWithProgressToBlob(fileUrl);
+        const objectUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objectUrl; a.download = (resource.title || resource.name || 'resource').replace(/[^a-z0-9-_]+/gi, '_');
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
+        showTopFlash('Download started');
+    } catch (err) {
+        console.error('Download failed', err);
+        window.open(fileUrl, '_blank', 'noopener');
+        showTopFlash('Opened source file in a new tab');
+    }
+});
+
+document.addEventListener('keydown', (e) => {
+    if(e.key === 'Escape'){
+        if(!notesModal.classList.contains('hidden')){ notesModal.classList.add('hidden'); document.body.style.overflow=''; }
+        if(!appearanceModal.classList.contains('hidden')){ appearanceModal.classList.add('hidden'); document.body.style.overflow=''; }
+        if(!contentsModal.classList.contains('hidden')){ closeModal(contentsModal); }
+        if(!searchModal.classList.contains('hidden')){ clearSearchHighlights(); closeModal(searchModal); }
+        if(!brightnessModal.classList.contains('hidden')){ closeModal(brightnessModal); }
+        if(!settingsModal.classList.contains('hidden')){ closeModal(settingsModal); }
+        readerMenu.classList.add('hidden');
+    }
+});
+notesModal.addEventListener('click', (e) => { if(e.target.id === 'notesModal'){ notesModal.classList.add('hidden'); document.body.style.overflow=''; } });
+appearanceModal.addEventListener('click', (e) => { if(e.target.id === 'appearanceModal'){ appearanceModal.classList.add('hidden'); document.body.style.overflow=''; } });
+
+// Initialize reader
+initReader();
+
+</script>
+</body>
+</html>
